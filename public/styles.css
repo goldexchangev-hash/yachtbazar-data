@@ -224,6 +224,12 @@ a { color: var(--cyan); text-decoration: none; }
 .result-headline { font-family: var(--display); font-size: clamp(28px, 8vw, 60px); letter-spacing: 1px; }
 #layer-result.win .result-headline { color: var(--green); text-shadow: 0 0 26px rgba(69, 240, 166, 0.8); }
 #layer-result.lose .result-headline { color: var(--red); text-shadow: 0 0 26px rgba(255, 91, 91, 0.7); }
+.result-money { font-family: var(--display); font-weight: 800; line-height: 1; letter-spacing: 1px; font-size: clamp(26px, 8vw, 58px); }
+.result-money:empty { display: none; }
+#layer-result.win .result-money { color: #2bff88; text-shadow: 0 0 10px rgba(43, 255, 136, 0.9), 0 0 30px rgba(43, 255, 136, 0.55); }
+#layer-result.lose .result-money { color: #ff5b5b; text-shadow: 0 0 10px rgba(255, 91, 91, 0.85), 0 0 26px rgba(255, 91, 91, 0.45); }
+.result-money.win, .result-money.lose { animation: moneyPop 0.55s cubic-bezier(0.18, 1.5, 0.4, 1); }
+@keyframes moneyPop { 0% { transform: scale(0.25); opacity: 0; } 60% { transform: scale(1.18); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
 .result-sub { color: #fff; font-weight: 600; }
 .result-coin { margin-top: 6px; font-family: var(--display); font-size: 13px; letter-spacing: 2px; color: var(--muted); }
 
@@ -392,7 +398,7 @@ a { color: var(--cyan); text-decoration: none; }
 
 /* recolor screen text to chunky pixel type */
 .idle-title, .waiting-text, .tuning-text, .idle-sub, .waiting-sub, .tuning-sub,
-.result-headline, .result-sub, .result-coin, .flip-caption, .standby-badge {
+.result-headline, .result-money, .result-sub, .result-coin, .flip-caption, .standby-badge {
   font-family: "Press Start 2P", var(--display) !important;
 }
 .idle-title { font-size: clamp(12px, 3.2vw, 22px); text-shadow: 3px 3px 0 #1033ff, 0 0 14px rgba(57, 231, 255, 0.5); }
@@ -404,6 +410,7 @@ a { color: var(--cyan); text-decoration: none; }
 .count-num { font-family: "Press Start 2P", var(--display); font-size: clamp(56px, 18vw, 130px); text-shadow: 6px 6px 0 #1033ff, 0 0 30px var(--cyan); }
 .count-num.flip-word { font-size: clamp(30px, 9vw, 72px); text-shadow: 6px 6px 0 #b25b00; }
 .result-headline { font-size: clamp(18px, 5vw, 40px); text-shadow: 4px 4px 0 #000; }
+.result-money { font-size: clamp(20px, 6vw, 44px); }
 .result-sub { font-size: clamp(8px, 1.8vw, 11px); }
 .result-coin { font-size: 9px; }
 .flip-caption { font-size: 10px; }

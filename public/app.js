@@ -428,7 +428,20 @@
   }
 
   // ---------------------------------------------------------- actions
+  // Guard every on-chain action so a not-yet-connected / no-game state shows a
+  // clear message instead of a raw "Cannot read properties of null" crash.
+  function ready() {
+    if (!account) { toast("Connect your wallet first 👆 (top-right).", "err"); return false; }
+    if (!contract || !read || !deployment.address) {
+      toast("No game loaded here — open the host's share link (it carries the game address), or deploy a game.", "err");
+      return false;
+    }
+    if (!chainOK) { toast("Wrong network — switch to " + netName(deployment.chainId) + " and try again.", "err"); return false; }
+    return true;
+  }
+
   async function deposit() {
+    if (!ready()) return;
     const v = parseFloat($("deposit-input").value); // USD
     if (!(v > 0)) return toast("Enter an amount to deposit (in $)", "err");
     try {
@@ -442,6 +455,7 @@
   }
 
   async function withdrawAll() {
+    if (!ready()) return;
     try {
       toast("Confirm the withdrawal…");
       const tx = await contract.withdrawAll();
@@ -452,6 +466,7 @@
   }
 
   async function createRoom() {
+    if (!ready()) return;
     const name = ($("room-name").value || "Coin Flip").trim();
     const v = parseFloat($("bet-input").value); // USD
     if (!(v > 0)) return toast("Pick a bet amount", "err");
@@ -478,6 +493,7 @@
 
   // Clicking "Join" opens the bet-confirmation modal (with an optional raise).
   function joinRoom(id, room) {
+    if (!ready()) return;
     openBetModal({ kind: "join", id: id, room: room, bet: room.betAmount });
   }
 
@@ -500,6 +516,7 @@
 
   // Clicking "Flip vs House" opens the bet-confirmation modal (drag-chosen stake).
   async function playHouse() {
+    if (!ready()) return;
     const v = parseFloat($("house-bet").value); // USD
     if (!(v > 0)) return toast("Drag to pick a stake", "err");
     const bet = usdToWei(v);
@@ -698,11 +715,17 @@
         lastRevealed = activeRoomId;
         const side = r.headsWon ? "HEADS" : "TAILS";
         const youWon = eq(r.winner, account);
+        // Net change to your in-game balance from this flip: win = pot − 10% fee
+        // − your stake (your profit); loss = your whole stake.
+        const pot = r.betAmount * 2n;
+        const payout = pot - pot / 10n;
+        const deltaWei = youWon ? payout - r.betAmount : r.betAmount;
         TV.revealResult({
           side,
           youWon,
           role: "participant",
-          sub: youWon ? "You won the pot (minus 10% house)" : "The other side won · house kept 10%",
+          amountUsd: weiToUsd(deltaWei),
+          sub: youWon ? "Net win after the 10% house cut — added to your balance" : "Your stake went to the winner",
         });
         activeRoomId = null;
         refreshBalances(); refreshHouse(); refreshStats(); refreshRooms(); refreshPlayers();

@@ -47,6 +47,7 @@
       this.countNum = $("count-num");
       this.resultEmoji = $("result-emoji");
       this.resultHeadline = $("result-headline");
+      this.resultMoney = $("result-money");
       this.resultSub = $("result-sub");
       this.resultCoin = $("result-coin");
       this.channelNum = $("tv-channel-num");
@@ -235,6 +236,7 @@
         this.resultSub.textContent = res.sub || "Better luck next flip";
       }
       this.resultCoin.textContent = "RESULT: " + res.side;
+      this._animateMoney(res);
       this._show("result");
 
       if (layer.classList.contains("win")) {
@@ -245,10 +247,41 @@
       }
     },
 
+    // Casino-style count-up: rises from $0 to the amount won (green +) or lost
+    // (red −). `res.amountUsd` is the net change to your balance for this game.
+    _animateMoney(res) {
+      const el = this.resultMoney;
+      if (!el) return;
+      el.className = "result-money";
+      if (res.role === "spectator" || res.youWon === undefined || res.amountUsd == null || isNaN(res.amountUsd)) {
+        el.textContent = "";
+        return;
+      }
+      const won = !!res.youWon;
+      const target = Math.max(0, Number(res.amountUsd));
+      el.classList.add(won ? "win" : "lose");
+      const sign = won ? "+" : "−";
+      const fmt = (v) => sign + "$" + v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      // restart the pop animation
+      el.style.animation = "none"; void el.offsetWidth; el.style.animation = "";
+      const dur = 1000, start = now(), seq = this._seq;
+      el.textContent = fmt(0);
+      const tick = () => {
+        if (seq !== this._seq) return;
+        const t = Math.min(1, (now() - start) / dur);
+        const eased = 1 - Math.pow(1 - t, 3); // easeOutCubic
+        el.textContent = fmt(target * eased);
+        if (t < 1) requestAnimationFrame(tick);
+        else el.textContent = fmt(target);
+      };
+      requestAnimationFrame(tick);
+    },
+
     reset() {
       this._seq++;
       this._pendingReveal = null;
       this.coin.classList.remove("spin", "show-heads", "show-tails");
+      if (this.resultMoney) { this.resultMoney.textContent = ""; this.resultMoney.className = "result-money"; }
       this._clearConfetti();
     },
 
