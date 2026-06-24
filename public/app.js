@@ -1368,7 +1368,7 @@
     let profitWei = 0n; try { profitWei = usdToWei(profit); } catch {}
     if (gameWei > 0n && stakeWei > gameWei) hint = "Not enough in-game balance — deposit first 👇";
     else if (maxBet > 0n && stakeWei > maxBet) hint = "Max bet is " + usdOf(maxBet);
-    else if (diceHouseWei > 0n && profitWei > diceHouseWei / 100n) hint = "House can't cover this win right now — lower the stake or multiplier";
+    else if (diceHouseWei > 0n && profitWei > diceHouseWei / 100n) hint = "Max win per roll is " + usdOf(diceHouseWei / 100n) + " (1% of the house bankroll) — lower the stake or multiplier";
     const btn = $("dice-roll-btn");
     if (btn) { btn.disabled = !!hint; btn.style.opacity = hint ? "0.55" : ""; }
     $("dice-roll-hint").textContent = hint;
