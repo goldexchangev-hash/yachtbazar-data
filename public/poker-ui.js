@@ -5,7 +5,7 @@
 (function () {
   "use strict";
   const $ = (id) => document.getElementById(id);
-  const SEATS = 12;            // ring capacity (huge table)
+  const SEATS = 9;             // ring capacity (casino-standard full ring)
   const HERO = "hero";
   const SB = 1, BB = 2;        // chips; 1 chip = $1
   const TURN_MS = 30000;       // hero turn timer
@@ -76,7 +76,7 @@
     seats[0] = { id: HERO, name: "You", isBot: false, stack: buyInUsd, seat: 0 };
     // seat a friendly number of house bots around the table
     const nBots = 5;
-    const spread = [6, 3, 9, 2, 10, 5, 7, 1, 11, 4, 8];
+    const spread = [5, 3, 7, 2, 6, 4, 8, 1]; // seats around a 9-max ring (hero is seat 0)
     let placed = 0;
     for (const s of spread) { if (placed >= nBots) break; if (!seats[s]) { seats[s] = { id: "bot" + s, name: BOT_NAMES[placed % BOT_NAMES.length], isBot: true, stack: 100, seat: s }; placed++; } }
     buttonSeat = 0;
