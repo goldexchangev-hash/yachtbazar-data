@@ -21,7 +21,7 @@
 
   // ---- ellipse seat positions (hero at bottom-center) --------------------
   function seatPos(i) {
-    const cx = 50, cy = 50, a = 45, b = 43;
+    const cx = 50, cy = 50, a = 44, b = 39;
     const ang = (90 - (360 / SEATS) * i) * Math.PI / 180;
     return { left: cx + a * Math.cos(ang), top: cy + b * Math.sin(ang) };
   }
@@ -257,6 +257,7 @@
 
   function render() {
     const st = hand ? hand.state(HERO) : null;
+    const table = $("poker-table"); if (table) table.classList.toggle("is-seated", !!seatOf(HERO));
     // pot + board
     $("poker-pot").textContent = "POT " + cfg.usd(st ? st.pot : 0);
     const board = $("poker-board"); board.innerHTML = "";

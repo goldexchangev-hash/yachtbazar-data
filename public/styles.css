@@ -1035,25 +1035,26 @@ body.game-dice [data-game="flip"], body.game-twodice [data-game="flip"] { displa
 
 /* ── seats: compact vertical stack (cards · avatar · name/stack) ── */
 .pseat { position:absolute; transform:translate(-50%,-50%); z-index:3; display:flex; flex-direction:column;
-  align-items:center; gap:clamp(2px,.8cqmin,5px); width:clamp(50px,17cqmin,104px); }
-.pseat__cards { display:flex; gap:2px; justify-content:center; min-height:clamp(21px,6.4cqmin,36px); }
-.pseat__av { width:clamp(34px,11.5cqmin,62px); height:clamp(34px,11.5cqmin,62px); border-radius:50%; position:relative;
-  background:#1a2740; border:2px solid #2a3d5c; display:grid; place-items:center; font-size:clamp(16px,5.4cqmin,28px); flex:none; }
-.pseat__info { background:#0d1526; border:1px solid #223550; border-radius:8px; padding:clamp(2px,.8cqmin,4px) clamp(5px,1.6cqmin,9px);
-  max-width:clamp(58px,18cqmin,116px); text-align:center; }
-.pseat__name { display:block; font:700 clamp(8px,2.7cqmin,13px)/1.1 "Space Grotesk",sans-serif; color:#cfe6ff;
+  align-items:center; gap:clamp(1px,.5cqmin,3px); width:clamp(46px,15cqmin,96px); }
+.pseat__cards { display:flex; gap:2px; justify-content:center; min-height:clamp(18px,5.4cqmin,30px); }
+.pseat__av { width:clamp(32px,10.5cqmin,58px); height:clamp(32px,10.5cqmin,58px); border-radius:50%; position:relative;
+  background:#1a2740; border:2px solid #2a3d5c; display:grid; place-items:center; font-size:clamp(15px,5cqmin,26px); flex:none; }
+.pseat__info { background:#0d1526; border:1px solid #223550; border-radius:7px; padding:clamp(1px,.6cqmin,3px) clamp(4px,1.4cqmin,8px);
+  max-width:clamp(54px,16cqmin,108px); text-align:center; }
+.pseat__name { display:block; font:700 clamp(8px,2.5cqmin,12px)/1.1 "Space Grotesk",sans-serif; color:#cfe6ff;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.pseat__stack { display:block; font:clamp(7px,2.3cqmin,11px)/1.3 "Press Start 2P",monospace; color:#39ff9e; white-space:nowrap; }
-.pseat__bet { font:clamp(7px,2.2cqmin,10px)/1 "Press Start 2P",monospace; color:#ffe34d; background:#0c1626;
-  border:1px solid #3a3a1a; border-radius:6px; padding:clamp(2px,.7cqmin,4px) clamp(4px,1.3cqmin,7px); }
+.pseat__stack { display:block; font:clamp(7px,2.2cqmin,10px)/1.3 "Press Start 2P",monospace; color:#39ff9e; white-space:nowrap; }
+.pseat__bet { position:absolute; top:-9px; left:50%; transform:translateX(-50%);
+  font:clamp(7px,2.1cqmin,10px)/1 "Press Start 2P",monospace; color:#ffe34d; background:#0c1626;
+  border:1px solid #3a3a1a; border-radius:6px; padding:clamp(2px,.7cqmin,4px) clamp(4px,1.3cqmin,7px); white-space:nowrap; }
 .pseat__bet:empty { display:none; }
 .pseat.is-hero .pseat__av { border-color:#2f5d8a; }
 .pseat.is-active .pseat__av { border-color:#00eaff; box-shadow:0 0 16px rgba(0,234,255,.6); }
 .pseat.is-active .pseat__info { border-color:#00eaff; }
-.pseat.is-folded { opacity:.36; filter:grayscale(.6); }
+.pseat.is-folded { opacity:.34; filter:grayscale(.6); }
 .pseat.is-allin .pseat__stack { color:#ff4d6d; }
-.pseat__d { position:absolute; top:-5px; right:-5px; width:clamp(15px,5cqmin,22px); height:clamp(15px,5cqmin,22px);
-  border-radius:50%; background:#fff; color:#0a0a12; font:700 clamp(8px,3cqmin,11px)/1 "Press Start 2P",monospace;
+.pseat__d { position:absolute; top:-5px; right:-5px; width:clamp(14px,4.6cqmin,20px); height:clamp(14px,4.6cqmin,20px);
+  border-radius:50%; background:#fff; color:#0a0a12; font:700 clamp(8px,2.8cqmin,11px)/1 "Press Start 2P",monospace;
   display:none; align-items:center; justify-content:center; box-shadow:0 0 8px #fff; }
 .pseat.has-button .pseat__d { display:flex; }
 /* depleting timer ring on the active seat */
@@ -1061,12 +1062,13 @@ body.game-dice [data-game="flip"], body.game-twodice [data-game="flip"] { displa
   background: conic-gradient(#00eaff var(--timer,360deg), #1b2740 0);
   -webkit-mask: radial-gradient(farthest-side,#0000 calc(100% - 3px),#000 0);
           mask: radial-gradient(farthest-side,#0000 calc(100% - 3px),#000 0); }
-/* empty seat = join target */
+/* empty seat = join target (dashed ring). Hidden entirely once the hero sits. */
 .pseat.is-empty .pseat__av, .pseat.is-empty .pseat__info, .pseat.is-empty .pseat__cards, .pseat.is-empty .pseat__bet { display:none; }
-.pseat__join { font:clamp(7px,2.4cqmin,11px)/1 "Press Start 2P",monospace; color:#33506f; cursor:pointer; background:transparent;
-  border:1.5px dashed #33506f; border-radius:50%; width:clamp(40px,12cqmin,64px); height:clamp(40px,12cqmin,64px); padding:0; transition:.15s; }
+.poker-table.is-seated .pseat.is-empty { display:none; }
+.pseat__join { font:clamp(7px,2.4cqmin,11px)/1 "Press Start 2P",monospace; color:#3a5a7d; cursor:pointer; background:rgba(8,14,26,.5);
+  border:1.5px dashed #3a5a7d; border-radius:50%; width:clamp(38px,11cqmin,60px); height:clamp(38px,11cqmin,60px); padding:0; transition:.15s; }
 .pseat__join:hover { color:#00eaff; border-color:#00eaff; box-shadow:0 0 14px rgba(0,234,255,.4); }
-.pseat.is-empty:not(.joinable) .pseat__join { opacity:.25; pointer-events:none; }
+.pseat.is-empty:not(.joinable) .pseat__join { opacity:.3; pointer-events:none; }
 
 /* hero zone below the oval */
 .poker-herozone { display:flex; flex-direction:column; align-items:center; gap:10px; margin-top:12px; }
@@ -1100,3 +1102,46 @@ body.game-dice [data-game="flip"], body.game-twodice [data-game="flip"] { displa
 /* poker takes over the screen; the TV layout hides */
 body.game-poker .layout { display:none !important; }
 body:not(.game-poker) #poker-view { display:none !important; }
+
+/* ════════════════════ MOBILE: full-screen games + bottom-sheet bet controls ═══════
+   On phones the TV-style games (flip / 0-100 / dice #2) go immersive: the TV fills
+   the top of the screen and the active game's bet controls live in a fixed,
+   always-visible bottom sheet (chosen UX) so you never scroll to place a bet.
+   Poker has its own full-screen view and is excluded. */
+@media (max-width: 768px) {
+  /* slim the TV cabinet so the screen dominates the viewport */
+  body:not(.game-poker) .tv-antenna,
+  body:not(.game-poker) .tv-stand { display: none; }
+  body:not(.game-poker) .tv-body { padding: 10px 10px 8px; border-radius: 18px; }
+  body:not(.game-poker) .tv-controls { margin-top: 8px; }
+  body:not(.game-poker) .stage { gap: 10px; }
+  /* the TV stays pinned at the top while the middle scrolls under the sheet */
+  body:not(.game-poker) .stage .tv { position: sticky; top: 6px; z-index: 20; }
+
+  /* active game panel → fixed bottom sheet */
+  body:not(.game-poker) .play-house:not([hidden]),
+  body:not(.game-poker) .dice-panel:not([hidden]) {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 90;
+    width: 100%; margin: 0 !important;
+    border: 1px solid #25395a; border-bottom: none; border-radius: 18px 18px 0 0;
+    max-height: 54vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    background: rgba(9,13,23,.975); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+    box-shadow: 0 -14px 44px rgba(0,0,0,.66);
+    padding: 17px 14px calc(16px + env(safe-area-inset-bottom));
+  }
+  /* grab-handle pill at the top of the sheet */
+  body:not(.game-poker) .play-house:not([hidden])::before,
+  body:not(.game-poker) .dice-panel:not([hidden])::before {
+    content: ""; display: block; width: 44px; height: 4px; border-radius: 3px;
+    margin: -9px auto 11px; background: #33506f;
+  }
+  /* the primary action button is easy to reach at the bottom of the sheet */
+  body:not(.game-poker) .play-house:not([hidden]) .btn-block,
+  body:not(.game-poker) .dice-panel:not([hidden]) .btn-block { padding: 15px; font-size: 15px; }
+  /* let flow content (bankroll, channels, rules) scroll fully above the sheet */
+  body:not(.game-poker) .layout { padding-bottom: 58vh; }
+  /* tighten the bet panel internals so more fits without scrolling */
+  body:not(.game-poker) .dice-panel:not([hidden]) .dice-readouts { margin: 4px 0 10px; }
+  body:not(.game-poker) .play-house:not([hidden]) .ph-note,
+  body:not(.game-poker) .dice-panel:not([hidden]) .td-intro { margin: 4px 0 8px; }
+}
