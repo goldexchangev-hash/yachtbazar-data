@@ -454,6 +454,10 @@ a { color: var(--cyan); text-decoration: none; }
 /* Host earnings dashboard (house wallet only) */
 .host-stats { border-color: rgba(255, 210, 63, 0.3); background: linear-gradient(180deg, rgba(255, 210, 63, 0.06), rgba(255, 255, 255, 0.02)); }
 .hs-private { font-family: var(--font); font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #ffd23f; border: 1px solid rgba(255, 210, 63, 0.4); border-radius: 999px; padding: 2px 7px; vertical-align: middle; }
+.hs-tabs { display: flex; gap: 3px; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--panel-line); border-radius: 999px; padding: 3px; margin: 4px 0 4px; }
+.hs-tab { flex: 1; border: 0; background: transparent; color: var(--muted); font-family: var(--display); font-weight: 700; font-size: 12px; padding: 6px 4px; border-radius: 999px; cursor: pointer; transition: color 0.15s, background 0.15s; }
+.hs-tab:hover { color: #fff; }
+.hs-tab.active { color: #1a1300; background: linear-gradient(135deg, #ffd23f, #ffae00); }
 .hs-hero { text-align: center; padding: 8px 0 12px; }
 .hs-hero .muted { font-size: 12px; }
 .hs-big { display: block; font-family: var(--display); font-size: clamp(30px, 7vw, 44px); color: #34e39b; text-shadow: 0 0 18px rgba(43, 227, 155, 0.4); line-height: 1.1; margin: 2px 0; }

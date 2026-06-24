@@ -15,7 +15,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=34" />
+    <link rel="stylesheet" href="styles.css?v=35" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -28,7 +28,7 @@
         <span class="brand-tv">📺</span>
         <span class="brand-name">TV<span class="brand-accent"> CRYPTO</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v3.4</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v3.5</span>
       </div>
       <div class="topbar-right">
         <button id="sound-btn" class="btn btn-ghost" title="Play / silence background music">🔇 Music</button>
@@ -215,10 +215,17 @@
         <!-- Host earnings dashboard — only the locked house wallet sees this -->
         <div class="card host-stats hidden" id="host-stats-card">
           <h2 class="card-title">💼 Host earnings <span class="hs-private">private</span></h2>
+          <div class="hs-tabs">
+            <button type="button" class="hs-tab active" data-period="today">24h</button>
+            <button type="button" class="hs-tab" data-period="week">Week</button>
+            <button type="button" class="hs-tab" data-period="month">Month</button>
+            <button type="button" class="hs-tab" data-period="year">Year</button>
+            <button type="button" class="hs-tab" data-period="all">All</button>
+          </div>
           <div class="hs-hero">
-            <span class="muted">Profit today (rake earned)</span>
+            <span class="muted" id="hs-period-label">Profit · last 24h</span>
             <strong id="hs-profit-today" class="hs-big">+$0</strong>
-            <span class="muted hs-sub" id="hs-profit-sub">0 games today · rake is your durable edge</span>
+            <span class="muted hs-sub" id="hs-profit-sub">0 games · $0 wagered</span>
           </div>
           <div class="hs-grid">
             <div class="hs-cell"><span class="muted">Fees all-time</span><strong id="hs-fees-total">$0</strong></div>
@@ -452,10 +459,10 @@
     </div>
 
     <script src="vendor/ethers.umd.min.js"></script>
-    <script src="config.js?v=34"></script>
-    <script src="contract.js?v=34"></script>
-    <script src="chiptune.js?v=34"></script>
-    <script src="tv.js?v=34"></script>
-    <script src="app.js?v=34"></script>
+    <script src="config.js?v=35"></script>
+    <script src="contract.js?v=35"></script>
+    <script src="chiptune.js?v=35"></script>
+    <script src="tv.js?v=35"></script>
+    <script src="app.js?v=35"></script>
   </body>
 </html>

@@ -271,8 +271,14 @@
   }
 
   // Common UI bring-up once a contract is connected.
-  // Private host dashboard — only the house (treasury) wallet sees it. Uses the
-  // contract's exact lifetime totals + a per-day localStorage snapshot for "today".
+  // Private host dashboard — only the house (treasury) wallet sees it. Profit per
+  // period (24h / week / month / year / all) is the rake earned, computed from a
+  // rolling daily snapshot ledger in localStorage + the contract's exact totals.
+  let hostPeriod = "today";
+  function hostLedgerKey() { return "coinflip_hostledger_" + (deployment.address || ""); }
+  function loadHostLedger() { try { return JSON.parse(localStorage.getItem(hostLedgerKey()) || "[]"); } catch { return []; } }
+  function saveHostLedger(l) { try { localStorage.setItem(hostLedgerKey(), JSON.stringify(l.slice(-500))); } catch {} }
+
   async function refreshHostPanel() {
     const card = $("host-stats-card");
     if (!card) return;
@@ -286,27 +292,37 @@
       ]);
       const gamesN = Number(games);
       const holdings = bankroll + bal; // ALL the house's money in the contract
-      // daily snapshot baseline
-      const key = "coinflip_hoststats_" + (deployment.address || "");
-      const today = new Date().toISOString().slice(0, 10);
-      let snap = null;
-      try { snap = JSON.parse(localStorage.getItem(key) || "null"); } catch {}
-      if (!snap || snap.day !== today) {
-        snap = { day: today, fees: fees.toString(), games: gamesN, wagered: wagered.toString(), holdings: holdings.toString() };
-        try { localStorage.setItem(key, JSON.stringify(snap)); } catch {}
+      const nowSec = Math.floor(Date.now() / 1000);
+      const todayStr = new Date().toISOString().slice(0, 10);
+
+      // one snapshot per calendar day (captured at first load that day)
+      const ledger = loadHostLedger();
+      if (!ledger.length || ledger[ledger.length - 1].day !== todayStr) {
+        ledger.push({ day: todayStr, t: nowSec, f: fees.toString(), g: gamesN, v: wagered.toString() });
+        saveHostLedger(ledger);
       }
-      if (snap.holdings == null) { snap.holdings = holdings.toString(); try { localStorage.setItem(key, JSON.stringify(snap)); } catch {} }
 
-      const feesToday = fees - BigInt(snap.fees);
-      const gamesToday = gamesN - snap.games;
+      // pick the baseline for the selected period
+      let bf = 0n, bg = 0, bv = 0n, label = "all-time", note = "";
+      if (hostPeriod === "all") {
+        // baseline 0 → exact lifetime rake
+      } else if (hostPeriod === "today") {
+        const e = ledger.find((x) => x.day === todayStr) || ledger[ledger.length - 1];
+        bf = BigInt(e.f); bg = e.g; bv = BigInt(e.v); label = "last 24h";
+      } else {
+        const days = { week: 7, month: 30, year: 365 }[hostPeriod] || 7;
+        const cutoff = nowSec - days * 86400;
+        let base = null;
+        for (const e of ledger) if (e.t <= cutoff) base = e;
+        if (!base) { base = ledger[0]; note = " · since first tracked"; }
+        bf = BigInt(base.f); bg = base.g; bv = BigInt(base.v);
+        label = { week: "this week", month: "this month", year: "this year" }[hostPeriod];
+      }
+      const pFees = fees - bf, pGames = gamesN - bg, pWagered = wagered - bv;
 
-      // Profit = the rake (totalFeesCollected only ever grows; never skewed by
-      // deposits/withdrawals/cash-outs). The bankroll swings up & down with each
-      // flip — that's variance/luck, not profit — so we don't call it profit.
-      const pe = $("hs-profit-today");
-      pe.textContent = "+" + usdOf(feesToday);
-      pe.style.color = "#34e39b";
-      $("hs-profit-sub").textContent = gamesToday + " game" + (gamesToday === 1 ? "" : "s") + " today · rake is your durable edge";
+      $("hs-period-label").textContent = "Profit · " + label + note;
+      $("hs-profit-today").textContent = "+" + usdOf(pFees);
+      $("hs-profit-sub").textContent = pGames + " game" + (pGames === 1 ? "" : "s") + " · " + usdOf(pWagered) + " wagered";
       $("hs-fees-total").textContent = usdOf(fees);
       $("hs-games-total").textContent = games.toString();
       $("hs-volume-total").textContent = usdOf(wagered);
@@ -1452,6 +1468,14 @@
     $("fund-house-btn").onclick = fundHouseTool;
     $("cashout-house-btn").onclick = cashOutHouse;
     $("new-game-btn").onclick = newGame;
+    document.querySelectorAll(".hs-tab").forEach((b) => {
+      b.onclick = () => {
+        document.querySelectorAll(".hs-tab").forEach((x) => x.classList.remove("active"));
+        b.classList.add("active");
+        hostPeriod = b.dataset.period;
+        refreshHostPanel();
+      };
+    });
     $("deposit-btn").onclick = deposit;
     $("withdraw-btn").onclick = withdrawAll;
     $("create-room-btn").onclick = createRoom;
