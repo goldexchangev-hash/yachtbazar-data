@@ -1989,6 +1989,10 @@
     setupSliders();
     setupReadOnly();
     renderInvite();
+    // Register the PWA service worker (after load, best-effort).
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => { try { navigator.serviceWorker.register("sw.js"); } catch (e) {} });
+    }
     // Start the music on the first tap/touch (mobile + desktop block autoplay
     // until a user gesture). Skips if the user has explicitly muted.
     // Fire on the COMPLETED gesture (touchend/click) — iOS won't unlock audio on
