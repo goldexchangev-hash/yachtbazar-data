@@ -99,18 +99,23 @@
 
   // ---- the win text overlay (pixel font via Press Start 2P) ----
   function winText(t) {
+    // dark scrim across the top title band so the text stays readable over any
+    // scene, while the action below it stays fully visible.
+    const sg = g.createLinearGradient(0, 0, 0, P.h * 0.34);
+    sg.addColorStop(0, "rgba(8,8,16,0.66)"); sg.addColorStop(1, "rgba(8,8,16,0)");
+    g.fillStyle = sg; g.fillRect(0, 0, P.w, P.h * 0.34);
     const pop = Math.min(1, t / 260);
-    const sc = 1 + Math.sin(Math.min(t, 600) / 600 * Math.PI) * 0.12;
+    const sc = 1 + Math.sin(Math.min(t, 600) / 600 * Math.PI) * 0.10;
     g.save();
-    g.translate(P.w / 2, P.h * 0.30);
+    g.translate(P.w / 2, P.h * 0.115);
     g.scale(pop * sc, pop * sc);
     g.textAlign = "center";
-    g.font = "700 " + Math.round(P.h * 0.12) + "px 'Press Start 2P', monospace";
+    g.font = "700 " + Math.round(P.h * 0.10) + "px 'Press Start 2P', monospace";
     g.fillStyle = "#0a3"; g.fillText(P.headline, 3, 3);
     g.fillStyle = "#34e39b"; g.fillText(P.headline, 0, 0);
-    g.font = "800 " + Math.round(P.h * 0.16) + "px 'Press Start 2P', monospace";
-    g.fillStyle = "#b25b00"; g.fillText(P.amtStr, 3, P.h * 0.17 + 3);
-    g.fillStyle = "#ffd14a"; g.fillText(P.amtStr, 0, P.h * 0.17);
+    g.font = "800 " + Math.round(P.h * 0.135) + "px 'Press Start 2P', monospace";
+    g.fillStyle = "#b25b00"; g.fillText(P.amtStr, 3, P.h * 0.135 + 3);
+    g.fillStyle = "#ffd14a"; g.fillText(P.amtStr, 0, P.h * 0.135);
     g.restore();
   }
 
@@ -1143,8 +1148,13 @@
     const t = now - startT;
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.clearRect(0, 0, P.w, P.h);
+    // solid backdrop so the reserved title band at the top isn't transparent
+    g.fillStyle = "#0a0a14"; g.fillRect(0, 0, P.w, P.h);
     g.save();
     if (P.shake) shake(t < 300 ? 3 : 1);
+    // Push the whole scene DOWN into a "stage" so the action plays BELOW the
+    // title text (characters were getting hidden behind LEGENDARY!/amount).
+    g.translate(0, P.h * 0.14);
     try { scene.fn(t); } catch (e) { /* a buggy scene must never break the page */ }
     g.restore();
     winText(t);
