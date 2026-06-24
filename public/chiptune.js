@@ -1,20 +1,15 @@
 /* ============================================================
    chiptune.js — chilled background music + retro SFX (Web Audio API).
 
-   Music: a soft, slow lo-fi pad loop (original, synthesized — no copyrighted
-   audio). If you drop your own track at  public/music.mp3  it plays that
-   instead, looped, so you can use whatever relaxing tune you like.
+   Music: a ~55-second, 16-bar lo-fi loop (A/B sections so it doesn't feel
+   repetitive) with a soft hi-hat groove — all synthesized, no copyrighted
+   audio. Drop your own track at public/music.mp3 to use that instead.
 
-   Everything can be silenced with the Music button.
-
-   window.Chiptune:
-     .toggle() / .start() / .stop() / .isOn()
-     .blip()  .coin()  .win()  .lose()
+   window.Chiptune: .toggle() .start() .stop() .isOn()  .blip() .coin() .win() .lose()
    ============================================================ */
 (function () {
   "use strict";
 
-  // Note-name -> frequency (Hz), A4 = 440.
   const NOTES = {};
   (function () {
     const names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
@@ -25,33 +20,46 @@
       }
   })();
 
-  // A gentle, slow lo-fi chord progression with a sparse sine melody.
-  const TEMPO = 66;
+  const TEMPO = 72;
   const BEAT = 60 / TEMPO;
   const BAR = 4 * BEAT;
+
+  // 16-bar lo-fi progression. Each bar: chord (pad) + a sparse melody on 4 beats
+  // ("-" = rest). Section A (1-8) and a varied Section B (9-16) keep it fresh.
   const PROG = [
-    { chord: ["A2", "E3", "A3", "C4"], mel: ["E5", null, "C5", null] },
-    { chord: ["F2", "C3", "F3", "A3"], mel: ["D5", null, "A4", null] },
-    { chord: ["C3", "G3", "C4", "E4"], mel: ["G4", null, "E5", null] },
-    { chord: ["G2", "D3", "G3", "B3"], mel: ["B4", null, "D5", null] },
+    // ---- A ----
+    { chord: ["A2", "C4", "E4", "G4"], mel: ["E5", "-", "C5", "-"] },
+    { chord: ["D2", "F3", "A3", "C4"], mel: ["D5", "-", "A4", "F5"] },
+    { chord: ["G2", "B3", "D4", "F4"], mel: ["G4", "-", "B4", "-"] },
+    { chord: ["C3", "E4", "G4", "B4"], mel: ["C5", "E5", "-", "G5"] },
+    { chord: ["F2", "A3", "C4", "E4"], mel: ["A4", "-", "F5", "-"] },
+    { chord: ["E2", "G3", "B3", "D4"], mel: ["B4", "-", "G4", "B4"] },
+    { chord: ["D2", "F3", "A3", "C4"], mel: ["F5", "-", "D5", "-"] },
+    { chord: ["E2", "G#3", "B3", "D4"], mel: ["E5", "D5", "-", "B4"] },
+    // ---- B (lifts an octave, more movement) ----
+    { chord: ["A2", "C4", "E4", "G4"], mel: ["A5", "-", "E5", "C5"] },
+    { chord: ["F2", "A3", "C4", "E4"], mel: ["C6", "-", "A5", "-"] },
+    { chord: ["C3", "E4", "G4", "B4"], mel: ["G5", "E5", "-", "C5"] },
+    { chord: ["G2", "B3", "D4", "F4"], mel: ["D5", "-", "B4", "D5"] },
+    { chord: ["D2", "F3", "A3", "C4"], mel: ["F5", "A5", "-", "D5"] },
+    { chord: ["E2", "G3", "B3", "D4"], mel: ["G5", "-", "B5", "-"] },
+    { chord: ["F2", "A3", "C4", "E4"], mel: ["A5", "G5", "-", "F5"] },
+    { chord: ["E2", "G#3", "B3", "D4"], mel: ["E5", "-", "D5", "B4"] },
   ];
 
-  let ctx = null, master = null, musicGain = null;
+  let ctx = null, master = null, musicGain = null, noiseBuf = null;
   let on = false, barIdx = 0, nextBarTime = 0, schedulerTimer = null;
 
-  // Optional user-supplied track (public/music.mp3).
   let audioEl = null, customReady = false;
   (function probeCustom() {
     try {
       audioEl = new Audio("music.mp3");
       audioEl.loop = true;
-      audioEl.volume = 0.5;
+      audioEl.volume = 0.6;
       audioEl.preload = "auto";
       audioEl.addEventListener("canplaythrough", () => (customReady = true), { once: true });
       audioEl.addEventListener("error", () => (customReady = false));
-    } catch {
-      audioEl = null;
-    }
+    } catch { audioEl = null; }
   })();
 
   function ensureCtx() {
@@ -60,11 +68,16 @@
     if (!AC) return;
     ctx = new AC();
     master = ctx.createGain();
-    master.gain.value = 0.5;
+    master.gain.value = 0.6;
     master.connect(ctx.destination);
     musicGain = ctx.createGain();
-    musicGain.gain.value = 0.16; // gentle
+    musicGain.gain.value = 0.34; // clearly audible but still background
     musicGain.connect(master);
+    // small noise buffer for the hi-hat
+    const len = Math.floor(ctx.sampleRate * 0.2);
+    noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
   }
 
   function voice(freq, start, dur, type, gainTarget, peak, attack, release) {
@@ -85,46 +98,76 @@
     osc.stop(start + dur + 0.03);
   }
 
+  function hat(start, peak) {
+    if (!noiseBuf) return;
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuf;
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = 7000;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(peak, start);
+    g.gain.exponentialRampToValueAtTime(0.0001, start + 0.05);
+    src.connect(hp); hp.connect(g); g.connect(master);
+    src.start(start); src.stop(start + 0.06);
+  }
+
   function scheduleBar(t) {
     const bar = PROG[barIdx % PROG.length];
-    // soft sustained pad (sine), whole bar
     for (const n of bar.chord) {
-      voice(NOTES[n], t, BAR * 0.98, "sine", musicGain, 0.34, 0.35, 0.6);
+      voice(NOTES[n], t, BAR * 0.98, "sine", musicGain, 0.3, 0.4, 0.6); // soft pad
     }
-    // sparse triangle melody on beats 1 & 3
     bar.mel.forEach((n, i) => {
-      if (n) voice(NOTES[n], t + i * BEAT, BEAT * 1.4, "triangle", musicGain, 0.16, 0.04, 0.25);
+      if (n && n !== "-") {
+        voice(NOTES[n], t + i * BEAT, BEAT * 1.5, "triangle", musicGain, 0.22, 0.03, 0.25);
+        voice(NOTES[n] * 2, t + i * BEAT, BEAT * 0.6, "sine", musicGain, 0.05, 0.02, 0.2); // shimmer
+      }
     });
+    // lo-fi hat groove: soft tick on each beat, accent on the offbeats
+    for (let b = 0; b < 4; b++) {
+      hat(t + b * BEAT, 0.05);
+      hat(t + b * BEAT + BEAT * 0.5, 0.085);
+    }
     barIdx++;
   }
 
   function scheduler() {
     if (!on || !ctx) return;
-    while (nextBarTime < ctx.currentTime + 0.6) {
+    while (nextBarTime < ctx.currentTime + 0.7) {
       scheduleBar(nextBarTime);
       nextBarTime += BAR;
     }
-    schedulerTimer = setTimeout(scheduler, 120);
+    schedulerTimer = setTimeout(scheduler, 130);
   }
 
   const Chiptune = {
     isOn: () => on,
-    usingCustomTrack: () => on && customReady,
     start() {
       ensureCtx();
-      if (ctx && ctx.state === "suspended") ctx.resume();
+      if (!ctx) {
+        if (customReady && audioEl) { on = true; audioEl.currentTime = 0; audioEl.play().catch(() => {}); }
+        return on;
+      }
       if (on) return true;
       on = true;
-      // Prefer a user-supplied relaxing track if present.
-      if (customReady && audioEl) {
-        audioEl.currentTime = 0;
-        audioEl.play().catch(() => {});
-        return true;
-      }
-      if (!ctx) { on = false; return false; }
-      barIdx = 0;
-      nextBarTime = ctx.currentTime + 0.15;
-      scheduler();
+      // iOS/Safari unlock: play a 1-sample silent buffer inside the gesture.
+      try {
+        const b = ctx.createBufferSource();
+        b.buffer = ctx.createBuffer(1, 1, 22050);
+        b.connect(ctx.destination);
+        b.start(0);
+      } catch {}
+      if (customReady && audioEl) { audioEl.currentTime = 0; audioEl.play().catch(() => {}); return true; }
+      // Only begin scheduling AFTER the context is actually running, otherwise the
+      // first notes are scheduled in the past and you hear nothing on the 1st tap.
+      const begin = () => {
+        if (!on || !ctx) return;
+        barIdx = 0;
+        nextBarTime = ctx.currentTime + 0.18;
+        scheduler();
+      };
+      if (ctx.state === "suspended") ctx.resume().then(begin).catch(begin);
+      else begin();
       return true;
     },
     stop() {
@@ -133,11 +176,8 @@
       schedulerTimer = null;
       if (audioEl) { try { audioEl.pause(); } catch {} }
     },
-    toggle() {
-      return on ? (this.stop(), false) : this.start();
-    },
+    toggle() { return on ? (this.stop(), false) : this.start(); },
 
-    /* ---- SFX (independent of music; need an audio context) ---- */
     _sfx() {
       ensureCtx();
       if (!ctx) return false;
