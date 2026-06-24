@@ -1012,6 +1012,7 @@
       const rv = flipReveal(betAmt, playerWon);
       const coinHeads = playerWon ? wantsHeads : !wantsHeads; // the coin's actual face
       setLastResult({ won: playerWon, side: coinHeads ? "HEADS" : "TAILS", amountUsd: rv.amountUsd, amountWei: rv.amountWei, betWei: betAmt, label: "Host table" });
+      if (playerWon && window.WinScenes) WinScenes.play({ amountUsd: rv.amountUsd, side: coinHeads ? "HEADS" : "TAILS" });
       TV.revealResult({
         side: coinHeads ? "HEADS" : "TAILS",
         youWon: playerWon,
@@ -1254,6 +1255,7 @@
         const youWon = eq(r.winner, account);
         const rv = flipReveal(r.betAmount, youWon);
         setLastResult({ won: youWon, side, amountUsd: rv.amountUsd, amountWei: rv.amountWei, betWei: r.betAmount, label: r.isHouseGame ? "vs House" : "PvP" });
+        if (youWon && window.WinScenes) WinScenes.play({ amountUsd: rv.amountUsd, side });
         TV.revealResult({
           side,
           youWon,
