@@ -40,6 +40,7 @@
         flip: $("layer-flip"),
         result: $("layer-result"),
         dice: $("layer-dice"),
+        twodice: $("layer-twodice"),
       };
       this._activeChannel = 8; // 8 = Flip, 9 = Dice — so idle() advertises the active game
       this.scoreboard = $("scoreboard");
@@ -215,6 +216,56 @@
         ? "+$" + Math.abs(res.amountUsd).toFixed(2) + " · " + res.mult.toFixed(2) + "×"
         : "−$" + Math.abs(res.amountUsd).toFixed(2);
       if (!res.youWon && Math.abs(res.roll - res.target) < 0.5) L.classList.add("nearmiss");
+      // 3) release balance + escalate, reusing the flip celebration ladder
+      if (!window.__cineActive) {
+        try { window.__onTvReveal && window.__onTvReveal(res); } catch (e) {}
+        if (res.youWon) this._celebrate(L, tier);
+        else if (window.Chiptune) window.Chiptune.lose();
+      }
+    },
+
+    _setDieFace(el, n) { if (el) el.dataset.face = String(Math.max(1, Math.min(6, n | 0))); },
+
+    // Dice #2 reveal: two d6 tumble, settle on their faces, then sum + verdict.
+    // res = { d1, d2, target, mode, youWon, mult, amountUsd, tier }
+    async revealTwoDice(res) {
+      const seq = ++this._seq;
+      const L = this.layers.twodice;
+      const d1El = $("td-die1"), d2El = $("td-die2");
+      L.classList.remove("win", "lose", "tier-big", "tier-mega");
+      this._clearCelebration(); this._clearConfetti();
+      this.setChannel(10); this._activeChannel = 10;
+      $("td-tv-target").textContent = (res.mode === "under" ? "UNDER " : "OVER ") + res.target;
+      $("td-tv-sum").textContent = "ROLLING…";
+      $("td-tv-verdict").textContent = ""; $("td-tv-payout").textContent = "";
+      d1El.classList.add("rolling"); d2El.classList.add("rolling");
+      this._setStatic(0.06); this._show("twodice");
+      // 1) tumble for ~1.1s, flashing random faces, then lock to the real result
+      const dur = 1100, start = now();
+      await new Promise((resolve) => {
+        const tick = () => {
+          if (seq !== this._seq) return resolve();
+          const t = (now() - start) / dur;
+          this._setDieFace(d1El, 1 + Math.floor(Math.random() * 6));
+          this._setDieFace(d2El, 1 + Math.floor(Math.random() * 6));
+          if (window.Chiptune && Math.random() < 0.2) window.Chiptune.blip();
+          if (t < 1) setTimeout(() => requestAnimationFrame(tick), 70); else resolve();
+        };
+        requestAnimationFrame(tick);
+      });
+      if (seq !== this._seq) return;
+      d1El.classList.remove("rolling"); d2El.classList.remove("rolling");
+      this._setDieFace(d1El, res.d1); this._setDieFace(d2El, res.d2);
+      const sum = (res.d1 | 0) + (res.d2 | 0);
+      $("td-tv-sum").textContent = "SUM " + sum + "  (" + res.d1 + " + " + res.d2 + ")";
+      await sleep(160);
+      // 2) verdict
+      const tier = res.youWon ? (res.tier || "normal") : "normal";
+      L.classList.add(res.youWon ? "win" : "lose");
+      $("td-tv-verdict").textContent = res.youWon ? (tier === "mega" ? "JACKPOT!" : tier === "big" ? "BIG WIN!" : "WIN!") : "MISS";
+      $("td-tv-payout").textContent = res.youWon
+        ? "+$" + Math.abs(res.amountUsd).toFixed(2) + " · " + res.mult.toFixed(2) + "×"
+        : "−$" + Math.abs(res.amountUsd).toFixed(2);
       // 3) release balance + escalate, reusing the flip celebration ladder
       if (!window.__cineActive) {
         try { window.__onTvReveal && window.__onTvReveal(res); } catch (e) {}

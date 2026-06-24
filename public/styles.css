@@ -853,9 +853,11 @@ kbd { font-family: ui-monospace, monospace; font-size: 11px; background: rgba(25
 }
 
 /* ════════════════════ DICE GAME + CHANNEL SWITCHER (CH 09) ════════════════════ */
-/* Game visibility gate — one body class swaps the flip cards for the dice panel */
+/* Game visibility gate — a body class per active game swaps which panel shows.
+   Default (no class) = flip. Each dice-type panel shows only when its game is on. */
 body:not(.game-dice) [data-game="dice"] { display: none !important; }
-body.game-dice [data-game="flip"] { display: none !important; }
+body:not(.game-twodice) [data-game="twodice"] { display: none !important; }
+body.game-dice [data-game="flip"], body.game-twodice [data-game="flip"] { display: none !important; }
 /* …but the channel selector tiles are always visible (they're how you switch) */
 #game-nav .game-card { display: flex !important; }
 
@@ -943,3 +945,37 @@ body.game-dice [data-game="flip"] { display: none !important; }
 @media (prefers-reduced-motion: reduce) {
   .tv-screen.ch-switch, .tv-channel.changing, .channel-glider, .dl-marker { animation: none !important; transition: none !important; }
 }
+
+/* ───────────────── Dice #2 (CH 10) — two physical d6 dice ───────────────── */
+.td-intro { font-size: 12px; margin: 2px 0 10px; }
+.td-scale { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); padding: 0 2px; margin-top: -2px; }
+/* TV reveal layer */
+.td-target { font-family: var(--display); font-weight: 700; color: #cfd6ff; letter-spacing: 1px; font-size: 14px; }
+.td-dice { display: flex; gap: 20px; justify-content: center; align-items: center; margin: 14px 0 6px; }
+.td-sum { font-family: var(--display); font-weight: 800; font-size: 22px; margin-top: 2px; color: #fff; }
+#layer-twodice.win .td-sum { color: #34e39b; }
+#layer-twodice.lose .td-sum { color: #ff7a7a; }
+/* a die: 3x3 grid of pips */
+.die {
+  width: 62px; height: 62px; box-sizing: border-box; padding: 9px;
+  display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); gap: 2px;
+  background: linear-gradient(145deg, #ffffff, #d9deec); border-radius: 14px;
+  box-shadow: 0 6px 0 rgba(0,0,0,.35), inset 0 2px 4px rgba(255,255,255,.8);
+}
+.die span { width: 11px; height: 11px; border-radius: 50%; align-self: center; justify-self: center; visibility: hidden;
+  background: radial-gradient(circle at 35% 30%, #555b73, #14161f); box-shadow: inset 0 1px 1px rgba(0,0,0,.4); }
+.die[data-face="1"] span:nth-child(5) { visibility: visible; }
+.die[data-face="2"] span:nth-child(1), .die[data-face="2"] span:nth-child(9) { visibility: visible; }
+.die[data-face="3"] span:nth-child(1), .die[data-face="3"] span:nth-child(5), .die[data-face="3"] span:nth-child(9) { visibility: visible; }
+.die[data-face="4"] span:nth-child(1), .die[data-face="4"] span:nth-child(3), .die[data-face="4"] span:nth-child(7), .die[data-face="4"] span:nth-child(9) { visibility: visible; }
+.die[data-face="5"] span:nth-child(1), .die[data-face="5"] span:nth-child(3), .die[data-face="5"] span:nth-child(5), .die[data-face="5"] span:nth-child(7), .die[data-face="5"] span:nth-child(9) { visibility: visible; }
+.die[data-face="6"] span:nth-child(1), .die[data-face="6"] span:nth-child(3), .die[data-face="6"] span:nth-child(4), .die[data-face="6"] span:nth-child(6), .die[data-face="6"] span:nth-child(7), .die[data-face="6"] span:nth-child(9) { visibility: visible; }
+.die.rolling { animation: dieTumble 0.45s linear infinite; }
+@keyframes dieTumble {
+  0% { transform: rotate(0) translateY(0); } 25% { transform: rotate(90deg) translateY(-7px); }
+  50% { transform: rotate(180deg) translateY(0); } 75% { transform: rotate(270deg) translateY(-5px); }
+  100% { transform: rotate(360deg) translateY(0); }
+}
+/* channel card accent for Dice #2 */
+.game-card.twodice.active { box-shadow: 0 0 0 2px #8a5bff inset, 0 8px 22px rgba(120,90,255,.28); }
+@media (prefers-reduced-motion: reduce) { .die.rolling { animation: none !important; } }

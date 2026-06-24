@@ -495,7 +495,7 @@
         })),
     },
     {
-      key: "dice", label: "🎲 Dice",
+      key: "dice", label: "🎲 0-100",
       fetch: () => recentDice(2000),
       rows: (list) => list.map((d) => ({
         at: Number(d.settledAt),
@@ -504,6 +504,18 @@
         wagered: d.betAmount, // single-sided vs the house
         fees: 0n, // dice has no separate rake — the edge is realized in `table`
         table: d.won ? -(d.payout - d.betAmount) : d.betAmount, // house P&L vs the roller
+      })),
+    },
+    {
+      key: "twodice", label: "🎲🎲 Dice #2",
+      fetch: () => recentTwoDice(2000),
+      rows: (list) => list.map((d) => ({
+        at: Number(d.settledAt),
+        skip: eq(d.player, hostTreasury),
+        bet: d.betAmount,
+        wagered: d.betAmount,
+        fees: 0n, // same as dice — edge realized as the bankroll swing
+        table: d.won ? -(d.payout - d.betAmount) : d.betAmount,
       })),
     },
   ];
@@ -604,6 +616,7 @@
     $("bankroll").hidden = false;
     $("play-house").hidden = false;
     $("dice-panel").hidden = false;
+    { const td = $("twodice-panel"); if (td) td.hidden = false; }
     refreshDiceHouse();
     $("maxbet-hint").textContent = "· $10–$" + betCapUsd().toLocaleString();
     setupHouseSlider();
@@ -1408,7 +1421,11 @@
   let dicePayoutCapBps = 100n;     // per-roll cap (bps of bankroll); read live, 1% fallback for old contracts
 
   async function refreshDiceHouse() {
-    try { diceHouseWei = await read.houseBankroll(); const el = $("dice-house-bankroll"); if (el) el.textContent = usdOf(diceHouseWei); } catch {}
+    try {
+      diceHouseWei = await read.houseBankroll();
+      const el = $("dice-house-bankroll"); if (el) el.textContent = usdOf(diceHouseWei);
+      const el2 = $("td-house-bankroll"); if (el2) el2.textContent = usdOf(diceHouseWei); // Dice #2 shares the bankroll
+    } catch {}
     // Newer contracts expose an owner-tunable cap; old ones don't — fall back to 1%.
     try { if (read.maxPayoutBpsOfBankroll) dicePayoutCapBps = BigInt(await read.maxPayoutBpsOfBankroll()); } catch { dicePayoutCapBps = 100n; }
   }
@@ -1493,23 +1510,111 @@
     }
   }
 
+  // ── Dice #2 (CH 10): two d6 dice, sum 2..12, roll under/over a target total ──
+  let tdMode = "under"; // "under" | "over"
+  // Ways to roll each two-dice sum: 6 - |s-7| for s in [2,12].
+  function tdWays(s) { return 6 - Math.abs(s - 7); }
+  function tdWinCombos(T, over) {
+    let c = 0;
+    if (over) { for (let s = T + 1; s <= 12; s++) c += tdWays(s); }
+    else { for (let s = 2; s < T; s++) c += tdWays(s); }
+    return c;
+  }
+  function twoDiceReadouts() {
+    const tEl = $("td-target"); if (!tEl) return;
+    const T = Math.min(12, Math.max(3, (+tEl.value) | 0));
+    const over = tdMode === "over";
+    const combos = tdWinCombos(T, over);
+    const chance = (combos / 36) * 100;
+    const mult = combos > 0 ? (9800 * 36 / combos) / 10000 : 0; // 2% edge
+    const stake = +$("td-stake").value;
+    const profit = combos > 0 ? stake * (mult - 1) : 0;
+    $("td-target-val").textContent = T;
+    $("td-chance").textContent = chance.toFixed(2) + "%";
+    $("td-mult").textContent = combos > 0 ? mult.toFixed(2) + "×" : "—";
+    $("td-profit").textContent = "+$" + profit.toFixed(2);
+    $("td-payout-hint").textContent = profit.toFixed(2);
+    $("td-mode-hint").textContent = over ? "— roll over to win" : "— roll under to win";
+    // affordability + validity guards (Dice #2 shares the house bankroll + cap)
+    let hint = "";
+    let stakeWei = 0n; try { stakeWei = usdToWei(stake); } catch {}
+    let profitWei = 0n; try { profitWei = usdToWei(profit); } catch {}
+    if (combos <= 0) hint = "Pick a different target for this bet type";
+    else if (gameWei > 0n && stakeWei > gameWei) hint = "Not enough in-game balance — deposit first 👇";
+    else if (maxBet > 0n && stakeWei > maxBet) hint = "Max bet is " + usdOf(maxBet);
+    else if (diceHouseWei > 0n && profitWei > diceMaxProfitWei()) hint = (dicePayoutCapBps >= 10000n ? "House can't cover that win yet — fund the house or lower the stake (max win " + usdOf(diceMaxProfitWei()) + ")" : "Max win per roll is " + usdOf(diceMaxProfitWei()));
+    const btn = $("td-roll-btn");
+    if (btn) { btn.disabled = !!hint; btn.style.opacity = hint ? "0.55" : ""; }
+    $("td-roll-hint").textContent = hint;
+  }
+  function playTwoDiceClick() {
+    if (!ready()) return;
+    const stakeUsd = parseFloat($("td-stake").value);
+    if (!(stakeUsd > 0)) return toast("Drag to pick a stake", "err");
+    const bet = usdToWei(stakeUsd);
+    if (bet > maxBet) return toast("Max bet is " + usdOf(maxBet), "err");
+    const target = (+$("td-target").value) | 0;
+    const over = tdMode === "over";
+    if (tdWinCombos(target, over) <= 0) return toast("Pick a different target for this bet type", "err");
+    rememberBet(stakeUsd);
+    doPlayTwoDice(bet, target, over);
+  }
+  async function doPlayTwoDice(bet, target, over) {
+    activeRoomId = null; lastRevealed = null;
+    lockReveal();
+    tvPending(true);
+    toast("Throwing the dice… confirm in your wallet", "ok");
+    try {
+      const tx = await contract.playTwoDice(bet, target, over, { gasLimit: 700000n });
+      const rcpt = await tx.wait();
+      tvPending(false);
+      const ev = rcpt.logs.map((l) => safeParse(l)).find((p) => p && p.name === "TwoDiceRolled");
+      if (!ev) { unlockReveal(); TV.idle(); return; }
+      const a = ev.args;
+      const won = a.won;
+      const netWei = won ? (a.payout - bet) : bet;
+      const profitUsd = won ? weiToUsd(a.payout - bet) : 0;
+      const tier = profitUsd >= 500 ? "mega" : profitUsd >= 100 ? "big" : "normal";
+      TV.revealTwoDice({
+        d1: Number(a.d1), d2: Number(a.d2),
+        target: Number(a.target),
+        mode: a.rollOver ? "over" : "under",
+        youWon: won,
+        mult: Number(a.multiplierBps) / 10000,
+        amountUsd: weiToUsd(netWei),
+        tier: tier,
+      });
+      refreshBalances(); refreshDiceHouse(); refreshStats();
+    } catch (e) {
+      tvPending(false);
+      unlockReveal();
+      TV.idle("Pick a game and place a bet");
+      txErr(e);
+    }
+  }
+
   // ── Game switcher ("change the channel") ──
+  const GAME_CHANNEL = { flip: 8, dice: 9, twodice: 10 };
+  const GAME_TITLE = { flip: "CRYPTO TV FLIP", dice: "CRYPTO TV 0-100", twodice: "CRYPTO TV DICE #2" };
+  const GAME_ORDER = ["flip", "dice", "twodice"];
   function paintGameTabs(game) {
     document.body.classList.toggle("game-dice", game === "dice");
+    document.body.classList.toggle("game-twodice", game === "twodice");
     const bar = $("game-nav"); if (bar) bar.dataset.game = game;
     document.querySelectorAll("#game-nav .game-card").forEach((b) => {
       const on = b.dataset.game === game;
       b.classList.toggle("active", on); b.setAttribute("aria-selected", on ? "true" : "false");
     });
-    const title = $("idle-title"); if (title) title.textContent = game === "dice" ? "CRYPTO TV DICE" : "CRYPTO TV FLIP";
+    const title = $("idle-title"); if (title) title.textContent = GAME_TITLE[game] || GAME_TITLE.flip;
   }
   function switchGame(game) {
-    if (game === currentGame) return;
+    if (game === currentGame || !GAME_CHANNEL[game]) return;
     currentGame = game;
     paintGameTabs(game);
     try { localStorage.setItem("ctf_game", game); } catch {}
-    if (window.TV && TV.changeChannel) TV.changeChannel(game === "dice" ? 9 : 8);
+    if (window.TV && TV.changeChannel) TV.changeChannel(GAME_CHANNEL[game]);
     if (game === "dice") { refreshDiceHouse(); diceReadouts(); }
+    else if (game === "twodice") { refreshDiceHouse(); twoDiceReadouts(); }
   }
   function initDice() {
     const t = $("dice-target"); if (!t) return;
@@ -1522,19 +1627,35 @@
       };
     });
     $("dice-roll-btn").onclick = playDiceClick;
+    // Dice #2 controls
+    if ($("td-target")) {
+      $("td-target").oninput = () => twoDiceReadouts();
+      $("td-stake").oninput = () => { setSliderUsd("td-stake"); twoDiceReadouts(); };
+      document.querySelectorAll("#td-mode .side-btn").forEach((b) => {
+        b.onclick = () => {
+          document.querySelectorAll("#td-mode .side-btn").forEach((x) => x.classList.toggle("active", x === b));
+          tdMode = b.dataset.mode; twoDiceReadouts();
+        };
+      });
+      $("td-roll-btn").onclick = playTwoDiceClick;
+      setSliderUsd("td-stake");
+      twoDiceReadouts();
+    }
     document.querySelectorAll("#game-nav .game-card").forEach((b) => { b.onclick = () => switchGame(b.dataset.game); });
-    // keyboard: ←/→ to switch channels
+    // keyboard: ←/→ to cycle channels through every game
     $("game-nav").addEventListener("keydown", (e) => {
-      if (e.key === "ArrowLeft") switchGame("flip");
-      else if (e.key === "ArrowRight") switchGame("dice");
+      const i = GAME_ORDER.indexOf(currentGame);
+      if (e.key === "ArrowLeft") switchGame(GAME_ORDER[Math.max(0, i - 1)]);
+      else if (e.key === "ArrowRight") switchGame(GAME_ORDER[Math.min(GAME_ORDER.length - 1, i + 1)]);
     });
     setSliderUsd("dice-stake");
     diceReadouts();
     // restore the last-played game silently (no CRT animation on load)
     let saved = "flip"; try { saved = localStorage.getItem("ctf_game") || "flip"; } catch {}
+    if (!GAME_CHANNEL[saved]) saved = "flip";
     currentGame = saved;
     paintGameTabs(saved);
-    if (window.TV) TV._activeChannel = saved === "dice" ? 9 : 8;
+    if (window.TV) TV._activeChannel = GAME_CHANNEL[saved] || 8;
   }
 
   // My open tables: show bank + idle countdown, auto-close (refund) when stale.
@@ -2484,6 +2605,16 @@
     let dice = [];
     try { dice = await read.getRecentDice(want); } catch { dice = []; }
     _recentDice = { t: now, n: want, dice };
+    return dice.slice(0, n);
+  }
+  let _recentTwoDice = { t: 0, n: 0, dice: null };
+  async function recentTwoDice(n) {
+    const now = Date.now();
+    if (_recentTwoDice.dice && _recentTwoDice.n >= n && now - _recentTwoDice.t < 5000) return _recentTwoDice.dice.slice(0, n);
+    const want = Math.max(n, 150);
+    let dice = [];
+    try { if (read.getRecentTwoDice) dice = await read.getRecentTwoDice(want); } catch { dice = []; }
+    _recentTwoDice = { t: now, n: want, dice };
     return dice.slice(0, n);
   }
 

@@ -66,6 +66,28 @@ contract CoinFlipBetting {
     mapping(uint256 => DiceGame) public diceGames;
     uint256[] private _diceIds;
 
+    // ---- Dice #2 (CH 10): two d6 dice, sum 2..12, roll under/over a target total ----
+    uint256 public constant TWO_DICE_COMBOS = 36; // 6 x 6 equally-likely faces
+    /// @notice Dice #2 house edge in bps (200 = 2%). Owner-tunable via setTwoDiceEdge.
+    uint256 public twoDiceEdgeBps = 200;
+    uint256 public nextTwoDiceGameId = 1;
+
+    struct TwoDiceGame {
+        uint256 id;
+        address player;
+        uint256 betAmount;
+        uint8 target;   // 2..12, the line
+        bool rollOver;  // true: win if sum > target; false: win if sum < target
+        uint8 d1;       // first die, 1..6
+        uint8 d2;       // second die, 1..6
+        bool won;
+        uint256 payout;
+        uint256 multiplierBps;
+        uint256 settledAt;
+    }
+    mapping(uint256 => TwoDiceGame) public twoDiceGames;
+    uint256[] private _twoDiceIds;
+
     /// @notice Wallet that receives the 10% fee (the host). Set at deploy.
     address public immutable treasury;
 
@@ -176,6 +198,11 @@ contract CoinFlipBetting {
     );
     event DiceEdgeUpdated(uint256 newEdgeBps);
     event MaxPayoutCapUpdated(uint256 newBps);
+    event TwoDiceRolled(
+        uint256 indexed gameId, address indexed player, uint256 betAmount,
+        uint8 target, bool rollOver, uint8 d1, uint8 d2, bool won, uint256 payout, uint256 multiplierBps
+    );
+    event TwoDiceEdgeUpdated(uint256 newEdgeBps);
 
     // --------------------------------------------------------------------- //
     //  Errors
@@ -663,6 +690,107 @@ contract CoinFlipBetting {
         uint256 count = limit > n ? n : limit;
         recent = new DiceGame[](count);
         for (uint256 i; i < count; ++i) recent[i] = diceGames[_diceIds[n - 1 - i]];
+    }
+
+    // --------------------------------------------------------------------- //
+    //  Dice #2 (CH 10) — two d6 dice, sum 2..12, roll under/over a target
+    // --------------------------------------------------------------------- //
+
+    /// @notice Number of equally-likely combinations (out of 36) that produce a
+    ///         given two-dice sum. ways(s) = 6 - |s - 7| for s in [2,12].
+    function _waysForSum(uint256 s) internal pure returns (uint256) {
+        uint256 d = s > 7 ? s - 7 : 7 - s;
+        return 6 - d;
+    }
+
+    /// @notice Winning combinations for a target + direction.
+    ///         UNDER: win if sum < target.   OVER: win if sum > target.
+    function _twoDiceWinCombos(uint8 target, bool rollOver) internal pure returns (uint256 combos) {
+        if (rollOver) {
+            for (uint256 s = uint256(target) + 1; s <= 12; ++s) combos += _waysForSum(s);
+        } else {
+            for (uint256 s = 2; s < uint256(target); ++s) combos += _waysForSum(s);
+        }
+    }
+
+    /// @notice Payout multiplier in bps (10000 = 1.00x) = (1 - edge) / winChance.
+    function _twoDiceMultiplierBps(uint256 winCombos) internal view returns (uint256) {
+        return ((BPS_DENOMINATOR - twoDiceEdgeBps) * TWO_DICE_COMBOS) / winCombos;
+    }
+
+    /// @notice Live multiplier for the UI. Returns 0 for a degenerate target
+    ///         (no winning or no losing combos).
+    function twoDiceMultiplier(uint8 target, bool rollOver) external view returns (uint256) {
+        if (target < 2 || target > 12) return 0;
+        uint256 c = _twoDiceWinCombos(target, rollOver);
+        if (c == 0 || c >= TWO_DICE_COMBOS) return 0;
+        return _twoDiceMultiplierBps(c);
+    }
+
+    /// @notice Roll two six-sided dice for `betAmount`. `target` in [2,12]; if
+    ///         `rollOver` you win when the sum > target, else when sum < target.
+    ///         Settles instantly from your in-game balance vs the house bankroll.
+    function playTwoDice(uint256 betAmount, uint8 target, bool rollOver)
+        external
+        returns (uint256 gameId, uint8 d1, uint8 d2, bool won, uint256 payout)
+    {
+        if (betAmount < MIN_BET) revert BetTooSmall();
+        if (betAmount > maxBet) revert BetTooHigh();
+        if (target < 2 || target > 12) revert DiceBadTarget();
+
+        uint256 winCombos = _twoDiceWinCombos(target, rollOver);
+        if (winCombos == 0 || winCombos >= TWO_DICE_COMBOS) revert DiceBadTarget();
+        if (balances[msg.sender] < betAmount) revert InsufficientBalance();
+
+        uint256 multiplierBps = _twoDiceMultiplierBps(winCombos);
+        payout = (betAmount * multiplierBps) / BPS_DENOMINATOR; // total returned on a win
+        uint256 maxProfit = payout - betAmount;                 // the house's max loss
+        if (maxProfit > houseBankroll) revert HouseBankrollLow();
+        if (maxProfit > (houseBankroll * maxPayoutBpsOfBankroll) / BPS_DENOMINATOR) revert HouseBankrollLow();
+
+        balances[msg.sender] -= betAmount; // escrow the stake
+
+        gameId = nextTwoDiceGameId++;
+        uint256 r = _random(gameId, msg.sender, treasury);
+        d1 = uint8((r % 6) + 1);
+        d2 = uint8(((r / 6) % 6) + 1);
+        uint256 sum = uint256(d1) + uint256(d2);
+        won = rollOver ? (sum > target) : (sum < target);
+
+        if (won) {
+            balances[msg.sender] += payout; // stake back + winnings
+            houseBankroll -= maxProfit;     // house pays the profit
+        } else {
+            houseBankroll += betAmount;     // house keeps the stake
+        }
+
+        twoDiceGames[gameId] = TwoDiceGame({
+            id: gameId, player: msg.sender, betAmount: betAmount, target: target, rollOver: rollOver,
+            d1: d1, d2: d2, won: won, payout: won ? payout : 0, multiplierBps: multiplierBps, settledAt: block.timestamp
+        });
+        _twoDiceIds.push(gameId);
+
+        totalFeesCollected += (betAmount * twoDiceEdgeBps) / BPS_DENOMINATOR; // expected edge (stats)
+        totalGamesPlayed += 1;
+        totalWagered += betAmount;
+
+        emit TwoDiceRolled(gameId, msg.sender, betAmount, target, rollOver, d1, d2, won, won ? payout : 0, multiplierBps);
+        return (gameId, d1, d2, won, won ? payout : 0);
+    }
+
+    function setTwoDiceEdge(uint256 newEdgeBps) external onlyOwner {
+        if (newEdgeBps > MAX_DICE_EDGE_BPS) revert DiceEdgeTooHigh();
+        twoDiceEdgeBps = newEdgeBps;
+        emit TwoDiceEdgeUpdated(newEdgeBps);
+    }
+
+    function twoDiceCount() external view returns (uint256) { return _twoDiceIds.length; }
+
+    function getRecentTwoDice(uint256 limit) external view returns (TwoDiceGame[] memory recent) {
+        uint256 n = _twoDiceIds.length;
+        uint256 count = limit > n ? n : limit;
+        recent = new TwoDiceGame[](count);
+        for (uint256 i; i < count; ++i) recent[i] = twoDiceGames[_twoDiceIds[n - 1 - i]];
     }
 
     // --------------------------------------------------------------------- //
