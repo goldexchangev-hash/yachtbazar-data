@@ -77,6 +77,7 @@
   // ---- particle systems (rebuilt each play) ----
   let coins = [], confetti = [];
   function spawnCoins(n, cx, cy, power, rg) {
+    if (coins.length > 300) return; // bound worst-case particle cost
     for (let i = 0; i < n; i++) {
       const a = -Math.PI / 2 + (rg() - 0.5) * 2.2;
       const v = power * (0.6 + rg() * 0.8);
@@ -90,6 +91,7 @@
   }
   const CONF = ["#ff5b5b", "#39e7ff", "#ffcf3f", "#34e39b", "#b06bff", "#ff7ad5"];
   function spawnConfetti(n, rg) {
+    if (confetti.length > 320) return; // bound worst-case particle cost
     for (let i = 0; i < n; i++) confetti.push({ x: rg() * P.w, y: -rg() * P.h, vy: 1 + rg() * 2.4, vx: (rg() - 0.5) * 1.4, s: 2 + rg() * 3, c: CONF[(rg() * CONF.length) | 0], sw: rg() * 6 });
   }
   function stepConfetti() {
@@ -104,7 +106,7 @@
     const sg = g.createLinearGradient(0, 0, 0, P.h * 0.34);
     sg.addColorStop(0, "rgba(8,8,16,0.66)"); sg.addColorStop(1, "rgba(8,8,16,0)");
     g.fillStyle = sg; g.fillRect(0, 0, P.w, P.h * 0.34);
-    const pop = Math.min(1, t / 260);
+    const pop = Math.max(0.02, Math.min(1, t / 260));
     const sc = 1 + Math.sin(Math.min(t, 600) / 600 * Math.PI) * 0.10;
     g.save();
     g.translate(P.w / 2, P.h * 0.115);
@@ -1123,22 +1125,25 @@
 
   // simple firework bursts (reused by dragon scene)
   let fw = [];
-  function spawnFirework(x, y, rg) { const c = CONF[(rg() * CONF.length) | 0]; for (let i = 0; i < 16; i++) { const a = (i / 16) * Math.PI * 2; fw.push({ x, y, vx: Math.cos(a) * (1.5 + rg() * 1.5), vy: Math.sin(a) * (1.5 + rg() * 1.5), life: 1, c }); } }
+  function spawnFirework(x, y, rg) { if (fw.length > 240) return; const c = CONF[(rg() * CONF.length) | 0]; for (let i = 0; i < 16; i++) { const a = (i / 16) * Math.PI * 2; fw.push({ x, y, vx: Math.cos(a) * (1.5 + rg() * 1.5), vy: Math.sin(a) * (1.5 + rg() * 1.5), life: 1, c }); } }
   function stepFireworks() { for (const p of fw) { p.x += p.vx; p.y += p.vy; p.vy += 0.04; p.life -= 0.03; if (p.life > 0) rect(p.x, p.y, 2.5, 2.5, p.c); } fw = fw.filter((p) => p.life > 0); }
 
-  // Pick a scene + intensity from the win amount. Each grandeur band has a pool
-  // of scenes, so same-size wins can roll different movies (escalation + variety).
+  // Pick a scene + intensity from the NET amount won (profit over your stake —
+  // caps near $400 at the $500 max bet). Bands span that range so every tier
+  // still triggers; each band has a pool so same-size wins can roll different
+  // movies (escalation + variety).
   function selectScene(amt) {
     var BANDS = [
-      { max: 100, base: 20,  shake: 0,   epic: false, pool: [sArcade] },
-      { max: 180, base: 100, shake: 1,   epic: false, pool: [sLuckyCat, sCarnival] },
-      { max: 260, base: 180, shake: 1,   epic: false, pool: [sPirate, sGoldRush] },
-      { max: 340, base: 260, shake: 1.2, epic: false, pool: [sStadium, sCasino] },
-      { max: 440, base: 340, shake: 1.6, epic: false, pool: [sHeist] },
-      { max: 1e9, base: 440, shake: 2.6, epic: true,  pool: [sKaiju, sEmperor] }
+      { max: 35,  base: 0,   shake: 0,   epic: false, pool: [sArcade] },
+      { max: 75,  base: 35,  shake: 1,   epic: false, pool: [sLuckyCat, sCarnival] },
+      { max: 135, base: 75,  shake: 1,   epic: false, pool: [sPirate, sGoldRush] },
+      { max: 215, base: 135, shake: 1.2, epic: false, pool: [sStadium, sCasino] },
+      { max: 295, base: 215, shake: 1.6, epic: false, pool: [sHeist] },
+      { max: 1e9, base: 295, shake: 2.6, epic: true,  pool: [sKaiju, sEmperor] }
     ];
     var b = BANDS.find(function (x) { return amt < x.max; }) || BANDS[BANDS.length - 1];
-    var step = Math.max(0, Math.min(4, Math.floor((amt - b.base) / 20)));
+    var span = (b.max >= 1e9 ? 150 : (b.max - b.base)) / 5;
+    var step = Math.max(0, Math.min(4, Math.floor((amt - b.base) / span)));
     var fn = b.pool[Math.floor(Math.random() * b.pool.length)];
     return { fn: fn, step: step, shake: b.shake, epic: b.epic };
   }
@@ -1155,7 +1160,7 @@
     // Push the whole scene DOWN into a "stage" so the action plays BELOW the
     // title text (characters were getting hidden behind LEGENDARY!/amount).
     g.translate(0, P.h * 0.14);
-    try { scene.fn(t); } catch (e) { /* a buggy scene must never break the page */ }
+    try { (P.reduce ? calmFrame : scene.fn)(t); } catch (e) { /* a buggy scene must never break the page */ }
     g.restore();
     winText(t);
     // fade out the last 400ms
@@ -1174,10 +1179,11 @@
     const seed = Math.floor(amt) + (scene.step + 1) * 7 + 1;
     P = {
       w: cv.width, h: cv.height, amtUsd: amt, step: scene.step, shake: reduce ? 0 : scene.shake,
-      rg: rnd(seed), side: opts.side || "HEADS",
-      headline: scene.epic && scene.step >= 3 ? "LEGENDARY!" : "WINNER!",
+      rg: rnd(seed), side: opts.side || "HEADS", reduce: reduce,
+      headline: scene.epic ? "LEGENDARY!" : "WINNER!",
       amtStr: "+$" + (amt >= 1000 ? (amt / 1000).toFixed(1) + "k" : Math.round(amt)),
     };
+    try { window.__winSceneActive = true; } catch (e) {} // let the TV pause its static/confetti
     cv.classList.add("on");
     dur = reduce ? 900 : 2600 + scene.step * 150 + (scene.epic ? 900 : 0);
     startT = performance.now();
@@ -1189,7 +1195,16 @@
   function stop() {
     playing = false;
     cancelAnimationFrame(raf);
+    try { window.__winSceneActive = false; } catch (e) {} // TV resumes its static/confetti
     if (cv) cv.classList.remove("on");
+  }
+
+  // Calm, motion-safe celebration used when prefers-reduced-motion is on.
+  function calmFrame() {
+    bg("#241a3a", "#0c0d16");
+    ground("#2a1d12");
+    const r = rnd(7);
+    for (let i = 0; i < 40; i++) coin(r() * P.w, P.h * 0.55 + r() * P.h * 0.32, 4, 0.25);
   }
 
   window.WinScenes = { init, play, stop, _select: selectScene };

@@ -18,7 +18,8 @@
   // Which contract + chain are we using?  URL link > local config.js > saved > none.
   let deployment = (() => {
     const a = params.get("contract"), c = params.get("chain");
-    if (a) return { address: a, chainId: c ? Number(c) : null };
+    // Only adopt a shared ?contract= link if it's a valid address (fail fast on junk).
+    if (a && (!E || !E.isAddress || E.isAddress(a))) return { address: a, chainId: c ? Number(c) : null };
     if (cfg.address) return { address: cfg.address, chainId: cfg.chainId || null }; // local dev (deploy:local)
     const s = loadStored();
     if (s && s.address) return s;
@@ -1012,7 +1013,7 @@
       const rv = flipReveal(betAmt, playerWon);
       const coinHeads = playerWon ? wantsHeads : !wantsHeads; // the coin's actual face
       setLastResult({ won: playerWon, side: coinHeads ? "HEADS" : "TAILS", amountUsd: rv.amountUsd, amountWei: rv.amountWei, betWei: betAmt, label: "Host table" });
-      if (playerWon && window.WinScenes) WinScenes.play({ amountUsd: rv.amountUsd, side: coinHeads ? "HEADS" : "TAILS" });
+      if (playerWon && window.WinScenes) WinScenes.play({ amountUsd: weiToUsd(rv.netWei), side: coinHeads ? "HEADS" : "TAILS" });
       TV.revealResult({
         side: coinHeads ? "HEADS" : "TAILS",
         youWon: playerWon,
@@ -1255,7 +1256,7 @@
         const youWon = eq(r.winner, account);
         const rv = flipReveal(r.betAmount, youWon);
         setLastResult({ won: youWon, side, amountUsd: rv.amountUsd, amountWei: rv.amountWei, betWei: r.betAmount, label: r.isHouseGame ? "vs House" : "PvP" });
-        if (youWon && window.WinScenes) WinScenes.play({ amountUsd: rv.amountUsd, side });
+        if (youWon && window.WinScenes) WinScenes.play({ amountUsd: weiToUsd(rv.netWei), side });
         TV.revealResult({
           side,
           youWon,
@@ -1429,7 +1430,9 @@
   async function refreshPlayers() {
     if (read && chainOK) {
       try {
-        const rooms = await recentRooms(60);
+        // Scan deep so the W–L tally reflects your TRUE record, not just the last
+        // 60 games (returns all games until volume reaches this cap).
+        const rooms = await recentRooms(2000);
         const order = [], seen = new Set(), stats = {};
         const touch = (a) => {
           const k = a.toLowerCase();
@@ -1628,7 +1631,7 @@
   async function refreshMyHistory() {
     if (!read || !chainOK || !account) return;
     try {
-      const rooms = await recentRooms(60);
+      const rooms = await recentRooms(2000);
       const games = [];
       for (const r of rooms) {
         if (Number(r.status) !== 2) continue; // settled only

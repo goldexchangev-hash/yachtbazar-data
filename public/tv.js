@@ -114,6 +114,7 @@
       const tick = (t) => {
         this._staticRAF = requestAnimationFrame(tick);
         if (document.hidden) return;          // don't burn cycles in a background tab
+        if (window.__winSceneActive) return;  // a win scene covers the TV — don't paint static
         if (t - last < FRAME_MS) return;
         last = t;
         if (this._staticIntensity <= 0.02) { ctx.clearRect(0, 0, this.staticCanvas.width, this.staticCanvas.height); return; }
@@ -364,6 +365,8 @@
       if (this.cctx) this.cctx.clearRect(0, 0, this.confetti.width, this.confetti.height);
     },
     _burstConfetti(tier) {
+      // A win scene already rains its own coins/confetti on top — skip this layer.
+      if (window.__winSceneActive) return;
       this._sizeCanvases();
       const ctx = this.cctx;
       const W = this.confetti.width;

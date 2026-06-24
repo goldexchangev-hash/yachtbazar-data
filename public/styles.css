@@ -63,7 +63,7 @@ a { color: var(--cyan); text-decoration: none; }
   display: flex; align-items: center; justify-content: space-between; gap: 14px;
   padding: 16px clamp(14px, 4vw, 40px);
 }
-.brand { display: flex; align-items: center; gap: 12px; }
+.brand { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
 .brand-tv { font-size: 30px; filter: drop-shadow(0 0 10px rgba(57, 231, 255, 0.5)); }
 .brand-name { font-family: var(--display); font-size: clamp(18px, 2.6vw, 26px); letter-spacing: 1px; }
 .brand-accent { color: var(--magenta); }
@@ -784,7 +784,7 @@ a { color: var(--cyan); text-decoration: none; }
   .sidebar { order: 2; }
 }
 @media (max-width: 560px) {
-  .brand-live { display: none; }
+  .brand-live, .build-tag { display: none; }
   .brand-name { font-size: 18px; }
   .topbar { padding: 12px 14px; flex-wrap: wrap; }
   .tv-body { padding: 14px 14px 12px; border-radius: 22px; }
