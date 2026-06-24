@@ -1381,6 +1381,57 @@
     g.save(); g.globalAlpha = a; g.fillStyle = grd; g.fillRect(0, 0, P.w, P.h); g.restore();
   }
 
+  // a faceted gem (diamond) — used in the treasure burst
+  var GEMC = ["#e23b3b", "#3b6be2", "#2fae4a", "#b06bff", "#ffd24a"];
+  function drawGem(x, y, s, col, spin) {
+    var w = Math.max(1, s * (0.72 + 0.28 * Math.abs(Math.cos((spin || 0) * Math.PI))));
+    g.save(); g.translate(x, y);
+    g.fillStyle = "#15152a"; g.beginPath(); g.moveTo(0, -s); g.lineTo(-w, -s * 0.22); g.lineTo(0, s); g.lineTo(w, -s * 0.22); g.closePath(); g.fill();
+    g.fillStyle = col; g.beginPath(); g.moveTo(0, -s * 0.82); g.lineTo(-w * 0.85, -s * 0.2); g.lineTo(0, s * 0.85); g.lineTo(w * 0.85, -s * 0.2); g.closePath(); g.fill();
+    g.fillStyle = "rgba(255,255,255,0.5)"; g.beginPath(); g.moveTo(0, -s * 0.82); g.lineTo(-w * 0.85, -s * 0.2); g.lineTo(0, -s * 0.05); g.lineTo(w * 0.85, -s * 0.2); g.closePath(); g.fill();
+    g.fillStyle = "#fff"; g.fillRect(-w * 0.25, -s * 0.45, Math.max(1, s * 0.14), Math.max(1, s * 0.14));
+    g.restore();
+  }
+  // a wooden treasure chest; openP 0->1 swings the lid up. empty=true draws the
+  // "busted" empty interior; otherwise a glowing treasure mound.
+  function drawChest(x, gy, openP, tier, empty, t) {
+    var s = P.h * (0.075 + tier * 0.012), w = s * 2.5, h = s * 1.45, bx = x - w / 2, by = gy - h;
+    rect(bx, by, w, h, "#5a3414");
+    for (var i = 1; i < 4; i++) rect(bx, by + i * h * 0.25, w, Math.max(1, h * 0.03), "#3a2410");
+    rect(bx, by, s * 0.22, h, "#d6a93a"); rect(bx + w - s * 0.22, by, s * 0.22, h, "#d6a93a");
+    rect(bx, by + h - s * 0.18, w, s * 0.18, "#caa53a");
+    // interior (visible once the lid lifts)
+    if (openP > 0.12) {
+      var iy = by + s * 0.1;
+      rect(bx + s * 0.28, iy, w - s * 0.56, h * 0.55, "#160c06");
+      if (!empty) {
+        var glow = 0.55 + 0.45 * Math.sin((t || 0) / 110);
+        g.save(); g.globalAlpha = 0.55 * glow; g.fillStyle = "#ffe27a"; g.beginPath(); g.ellipse(x, iy + h * 0.18, w * 0.42, h * 0.34, 0, 0, 6.2832); g.fill(); g.restore();
+        for (var c = 0; c < 5; c++) roundCoin(x - w * 0.28 + c * w * 0.14, iy + h * 0.26, s * 0.22, 0.2);
+        drawGem(x - w * 0.18, iy + h * 0.1, s * 0.3, "#e23b3b", 0); drawGem(x + w * 0.16, iy + h * 0.12, s * 0.27, "#3b6be2", 0.3);
+      } else if (openP > 0.5) {
+        sadFace(x, iy + h * 0.16, s * 0.7, t || 0); // a little "nothing here" tantrum
+      }
+    }
+    // lid (hinged at the back-top, swings up)
+    g.save(); g.translate(bx, by); g.rotate(-openP * 1.55);
+    var lh = s * 0.85;
+    rect(0, -lh, w, lh, "#6a3f1a"); rect(0, -lh, w, lh * 0.42, "#7a4a1e");
+    rect(0, -lh, s * 0.22, lh, "#d6a93a"); rect(w - s * 0.22, -lh, s * 0.22, lh, "#d6a93a");
+    rect(0, -lh, w, s * 0.16, "#caa53a");
+    g.restore();
+    if (openP < 0.25) { rect(x - s * 0.2, by + h * 0.34, s * 0.4, s * 0.5, "#3a3a46"); rect(x - s * 0.07, by + h * 0.46, s * 0.14, s * 0.2, "#15151c"); } // lock
+  }
+  // sad "X X" face + frown puff (loss / empty chest)
+  function sadFace(x, y, s, t) {
+    var bob = Math.sin(t / 220) * s * 0.15;
+    g.save(); g.globalAlpha = 0.9; g.strokeStyle = "#c8c8d4"; g.lineWidth = Math.max(1.5, s * 0.14); g.lineCap = "round";
+    function ex(cx) { g.beginPath(); g.moveTo(cx - s * 0.18, y - s * 0.5 + bob); g.lineTo(cx + s * 0.18, y - s * 0.2 + bob); g.moveTo(cx + s * 0.18, y - s * 0.5 + bob); g.lineTo(cx - s * 0.18, y - s * 0.2 + bob); g.stroke(); }
+    ex(x - s * 0.45); ex(x + s * 0.45);
+    g.beginPath(); g.arc(x, y + s * 0.55 + bob, s * 0.4, Math.PI * 1.15, Math.PI * 1.85); g.stroke(); // frown
+    g.restore();
+  }
+
   // the loot prop (bottom-center at x,gy). brokenP>0 splits it into halves.
   function drawStake(x, gy, tier, t, brokenP) {
     var s = P.h * (0.055 + tier * 0.013);
@@ -1413,9 +1464,10 @@
     if (wfParts.length > 320) return;
     for (var i = 0; i < n; i++) {
       // "cam" = fly toward the player (up first, then drift down-out, growing).
-      if (kind === "cam") wfParts.push({ k: "cam", x: x + (rg() - 0.5) * P.w * 0.07, y: y, vx: (rg() - 0.5) * 2.4, vy: -2.2 - rg() * 3.0, r: P.h * (0.013 + rg() * 0.013), sp: rg(), life: 1, trail: [] });
+      // ~35% of the burst are colored gems, the rest gold coins.
+      if (kind === "cam") wfParts.push({ k: "cam", x: x + (rg() - 0.5) * P.w * 0.07, y: y, vx: (rg() - 0.5) * 2.4, vy: -2.2 - rg() * 3.0, r: P.h * (0.013 + rg() * 0.013), sp: rg(), life: 1, gem: rg() < 0.35 ? GEMC[(rg() * GEMC.length) | 0] : null });
       // "pit" = shatter then fall into the chasm.
-      else wfParts.push({ k: "pit", x: x + (rg() - 0.5) * P.w * 0.06, y: y, vx: (rg() - 0.5) * 3.2, vy: -3 - rg() * 2.4, r: P.h * (0.011 + rg() * 0.012), sp: rg(), life: 1.5, trail: [] });
+      else wfParts.push({ k: "pit", x: x + (rg() - 0.5) * P.w * 0.06, y: y, vx: (rg() - 0.5) * 3.2, vy: -3 - rg() * 2.4, r: P.h * (0.011 + rg() * 0.012), sp: rg(), life: 1.5, gem: null });
     }
   }
   function wfStepParts(gy) {
@@ -1424,12 +1476,13 @@
       if (p.k === "cam") {
         p.vy += 0.05; p.vx *= 0.99; p.x += p.vx; p.y += p.vy; p.sp += 0.05; p.life -= 0.009; // slower fade = longer
         var sc = 1 + (1 - p.life) * 1.7; if (sc > 2.4) sc = 2.4;
-        // sparkle trail
-        g.globalAlpha = Math.max(0, Math.min(1, p.life)) * 0.5; roundCoin(p.x - p.vx * 1.5, p.y - p.vy * 1.5, p.r * sc * 0.7, p.sp);
-        g.globalAlpha = Math.max(0, Math.min(1, p.life)); roundCoin(p.x, p.y, p.r * sc, p.sp); g.globalAlpha = 1;
+        g.globalAlpha = Math.max(0, Math.min(1, p.life));
+        if (p.gem) drawGem(p.x, p.y, p.r * sc * 1.1, p.gem, p.sp);
+        else { g.globalAlpha = Math.max(0, Math.min(1, p.life)) * 0.5; roundCoin(p.x - p.vx * 1.5, p.y - p.vy * 1.5, p.r * sc * 0.7, p.sp); g.globalAlpha = Math.max(0, Math.min(1, p.life)); roundCoin(p.x, p.y, p.r * sc, p.sp); }
+        g.globalAlpha = 1;
       } else {
         p.vy += 0.26; p.x += p.vx; p.y += p.vy; p.sp += 0.09; if (p.y > gy + P.h * 0.02) p.life -= 0.04;
-        g.globalAlpha = Math.max(0, Math.min(1, p.life)); roundCoin(p.x, p.y, p.r, p.sp); g.globalAlpha = 1;
+        g.globalAlpha = Math.max(0, Math.min(1, p.life)); if (p.gem) drawGem(p.x, p.y, p.r, p.gem, p.sp); else roundCoin(p.x, p.y, p.r, p.sp); g.globalAlpha = 1;
       }
     }
     wfParts = wfParts.filter(function (p) { return p.life > 0 && p.y < P.h + 60; });
@@ -1455,48 +1508,42 @@
     wf.scroll = t * 0.3;
     var gy = worldBg(t, wf.scroll);
     heroDraw(t, P.w * 0.32, gy, P.h / 150, "run", 1);
-    drawStake(P.w * 0.82, gy, wf.tier, t, 0);
-    if (t % 620 < 70) star(P.w * 0.82, gy - P.h * 0.2, P.h * 0.022, "#fff6c0"); // "this is the prize"
+    drawChest(P.w * 0.82, gy, 0, wf.tier, false, t);                         // closed chest ahead
+    if (t % 620 < 70) star(P.w * 0.82, gy - P.h * 0.22, P.h * 0.022, "#fff6c0"); // "this is the prize"
   }
   function wfReveal(rt) {
     var gy = worldBg(performance.now() - wf.start, wf.scroll); // frozen scroll = camera settled
     var tier = wf.tier, hs = P.h / 150 * (1 + tier * 0.05), rg = P.rg;
     var stakeX = P.w * 0.6;
+    var chestX = P.w * 0.6, heroX = chestX - P.w * 0.17, lidY = gy - P.h * (0.1 + tier * 0.012);
     if (wf.won) {
-      // WIN — the hero LEAPS in from the left and arcs OVER the loot (the "miss"),
-      // lands right and faces the PLAYER; loot flies at camera amid a light show.
-      var JUMP = 640, BURST = 320;
-      var jp = Math.min(1, rt / JUMP);
-      var hx = P.w * 0.3 + jp * P.w * 0.44;                   // 0.30 -> 0.74
-      var arc = Math.sin(jp * Math.PI) * P.h * 0.27;           // leap arc
-      var landed = rt >= JUMP;
-      var lootY = gy - P.h * 0.12;
-      if (rt > BURST) godRays(stakeX, lootY, rt, 14, "#fff0a0"); // rays behind everything
-      if (rt < BURST + 10) drawStake(stakeX, gy, tier, rt, 0);  // intact until he clears it
-      if (rt > BURST && rt < BURST + 36) { wfSpawn("cam", 13 + tier * 10, stakeX, lootY, rg); spawnConfetti(16 + tier * 9, rg); wfRing(stakeX, lootY, "#fff8d0"); wfRing(stakeX, lootY, "#ffd24a"); }
-      heroDraw(landed ? rt - JUMP : rt, hx, gy - arc, hs, landed ? "idle" : "jump", landed ? -1 : 1);
-      if (rt > BURST && rt % 150 < 16) wfSpawn("cam", 4 + tier * 2, stakeX, lootY, rg);                 // steady stream
-      if (rt > BURST && rt % 240 < 18) spawnFirework(P.w * (0.18 + rg() * 0.64), P.h * (0.16 + rg() * 0.3), rg);
-      // twinkle sparkles
-      if (rt > BURST) for (var s = 0; s < 4; s++) { if (Math.sin(rt / 110 + s * 1.7) > 0.4) star(P.w * (0.15 + ((s * 0.41 + rt * 0.0006) % 1) * 0.7), P.h * (0.18 + ((s * 0.57) % 1) * 0.42), P.h * 0.016, "#fff6e0"); }
+      // JACKPOT — Scarfblade hits the chest; lid pops; loot sprays at the camera.
+      var POP = 300;
+      var openP = Math.min(1, Math.max(0, (rt - POP) / 170));
+      var shx = (rt > POP - 110 && rt < POP) ? Math.sin(rt / 16) * P.h * 0.012 : 0; // pre-pop shake
+      if (rt > POP) godRays(chestX, lidY, rt, 14, "#fff0a0");
+      g.save(); g.translate(shx, 0); drawChest(chestX, gy, openP, tier, false, rt); g.restore();
+      heroDraw(rt, heroX, gy, hs, rt < 340 ? "attack" : "idle", 1); // wind-up slash -> cheer(idle)
+      if (rt > POP + 8 && rt < POP + 46) { wfSpawn("cam", 20 + tier * 8, chestX, lidY - P.h * 0.02, rg); spawnConfetti(16 + tier * 9, rg); wfRing(chestX, lidY, "#fff8d0"); wfRing(chestX, lidY, "#ffd24a"); }
+      if (rt > POP + 50 && rt % 150 < 16) wfSpawn("cam", 5 + tier * 2, chestX, lidY, rg);  // steady stream
+      if (rt > POP && rt % 240 < 18) spawnFirework(P.w * (0.18 + rg() * 0.64), P.h * (0.16 + rg() * 0.3), rg);
+      if (rt > POP) for (var s = 0; s < 4; s++) { if (Math.sin(rt / 110 + s * 1.7) > 0.4) star(P.w * (0.15 + ((s * 0.41 + rt * 0.0006) % 1) * 0.7), P.h * (0.18 + ((s * 0.57) % 1) * 0.42), P.h * 0.016, "#fff6e0"); }
       wfStepParts(gy); wfStepRings(); stepFireworks(); stepConfetti();
-      // opening gold flash, then a steady "blink" pulse on the edges
-      if (rt < BURST) { g.save(); g.globalAlpha = 0.18 + 0.18 * Math.abs(Math.sin(rt / 45)); g.fillStyle = "#ffe27a"; g.fillRect(0, 0, P.w, P.h); g.restore(); }
-      else if (rt < BURST + 200) { g.save(); g.globalAlpha = 0.4 * (1 - (rt - BURST) / 200); g.fillStyle = "#fff6c8"; g.fillRect(0, 0, P.w, P.h); g.restore(); }
-      vignette("rgba(255,196,40," + (0.22 + 0.2 * Math.abs(Math.sin(rt / 170))) + ")", 1); // blink glow
+      if (rt > POP && rt < POP + 48) { g.save(); g.globalAlpha = 0.55 * (1 - (rt - POP) / 48); g.fillStyle = "#fff6c8"; g.fillRect(0, 0, P.w, P.h); g.restore(); } // 2-frame flash
+      vignette("rgba(255,196,40," + (0.2 + 0.2 * Math.abs(Math.sin(rt / 170))) + ")", 1); // blink glow
     } else {
-      // LOSS — the hero stands at the loot and CHOPS it; pieces + coins tumble
-      // into a chasm that yawns open beneath the stake. Cold, sharp, downward.
-      var HIT = 260, heroX = stakeX - P.w * 0.15;
-      wfChasm(stakeX, gy, Math.min(1, (rt - HIT) / 360));
-      drawStake(stakeX, gy, tier, rt, rt < HIT ? 0 : Math.min(1, (rt - HIT) / 260));
-      heroDraw(rt, heroX, gy, hs, rt < 440 ? "attack" : "idle", 1);
-      if (rt > HIT && rt < HIT + 32) { wfSpawn("pit", 10 + tier * 9, stakeX, gy - P.h * 0.08, rg); shake(7 + tier * 2); wfRing(stakeX, gy - P.h * 0.05, "#7a86c4"); }
-      if (rt > HIT && rt < HIT + 14) { g.save(); g.globalAlpha = 0.45; g.fillStyle = "#e6eeff"; g.fillRect(0, 0, P.w, P.h); g.restore(); } // cold slash flash
-      // dust rising from the chasm
-      if (rt > HIT && rt % 60 < 30) { g.save(); g.globalAlpha = 0.18; g.fillStyle = "#6a6a7a"; for (var d = 0; d < 4; d++) g.fillRect(stakeX + (rg() - 0.5) * P.w * 0.14, gy - ((rt - HIT) % 400) * 0.3 - d * P.h * 0.03, P.h * 0.02, P.h * 0.02); g.restore(); }
-      wfStepParts(gy); wfStepRings();
-      if (rt > HIT) { g.save(); g.globalAlpha = Math.min(0.32, (rt - HIT) / 800); g.fillStyle = "#2b3158"; g.fillRect(0, 0, P.w, P.h); g.restore(); } // desaturate/cool
+      // EMPTY / TROLL — a few extra whacks, then the lid creaks open on nothing
+      // but dust; Scarfblade slumps. No loot, cold light.
+      var HITS = 3, GAP = 230, OPEN = HITS * GAP;
+      var openP = Math.min(1, Math.max(0, (rt - OPEN) / 220));
+      var hitPhase = rt < OPEN ? (rt % GAP) : 999;
+      var dshx = (hitPhase < 70) ? Math.sin(rt / 13) * P.h * 0.009 : 0;
+      g.save(); g.translate(dshx, 0); drawChest(chestX, gy, openP, tier, true, rt); g.restore();
+      heroDraw(rt < OPEN ? (rt % GAP) : rt, heroX, gy, hs, rt < OPEN ? "attack" : "idle", 1);
+      if (rt < OPEN && hitPhase < 14) shake(5 + tier);
+      if (rt > OPEN && rt % 90 < 46) { g.save(); g.globalAlpha = 0.2; g.fillStyle = "#8f8f9e"; for (var d = 0; d < 5; d++) g.fillRect(chestX + (rg() - 0.5) * P.w * 0.12, lidY - ((rt - OPEN) % 520) * 0.22 - d * P.h * 0.02, P.h * 0.018, P.h * 0.018); g.restore(); } // dust puff
+      if (rt > OPEN && rt < OPEN + 16) { g.save(); g.globalAlpha = 0.28; g.fillStyle = "#cfd6e6"; g.fillRect(0, 0, P.w, P.h); g.restore(); }
+      if (rt > OPEN) { g.save(); g.globalAlpha = Math.min(0.32, (rt - OPEN) / 700); g.fillStyle = "#2b3158"; g.fillRect(0, 0, P.w, P.h); g.restore(); }
       vignette("rgba(20,16,34,0.4)", 1);
     }
     wfText(wf.won, rt);
