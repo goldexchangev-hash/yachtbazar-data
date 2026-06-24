@@ -1441,6 +1441,7 @@
       const on = b.dataset.game === game;
       b.classList.toggle("active", on); b.setAttribute("aria-selected", on ? "true" : "false");
     });
+    const title = $("idle-title"); if (title) title.textContent = game === "dice" ? "CRYPTO TV DICE" : "CRYPTO TV FLIP";
   }
   function switchGame(game) {
     if (game === currentGame) return;
