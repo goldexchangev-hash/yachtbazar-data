@@ -846,22 +846,17 @@
   // a silent (volume 0) gesture-initiated play — after which it's allowed to play
   // WITH audio later, even programmatically. (iOS Safari especially needs this.)
   const IS_MOBILE = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "");
-  let revealBlessed = false, vCtx = null, vSrc = null;
-  // On mobile, route the reel's audio through an unlocked Web Audio context so it
-  // can play WITH sound even though the reveal fires seconds after the tap (iOS &
-  // in-app browsers block delayed video-with-sound). Desktop already plays the
-  // element audio directly, so we leave it untouched there.
+  let revealBlessed = false, vRouted = false;
+  // On mobile, route the reel's audio through the SHARED chiptune Web Audio
+  // context (iOS only reliably allows one context — a separate one drops out
+  // after a second) so it can play WITH sound despite the delayed reveal. Desktop
+  // plays the element audio directly (already works), so skip routing there.
   function setupVideoAudioGraph() {
-    if (!IS_MOBILE || vSrc) return;
+    if (!IS_MOBILE || vRouted) return;
     const v = $("reveal-video"); if (!v) return;
-    try {
-      const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
-      vCtx = new AC();
-      vSrc = vCtx.createMediaElementSource(v); // one-time; element audio now flows through vCtx
-      vSrc.connect(vCtx.destination);
-    } catch (e) { vCtx = null; vSrc = null; }
+    try { if (window.Chiptune && Chiptune.routeMedia) vRouted = Chiptune.routeMedia(v); } catch (e) {}
   }
-  function resumeVideoCtx() { try { if (vCtx && vCtx.state !== "running") vCtx.resume(); } catch (e) {} }
+  function resumeVideoCtx() { try { if (window.Chiptune && Chiptune.wake) Chiptune.wake(); } catch (e) {} }
   function blessRevealVideo() {
     if (revealBlessed) return;
     const v = $("reveal-video"); if (!v) return;

@@ -232,6 +232,26 @@
     },
     toggle() { return on ? (this.stop(), false) : this.start(); },
 
+    // Make sure the audio context exists and is running (call on a user gesture).
+    wake() { ensureCtx(); try { if (ctx && ctx.state !== "running") ctx.resume(); } catch (e) {} },
+
+    // Route an HTML media element's audio through THIS shared context (iOS only
+    // reliably allows one AudioContext, so reels must share it, not spawn their
+    // own — a separate one drops out after a second). One-time per element.
+    routeMedia(el) {
+      ensureCtx();
+      if (!ctx || !el || el.__routed) return !!(el && el.__routed);
+      try {
+        const src = ctx.createMediaElementSource(el);
+        const g = ctx.createGain();
+        g.gain.value = 1.0;
+        src.connect(g);
+        g.connect(master);
+        el.__routed = true;
+        return true;
+      } catch (e) { return false; }
+    },
+
     // Temporarily duck (or restore) the background music — used while a
     // full-motion reel plays so its own audio can be heard over the loop.
     duckMusic(down) {
