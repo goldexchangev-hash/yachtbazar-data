@@ -1345,10 +1345,14 @@
   let diceMode = "under";          // "under" | "over"
   let currentGame = "flip";        // "flip" | "dice"
   let diceHouseWei = 0n;           // cached house bankroll for the can-cover check
+  let dicePayoutCapBps = 100n;     // per-roll cap (bps of bankroll); read live, 1% fallback for old contracts
 
   async function refreshDiceHouse() {
     try { diceHouseWei = await read.houseBankroll(); const el = $("dice-house-bankroll"); if (el) el.textContent = usdOf(diceHouseWei); } catch {}
+    // Newer contracts expose an owner-tunable cap; old ones don't — fall back to 1%.
+    try { if (read.maxPayoutBpsOfBankroll) dicePayoutCapBps = BigInt(await read.maxPayoutBpsOfBankroll()); } catch { dicePayoutCapBps = 100n; }
   }
+  function diceMaxProfitWei() { return diceHouseWei > 0n ? (diceHouseWei * dicePayoutCapBps) / 10000n : 0n; }
 
   // Live odds bar + readouts as the player drags. Target T in [100,9899] (1%–99%).
   function diceReadouts() {
@@ -1377,7 +1381,7 @@
     let profitWei = 0n; try { profitWei = usdToWei(profit); } catch {}
     if (gameWei > 0n && stakeWei > gameWei) hint = "Not enough in-game balance — deposit first 👇";
     else if (maxBet > 0n && stakeWei > maxBet) hint = "Max bet is " + usdOf(maxBet);
-    else if (diceHouseWei > 0n && profitWei > diceHouseWei / 100n) hint = "Max win per roll is " + usdOf(diceHouseWei / 100n) + " (1% of the house bankroll) — lower the stake or multiplier";
+    else if (diceHouseWei > 0n && profitWei > diceMaxProfitWei()) hint = (dicePayoutCapBps >= 10000n ? "House can't cover that win yet — fund the house or lower the stake (max win " + usdOf(diceMaxProfitWei()) + ")" : "Max win per roll is " + usdOf(diceMaxProfitWei()) + " (" + (Number(dicePayoutCapBps) / 100) + "% of the house bankroll) — lower the stake or multiplier");
     const btn = $("dice-roll-btn");
     if (btn) { btn.disabled = !!hint; btn.style.opacity = hint ? "0.55" : ""; }
     $("dice-roll-hint").textContent = hint;

@@ -47,8 +47,9 @@ contract CoinFlipBetting {
     uint256 public diceEdgeBps = 200;
     uint256 public nextDiceGameId = 1;
     /// @notice Single bet's max payout-above-stake is capped to this share of the
-    ///         bankroll (100 bps = 1%) so one big dice win can't drain the house.
-    uint256 public constant MAX_PAYOUT_BPS_OF_BANKROLL = 100;
+    ///         bankroll. Owner-tunable via setMaxPayoutCap. Default 10000 bps =
+    ///         100%, i.e. a single win is limited only by the real bankroll.
+    uint256 public maxPayoutBpsOfBankroll = 10_000;
 
     struct DiceGame {
         uint256 id;
@@ -174,6 +175,7 @@ contract CoinFlipBetting {
         uint16 target, bool rollOver, uint16 roll, bool won, uint256 payout, uint256 multiplierBps
     );
     event DiceEdgeUpdated(uint256 newEdgeBps);
+    event MaxPayoutCapUpdated(uint256 newBps);
 
     // --------------------------------------------------------------------- //
     //  Errors
@@ -611,7 +613,7 @@ contract CoinFlipBetting {
         uint256 maxProfit = payout - betAmount;                 // the house's max loss
         if (maxProfit > houseBankroll) revert HouseBankrollLow();
         // a single win can't drain more than 1% of the bankroll
-        if (maxProfit > (houseBankroll * MAX_PAYOUT_BPS_OF_BANKROLL) / BPS_DENOMINATOR) revert HouseBankrollLow();
+        if (maxProfit > (houseBankroll * maxPayoutBpsOfBankroll) / BPS_DENOMINATOR) revert HouseBankrollLow();
 
         balances[msg.sender] -= betAmount; // escrow the stake
 
@@ -644,6 +646,14 @@ contract CoinFlipBetting {
         if (newEdgeBps > MAX_DICE_EDGE_BPS) revert DiceEdgeTooHigh();
         diceEdgeBps = newEdgeBps;
         emit DiceEdgeUpdated(newEdgeBps);
+    }
+
+    /// @notice Tune the per-roll payout cap as a share of the bankroll (bps).
+    ///         10000 = 100% (capped only by the real bankroll). Can't exceed 100%.
+    function setMaxPayoutCap(uint256 newBps) external onlyOwner {
+        if (newBps == 0 || newBps > BPS_DENOMINATOR) revert DiceBadTarget();
+        maxPayoutBpsOfBankroll = newBps;
+        emit MaxPayoutCapUpdated(newBps);
     }
 
     function diceCount() external view returns (uint256) { return _diceIds.length; }
