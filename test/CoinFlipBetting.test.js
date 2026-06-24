@@ -238,4 +238,53 @@ describe("CoinFlipBetting (prevrandao, no oracle)", function () {
     expect(await game.balances(alice.address)).to.equal(ethers.parseEther("0.1"));
     expect((await game.getHostRoom(1)).open).to.equal(false);
   });
+
+  it("open-set: getOpenRooms tracks only currently-open rooms (cancel + settle prune it)", async function () {
+    const { game, alice, bob } = await deployFixture();
+    const bet = ethers.parseEther("0.01");
+    await game.connect(alice).deposit({ value: ethers.parseEther("0.1") });
+    await game.connect(bob).deposit({ value: ethers.parseEther("0.1") });
+
+    await game.connect(alice).createRoom(bet, "A", true); // room 1
+    await game.connect(alice).createRoom(bet, "B", true); // room 2
+    expect((await game.getOpenRooms()).length).to.equal(2);
+    expect(await game.openRoomsOf(alice.address)).to.equal(2n);
+
+    await game.connect(alice).cancelRoom(1); // cancel prunes
+    expect((await game.getOpenRooms()).length).to.equal(1);
+    expect(await game.openRoomsOf(alice.address)).to.equal(1n);
+
+    await game.connect(bob).joinRoom(2); // settle prunes
+    expect((await game.getOpenRooms()).length).to.equal(0);
+    expect(await game.openRoomsOf(alice.address)).to.equal(0n);
+
+    // vs-house games settle atomically and never pollute the open set
+    await game.connect(alice).deposit({ value: bet });
+    // (no house bankroll funded here — just assert the open set stays empty after a cancel cycle)
+    expect((await game.getOpenRooms()).length).to.equal(0);
+  });
+
+  it("anti-spam: caps simultaneously-open rooms per address", async function () {
+    const { game, alice } = await deployFixture();
+    const bet = ethers.parseEther("0.001");
+    await game.connect(alice).deposit({ value: ethers.parseEther("1") });
+    const MAX = Number(await game.MAX_OPEN_PER_ADDRESS());
+    for (let i = 0; i < MAX; i++) await game.connect(alice).createRoom(bet, "r", true);
+    await expect(game.connect(alice).createRoom(bet, "over", true)).to.be.revertedWithCustomError(game, "TooManyOpen");
+    // cancelling one frees a slot again
+    await game.connect(alice).cancelRoom(1);
+    await expect(game.connect(alice).createRoom(bet, "ok", true)).to.not.be.reverted;
+  });
+
+  it("open-set: host tables prune from getOpenHostRooms on close", async function () {
+    const { game, alice } = await deployFixture();
+    await game.connect(alice).deposit({ value: ethers.parseEther("0.5") });
+    await game.connect(alice).createHostRoom(ethers.parseEther("0.1"), "T1");
+    await game.connect(alice).createHostRoom(ethers.parseEther("0.1"), "T2");
+    expect((await game.getOpenHostRooms()).length).to.equal(2);
+    expect(await game.openTablesOf(alice.address)).to.equal(2n);
+    await game.connect(alice).closeHostRoom(1);
+    expect((await game.getOpenHostRooms()).length).to.equal(1);
+    expect(await game.openTablesOf(alice.address)).to.equal(1n);
+  });
 });

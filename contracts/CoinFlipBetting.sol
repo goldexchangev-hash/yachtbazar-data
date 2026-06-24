@@ -110,6 +110,20 @@ contract CoinFlipBetting {
     mapping(uint256 => HostRoom) public hostRooms;
     uint256[] private _hostRoomIds;
 
+    // Compact "currently open" sets so getOpenRooms / getOpenHostRooms stay
+    // O(open) instead of O(all-time) — free testnet create+cancel spam can no
+    // longer bloat those loops until they exceed the block gas limit. Swap-pop.
+    uint256[] private _openRoomIds;
+    mapping(uint256 => uint256) private _openRoomPos; // 1-based index; 0 = absent
+    uint256[] private _openHostRoomIds;
+    mapping(uint256 => uint256) private _openHostPos; // 1-based index; 0 = absent
+
+    /// @notice Currently-open PvP rooms / host tables per address (anti-spam cap).
+    mapping(address => uint256) public openRoomsOf;
+    mapping(address => uint256) public openTablesOf;
+    /// @notice Cap on simultaneously-open rooms / tables a single address may hold.
+    uint256 public constant MAX_OPEN_PER_ADDRESS = 12;
+
     // --------------------------------------------------------------------- //
     //  Events
     // --------------------------------------------------------------------- //
@@ -149,6 +163,7 @@ contract CoinFlipBetting {
     error CannotPlayOwnTable();
     error BankTooLow();
     error HostRoomStillActive();
+    error TooManyOpen();
 
     // --------------------------------------------------------------------- //
     //  Constructor
@@ -200,6 +215,7 @@ contract CoinFlipBetting {
         if (betAmount < MIN_BET) revert BetTooSmall();
         if (betAmount > maxBet) revert BetTooHigh();
         if (balances[msg.sender] < betAmount) revert InsufficientBalance();
+        if (openRoomsOf[msg.sender] >= MAX_OPEN_PER_ADDRESS) revert TooManyOpen();
 
         balances[msg.sender] -= betAmount; // escrowed in the room
 
@@ -220,6 +236,8 @@ contract CoinFlipBetting {
             creatorHeads: creatorHeads
         });
         _roomIds.push(roomId);
+        _addOpenRoom(roomId);
+        openRoomsOf[msg.sender]++;
 
         emit RoomCreated(roomId, msg.sender, betAmount, rooms[roomId].name);
     }
@@ -253,6 +271,8 @@ contract CoinFlipBetting {
         if (room.status != Status.Open) revert RoomNotOpen();
 
         room.status = Status.Cancelled;
+        _removeOpenRoom(roomId);
+        openRoomsOf[room.creator]--;
         balances[room.player1] += room.betAmount; // refund
         emit RoomCancelled(roomId);
     }
@@ -348,6 +368,34 @@ contract CoinFlipBetting {
         }
     }
 
+    // ----- open-set maintenance (swap-pop, O(1)) -----
+    function _addOpenRoom(uint256 id) private { _openRoomIds.push(id); _openRoomPos[id] = _openRoomIds.length; }
+    function _removeOpenRoom(uint256 id) private {
+        uint256 pos = _openRoomPos[id];
+        if (pos == 0) return;
+        uint256 lastIdx = _openRoomIds.length - 1;
+        if (pos - 1 != lastIdx) {
+            uint256 lastId = _openRoomIds[lastIdx];
+            _openRoomIds[pos - 1] = lastId;
+            _openRoomPos[lastId] = pos;
+        }
+        _openRoomIds.pop();
+        _openRoomPos[id] = 0;
+    }
+    function _addOpenHost(uint256 id) private { _openHostRoomIds.push(id); _openHostPos[id] = _openHostRoomIds.length; }
+    function _removeOpenHost(uint256 id) private {
+        uint256 pos = _openHostPos[id];
+        if (pos == 0) return;
+        uint256 lastIdx = _openHostRoomIds.length - 1;
+        if (pos - 1 != lastIdx) {
+            uint256 lastId = _openHostRoomIds[lastIdx];
+            _openHostRoomIds[pos - 1] = lastId;
+            _openHostPos[lastId] = pos;
+        }
+        _openHostRoomIds.pop();
+        _openHostPos[id] = 0;
+    }
+
     function _settleFlip(uint256 roomId) internal {
         Room storage room = rooms[roomId];
 
@@ -376,6 +424,13 @@ contract CoinFlipBetting {
         room.headsWon = headsLanded; // the coin's actual side (for the TV)
         room.settledAt = block.timestamp;
 
+        // Drop a PvP room out of the open set when it settles (vs-house rooms were
+        // never added — settled atomically on creation — so this no-ops for them).
+        if (_openRoomPos[roomId] != 0) {
+            _removeOpenRoom(roomId);
+            openRoomsOf[room.player1]--;
+        }
+
         totalFeesCollected += fee;
         totalGamesPlayed += 1;
         totalWagered += pot;
@@ -402,6 +457,7 @@ contract CoinFlipBetting {
     function createHostRoom(uint256 bank, string calldata name) external returns (uint256 roomId) {
         if (bank < MIN_BET) revert BetTooSmall();
         if (balances[msg.sender] < bank) revert InsufficientBalance();
+        if (openTablesOf[msg.sender] >= MAX_OPEN_PER_ADDRESS) revert TooManyOpen();
 
         balances[msg.sender] -= bank; // escrow the bank
 
@@ -416,6 +472,8 @@ contract CoinFlipBetting {
             open: true
         });
         _hostRoomIds.push(roomId);
+        _addOpenHost(roomId);
+        openTablesOf[msg.sender]++;
 
         emit HostRoomCreated(roomId, msg.sender, bank, hostRooms[roomId].name);
     }
@@ -474,6 +532,8 @@ contract CoinFlipBetting {
             revert HostRoomStillActive();
         }
         hr.open = false;
+        _removeOpenHost(roomId);
+        openTablesOf[hr.creator]--;
         uint256 refund = hr.bank;
         hr.bank = 0;
         if (refund > 0) balances[hr.creator] += refund; // withdrawable, no direct send
@@ -493,15 +553,9 @@ contract CoinFlipBetting {
     }
 
     function getOpenHostRooms() external view returns (HostRoom[] memory openTables) {
-        uint256 n = _hostRoomIds.length;
-        uint256 count;
-        for (uint256 i; i < n; ++i) if (hostRooms[_hostRoomIds[i]].open) count++;
-        openTables = new HostRoom[](count);
-        uint256 j;
-        for (uint256 i; i < n; ++i) {
-            HostRoom storage hr = hostRooms[_hostRoomIds[i]];
-            if (hr.open) openTables[j++] = hr;
-        }
+        uint256 n = _openHostRoomIds.length; // O(open), not O(all-time)
+        openTables = new HostRoom[](n);
+        for (uint256 i; i < n; ++i) openTables[i] = hostRooms[_openHostRoomIds[i]];
     }
 
     function getRoom(uint256 roomId) external view returns (Room memory) {
@@ -513,15 +567,9 @@ contract CoinFlipBetting {
     }
 
     function getOpenRooms() external view returns (Room[] memory openRooms) {
-        uint256 n = _roomIds.length;
-        uint256 count;
-        for (uint256 i; i < n; ++i) if (rooms[_roomIds[i]].status == Status.Open) count++;
-        openRooms = new Room[](count);
-        uint256 j;
-        for (uint256 i; i < n; ++i) {
-            Room storage r = rooms[_roomIds[i]];
-            if (r.status == Status.Open) openRooms[j++] = r;
-        }
+        uint256 n = _openRoomIds.length; // O(open), not O(all-time)
+        openRooms = new Room[](n);
+        for (uint256 i; i < n; ++i) openRooms[i] = rooms[_openRoomIds[i]];
     }
 
     function getRecentRooms(uint256 limit) external view returns (Room[] memory recent) {
