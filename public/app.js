@@ -910,14 +910,15 @@
     setupSliders();
     // Start the music on the first tap/touch (mobile + desktop block autoplay
     // until a user gesture). Skips if the user has explicitly muted.
+    // Fire on the COMPLETED gesture (touchend/click) — iOS won't unlock audio on
+    // touchstart. Persistent so each tap re-kicks until it actually plays.
     const armMusic = () => {
-      if (!userMutedMusic && window.Chiptune && !window.Chiptune.isOn()) {
-        window.Chiptune.start();
-        syncSoundBtn();
-      }
+      if (userMutedMusic || !window.Chiptune) return;
+      window.Chiptune.start(); // resumes + (re)starts; safe to call repeatedly
+      syncSoundBtn();
     };
-    ["pointerdown", "touchstart", "keydown", "click"].forEach((ev) =>
-      window.addEventListener(ev, armMusic, { once: true, passive: true })
+    ["touchend", "click", "keydown"].forEach((ev) =>
+      window.addEventListener(ev, armMusic, { passive: true })
     );
     // Live ETH→USD price: fetch now, refresh labels, and re-poll every 60s.
     fetchEthUsd().then(() => { setupSliders(); if (read && chainOK) { refreshBalances(); refreshStats(); refreshHouse(); refreshRooms(); } });

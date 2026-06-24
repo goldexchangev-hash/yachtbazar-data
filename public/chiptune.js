@@ -148,9 +148,8 @@
         if (customReady && audioEl) { on = true; audioEl.currentTime = 0; audioEl.play().catch(() => {}); }
         return on;
       }
-      if (on) return true;
-      on = true;
-      // iOS/Safari unlock: play a 1-sample silent buffer + resume, all inside the gesture.
+      // Always unlock + resume (safe to repeat). iOS only honors this on a
+      // *completed* gesture (touchend/click), so callers fire it on those.
       try {
         const b = ctx.createBufferSource();
         b.buffer = ctx.createBuffer(1, 1, 22050);
@@ -158,6 +157,8 @@
         b.start(0);
       } catch {}
       try { ctx.resume(); } catch {}
+      if (on) return true;
+      on = true;
       if (customReady && audioEl) { audioEl.currentTime = 0; audioEl.play().catch(() => {}); return true; }
       // Schedule SYNCHRONOUSLY (not in a promise) so the first notes play on the very
       // first tap; the 0.35s head-start covers the context's wake-up time.
