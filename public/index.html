@@ -15,7 +15,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=20" />
+    <link rel="stylesheet" href="styles.css?v=21" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -276,6 +276,20 @@
           </details>
         </div>
 
+        <!-- Your money in/out per game (clearer than MetaMask's contract activity) -->
+        <div class="card">
+          <details class="dropdown" open>
+            <summary class="card-title dd-summary">
+              <span>🧾 Your games <span class="pill" id="my-history-count">0</span></span>
+              <span class="dd-arrow" aria-hidden="true">▾</span>
+            </summary>
+            <p class="muted" style="margin: 2px 0 8px; font-size: 12px;">Net change to your balance per flip — <span style="color:#34e39b">green = won</span>, <span style="color:#ff7a7a">red = lost</span>.</p>
+            <ul id="my-history-list" class="hist-list">
+              <li class="empty">No games yet — your wins &amp; losses show here.</li>
+            </ul>
+          </details>
+        </div>
+
         <!-- Trash-talk chat (Matrix terminal) -->
         <div class="card chat-card">
           <h2 class="card-title">💬 Trash talk <span class="chat-dot">▮</span></h2>
@@ -383,10 +397,10 @@
     </div>
 
     <script src="vendor/ethers.umd.min.js"></script>
-    <script src="config.js?v=20"></script>
-    <script src="contract.js?v=20"></script>
-    <script src="chiptune.js?v=20"></script>
-    <script src="tv.js?v=20"></script>
-    <script src="app.js?v=20"></script>
+    <script src="config.js?v=21"></script>
+    <script src="contract.js?v=21"></script>
+    <script src="chiptune.js?v=21"></script>
+    <script src="tv.js?v=21"></script>
+    <script src="app.js?v=21"></script>
   </body>
 </html>

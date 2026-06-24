@@ -393,7 +393,7 @@
   // ---------------------------------------------------------- reads / render
   async function refreshAll() {
     if (!read || !chainOK) return;
-    await Promise.all([refreshBalances(), refreshRooms(), refreshStats(), refreshHouse(), refreshPlayers(), refreshMyTables()]);
+    await Promise.all([refreshBalances(), refreshRooms(), refreshStats(), refreshHouse(), refreshPlayers(), refreshMyTables(), refreshMyHistory()]);
   }
 
   async function refreshBalances() {
@@ -916,7 +916,7 @@
           sub: youWon ? "Net win after the 10% house cut — added to your balance" : "Your stake went to the winner",
         });
         activeRoomId = null;
-        refreshBalances(); refreshHouse(); refreshStats(); refreshRooms(); refreshPlayers();
+        refreshBalances(); refreshHouse(); refreshStats(); refreshRooms(); refreshPlayers(); refreshMyHistory();
       } else if ((status === 2 && !mine) || status === 3) {
         // settled room I'm not in, or cancelled → drop it silently, no reveal
         activeRoomId = null;
@@ -1191,6 +1191,51 @@
     }
   }
 
+  // ---------------------------------------------------------- your games (P&L)
+  // A per-flip ledger for the connected wallet, read from on-chain rooms. This is
+  // far clearer than MetaMask's "Contract interaction" rows: vs-house & PvP wins/
+  // losses move funds inside the contract's balance ledger, not your wallet ETH,
+  // so MetaMask shows no amount — only Deposit/Withdraw actually move wallet ETH.
+  async function refreshMyHistory() {
+    if (!read || !chainOK || !account) return;
+    try {
+      const rooms = await read.getRecentRooms(60);
+      const mine = [];
+      for (const r of rooms) {
+        if (Number(r.status) !== 2) continue; // settled only
+        const isPlayer = eq(r.player1, account) || (eq(r.player2, account) && !r.isHouseGame);
+        if (!isPlayer) continue;
+        const won = eq(r.winner, account);
+        const pot = r.betAmount * 2n;
+        const payout = pot - pot / 10n;
+        const delta = won ? payout - r.betAmount : r.betAmount; // net change to my balance
+        mine.push({ id: r.id.toString(), house: r.isHouseGame, won, delta });
+      }
+      renderMyHistory(mine);
+    } catch {}
+  }
+
+  function renderMyHistory(games) {
+    const list = $("my-history-list");
+    if (!list) return;
+    $("my-history-count").textContent = games.length;
+    if (!games.length) { list.innerHTML = '<li class="empty">No games yet — your wins &amp; losses show here.</li>'; return; }
+    list.innerHTML = "";
+    for (const g of games.slice(0, 15)) {
+      const li = document.createElement("li");
+      li.className = "hist-item " + (g.won ? "won" : "lost");
+      const label = document.createElement("span");
+      label.className = "hist-label";
+      label.textContent = (g.house ? "vs House" : "PvP #" + g.id) + " · " + (g.won ? "won" : "lost");
+      const amt = document.createElement("span");
+      amt.className = "hist-amt " + (g.won ? "up" : "down");
+      amt.textContent = (g.won ? "+" : "−") + usdOf(g.delta);
+      li.appendChild(label);
+      li.appendChild(amt);
+      list.appendChild(li);
+    }
+  }
+
   // ---------------------------------------------------------- sound + help
   function syncSoundBtn() {
     const on = window.Chiptune && window.Chiptune.isOn();
@@ -1279,7 +1324,7 @@
 
     // periodic lobby refresh + TV reveal reconciler (safety net for missed events)
     setInterval(() => {
-      if (chainOK && read) { refreshRooms(); refreshBalances(); refreshHouse(); refreshPlayers(); refreshMyTables(); reconcile(); }
+      if (chainOK && read) { refreshRooms(); refreshBalances(); refreshHouse(); refreshPlayers(); refreshMyTables(); refreshMyHistory(); reconcile(); }
     }, 3000);
   }
 
