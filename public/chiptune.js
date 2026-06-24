@@ -252,6 +252,33 @@
       } catch (e) { return false; }
     },
 
+    // Decode a fetched audio file (ArrayBuffer) into an AudioBuffer on the shared
+    // context. Used to pre-load reel soundtracks so they play smoothly via Web
+    // Audio, immune to the video element streaming/hesitating.
+    decode(arrayBuffer) {
+      ensureCtx();
+      if (!ctx) return Promise.reject(new Error("no audio context"));
+      return new Promise((resolve, reject) => {
+        try { ctx.decodeAudioData(arrayBuffer, resolve, reject); } catch (e) { reject(e); }
+      });
+    },
+    // Play a decoded AudioBuffer once, through the master bus. Returns a handle
+    // with stop(); onended fires when it finishes.
+    playClip(buffer, onended) {
+      ensureCtx();
+      if (!ctx || !buffer) return null;
+      try {
+        if (ctx.state !== "running") ctx.resume();
+        const src = ctx.createBufferSource();
+        src.buffer = buffer;
+        const g = ctx.createGain(); g.gain.value = 1.0;
+        src.connect(g); g.connect(master);
+        if (onended) src.onended = onended;
+        src.start();
+        return { stop() { try { src.onended = null; src.stop(); } catch (e) {} }, duration: buffer.duration };
+      } catch (e) { return null; }
+    },
+
     // Temporarily duck (or restore) the background music — used while a
     // full-motion reel plays so its own audio can be heard over the loop.
     duckMusic(down) {

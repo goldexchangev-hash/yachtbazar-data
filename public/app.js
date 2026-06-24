@@ -845,33 +845,34 @@
   // click. So on the user's FIRST interaction we "bless" the reveal element with
   // a silent (volume 0) gesture-initiated play — after which it's allowed to play
   // WITH audio later, even programmatically. (iOS Safari especially needs this.)
-  const IS_MOBILE = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "");
-  let revealBlessed = false, vRouted = false;
-  // On mobile, route the reel's audio through the SHARED chiptune Web Audio
-  // context (iOS only reliably allows one context — a separate one drops out
-  // after a second) so it can play WITH sound despite the delayed reveal. Desktop
-  // plays the element audio directly (already works), so skip routing there.
-  function setupVideoAudioGraph() {
-    if (!IS_MOBILE || vRouted) return;
-    const v = $("reveal-video"); if (!v) return;
-    try { if (window.Chiptune && Chiptune.routeMedia) vRouted = Chiptune.routeMedia(v); } catch (e) {}
+  // Reel SOUNDTRACKS, extracted to small mp3s. We decode them to AudioBuffers and
+  // play them through Web Audio — fully independent of the video element, so the
+  // sound is smooth even when the video streams/hesitates on mobile, and it plays
+  // on every platform (muted video autoplays; Web Audio carries the audio).
+  const CINE_AUDIO = {
+    win: ["assets/wins/win1.mp3", "assets/wins/win2.mp3", "assets/wins/win3.mp3", "assets/wins/win4.mp3"],
+    loss: ["assets/losses/loss1.mp3", "assets/losses/loss2.mp3", "assets/losses/loss3.mp3", "assets/losses/loss4.mp3"],
+  };
+  const reelAudio = {};        // url -> decoded AudioBuffer
+  let reelsPreloaded = false;
+  function preloadReels() {
+    if (reelsPreloaded) return; reelsPreloaded = true;
+    CINE_AUDIO.win.concat(CINE_AUDIO.loss).forEach((u) => {
+      fetch(u).then((r) => r.arrayBuffer()).then((ab) => (window.Chiptune && Chiptune.decode ? Chiptune.decode(ab) : null))
+        .then((buf) => { if (buf) reelAudio[u] = buf; }).catch(() => {});
+    });
+    // Warm the video files into cache too so the picture doesn't hesitate.
+    CINE.win.concat(CINE.loss).forEach((u) => { try { fetch(u).catch(() => {}); } catch (e) {} });
   }
   function resumeVideoCtx() { try { if (window.Chiptune && Chiptune.wake) Chiptune.wake(); } catch (e) {} }
-  function blessRevealVideo() {
-    if (revealBlessed) return;
-    const v = $("reveal-video"); if (!v) return;
-    revealBlessed = true;
-    setupVideoAudioGraph();
-    resumeVideoCtx();
-    try {
-      v.muted = true;                                  // silent prime (no audible blip)
-      if (!v.getAttribute("src")) v.src = CINE.loss[1];
-      const p = v.play();
-      if (p && p.then) p.then(() => { try { v.pause(); v.currentTime = 0; } catch (e) {} }).catch(() => { revealBlessed = false; });
-    } catch (e) { revealBlessed = false; }
+  let audioUnlocked = false;
+  function unlockReelAudio() {
+    if (audioUnlocked) return; audioUnlocked = true;
+    resumeVideoCtx();   // unlock the shared Web Audio context on this gesture
+    preloadReels();     // decode soundtracks + warm videos in the background
   }
   function setupRevealAudioUnlock() {
-    ["pointerdown", "touchend", "click", "keydown"].forEach((ev) => document.addEventListener(ev, blessRevealVideo, { passive: true }));
+    ["pointerdown", "touchend", "click", "keydown"].forEach((ev) => document.addEventListener(ev, unlockReelAudio, { passive: true }));
   }
   let cineTimer = 0;
   // The outcome "payoff" — balance update + (fallback) win/loss sound — fires at
@@ -890,35 +891,58 @@
   }
   function videoReveal(won, netUsd) {
     const v = $("reveal-video"); if (!v) return false;
-    const list = won ? CINE.win : CINE.loss;
-    if (!list || !list.length) return false;
-    const src = list[Math.floor(Math.random() * list.length)];
-    let paid = false;
+    const vids = won ? CINE.win : CINE.loss;
+    const auds = won ? CINE_AUDIO.win : CINE_AUDIO.loss;
+    if (!vids || !vids.length) return false;
+    const i = Math.floor(Math.random() * vids.length);
+    const src = vids[i], audUrl = auds[i];
+    let paid = false, clip = null, ended = false;
     const pay = () => { if (paid) return; paid = true; cinePayoff(won, netUsd || 0); };
-    const done = () => { clearTimeout(cineTimer); v.onended = null; v.onerror = null; v.ontimeupdate = null; pay(); v.classList.remove("show"); try { v.pause(); } catch {} v.removeAttribute("src"); try { v.load(); } catch {} try { window.__winSceneActive = false; window.__cineActive = false; } catch {} try { window.Chiptune && Chiptune.duckMusic(false); } catch {} };
-    clearTimeout(cineTimer);
-    // Try to play WITH sound; duck the background music so the reel is heard.
-    v.removeAttribute("muted"); v.muted = false; v.volume = 1; v.setAttribute("playsinline", "");
-    resumeVideoCtx();                                    // mobile: wake the Web Audio route
-    try { window.Chiptune && Chiptune.duckMusic(true); } catch {}
-    v.classList.add("show");                              // show BEFORE anything that could throw
-    try { window.__winSceneActive = true; window.__cineActive = true; } catch {} // hold the TV's own cues
-    v.onended = done;
-    v.onerror = done;                                     // 404 / decode error -> reveal the TV result underneath
-    // Payoff (balance update + coin-tally fanfare) fires only when the reel ENDS
-    // (via done()), so the in-game balance never changes before the animation
-    // finishes — no spoiler partway through.
-    v.src = src;                                          // setting src (re)loads; it starts at 0 on its own
-    try { v.load(); } catch {}
-    cineTimer = setTimeout(done, 9500);                   // safety: never get stuck on the reel
-    // play with sound; if the browser blocks audio autoplay, retry muted so the
-    // reel still plays (the chiptune fanfare then covers the audio).
-    const go = () => {
-      const p = v.play();
-      if (p && p.catch) p.catch(() => { v.muted = true; const p2 = v.play(); if (p2 && p2.catch) p2.catch(() => {}); });
+    const done = () => {
+      if (ended) return; ended = true;
+      clearTimeout(cineTimer); v.onended = null; v.onerror = null; v.oncanplay = null;
+      pay();                                              // balance + fanfare at the very end (no spoiler)
+      try { if (clip) clip.stop(); } catch {}
+      v.classList.remove("show"); try { v.pause(); } catch {} v.removeAttribute("src"); try { v.load(); } catch {}
+      try { window.__winSceneActive = false; window.__cineActive = false; } catch {}
+      try { window.Chiptune && Chiptune.duckMusic(false); } catch {}
     };
-    if (v.readyState >= 2) go(); else v.oncanplay = () => { v.oncanplay = null; go(); };
+    clearTimeout(cineTimer);
+    resumeVideoCtx();                                     // make sure the audio context is awake
+    try { window.Chiptune && Chiptune.duckMusic(true); } catch {}
+    // The VIDEO is always muted -> it autoplays on every platform, and never
+    // hesitates the audio. Sound comes from the pre-decoded buffer via Web Audio.
+    v.muted = true; v.defaultMuted = true; v.setAttribute("muted", ""); v.setAttribute("playsinline", "");
+    v.classList.add("show");
+    try { window.__winSceneActive = true; window.__cineActive = true; } catch {}
+    v.onerror = done;
+    v.src = src; try { v.load(); } catch {}
+
+    // Play the (muted) picture.
+    const go = () => { const p = v.play(); if (p && p.catch) p.catch(() => {}); };
+    if (v.readyState >= 1) go(); else v.oncanplay = () => { v.oncanplay = null; go(); };
     go();
+
+    // Drive sound + timing off the SMOOTH decoded audio when we have it (immune to
+    // video buffering). Fall back to the video's own end if it isn't decoded yet.
+    const startClip = (buf) => {
+      if (ended || !buf) return false;
+      clip = (window.Chiptune && Chiptune.playClip) ? Chiptune.playClip(buf, done) : null;
+      cineTimer = setTimeout(done, buf.duration * 1000 + 1500); // safety past the clip
+      return !!clip;
+    };
+    const buf = reelAudio[audUrl];
+    if (buf) {
+      if (!startClip(buf)) { v.onended = done; cineTimer = setTimeout(done, 9500); }
+    } else {
+      // not decoded yet — fetch+decode on the fly, drive off the video meanwhile
+      v.onended = done;
+      cineTimer = setTimeout(done, 9500);
+      fetch(audUrl).then((r) => r.arrayBuffer()).then((ab) => Chiptune.decode(ab)).then((b) => {
+        reelAudio[audUrl] = b;
+        if (!ended && !clip) { clearTimeout(cineTimer); v.onended = null; startClip(b); }
+      }).catch(() => {});
+    }
     return true;
   }
   function flipBuildup(betWei) { try { window.WinScenes && WinScenes.flipStart && WinScenes.flipStart({ betUsd: weiToUsd(betWei) }); } catch (e) {} }
