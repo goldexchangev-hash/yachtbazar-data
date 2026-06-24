@@ -27,7 +27,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=90" />
+    <link rel="stylesheet" href="styles.css?v=91" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -41,7 +41,7 @@
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.0</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.1</span>
       </div>
       <div class="topbar-right">
         <button id="sound-btn" class="btn btn-ghost" title="Play / silence background music">🔇 Music</button>
@@ -141,6 +141,21 @@
                   <button id="share-result-btn" class="btn btn-ghost share-result-btn hidden" title="Share this result">📸 Share result</button>
                 </div>
 
+                <!-- Dice roll result (CH 09) -->
+                <div class="screen-layer hidden" id="layer-dice">
+                  <div class="dice-tv-target" id="dice-tv-target">UNDER 50.00</div>
+                  <div class="dice-roll-num" id="dice-tv-num">00.00</div>
+                  <div class="dice-line" id="dice-tv-line">
+                    <div class="dl-win" id="dl-win"></div>
+                    <div class="dl-lose" id="dl-lose"></div>
+                    <div class="dl-targetmark" id="dl-targetmark"></div>
+                    <div class="dl-marker" id="dl-marker"><span class="dl-pip">▼</span></div>
+                    <div class="dl-scale"><span>0</span><span>25</span><span>50</span><span>75</span><span>100</span></div>
+                  </div>
+                  <div class="dice-verdict" id="dice-tv-verdict"></div>
+                  <div class="dice-payout" id="dice-tv-payout"></div>
+                </div>
+
                 <canvas id="confetti-canvas" class="confetti-canvas"></canvas>
                 <!-- Pixel "win scene" movie overlay (escalates with the amount) -->
                 <canvas id="scene-canvas" class="scene-canvas"></canvas>
@@ -164,6 +179,17 @@
             </div>
           </div>
           <div class="tv-stand" aria-hidden="true"></div>
+        </div>
+
+        <!-- Game switcher — "change the channel" between Coin Flip (CH 08) and Dice (CH 09) -->
+        <div class="channel-bar card" id="channel-bar" role="tablist" aria-label="Pick a game" data-game="flip">
+          <button type="button" class="channel-tab active" id="ch-flip" role="tab" aria-selected="true" data-game="flip" data-ch="8">
+            <span class="ch-num">CH 08</span><span class="ch-name">🪙 COIN FLIP</span>
+          </button>
+          <span class="channel-glider" aria-hidden="true"></span>
+          <button type="button" class="channel-tab" id="ch-dice" role="tab" aria-selected="false" data-game="dice" data-ch="9">
+            <span class="ch-num">CH 09</span><span class="ch-name">🎲 DICE</span>
+          </button>
         </div>
 
         <!-- Win-animation theme switcher (hidden for now — locked to Scarfblade Films) -->
@@ -204,7 +230,7 @@
         </div>
 
         <!-- One-tap play vs the house -->
-        <div class="card play-house" id="play-house" hidden>
+        <div class="card play-house" id="play-house" data-game="flip" hidden>
           <div class="ph-head">
             <h2 class="card-title">⚡ Quick play vs House</h2>
             <span class="ph-bankroll muted">House: <strong id="house-bankroll">—</strong></span>
@@ -230,7 +256,7 @@
         </div>
 
         <!-- Play against a specific host table (shown when you open a table link) -->
-        <div class="card play-house" id="play-table" hidden>
+        <div class="card play-house" id="play-table" data-game="flip" hidden>
           <div class="ph-head">
             <h2 class="card-title">🏦 <span id="pt-name">Host table</span></h2>
             <span class="ph-bankroll muted">Bank: <strong id="pt-bank">—</strong></span>
@@ -253,6 +279,55 @@
             </div>
           </div>
           <button id="play-table-btn" class="btn btn-primary btn-block">🪙 Flip vs this table</button>
+        </div>
+
+        <!-- Dice game (CH 09) -->
+        <div class="card dice-panel" id="dice-panel" data-game="dice" hidden>
+          <div class="ph-head">
+            <h2 class="card-title">🎲 Dice <span class="ch-tag">CH 09</span></h2>
+            <span class="ph-bankroll muted">House: <strong id="dice-house-bankroll">—</strong> · edge 2%</span>
+          </div>
+
+          <div class="dice-oddsbar" id="dice-oddsbar" data-mode="under" aria-hidden="true">
+            <div class="ob-zone ob-win" id="ob-win"></div>
+            <div class="ob-zone ob-lose" id="ob-lose"></div>
+            <div class="ob-target" id="ob-target"><span class="ob-flag" id="ob-flag">50.00</span></div>
+            <div class="ob-ticks"><i style="left:0"></i><i style="left:25%"></i><i style="left:50%"></i><i style="left:75%"></i><i style="left:100%"></i></div>
+          </div>
+
+          <label class="field-label">Target <span class="muted" id="dice-mode-hint">— roll under to win</span></label>
+          <div class="slider-wrap">
+            <input id="dice-target" class="slider slider-dice" type="range" min="100" max="9899" step="1" value="5000" />
+            <div class="slider-val"><strong id="dice-target-val">50.00</strong></div>
+          </div>
+
+          <div class="side-row">
+            <span class="side-label">Bet type</span>
+            <div class="side-toggle" id="dice-mode">
+              <button type="button" class="side-btn active" data-mode="under">▼ Roll Under</button>
+              <button type="button" class="side-btn" data-mode="over">▲ Roll Over</button>
+            </div>
+          </div>
+
+          <div class="dice-readouts">
+            <div class="ro-cell"><span class="ro-k muted">Win Chance</span><strong class="ro-v" id="dice-chance">50.00%</strong></div>
+            <div class="ro-cell ro-mult"><span class="ro-k muted">Multiplier</span><strong class="ro-v" id="dice-mult">1.96×</strong></div>
+            <div class="ro-cell ro-profit"><span class="ro-k muted">Profit on Win</span><strong class="ro-v" id="dice-profit">+$24.00</strong></div>
+          </div>
+
+          <label class="field-label">Stake</label>
+          <div class="slider-wrap">
+            <input id="dice-stake" class="slider" type="range" min="10" max="500" step="5" value="25" />
+            <div class="slider-val"><strong id="dice-stake-val">$25</strong><span class="eth-sub" id="dice-stake-eth"></span></div>
+          </div>
+          <div class="quickbet-row" data-target="dice-stake">
+            <button type="button" class="qbet" data-mode="half">½ Last</button>
+            <button type="button" class="qbet" data-mode="double">2× Last</button>
+            <button type="button" class="qbet" data-mode="max">Max</button>
+          </div>
+
+          <button id="dice-roll-btn" class="btn btn-primary btn-block dice-roll-btn">🎲 ROLL · win $<span id="dice-payout-hint">24.00</span></button>
+          <div class="muted dice-roll-hint" id="dice-roll-hint"></div>
         </div>
 
         <!-- Host tools (owner only): adjust limits, fund house, redeploy -->
@@ -583,11 +658,11 @@
     </div>
 
     <script defer src="vendor/ethers.umd.min.js"></script>
-    <script defer src="config.js?v=90"></script>
-    <script defer src="contract.js?v=90"></script>
-    <script defer src="chiptune.js?v=90"></script>
-    <script defer src="scenes.js?v=90"></script>
-    <script defer src="tv.js?v=90"></script>
-    <script defer src="app.js?v=90"></script>
+    <script defer src="config.js?v=91"></script>
+    <script defer src="contract.js?v=91"></script>
+    <script defer src="chiptune.js?v=91"></script>
+    <script defer src="scenes.js?v=91"></script>
+    <script defer src="tv.js?v=91"></script>
+    <script defer src="app.js?v=91"></script>
   </body>
 </html>

@@ -39,7 +39,9 @@
         countdown: $("layer-countdown"),
         flip: $("layer-flip"),
         result: $("layer-result"),
+        dice: $("layer-dice"),
       };
+      this._activeChannel = 8; // 8 = Flip, 9 = Dice — so idle() advertises the active game
       this.scoreboard = $("scoreboard");
       this.sbP1 = $("sb-p1");
       this.sbP2 = $("sb-p2");
@@ -154,9 +156,71 @@
       this._setStatic(0.5);
       this.scoreboard.classList.add("hidden");
       this._clearConfetti();
-      this.setChannel(3);
+      this.setChannel(this._activeChannel || 8); // keep showing the active game's channel
       if (subtext) $("idle-sub").textContent = subtext;
       this._show("idle");
+    },
+
+    // Turn the dial between Coin Flip (08) and Dice (09) with a CRT "tune" effect.
+    async changeChannel(num) {
+      const seq = ++this._seq;
+      this._setStatic(0.95);
+      if (window.Chiptune) window.Chiptune.blip();
+      this.screenEl.classList.remove("ch-switch"); void this.screenEl.offsetWidth; this.screenEl.classList.add("ch-switch");
+      const badge = $("tv-channel"); if (badge) { badge.classList.remove("changing"); void badge.offsetWidth; badge.classList.add("changing"); }
+      await sleep(210); if (seq !== this._seq) return;
+      this.setChannel(num); this._activeChannel = num;
+      this._show("idle");
+      await sleep(160); if (seq !== this._seq) return;
+      this._setStatic(0.5);
+      this.screenEl.classList.remove("ch-switch");
+      if (window.Chiptune) window.Chiptune.coin();
+    },
+
+    // Dice roll reveal: marker races 0→roll on a number line, verdict + escalation.
+    // res = { roll, target, mode, youWon, mult, amountUsd, tier }  (roll/target are 0–100 floats)
+    async revealDice(res) {
+      const seq = ++this._seq;
+      const L = this.layers.dice, tp = Math.max(0, Math.min(100, res.target));
+      L.classList.remove("win", "lose", "tier-big", "tier-mega", "nearmiss");
+      this._clearCelebration(); this._clearConfetti();
+      this.setChannel(9); this._activeChannel = 9;
+      $("dice-tv-target").textContent = (res.mode === "under" ? "UNDER " : "OVER ") + tp.toFixed(2);
+      $("dl-targetmark").style.left = tp + "%";
+      if (res.mode === "under") { $("dl-win").style.cssText = `left:0;width:${tp}%`; $("dl-lose").style.cssText = `left:${tp}%;width:${100 - tp}%`; }
+      else { $("dl-lose").style.cssText = `left:0;width:${tp}%`; $("dl-win").style.cssText = `left:${tp}%;width:${100 - tp}%`; }
+      const marker = $("dl-marker"), numEl = $("dice-tv-num");
+      marker.style.left = "0%"; numEl.textContent = "00.00";
+      $("dice-tv-verdict").textContent = ""; $("dice-tv-payout").textContent = "";
+      this._setStatic(0.06); this._show("dice");
+      // 1) race the marker 0 -> roll, ease-out, number ticking
+      const dur = 1400, start = now(), end = Math.max(0, Math.min(100, res.roll));
+      await new Promise((resolve) => {
+        const tick = () => {
+          if (seq !== this._seq) return resolve();
+          const t = Math.min(1, (now() - start) / dur), e = 1 - Math.pow(1 - t, 3), v = end * e;
+          marker.style.left = v + "%"; numEl.textContent = v.toFixed(2);
+          if (window.Chiptune && Math.random() < 0.15) window.Chiptune.blip();
+          if (t < 1) requestAnimationFrame(tick); else { numEl.textContent = end.toFixed(2); resolve(); }
+        };
+        requestAnimationFrame(tick);
+      });
+      if (seq !== this._seq) return;
+      await sleep(140);
+      // 2) verdict
+      const tier = res.youWon ? (res.tier || "normal") : "normal";
+      L.classList.add(res.youWon ? "win" : "lose");
+      $("dice-tv-verdict").textContent = res.youWon ? (tier === "mega" ? "JACKPOT!" : tier === "big" ? "BIG WIN!" : "WIN!") : "MISS";
+      $("dice-tv-payout").textContent = res.youWon
+        ? "+$" + Math.abs(res.amountUsd).toFixed(2) + " · " + res.mult.toFixed(2) + "×"
+        : "−$" + Math.abs(res.amountUsd).toFixed(2);
+      if (!res.youWon && Math.abs(res.roll - res.target) < 0.5) L.classList.add("nearmiss");
+      // 3) release balance + escalate, reusing the flip celebration ladder
+      if (!window.__cineActive) {
+        try { window.__onTvReveal && window.__onTvReveal(res); } catch (e) {}
+        if (res.youWon) this._celebrate(L, tier);
+        else if (window.Chiptune) window.Chiptune.lose();
+      }
     },
 
     waiting(opts = {}) {

@@ -233,6 +233,7 @@
     v = Math.max(min, Math.min(max, v));
     s.value = String(v);
     setSliderUsd(id);
+    try { s.dispatchEvent(new Event("input")); } catch (e) {} // let per-game handlers (dice readouts) refresh
     if (mode === "max") toast("Max you can bet now: " + usd(max), "ok");
     else if (mode === "double" && base * 2 > max) toast("Capped at the max available (" + usd(max) + ")", "ok");
     else if (mode === "half" && base / 2 < min) toast("Min bet is " + usd(min), "ok");
@@ -542,6 +543,8 @@
     TV.idle("Deposit ETH, then create or join a room");
     $("bankroll").hidden = false;
     $("play-house").hidden = false;
+    $("dice-panel").hidden = false;
+    refreshDiceHouse();
     $("maxbet-hint").textContent = "· $10–$" + betCapUsd().toLocaleString();
     setupHouseSlider();
   }
@@ -1327,6 +1330,137 @@
       TV.idle("Deposit ETH, then create or join a room");
       txErr(e);
     }
+  }
+
+  // ════════════════════════════ DICE (CH 09) ════════════════════════════
+  let diceMode = "under";          // "under" | "over"
+  let currentGame = "flip";        // "flip" | "dice"
+  let diceHouseWei = 0n;           // cached house bankroll for the can-cover check
+
+  async function refreshDiceHouse() {
+    try { diceHouseWei = await read.houseBankroll(); const el = $("dice-house-bankroll"); if (el) el.textContent = usdOf(diceHouseWei); } catch {}
+  }
+
+  // Live odds bar + readouts as the player drags. Target T in [100,9899] (1%–99%).
+  function diceReadouts() {
+    const tEl = $("dice-target"); if (!tEl) return;
+    const T = Math.min(9899, Math.max(100, (+tEl.value) | 0));
+    const winOutcomes = diceMode === "under" ? T : (9999 - T);
+    const chance = winOutcomes / 100;        // %
+    const mult = 9800 / winOutcomes;          // 2% edge
+    const stake = +$("dice-stake").value;
+    const profit = stake * (mult - 1);
+    const pct = T / 100;
+    $("dice-target-val").textContent = pct.toFixed(2);
+    $("ob-flag").textContent = pct.toFixed(2);
+    $("dice-chance").textContent = chance.toFixed(2) + "%";
+    $("dice-mult").textContent = mult.toFixed(2) + "×";
+    $("dice-profit").textContent = "+$" + profit.toFixed(2);
+    $("dice-payout-hint").textContent = profit.toFixed(2);
+    $("dice-mode-hint").textContent = diceMode === "under" ? "— roll under to win" : "— roll over to win";
+    $("ob-target").style.left = pct + "%";
+    if (diceMode === "under") { $("ob-win").style.cssText = "left:0;width:" + pct + "%"; $("ob-lose").style.cssText = "left:" + pct + "%;width:" + (100 - pct) + "%"; }
+    else { $("ob-lose").style.cssText = "left:0;width:" + pct + "%"; $("ob-win").style.cssText = "left:" + pct + "%;width:" + (100 - pct) + "%"; }
+    $("dice-oddsbar").dataset.mode = diceMode;
+    // affordability guards
+    let hint = "";
+    let stakeWei = 0n; try { stakeWei = usdToWei(stake); } catch {}
+    let profitWei = 0n; try { profitWei = usdToWei(profit); } catch {}
+    if (gameWei > 0n && stakeWei > gameWei) hint = "Not enough in-game balance — deposit first 👇";
+    else if (maxBet > 0n && stakeWei > maxBet) hint = "Max bet is " + usdOf(maxBet);
+    else if (diceHouseWei > 0n && profitWei > diceHouseWei / 100n) hint = "House can't cover this win right now — lower the stake or multiplier";
+    const btn = $("dice-roll-btn");
+    if (btn) { btn.disabled = !!hint; btn.style.opacity = hint ? "0.55" : ""; }
+    $("dice-roll-hint").textContent = hint;
+  }
+
+  function playDiceClick() {
+    if (!ready()) return;
+    const stakeUsd = parseFloat($("dice-stake").value);
+    if (!(stakeUsd > 0)) return toast("Drag to pick a stake", "err");
+    const bet = usdToWei(stakeUsd);
+    if (bet > maxBet) return toast("Max bet is " + usdOf(maxBet), "err");
+    const target = (+$("dice-target").value) | 0;
+    const rollOver = diceMode === "over";
+    rememberBet(stakeUsd);
+    doPlayDice(bet, target, rollOver);
+  }
+
+  async function doPlayDice(bet, target, rollOver) {
+    activeRoomId = null; lastRevealed = null;
+    lockReveal();
+    tvPending(true);
+    toast("Sending your roll… confirm in your wallet", "ok");
+    try {
+      const tx = await contract.playDice(bet, target, rollOver, { gasLimit: 700000n });
+      const rcpt = await tx.wait();
+      tvPending(false);
+      const ev = rcpt.logs.map((l) => safeParse(l)).find((p) => p && p.name === "DiceRolled");
+      if (!ev) { unlockReveal(); TV.idle(); return; }
+      const a = ev.args;
+      const won = a.won;
+      const netWei = won ? (a.payout - bet) : bet;          // profit on win / stake on loss
+      const profitUsd = won ? weiToUsd(a.payout - bet) : 0;
+      const tier = profitUsd >= 500 ? "mega" : profitUsd >= 100 ? "big" : "normal";
+      TV.revealDice({
+        roll: Number(a.roll) / 100,
+        target: Number(a.target) / 100,
+        mode: a.rollOver ? "over" : "under",
+        youWon: won,
+        mult: Number(a.multiplierBps) / 10000,
+        amountUsd: weiToUsd(netWei),
+        tier: tier,
+      });
+      refreshBalances(); refreshDiceHouse(); refreshStats();
+    } catch (e) {
+      tvPending(false);
+      unlockReveal();
+      TV.idle("Pick a game and place a bet");
+      txErr(e);
+    }
+  }
+
+  // ── Game switcher ("change the channel") ──
+  function paintGameTabs(game) {
+    document.body.classList.toggle("game-dice", game === "dice");
+    const bar = $("channel-bar"); if (bar) bar.dataset.game = game;
+    document.querySelectorAll("#channel-bar .channel-tab").forEach((b) => {
+      const on = b.dataset.game === game;
+      b.classList.toggle("active", on); b.setAttribute("aria-selected", on ? "true" : "false");
+    });
+  }
+  function switchGame(game) {
+    if (game === currentGame) return;
+    currentGame = game;
+    paintGameTabs(game);
+    try { localStorage.setItem("ctf_game", game); } catch {}
+    if (window.TV && TV.changeChannel) TV.changeChannel(game === "dice" ? 9 : 8);
+    if (game === "dice") { refreshDiceHouse(); diceReadouts(); }
+  }
+  function initDice() {
+    const t = $("dice-target"); if (!t) return;
+    t.oninput = () => diceReadouts();
+    $("dice-stake").oninput = () => { setSliderUsd("dice-stake"); diceReadouts(); };
+    document.querySelectorAll("#dice-mode .side-btn").forEach((b) => {
+      b.onclick = () => {
+        document.querySelectorAll("#dice-mode .side-btn").forEach((x) => x.classList.toggle("active", x === b));
+        diceMode = b.dataset.mode; diceReadouts();
+      };
+    });
+    $("dice-roll-btn").onclick = playDiceClick;
+    document.querySelectorAll("#channel-bar .channel-tab").forEach((b) => { b.onclick = () => switchGame(b.dataset.game); });
+    // keyboard: ←/→ on a focused tab, and "C" to cycle
+    $("channel-bar").addEventListener("keydown", (e) => {
+      if (e.key === "ArrowLeft") switchGame("flip");
+      else if (e.key === "ArrowRight") switchGame("dice");
+    });
+    setSliderUsd("dice-stake");
+    diceReadouts();
+    // restore the last-played game silently (no CRT animation on load)
+    let saved = "flip"; try { saved = localStorage.getItem("ctf_game") || "flip"; } catch {}
+    currentGame = saved;
+    paintGameTabs(saved);
+    if (window.TV) TV._activeChannel = saved === "dice" ? 9 : 8;
   }
 
   // My open tables: show bank + idle countdown, auto-close (refund) when stale.
@@ -2165,6 +2299,7 @@
     $("table-bet").oninput = () => setSliderUsd("table-bet");
     wireQuickBet();
     initThemeSwitch();
+    initDice();
     setupRevealAudioUnlock();
     // Join raise slider (USD): at/near the host's bet use the exact amount, else convert
     $("join-bet").oninput = (e) => {
