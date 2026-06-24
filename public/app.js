@@ -71,7 +71,7 @@
   function setSliderUsd(id) {
     const v = +$(id).value;
     const valEl = $(id + "-val"); if (valEl) valEl.textContent = usd(v);
-    const ethEl = $(id + "-eth"); if (ethEl) ethEl.textContent = " ≈ " + (v / ethUsd).toFixed(4) + " ETH";
+    const ethEl = $(id + "-eth"); if (ethEl) ethEl.textContent = "(approx ETH: " + (v / ethUsd).toFixed(4) + ")";
   }
 
   // ---------------------------------------------------------- toast
@@ -229,6 +229,7 @@
   function renderWallet() {
     $("connect-btn").classList.add("hidden");
     $("connect-btn").classList.remove("cta-pulse");
+    $("disconnect-btn").classList.remove("hidden");
     const chip = $("wallet-chip");
     chip.classList.remove("hidden");
     $("wallet-addr").textContent = short(account);
@@ -307,6 +308,16 @@
     if (!box) return;
     box.classList.remove("hidden");
     $("host-share-link").value = shareUrlFor(null);
+  }
+
+  async function disconnect() {
+    // MetaMask has no true "log out" from the dApp side; revoke the permission
+    // (newer MetaMask) and reload so the page returns to the Connect state.
+    try {
+      await window.ethereum?.request?.({ method: "wallet_revokePermissions", params: [{ eth_accounts: {} }] });
+    } catch {}
+    try { ws && ws.close(); } catch {}
+    location.reload();
   }
 
   // ---------------------------------------------------------- reads / render
@@ -395,6 +406,10 @@
     const bet = usdToWei(v);
     if (bet > maxBet) return toast("Max bet is " + usdOf(maxBet), "err");
     try {
+      const gb = await read.balances(account);
+      if (gb < bet) return toast("Deposit first 👇 — the bet comes from your in-game balance (you have " + usdOf(gb) + ").", "err");
+    } catch {}
+    try {
       toast("Creating room… confirm in MetaMask");
       const tx = await contract.createRoom(bet, name, { gasLimit: 300000 });
       const rcpt = await tx.wait();
@@ -432,7 +447,7 @@
   }
 
   // Clicking "Flip vs House" opens the bet-confirmation modal (drag-chosen stake).
-  function playHouse() {
+  async function playHouse() {
     const v = parseFloat($("house-bet").value); // USD
     if (!(v > 0)) return toast("Drag to pick a stake", "err");
     const bet = usdToWei(v);
@@ -440,6 +455,10 @@
     // The house must be able to match your stake from its bankroll.
     const capUsd = parseFloat($("house-bet").max || "0");
     if (v > capUsd) return toast("House can only cover " + usd(capUsd) + " right now", "err");
+    try {
+      const gb = await read.balances(account);
+      if (gb < bet) return toast("Deposit first 👇 — your stake comes from your in-game balance (you have " + usdOf(gb) + ").", "err");
+    } catch {}
     openBetModal({ kind: "house", bet: bet });
   }
 
@@ -707,6 +726,8 @@
       return toast("Sepolia network hiccup (the public test RPC is flaky) — just click Deploy again.", "err");
     if (/insufficient funds|gas required exceeds|intrinsic gas/i.test(blob))
       return toast("Not enough test ETH for gas. Top up Sepolia ETH from a faucet and retry.", "err");
+    if (/execution reverted|unknown custom error|CALL_EXCEPTION|revert/i.test(blob))
+      return toast("The contract rejected that — most often you need to Deposit ETH into the game first (or the amount is over the limit).", "err");
     const m = e?.shortMessage || e?.reason || e?.message || "Transaction failed";
     toast(m.length > 90 ? m.slice(0, 90) + "…" : m, "err");
   }
@@ -818,6 +839,7 @@
 
   function wireUI() {
     $("connect-btn").onclick = connect;
+    $("disconnect-btn").onclick = disconnect;
     $("deposit-btn").onclick = deposit;
     $("withdraw-btn").onclick = withdrawAll;
     $("create-room-btn").onclick = createRoom;
