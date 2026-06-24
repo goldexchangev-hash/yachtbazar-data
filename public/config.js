@@ -8,7 +8,7 @@
 // unreachable.
 window.COINFLIP_CONFIG = {
   address: "0x2BE6D59A6DfD8CE91D08c87D5110962Fa7648A30",
-  registry: null,
+  registry: "0x21Fc88619753254D2Cd5D74A2102D4A876fc1Fa1",
   chainId: 11155111,
   network: "sepolia",
   treasury: "0x2F4BEF94550C29c497b999B86b758F9771F7aB39",
