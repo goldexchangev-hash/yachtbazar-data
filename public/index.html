@@ -27,7 +27,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=84" />
+    <link rel="stylesheet" href="styles.css?v=85" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -41,7 +41,7 @@
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v8.4</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v8.5</span>
       </div>
       <div class="topbar-right">
         <button id="sound-btn" class="btn btn-ghost" title="Play / silence background music">🔇 Music</button>
@@ -145,7 +145,7 @@
                 <!-- Pixel "win scene" movie overlay (escalates with the amount) -->
                 <canvas id="scene-canvas" class="scene-canvas"></canvas>
                 <!-- Full-motion win/loss video reel (Scarfblade Films theme) -->
-                <video id="reveal-video" class="reveal-video" muted playsinline preload="auto"></video>
+                <video id="reveal-video" class="reveal-video" playsinline preload="auto"></video>
 
                 <!-- Shown while a bet tx is being signed + mined (esp. slow on mobile) -->
                 <div id="tv-pending" class="tv-pending hidden">⏳ SENDING BET…<br />confirm in your wallet, then hold tight</div>
@@ -583,11 +583,11 @@
     </div>
 
     <script defer src="vendor/ethers.umd.min.js"></script>
-    <script defer src="config.js?v=84"></script>
-    <script defer src="contract.js?v=84"></script>
-    <script defer src="chiptune.js?v=84"></script>
-    <script defer src="scenes.js?v=84"></script>
-    <script defer src="tv.js?v=84"></script>
-    <script defer src="app.js?v=84"></script>
+    <script defer src="config.js?v=85"></script>
+    <script defer src="contract.js?v=85"></script>
+    <script defer src="chiptune.js?v=85"></script>
+    <script defer src="scenes.js?v=85"></script>
+    <script defer src="tv.js?v=85"></script>
+    <script defer src="app.js?v=85"></script>
   </body>
 </html>

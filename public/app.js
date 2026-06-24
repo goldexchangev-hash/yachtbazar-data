@@ -836,10 +836,29 @@
   // Cinematic reels: one of four per outcome, picked at random. Muted so they
   // always autoplay (the chiptune fanfare carries the sound); on end the TV's
   // landed-result shows underneath.
+  // ?aud=2 busts caches that still hold the earlier SILENT encodes of these reels.
   const CINE = {
-    win: ["assets/wins/win1.mp4", "assets/wins/win2.mp4", "assets/wins/win3.mp4", "assets/wins/win4.mp4"],
-    loss: ["assets/losses/loss1.mp4", "assets/losses/loss2.mp4", "assets/losses/loss3.mp4", "assets/losses/loss4.mp4"],
+    win: ["assets/wins/win1.mp4?aud=2", "assets/wins/win2.mp4?aud=2", "assets/wins/win3.mp4?aud=2", "assets/wins/win4.mp4?aud=2"],
+    loss: ["assets/losses/loss1.mp4?aud=2", "assets/losses/loss2.mp4?aud=2", "assets/losses/loss3.mp4?aud=2", "assets/losses/loss4.mp4?aud=2"],
   };
+  // Browsers block a video with sound from auto-playing a few seconds after a
+  // click. So on the user's FIRST interaction we "bless" the reveal element with
+  // a silent (volume 0) gesture-initiated play — after which it's allowed to play
+  // WITH audio later, even programmatically. (iOS Safari especially needs this.)
+  let revealBlessed = false;
+  function blessRevealVideo() {
+    if (revealBlessed) return;
+    const v = $("reveal-video"); if (!v) return;
+    try {
+      v.muted = false; v.volume = 0;
+      if (!v.getAttribute("src")) v.src = CINE.loss[1]; // smallest reel, just to satisfy play()
+      const p = v.play();
+      if (p && p.then) p.then(() => { try { v.pause(); v.currentTime = 0; } catch (e) {} revealBlessed = true; }).catch(() => {});
+    } catch (e) {}
+  }
+  function setupRevealAudioUnlock() {
+    ["pointerdown", "touchend", "click", "keydown"].forEach((ev) => document.addEventListener(ev, blessRevealVideo, { passive: true }));
+  }
   let cineTimer = 0;
   // The outcome "payoff" — balance update + (fallback) win/loss sound — fires at
   // the reel's CLIMAX (when Scarfblade opens the chest), not at the start, so it
@@ -2105,6 +2124,7 @@
     $("table-bet").oninput = () => setSliderUsd("table-bet");
     wireQuickBet();
     initThemeSwitch();
+    setupRevealAudioUnlock();
     // Join raise slider (USD): at/near the host's bet use the exact amount, else convert
     $("join-bet").oninput = (e) => {
       const u = +e.target.value;
