@@ -36,6 +36,7 @@
   let provider = null; // ethers BrowserProvider
   let signer = null;
   let account = null;
+  let connecting = false; // true while connect() runs, to suppress the auto-reload
   let contract = null; // connected to signer
   let read = null; // connected to provider
   let maxBet = 0n;
@@ -47,6 +48,7 @@
   let playerStats = {};   // addrLower -> { w, l, recent: ["W","L",…] newest-first }
   let userMutedMusic = false; // true only if the user explicitly turns music off
   let inviteRoomId = params.get("room");
+  let inviteHostId = params.get("host");
 
   const fmt = (wei) => {
     try { return (+E.formatEther(wei)).toLocaleString(undefined, { maximumFractionDigits: 5 }); }
@@ -183,6 +185,10 @@
       return;
     }
     if (window.Chiptune) window.Chiptune.start(), syncSoundBtn();
+    // Mark the whole connect as in-progress so the accountsChanged/chainChanged
+    // listeners don't reload the page on the *initial* grant or network switch
+    // (that reload is what made people click Connect twice).
+    connecting = true;
     try {
       provider = new E.BrowserProvider(window.ethereum, "any");
       provider.pollingInterval = 2000; // tighter polling for events on injected providers
@@ -214,9 +220,12 @@
       await startGameUI();
       if (eq(account, ownerAddr)) $("host-tools").hidden = false;
       if (inviteRoomId) handleInvite();
+      if (inviteHostId) loadHostTable(inviteHostId);
     } catch (err) {
       console.error(err);
       toast(err?.info?.error?.message || err?.shortMessage || "Connection failed", "err");
+    } finally {
+      connecting = false;
     }
   }
 
@@ -384,7 +393,7 @@
   // ---------------------------------------------------------- reads / render
   async function refreshAll() {
     if (!read || !chainOK) return;
-    await Promise.all([refreshBalances(), refreshRooms(), refreshStats(), refreshHouse(), refreshPlayers()]);
+    await Promise.all([refreshBalances(), refreshRooms(), refreshStats(), refreshHouse(), refreshPlayers(), refreshMyTables()]);
   }
 
   async function refreshBalances() {
@@ -582,13 +591,182 @@
     } catch {}
   }
 
+  // ---------------------------------------------------------- host tables
+  let currentTable = null;          // the table I'm viewing/playing (from a link)
+  const closingTables = new Set();  // ids with an in-flight auto-close
+
+  function hostUrlFor(id) {
+    let base = location.origin + location.pathname;
+    if (window.__PUBLIC_HOST) {
+      const port = location.port ? ":" + location.port : "";
+      base = `${location.protocol}//${window.__PUBLIC_HOST}${port}${location.pathname}`;
+    }
+    const q = new URLSearchParams();
+    if (deployment.address) q.set("contract", deployment.address);
+    if (deployment.chainId) q.set("chain", String(deployment.chainId));
+    q.set("host", String(id));
+    return base + "?" + q.toString();
+  }
+
+  async function createHostTable() {
+    if (!ready()) return;
+    const name = ($("host-table-name").value || "Host Table").trim();
+    const v = parseFloat($("host-bank").value); // USD
+    if (!(v > 0)) return toast("Pick a bank amount", "err");
+    const bank = usdToWei(v);
+    try {
+      const gb = await read.balances(account);
+      if (gb < bank) return toast("Deposit first 👇 — the bank comes from your in-game balance (you have " + usdOf(gb) + ").", "err");
+    } catch {}
+    try {
+      toast("Creating your table… confirm in MetaMask");
+      const tx = await contract.createHostRoom(bank, name, { gasLimit: await estGas("createHostRoom", [bank, name], null, 320000n) });
+      const rcpt = await tx.wait();
+      const ev = rcpt.logs.map((l) => safeParse(l)).find((p) => p && p.name === "HostRoomCreated");
+      const id = ev ? ev.args.roomId.toString() : null;
+      if (id) { $("host-table-share").classList.remove("hidden"); $("host-table-link").value = hostUrlFor(id); }
+      toast("Table is live — share your link! 🎉", "ok");
+      refreshBalances(); refreshMyTables();
+    } catch (e) { txErr(e); }
+  }
+
+  // Open a table from its link (or the lobby). If it's yours, show your manager.
+  async function loadHostTable(id) {
+    if (!read || !chainOK) return;
+    try {
+      const hr = await read.getHostRoom(id);
+      if (!hr || hr.id.toString() === "0") return toast("That table doesn't exist.", "err");
+      if (!hr.open) return toast("That table has closed.", "err");
+      if (eq(hr.creator, account)) { refreshMyTables(); return; } // it's mine → manage it
+      currentTable = { id: hr.id.toString(), creator: hr.creator, name: hr.name };
+      $("pt-name").textContent = hr.name;
+      $("pt-sub").textContent = "Flip against " + short(hr.creator) + "'s bank — you're HEADS. The host keeps 10%.";
+      configureTableSlider(hr.bank);
+      $("play-table").hidden = false;
+    } catch (e) { console.error(e); }
+  }
+
+  function configureTableSlider(bankWei) {
+    $("pt-bank").textContent = usdOf(bankWei);
+    const capUsd = Math.max(10, Math.min(500, Math.floor(weiToUsd(bankWei < maxBet ? bankWei : maxBet))));
+    const s = $("table-bet");
+    s.min = "10"; s.step = "5"; s.max = String(capUsd);
+    if (+s.value > capUsd) s.value = String(capUsd);
+    if (+s.value < 10) s.value = "10";
+    setSliderUsd("table-bet");
+  }
+
+  async function refreshTableInfo() {
+    if (!currentTable || !read || !chainOK) return;
+    try {
+      const hr = await read.getHostRoom(currentTable.id);
+      if (!hr.open) { $("play-table").hidden = true; currentTable = null; toast("This table just closed.", "err"); return; }
+      configureTableSlider(hr.bank);
+    } catch {}
+  }
+
+  async function playTable() {
+    if (!ready() || !currentTable) return;
+    const v = parseFloat($("table-bet").value);
+    if (!(v > 0)) return toast("Drag to pick a stake", "err");
+    const bet = usdToWei(v);
+    try {
+      const gb = await read.balances(account);
+      if (gb < bet) return toast("Deposit first 👇 — your stake comes from your in-game balance (you have " + usdOf(gb) + ").", "err");
+    } catch {}
+    doPlayTable(currentTable.id, bet);
+  }
+
+  async function doPlayTable(id, bet) {
+    try {
+      let predicted;
+      try { predicted = await contract.playHostRoom.staticCall(id, bet); } catch (e) { return txErr(e); }
+      activeRoomId = null; lastRevealed = null;
+      toast("Flipping vs the table… confirm in MetaMask");
+      TV.startFlip({ p1: account, p2: "HOST" });
+      const tx = await contract.playHostRoom(id, bet, { gasLimit: await estGas("playHostRoom", [id, bet], null, 400000n) });
+      const rcpt = await tx.wait();
+      const ev = rcpt.logs.map((l) => safeParse(l)).find((p) => p && p.name === "HostFlip");
+      const playerWon = ev ? ev.args.playerWon : predicted;
+      const betAmt = ev ? ev.args.betAmount : bet;
+      const pot = betAmt * 2n;
+      const payout = pot - pot / 10n;
+      const deltaWei = playerWon ? payout - betAmt : betAmt;
+      TV.revealResult({
+        side: playerWon ? "HEADS" : "TAILS",
+        youWon: playerWon,
+        role: "participant",
+        amountUsd: weiToUsd(deltaWei),
+        sub: playerWon ? "You beat the table — paid from their bank" : "The table won — your stake went to the host",
+      });
+      refreshBalances(); refreshTableInfo(); refreshPlayers();
+    } catch (e) {
+      TV.idle("Deposit ETH, then create or join a room");
+      txErr(e);
+    }
+  }
+
+  // My open tables: show bank + idle countdown, auto-close (refund) when stale.
+  async function refreshMyTables() {
+    if (!read || !chainOK || !account) return;
+    try {
+      const all = await read.getOpenHostRooms();
+      const mine = all.filter((t) => eq(t.creator, account));
+      const card = $("my-tables-card"), list = $("my-tables-list");
+      $("my-tables-count").textContent = mine.length;
+      card.classList.toggle("hidden", mine.length === 0);
+      list.innerHTML = "";
+      const nowSec = Math.floor(Date.now() / 1000);
+      for (const t of mine) {
+        const id = t.id.toString();
+        const left = Math.max(0, 300 - (nowSec - Number(t.lastActivity)));
+        if (left === 0) autoCloseTable(id); // idle 5 min → reclaim the bank
+        const li = document.createElement("li");
+        li.className = "room-item";
+        const mm = Math.floor(left / 60), ss = String(left % 60).padStart(2, "0");
+        li.innerHTML =
+          `<div class="rinfo"><div class="rname">${escapeHtml(t.name)}</div>` +
+          `<div class="rmeta">#${id} · bank ${usdOf(t.bank)} · ${t.gamesPlayed} plays · auto-close ${mm}:${ss}</div></div>`;
+        const btn = document.createElement("button");
+        btn.className = "btn btn-ghost";
+        btn.textContent = "Close & refund";
+        btn.onclick = () => closeTable(id);
+        li.appendChild(btn);
+        list.appendChild(li);
+      }
+    } catch (e) {}
+  }
+
+  async function autoCloseTable(id) {
+    if (closingTables.has(id)) return;
+    closingTables.add(id);
+    try {
+      const tx = await contract.closeHostRoom(id, { gasLimit: await estGas("closeHostRoom", [id], null, 130000n) });
+      await tx.wait();
+      toast("Idle table closed — bank refunded to your balance.", "ok");
+      refreshBalances(); refreshMyTables();
+    } catch (e) { /* someone else may have closed it already */ }
+    finally { closingTables.delete(id); }
+  }
+
+  async function closeTable(id) {
+    if (!ready()) return;
+    try {
+      toast("Closing the table… confirm in MetaMask");
+      const tx = await contract.closeHostRoom(id, { gasLimit: await estGas("closeHostRoom", [id], null, 130000n) });
+      await tx.wait();
+      toast("Table closed — bank refunded.", "ok");
+      refreshBalances(); refreshMyTables();
+    } catch (e) { txErr(e); }
+  }
+
   // Sliders run in USD ($10–$500); the ETH amount is computed from the live price.
   function setupSliders() {
-    for (const id of ["house-bet", "bet-input", "deposit-input"]) {
+    for (const id of ["house-bet", "bet-input", "deposit-input", "host-bank"]) {
       const s = $(id);
       if (!s) continue;
       s.min = "10"; s.max = "500"; s.step = "5";
-      if (+s.value < 10) s.value = id === "deposit-input" ? "50" : "25";
+      if (+s.value < 10) s.value = id === "deposit-input" ? "50" : id === "host-bank" ? "100" : "25";
       setSliderUsd(id);
     }
   }
@@ -1032,12 +1210,20 @@
     $("withdraw-btn").onclick = withdrawAll;
     $("create-room-btn").onclick = createRoom;
     $("play-house-btn").onclick = playHouse;
+    $("create-host-btn").onclick = createHostTable;
+    $("play-table-btn").onclick = playTable;
+    $("host-table-copy").onclick = () => {
+      const inp = $("host-table-link"); inp.select();
+      navigator.clipboard?.writeText(inp.value).then(() => toast("Table link copied!", "ok"), () => {});
+    };
     $("refresh-rooms").onclick = () => refreshRooms();
 
-    // House + create-room stake sliders (USD)
+    // House + create-room + host-table stake sliders (USD)
     $("house-bet").oninput = () => setSliderUsd("house-bet");
     $("bet-input").oninput = () => setSliderUsd("bet-input");
     $("deposit-input").oninput = () => setSliderUsd("deposit-input");
+    $("host-bank").oninput = () => setSliderUsd("host-bank");
+    $("table-bet").oninput = () => setSliderUsd("table-bet");
     // Join raise slider (USD): at/near the host's bet use the exact amount, else convert
     $("join-bet").oninput = (e) => {
       const u = +e.target.value;
@@ -1078,15 +1264,22 @@
     };
 
     if (window.ethereum) {
-      window.ethereum.on?.("accountsChanged", () => location.reload());
-      window.ethereum.on?.("chainChanged", () => location.reload());
+      // Don't reload during the initial connect (that caused the "click twice"
+      // bug). Only reload on a *real* account/network change after connecting.
+      window.ethereum.on?.("accountsChanged", (accs) => {
+        if (connecting) return;
+        const next = (accs && accs[0]) || null;
+        if (account && next && eq(next, account)) return; // same account → ignore
+        location.reload();
+      });
+      window.ethereum.on?.("chainChanged", () => { if (!connecting) location.reload(); });
     }
     // learn our public share host (if the server was started with PUBLIC_HOST)
     fetch("/api/info").then((r) => r.json()).then((d) => { if (d.publicHost) window.__PUBLIC_HOST = d.publicHost; }).catch(() => {});
 
     // periodic lobby refresh + TV reveal reconciler (safety net for missed events)
     setInterval(() => {
-      if (chainOK && read) { refreshRooms(); refreshBalances(); refreshHouse(); refreshPlayers(); reconcile(); }
+      if (chainOK && read) { refreshRooms(); refreshBalances(); refreshHouse(); refreshPlayers(); refreshMyTables(); reconcile(); }
     }, 3000);
   }
 

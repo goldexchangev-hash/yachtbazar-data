@@ -1,5 +1,13 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const { time } = require("@nomicfoundation/hardhat-network-helpers");
+
+function hostFlip(rcpt, game) {
+  const ev = rcpt.logs
+    .map((l) => { try { return game.interface.parseLog(l); } catch { return null; } })
+    .find((e) => e && e.name === "HostFlip");
+  return ev.args;
+}
 
 async function deployFixture() {
   const [deployer, treasury, alice, bob, carol, dave] = await ethers.getSigners();
@@ -138,5 +146,76 @@ describe("CoinFlipBetting (prevrandao, no oracle)", function () {
     for (const id of [1, 2, 3, 4]) expect((await game.getRoom(id)).status).to.equal(2);
     expect(await game.totalGamesPlayed()).to.equal(4n);
     expect(await game.totalWagered()).to.equal(bet * 8n);
+  });
+
+  // ----------------------------- Host tables ----------------------------- //
+
+  it("host table: create escrows the bank and lists as open", async function () {
+    const { game, alice } = await deployFixture();
+    await game.connect(alice).deposit({ value: ethers.parseEther("0.2") });
+    await game.connect(alice).createHostRoom(ethers.parseEther("0.15"), "Alice's Table"); // id 1
+    expect(await game.balances(alice.address)).to.equal(ethers.parseEther("0.05"));
+    const open = await game.getOpenHostRooms();
+    expect(open.length).to.equal(1);
+    expect(open[0].creator).to.equal(alice.address);
+    expect(open[0].bank).to.equal(ethers.parseEther("0.15"));
+    expect(open[0].open).to.equal(true);
+  });
+
+  it("host table: player flips vs the bank; creator keeps the 10% rake; ETH conserved", async function () {
+    const { game, alice, bob } = await deployFixture();
+    const bet = ethers.parseEther("0.01");
+    await game.connect(alice).deposit({ value: ethers.parseEther("0.1") });
+    await game.connect(bob).deposit({ value: bet });
+    await game.connect(alice).createHostRoom(ethers.parseEther("0.1"), "T"); // id 1, alice balance -> 0
+
+    const args = hostFlip(await (await game.connect(bob).playHostRoom(1, bet)).wait(), game);
+    const pot = bet * 2n, fee = pot / 10n, payout = pot - fee;
+    expect(args.fee).to.equal(fee);
+    expect(args.player).to.equal(bob.address);
+
+    // creator always pockets the fee
+    expect(await game.balances(alice.address)).to.equal(fee);
+    const hr = await game.getHostRoom(1);
+    if (args.playerWon) {
+      expect(args.payout).to.equal(payout);
+      expect(await game.balances(bob.address)).to.equal(payout);
+      expect(hr.bank).to.equal(ethers.parseEther("0.1") - bet); // lost its matched stake
+    } else {
+      expect(await game.balances(bob.address)).to.equal(0n);
+      expect(hr.bank).to.equal(ethers.parseEther("0.1") - bet + payout); // won it back
+    }
+    expect(hr.gamesPlayed).to.equal(1n);
+    expect(await game.totalWagered()).to.equal(pot);
+  });
+
+  it("host table: can't play your own table; bet can't exceed the bank", async function () {
+    const { game, alice, bob } = await deployFixture();
+    await game.connect(alice).deposit({ value: ethers.parseEther("0.05") });
+    await game.connect(alice).createHostRoom(ethers.parseEther("0.02"), "T"); // bank 0.02
+    await expect(game.connect(alice).playHostRoom(1, ethers.parseEther("0.01"))).to.be.revertedWithCustomError(game, "CannotPlayOwnTable");
+    await game.connect(bob).deposit({ value: ethers.parseEther("0.05") });
+    await expect(game.connect(bob).playHostRoom(1, ethers.parseEther("0.03"))).to.be.revertedWithCustomError(game, "BankTooLow");
+  });
+
+  it("host table: creator closes anytime and is refunded; double close reverts", async function () {
+    const { game, alice, bob } = await deployFixture();
+    await game.connect(alice).deposit({ value: ethers.parseEther("0.1") });
+    await game.connect(alice).createHostRoom(ethers.parseEther("0.1"), "T"); // id 1
+    await expect(game.connect(bob).closeHostRoom(1)).to.be.revertedWithCustomError(game, "HostRoomStillActive");
+    await game.connect(alice).closeHostRoom(1);
+    expect(await game.balances(alice.address)).to.equal(ethers.parseEther("0.1")); // bank refunded
+    expect((await game.getHostRoom(1)).open).to.equal(false);
+    await expect(game.connect(alice).closeHostRoom(1)).to.be.revertedWithCustomError(game, "HostRoomNotOpen");
+  });
+
+  it("host table: anyone can close + refund the creator after the idle timeout", async function () {
+    const { game, alice, bob } = await deployFixture();
+    await game.connect(alice).deposit({ value: ethers.parseEther("0.1") });
+    await game.connect(alice).createHostRoom(ethers.parseEther("0.1"), "T"); // id 1
+    await time.increase(301); // > HOST_TIMEOUT (5 min)
+    await game.connect(bob).closeHostRoom(1); // a stranger can now reclaim it for the creator
+    expect(await game.balances(alice.address)).to.equal(ethers.parseEther("0.1"));
+    expect((await game.getHostRoom(1)).open).to.equal(false);
   });
 });

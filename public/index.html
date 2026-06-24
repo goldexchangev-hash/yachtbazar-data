@@ -15,7 +15,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=19" />
+    <link rel="stylesheet" href="styles.css?v=20" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -161,6 +161,20 @@
           <button id="play-house-btn" class="btn btn-primary btn-block">🪙 Flip vs House</button>
         </div>
 
+        <!-- Play against a specific host table (shown when you open a table link) -->
+        <div class="card play-house" id="play-table" hidden>
+          <div class="ph-head">
+            <h2 class="card-title">🏦 <span id="pt-name">Host table</span></h2>
+            <span class="ph-bankroll muted">Bank: <strong id="pt-bank">—</strong></span>
+          </div>
+          <p class="muted ph-note" id="pt-sub">Flip against this table — you're HEADS. The host keeps 10%.</p>
+          <div class="slider-wrap">
+            <input id="table-bet" class="slider" type="range" min="10" max="500" step="5" value="25" />
+            <div class="slider-val"><strong id="table-bet-val">$25</strong><span class="eth-sub" id="table-bet-eth"></span></div>
+          </div>
+          <button id="play-table-btn" class="btn btn-primary btn-block">🪙 Flip vs this table</button>
+        </div>
+
         <!-- Host tools (owner only): adjust limits, fund house, redeploy -->
         <div class="card host-tools" id="host-tools" hidden>
           <details class="dropdown">
@@ -218,6 +232,34 @@
               <button id="copy-link-btn" class="btn btn-ghost">Copy</button>
             </div>
           </div>
+        </div>
+
+        <!-- Host your own table (be-your-own-house link) -->
+        <div class="card">
+          <h2 class="card-title">🏦 Host your own table</h2>
+          <p class="muted ph-note">Share one link — anyone who opens it flips against <strong>your</strong> bank for any amount they pick. You're the house: you keep the 10% rake. Auto-refunds you if it sits idle for 5 minutes.</p>
+          <label class="field-label" for="host-table-name">Table name</label>
+          <input id="host-table-name" class="input" type="text" maxlength="24" placeholder="My Casino" />
+          <label class="field-label">Bank you put up <span class="muted">· $10–$500</span></label>
+          <div class="slider-wrap">
+            <input id="host-bank" class="slider" type="range" min="10" max="500" step="5" value="100" />
+            <div class="slider-val"><strong id="host-bank-val">$100</strong><span class="eth-sub" id="host-bank-eth"></span></div>
+          </div>
+          <button id="create-host-btn" class="btn btn-primary btn-block">Create host game link</button>
+          <div id="host-table-share" class="share-box hidden">
+            <span class="muted">Share this link — players flip against your bank:</span>
+            <div class="share-row">
+              <input id="host-table-link" class="input share-input" readonly />
+              <button id="host-table-copy" class="btn btn-ghost">Copy</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Your open tables (manage / close — auto-closes after 5 min idle) -->
+        <div class="card hidden" id="my-tables-card">
+          <h2 class="card-title">🏦 Your tables <span class="pill" id="my-tables-count">0</span></h2>
+          <p class="muted" style="margin: 2px 0 8px; font-size: 12px;">Auto-closes &amp; refunds your bank after 5 min with no plays (keep this tab open). Or close one yourself anytime.</p>
+          <ul id="my-tables-list" class="rooms-list"></ul>
         </div>
 
         <!-- Players + win/loss records (derived from on-chain history) -->
@@ -341,10 +383,10 @@
     </div>
 
     <script src="vendor/ethers.umd.min.js"></script>
-    <script src="config.js?v=19"></script>
-    <script src="contract.js?v=19"></script>
-    <script src="chiptune.js?v=19"></script>
-    <script src="tv.js?v=19"></script>
-    <script src="app.js?v=19"></script>
+    <script src="config.js?v=20"></script>
+    <script src="contract.js?v=20"></script>
+    <script src="chiptune.js?v=20"></script>
+    <script src="tv.js?v=20"></script>
+    <script src="app.js?v=20"></script>
   </body>
 </html>

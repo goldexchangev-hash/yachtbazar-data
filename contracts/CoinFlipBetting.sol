@@ -84,6 +84,32 @@ contract CoinFlipBetting {
     uint256 public houseBankroll;
 
     // --------------------------------------------------------------------- //
+    //  Host tables (be-your-own-house links)
+    // --------------------------------------------------------------------- //
+
+    /// @notice A personal "house" table: the creator escrows a bank, and anyone
+    ///         with the link flips against it for any amount up to the bank. The
+    ///         creator is the house and collects the 10% rake. If a table sees no
+    ///         play for HOST_TIMEOUT it can be closed by anyone and the remaining
+    ///         bank is refunded to the creator.
+    struct HostRoom {
+        uint256 id;
+        string name;
+        address creator; // the personal house / bank owner
+        uint256 bank; // remaining escrowed funds backing player bets
+        uint256 lastActivity; // create-or-last-flip timestamp (idle-timeout anchor)
+        uint256 gamesPlayed;
+        bool open;
+    }
+
+    /// @notice Idle window before a host table can be closed + refunded by anyone.
+    uint256 public constant HOST_TIMEOUT = 5 minutes;
+
+    uint256 public nextHostRoomId = 1;
+    mapping(uint256 => HostRoom) public hostRooms;
+    uint256[] private _hostRoomIds;
+
+    // --------------------------------------------------------------------- //
     //  Events
     // --------------------------------------------------------------------- //
 
@@ -98,6 +124,9 @@ contract CoinFlipBetting {
     event HouseWithdrawn(uint256 amount, uint256 bankroll);
     event HouseGameStarted(uint256 indexed roomId, address indexed player, uint256 betAmount);
     event FlipSettled(uint256 indexed roomId, address indexed winner, bool headsWon, uint256 payout, uint256 fee);
+    event HostRoomCreated(uint256 indexed roomId, address indexed creator, uint256 bank, string name);
+    event HostFlip(uint256 indexed roomId, address indexed player, uint256 betAmount, bool playerWon, uint256 payout, uint256 fee);
+    event HostRoomClosed(uint256 indexed roomId, uint256 refund);
 
     // --------------------------------------------------------------------- //
     //  Errors
@@ -115,6 +144,10 @@ contract CoinFlipBetting {
     error TransferFailed();
     error UnknownRoom();
     error HouseBankrollLow();
+    error HostRoomNotOpen();
+    error CannotPlayOwnTable();
+    error BankTooLow();
+    error HostRoomStillActive();
 
     // --------------------------------------------------------------------- //
     //  Constructor
@@ -354,8 +387,109 @@ contract CoinFlipBetting {
     }
 
     // --------------------------------------------------------------------- //
+    //  Host tables: create / play / close
+    // --------------------------------------------------------------------- //
+
+    /// @notice Open a personal "house" table funded with `bank` from your balance.
+    ///         Share the link; anyone can flip against your bank for any amount.
+    function createHostRoom(uint256 bank, string calldata name) external returns (uint256 roomId) {
+        if (bank < MIN_BET) revert BetTooSmall();
+        if (balances[msg.sender] < bank) revert InsufficientBalance();
+
+        balances[msg.sender] -= bank; // escrow the bank
+
+        roomId = nextHostRoomId++;
+        hostRooms[roomId] = HostRoom({
+            id: roomId,
+            name: bytes(name).length == 0 ? "Host Table" : name,
+            creator: msg.sender,
+            bank: bank,
+            lastActivity: block.timestamp,
+            gamesPlayed: 0,
+            open: true
+        });
+        _hostRoomIds.push(roomId);
+
+        emit HostRoomCreated(roomId, msg.sender, bank, hostRooms[roomId].name);
+    }
+
+    /// @notice Flip against a host table for `betAmount`. You are "heads"; the table
+    ///         creator (the house) is "tails" and matches your bet from their bank.
+    ///         The creator always collects the 10% rake. Settles instantly.
+    function playHostRoom(uint256 roomId, uint256 betAmount) external returns (bool playerWon) {
+        HostRoom storage hr = hostRooms[roomId];
+        if (hr.id == 0 || !hr.open) revert HostRoomNotOpen();
+        if (msg.sender == hr.creator) revert CannotPlayOwnTable();
+        if (betAmount < MIN_BET) revert BetTooSmall();
+        if (betAmount > maxBet) revert BetTooHigh();
+        if (hr.bank < betAmount) revert BankTooLow(); // creator must be able to cover it
+        if (balances[msg.sender] < betAmount) revert InsufficientBalance();
+
+        balances[msg.sender] -= betAmount; // your stake
+        hr.bank -= betAmount; // the creator's matching stake
+
+        uint256 pot = betAmount * 2;
+        uint256 fee = (pot * HOUSE_FEE_BPS) / BPS_DENOMINATOR;
+        uint256 payout = pot - fee;
+
+        // The table creator is the house and always keeps the 10% rake.
+        balances[hr.creator] += fee;
+
+        // Even => heads (the player) wins.
+        playerWon = (_random(roomId, msg.sender, hr.creator) % 2 == 0);
+        if (playerWon) {
+            balances[msg.sender] += payout; // you take the pot (minus rake)
+        } else {
+            hr.bank += payout; // the house keeps it in the bank
+        }
+
+        hr.lastActivity = block.timestamp;
+        hr.gamesPlayed += 1;
+        totalGamesPlayed += 1;
+        totalWagered += pot;
+
+        emit HostFlip(roomId, msg.sender, betAmount, playerWon, playerWon ? payout : 0, fee);
+    }
+
+    /// @notice Close a host table and refund its remaining bank to the creator.
+    ///         The creator may close anytime; anyone else only after HOST_TIMEOUT of
+    ///         no play (so an abandoned table auto-frees the creator's funds).
+    function closeHostRoom(uint256 roomId) external {
+        HostRoom storage hr = hostRooms[roomId];
+        if (hr.id == 0 || !hr.open) revert HostRoomNotOpen();
+        if (msg.sender != hr.creator && block.timestamp < hr.lastActivity + HOST_TIMEOUT) {
+            revert HostRoomStillActive();
+        }
+        hr.open = false;
+        uint256 refund = hr.bank;
+        hr.bank = 0;
+        if (refund > 0) balances[hr.creator] += refund; // withdrawable, no direct send
+        emit HostRoomClosed(roomId, refund);
+    }
+
+    // --------------------------------------------------------------------- //
     //  Views (lobby / UI helpers)
     // --------------------------------------------------------------------- //
+
+    function getHostRoom(uint256 roomId) external view returns (HostRoom memory) {
+        return hostRooms[roomId];
+    }
+
+    function hostRoomCount() external view returns (uint256) {
+        return _hostRoomIds.length;
+    }
+
+    function getOpenHostRooms() external view returns (HostRoom[] memory openTables) {
+        uint256 n = _hostRoomIds.length;
+        uint256 count;
+        for (uint256 i; i < n; ++i) if (hostRooms[_hostRoomIds[i]].open) count++;
+        openTables = new HostRoom[](count);
+        uint256 j;
+        for (uint256 i; i < n; ++i) {
+            HostRoom storage hr = hostRooms[_hostRoomIds[i]];
+            if (hr.open) openTables[j++] = hr;
+        }
+    }
 
     function getRoom(uint256 roomId) external view returns (Room memory) {
         return rooms[roomId];
