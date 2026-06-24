@@ -297,6 +297,13 @@ a { color: var(--cyan); text-decoration: none; }
 
 /* Play vs House */
 .play-house { border-color: rgba(255, 210, 63, 0.35); }
+/* Breathing glow so Quick play is clearly its own thing — not mistaken for the
+   deposit slider sitting right above it. */
+#play-house { animation: phBreathe 2.6s ease-in-out infinite; }
+@keyframes phBreathe {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(255, 210, 63, 0.22), 0 0 14px rgba(255, 210, 63, 0.10); border-color: rgba(255, 210, 63, 0.30); }
+  50%      { box-shadow: 0 0 0 1px rgba(255, 210, 63, 0.55), 0 0 28px rgba(255, 210, 63, 0.35); border-color: rgba(255, 210, 63, 0.78); }
+}
 .ph-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .ph-head .card-title { margin-bottom: 0; }
 .ph-bankroll { font-size: 12px; white-space: nowrap; }
@@ -633,7 +640,7 @@ a { color: var(--cyan); text-decoration: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .bg-glow, .scanlines, .idle-logo, .tuning-text, .waiting-dots span, .coin.spin, .chat-dot, .idle-sub,
-  #layer-result.tier-big, #layer-result.tier-mega, .tv-screen.quake, .tv-screen.quake-hard, .eth-ticker-track { animation: none !important; }
+  #layer-result.tier-big, #layer-result.tier-mega, .tv-screen.quake, .tv-screen.quake-hard, .eth-ticker-track, #play-house { animation: none !important; }
   .tv-screen.quake, .tv-screen.quake-hard { transform: none !important; }
   .coin { transition: none !important; }
 }
