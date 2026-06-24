@@ -1664,6 +1664,10 @@
     fetchEthUsd().then(() => { setupSliders(); if (read && chainOK) { refreshBalances(); refreshStats(); refreshHouse(); refreshRooms(); } });
     setInterval(() => fetchEthUsd().then(() => { setupSliders(); if (read && chainOK) { refreshBalances(); refreshStats(); refreshHouse(); refreshRooms(); } }), 60000);
     $("connect-btn").classList.add("cta-pulse");
+    // On a phone with no injected wallet, nudge users into the MetaMask browser.
+    if (/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) && !window.ethereum) {
+      $("mobile-hint").classList.remove("hidden");
+    }
     const remoteHost = location.hostname && !/^(localhost|127\.|0\.0\.0\.0|\[?::1\]?)/.test(location.hostname);
     if (deployment.address && deployment.chainId === 31337 && remoteHost) {
       banner(

@@ -15,7 +15,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=47" />
+    <link rel="stylesheet" href="styles.css?v=48" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -28,7 +28,7 @@
         <span class="brand-tv">📺</span>
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v4.7</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v4.8</span>
       </div>
       <div class="topbar-right">
         <button id="sound-btn" class="btn btn-ghost" title="Play / silence background music">🔇 Music</button>
@@ -45,6 +45,11 @@
 
     <!-- Wrong-network / not-deployed / hint banner (in normal flow) -->
     <div id="setup-banner" class="setup-banner hidden"></div>
+
+    <!-- Mobile-only: nudge users into the MetaMask in-app browser to bet -->
+    <div id="mobile-hint" class="mobile-hint hidden">
+      📱 On a phone? Betting only works inside the <strong>MetaMask app's browser</strong>. Tap <strong>Connect Wallet</strong> to open it there — or in MetaMask, use 🌐 Browser and visit this site.
+    </div>
 
     <!-- Shown when the connected wallet IS the house (treasury) -->
     <div id="house-wallet-banner" class="house-banner hidden">
@@ -483,10 +488,10 @@
     </div>
 
     <script src="vendor/ethers.umd.min.js"></script>
-    <script src="config.js?v=47"></script>
-    <script src="contract.js?v=47"></script>
-    <script src="chiptune.js?v=47"></script>
-    <script src="tv.js?v=47"></script>
-    <script src="app.js?v=47"></script>
+    <script src="config.js?v=48"></script>
+    <script src="contract.js?v=48"></script>
+    <script src="chiptune.js?v=48"></script>
+    <script src="tv.js?v=48"></script>
+    <script src="app.js?v=48"></script>
   </body>
 </html>

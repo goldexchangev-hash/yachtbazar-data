@@ -457,6 +457,8 @@ a { color: var(--cyan); text-decoration: none; }
 .setup-banner { position: relative; z-index: 3; margin: 2px auto 0; width: fit-content; max-width: min(760px, 92vw); background: rgba(57, 231, 255, 0.1); border: 1px solid rgba(57, 231, 255, 0.3); color: #d7ecff; padding: 9px 18px; border-radius: 999px; font-weight: 600; font-size: 13.5px; text-align: center; box-shadow: var(--shadow); }
 .setup-banner.warn { background: rgba(255, 210, 63, 0.14); border-color: rgba(255, 210, 63, 0.5); color: #fff0c2; }
 .house-banner { position: relative; z-index: 3; margin: 8px auto 0; width: fit-content; max-width: min(820px, 94vw); background: rgba(255, 174, 0, 0.14); border: 1px solid rgba(255, 174, 0, 0.5); color: #ffe6b0; padding: 9px 18px; border-radius: 14px; font-weight: 600; font-size: 13.5px; text-align: center; box-shadow: var(--shadow); }
+.mobile-hint { position: relative; z-index: 3; margin: 8px auto 0; max-width: min(560px, 92vw); background: rgba(118, 69, 217, 0.16); border: 1px solid rgba(150, 110, 245, 0.55); color: #e7ddff; padding: 10px 16px; border-radius: 14px; font-weight: 500; font-size: 13px; line-height: 1.45; text-align: center; box-shadow: var(--shadow); }
+.mobile-hint strong { color: #fff; }
 
 /* Host earnings dashboard (house wallet only) */
 .host-stats { border-color: rgba(255, 210, 63, 0.3); background: linear-gradient(180deg, rgba(255, 210, 63, 0.06), rgba(255, 255, 255, 0.02)); }
