@@ -82,9 +82,10 @@ describe("CoinFlipBetting (prevrandao, no oracle)", function () {
     const { game, deployer, alice } = await deployFixture();
     await game.connect(alice).deposit({ value: ethers.parseEther("1") });
     await expect(game.connect(alice).createRoom(1000n, "dust")).to.be.revertedWithCustomError(game, "BetTooSmall");
-    await expect(game.connect(alice).createRoom(ethers.parseEther("0.05"), "big")).to.be.revertedWithCustomError(game, "BetTooHigh");
-    await game.connect(deployer).setMaxBet(ethers.parseEther("0.1"));
-    await expect(game.connect(alice).createRoom(ethers.parseEther("0.05"), "ok")).to.not.be.reverted;
+    // default maxBet is 1 ETH, so 2 ETH is over the cap
+    await expect(game.connect(alice).createRoom(ethers.parseEther("2"), "big")).to.be.revertedWithCustomError(game, "BetTooHigh");
+    await game.connect(deployer).setMaxBet(ethers.parseEther("0.5"));
+    await expect(game.connect(alice).createRoom(ethers.parseEther("0.5"), "ok")).to.not.be.reverted;
   });
 
   it("refunds on cancel; blocks self-join and over-betting", async function () {
