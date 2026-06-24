@@ -548,6 +548,17 @@ a { color: var(--cyan); text-decoration: none; }
     0 0 0 4px rgba(0,0,0,0.45),
     0 0 26px var(--c-glow);
 }
+/* Embossed faceted Ethereum diamond stamped on the heads face — tinted in
+   black/white relief so it reads on top of any metal skin. */
+.coin-face .eth-logo {
+  width: 42%; height: auto; display: block; margin-bottom: 5px;
+  filter: drop-shadow(0 1.5px 0 rgba(255,255,255,0.5)) drop-shadow(0 -1px 0 rgba(0,0,0,0.35));
+}
+.eth-logo polygon { stroke: rgba(0,0,0,0.22); stroke-width: 3; stroke-linejoin: round; }
+.eth-logo .e2, .eth-logo .e4 { fill: rgba(0,0,0,0.55); }   /* dark left faces  */
+.eth-logo .e1, .eth-logo .e3 { fill: rgba(0,0,0,0.36); }   /* mid right faces  */
+.eth-logo .e5, .eth-logo .e6 { fill: rgba(255,255,255,0.34); } /* bright inner faces */
+
 /* tails reads as the "reverse" of the same minted coin */
 .coin-tails { filter: hue-rotate(18deg) brightness(0.94) saturate(0.85); }
 .coin-face small { font-family: "Press Start 2P", monospace; font-size: 9px; color: var(--c-ink); text-shadow: 0 1px 0 rgba(255,255,255,0.4); }
