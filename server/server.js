@@ -41,6 +41,18 @@ const wss = new WebSocketServer({ server, maxPayload: 64 * 1024 });
 /** ws -> { address } */
 const clients = new Map();
 
+// Short-term chat history kept in memory so newcomers (and a host who steps away)
+// always load the recent conversation. Bounded by age AND count; not durable —
+// a server restart clears it, which is fine for "recent chat".
+const chatHistory = [];
+const CHAT_TTL_MS = 2 * 60 * 60 * 1000; // keep ~2 hours
+const CHAT_MAX = 200;                    // and at most 200 lines
+function pruneChat() {
+  const cutoff = Date.now() - CHAT_TTL_MS;
+  while (chatHistory.length && chatHistory[0].ts < cutoff) chatHistory.shift();
+  if (chatHistory.length > CHAT_MAX) chatHistory.splice(0, chatHistory.length - CHAT_MAX);
+}
+
 function activePlayers() {
   const seen = new Set();
   const list = [];
@@ -80,6 +92,12 @@ wss.on("connection", (ws) => {
     if (data.type === "hello" && typeof data.address === "string") {
       clients.get(ws).address = data.address;
       broadcastPlayers();
+      // Replay recent chat so the conversation is already there when they arrive
+      // (and so a host who reconnects sees what players said while away).
+      pruneChat();
+      if (chatHistory.length && ws.readyState === ws.OPEN) {
+        ws.send(JSON.stringify({ type: "chat-history", messages: chatHistory }));
+      }
     } else if (data.type === "rooms-updated" || data.type === "flip") {
       // Relay lobby/game changes so everyone refreshes from chain instantly.
       broadcast({ type: data.type, by: clients.get(ws)?.address || null, roomId: data.roomId });
@@ -89,7 +107,10 @@ wss.on("connection", (ws) => {
       const from = clients.get(ws)?.address || null;
       const text = String(data.text || "").slice(0, 240);
       if (from && text.trim()) {
-        broadcast({ type: "chat", from, text, ts: Date.now() });
+        const line = { type: "chat", from, text, ts: Date.now() };
+        chatHistory.push({ from, text, ts: line.ts });
+        pruneChat();
+        broadcast(line);
       }
     } else if (data.type === "bet-proposal" || data.type === "bet-response") {
       // Bet negotiation between a joiner and a room creator. Clients filter by

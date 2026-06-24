@@ -442,6 +442,8 @@ kbd { font-family: ui-monospace, monospace; font-size: 11px; background: rgba(25
 .chat-line.host .chat-text { color: #8dffb0; }
 .chat-line.visitor .chat-handle { color: #ff4d4d; text-shadow: 0 0 8px rgba(255, 77, 77, 0.7); }
 .chat-line.visitor .chat-text { color: #ffb0b0; }
+.chat-line .chat-ago { color: var(--muted); opacity: 0.55; font-size: 0.82em; }
+.chat-divider { text-align: center; color: var(--muted); opacity: 0.6; font-size: 0.78em; letter-spacing: 1px; margin: 6px 0 4px; text-transform: uppercase; }
 .chat-input-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .chat-prompt { color: #39ff14; font-family: ui-monospace, monospace; font-weight: 700; }
 .chat-input {

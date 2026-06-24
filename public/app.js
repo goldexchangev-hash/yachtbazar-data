@@ -1454,7 +1454,14 @@
   }
 
   // ---------------------------------------------------------- chat (Matrix terminal)
-  function renderChatLine(from, text) {
+  function agoLabel(ts) {
+    const s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+    if (s < 60) return "now";
+    if (s < 3600) return Math.floor(s / 60) + "m";
+    if (s < 86400) return Math.floor(s / 3600) + "h";
+    return Math.floor(s / 86400) + "d";
+  }
+  function renderChatLine(from, text, ts) {
     const log = $("chat-log");
     const isHost = hostTreasury && eq(from, hostTreasury);
     const sys = log.querySelector(".chat-sys");
@@ -1468,9 +1475,25 @@
     t.className = "chat-text";
     t.textContent = " " + text;
     line.appendChild(h); line.appendChild(t);
+    if (ts) { const a = document.createElement("span"); a.className = "chat-ago"; a.textContent = " " + agoLabel(ts); line.appendChild(a); }
     log.appendChild(line);
     while (log.children.length > 80) log.removeChild(log.firstChild);
     log.scrollTop = log.scrollHeight;
+  }
+  // Replay the server's recent chat buffer when we (re)connect, so the
+  // conversation is already loaded — and a host sees what players said while away.
+  let chatHistoryLoaded = false;
+  function renderChatHistory(messages) {
+    if (chatHistoryLoaded || !Array.isArray(messages) || !messages.length) return;
+    chatHistoryLoaded = true;
+    const log = $("chat-log");
+    const sys = log.querySelector(".chat-sys");
+    if (sys) sys.remove();
+    const div = document.createElement("div");
+    div.className = "chat-divider";
+    div.textContent = "— recent chat —";
+    log.appendChild(div);
+    for (const m of messages.slice(-60)) renderChatLine(m.from, m.text, m.ts);
   }
   function sendChat() {
     const inp = $("chat-input");
@@ -1670,6 +1693,7 @@
         if (d.type === "players") { wsPlayers = d.players || []; renderRoster(); }
         else if (d.type === "rooms-updated" || d.type === "flip") { refreshRooms(); refreshPlayers(); reconcile(); }
         else if (d.type === "chat") renderChatLine(d.from, d.text);
+        else if (d.type === "chat-history") renderChatHistory(d.messages);
         else if (d.type === "bet-proposal") handleProposal(d);
         else if (d.type === "bet-response") handleProposalResponse(d);
       };
