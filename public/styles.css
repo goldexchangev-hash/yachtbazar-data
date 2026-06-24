@@ -852,6 +852,8 @@ kbd { font-family: ui-monospace, monospace; font-size: 11px; background: rgba(25
 /* Game visibility gate — one body class swaps the flip cards for the dice panel */
 body:not(.game-dice) [data-game="dice"] { display: none !important; }
 body.game-dice [data-game="flip"] { display: none !important; }
+/* …but the channel selector tiles are always visible (they're how you switch) */
+#game-nav .game-card { display: flex !important; }
 
 /* ── Crypto TV Channels — Apple home-screen icon selector ── */
 .channels { margin: 4px auto 20px; }
