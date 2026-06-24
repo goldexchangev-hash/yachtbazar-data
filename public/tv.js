@@ -43,6 +43,8 @@
       this.scoreboard = $("scoreboard");
       this.sbP1 = $("sb-p1");
       this.sbP2 = $("sb-p2");
+      this.sbP1Who = $("sb-p1-who");
+      this.sbP2Who = $("sb-p2-who");
       this.coin = $("coin");
       this.countNum = $("count-num");
       this.resultEmoji = $("result-emoji");
@@ -123,10 +125,15 @@
     setChannel(n) {
       if (this.channelNum) this.channelNum.textContent = String(n).padStart(2, "0");
     },
-    _setScoreboard(p1, p2) {
+    _setScoreboard(p1, p2, p1Heads) {
       this.scoreboard.classList.toggle("hidden", !(p1 || p2));
       if (p1) this.sbP1.textContent = SHORT(p1);
       this.sbP2.textContent = p2 ? SHORT(p2) : "WAITING…";
+      // Label each side from P1's pick; P2 always holds the opposite.
+      if (p1Heads !== undefined && this.sbP1Who && this.sbP2Who) {
+        this.sbP1Who.textContent = "P1 " + (p1Heads ? "▲ HEADS" : "▼ TAILS");
+        this.sbP2Who.textContent = (p1Heads ? "TAILS ▼" : "HEADS ▲") + " P2";
+      }
     },
 
     /* ---------------- public states ---------------- */
@@ -144,7 +151,7 @@
       this._seq++;
       this._setStatic(0.85); // loud static while we wait for a challenger
       this.setChannel(1);
-      this._setScoreboard(opts.p1, opts.p2 || null);
+      this._setScoreboard(opts.p1, opts.p2 || null, opts.p1Heads);
       if (opts.sub) $("waiting-sub").textContent = opts.sub;
       this._show("waiting");
     },
@@ -153,7 +160,7 @@
       const seq = ++this._seq;
       this._pendingReveal = null;
       this._clearConfetti();
-      this._setScoreboard(opts.p1, opts.p2);
+      this._setScoreboard(opts.p1, opts.p2, opts.p1Heads);
       this.setChannel(2);
 
       // 1) BETS ARE IN — tuning static

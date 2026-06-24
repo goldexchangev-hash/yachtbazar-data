@@ -521,7 +521,7 @@
       toast("Room created!", "ok");
       if (id) showShareLink(id);
       activeRoomId = id;
-      TV.waiting({ p1: account, sub: "Share your link · waiting for a challenger" });
+      TV.waiting({ p1: account, p1Heads: heads, sub: "Share your link · waiting for a challenger" });
       refreshBalances(); refreshRooms();
       wsSend({ type: "rooms-updated", roomId: id });
     } catch (e) { txErr(e); }
@@ -537,7 +537,7 @@
     try {
       activeRoomId = id;
       lastRevealed = null;
-      TV.startFlip({ p1: room ? room.creator : null, p2: account });
+      TV.startFlip({ p1: room ? room.creator : null, p2: account, p1Heads: room ? room.creatorHeads : true });
       const tx = await contract.joinRoom(id, { gasLimit: await estGas("joinRoom", [id], null, 700000n) });
       await tx.wait();
       toast("You're in! Flipping…", "ok");
@@ -580,7 +580,7 @@
       activeRoomId = predicted.toString();
       lastRevealed = null;
       toast("Flipping vs the house… confirm in MetaMask");
-      TV.startFlip({ p1: account, p2: "HOUSE" });
+      TV.startFlip({ p1: account, p2: "HOUSE", p1Heads: wantsHeads });
       const tx = await contract.playHouse(bet, wantsHeads, { gasLimit: await estGas("playHouse", [bet, wantsHeads], null, 700000n) });
       const rcpt = await tx.wait();
       const ev = rcpt.logs.map((l) => safeParse(l)).find((p) => p && p.name === "HouseGameStarted");
@@ -700,7 +700,7 @@
       try { predicted = await contract.playHostRoom.staticCall(id, bet, wantsHeads); } catch (e) { return txErr(e); }
       activeRoomId = null; lastRevealed = null;
       toast("Flipping vs the table… confirm in MetaMask");
-      TV.startFlip({ p1: account, p2: "HOST" });
+      TV.startFlip({ p1: account, p2: "HOST", p1Heads: wantsHeads });
       const tx = await contract.playHostRoom(id, bet, wantsHeads, { gasLimit: await estGas("playHostRoom", [id, bet, wantsHeads], null, 400000n) });
       const rcpt = await tx.wait();
       const ev = rcpt.logs.map((l) => safeParse(l)).find((p) => p && p.name === "HostFlip");
@@ -1069,7 +1069,7 @@
       refreshRooms();
       if (activeRoomId === id) {
         // someone joined MY open room -> start the broadcast for me
-        read.getRoom(id).then((r) => TV.startFlip({ p1: r.player1, p2: r.player2 }));
+        read.getRoom(id).then((r) => TV.startFlip({ p1: r.player1, p2: r.player2, p1Heads: r.creatorHeads }));
       }
     });
     read.on(read.filters.RoomCreated(), () => refreshRooms());
