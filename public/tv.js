@@ -263,6 +263,9 @@
       this.resultCoin.textContent = "RESULT: " + res.side;
       this._animateMoney(res);
       this._show("result");
+      // The outcome is now on screen — release the balance so it can update
+      // without spoiling win/loss before the animation reached this point.
+      try { window.__onTvReveal && window.__onTvReveal(res); } catch (e) {}
 
       if (layer.classList.contains("win")) {
         this._celebrate(layer, tier);

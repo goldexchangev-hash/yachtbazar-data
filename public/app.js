@@ -733,10 +733,27 @@
     await Promise.all([refreshBalances(), refreshRooms(), refreshStats(), refreshHouse(), refreshPlayers(), refreshMyTables(), refreshMyHistory(), refreshHostPanel()]);
   }
 
+  // While a flip/dice result is animating, freeze the in-game balance display so
+  // it doesn't move (up=won / down=lost) and spoil the reveal. Unlocked when the
+  // TV actually shows the result (tv.js fires window.__onTvReveal).
+  let revealLock = false, revealLockTimer = 0;
+  function lockReveal() {
+    revealLock = true;
+    clearTimeout(revealLockTimer);
+    revealLockTimer = setTimeout(() => { revealLock = false; refreshBalances(); }, 20000); // safety
+  }
+  function unlockReveal() {
+    if (!revealLock) return;
+    revealLock = false;
+    clearTimeout(revealLockTimer);
+    refreshBalances();
+  }
+  window.__onTvReveal = unlockReveal;
+
   async function refreshBalances() {
     try {
       const [gb, wb] = await Promise.all([read.balances(account), provider.getBalance(account)]);
-      $("game-balance").textContent = usdOf(gb);
+      if (!revealLock) $("game-balance").textContent = usdOf(gb); // hold until the result is revealed
       $("wallet-balance").textContent = usdOf(wb);
       walletWei = wb;
       syncDepositSlider();
@@ -900,6 +917,7 @@
   async function doJoinRoom(id, room, bet) {
     activeRoomId = id;
     lastRevealed = null;
+    lockReveal();
     TV.startFlip({ p1: room ? room.creator : null, p2: account, p1Heads: room ? room.creatorHeads : true });
     tvPending(true);
     toast("Sending your bet… confirm in your wallet", "ok");
@@ -913,6 +931,7 @@
     } catch (e) {
       tvPending(false);
       activeRoomId = null;
+      unlockReveal();
       TV.idle("Deposit ETH, then create or join a room");
       txErr(e);
     }
@@ -940,6 +959,7 @@
     // moment they accept, so the wait for the wallet popup isn't a dead screen.
     lastRevealed = null;
     activeRoomId = null;
+    lockReveal();
     TV.startFlip({ p1: account, p2: "HOUSE", p1Heads: wantsHeads });
     tvPending(true);
     toast("Sending your bet… confirm in your wallet", "ok");
@@ -949,7 +969,7 @@
       try {
         predicted = await contract.playHouse.staticCall(bet, wantsHeads);
       } catch (e) {
-        tvPending(false); TV.idle("Deposit ETH, then create or join a room");
+        tvPending(false); unlockReveal(); TV.idle("Deposit ETH, then create or join a room");
         return txErr(e);
       }
       activeRoomId = predicted.toString();
@@ -965,6 +985,7 @@
     } catch (e) {
       tvPending(false);
       activeRoomId = null;
+      unlockReveal();
       TV.idle("Deposit ETH, then create or join a room");
       txErr(e);
     }
@@ -1068,13 +1089,14 @@
 
   async function doPlayTable(id, bet, wantsHeads) {
     activeRoomId = null; lastRevealed = null;
+    lockReveal();
     TV.startFlip({ p1: account, p2: "HOST", p1Heads: wantsHeads });
     tvPending(true);
     toast("Sending your bet… confirm in your wallet", "ok");
     try {
       let predicted;
       try { predicted = await contract.playHostRoom.staticCall(id, bet, wantsHeads); }
-      catch (e) { tvPending(false); TV.idle("Deposit ETH, then create or join a room"); return txErr(e); }
+      catch (e) { tvPending(false); unlockReveal(); TV.idle("Deposit ETH, then create or join a room"); return txErr(e); }
       const tx = await contract.playHostRoom(id, bet, wantsHeads, { gasLimit: 500000n });
       const rcpt = await tx.wait();
       tvPending(false);
@@ -1097,6 +1119,7 @@
       refreshBalances(); refreshTableInfo(); refreshPlayers(); refreshMyHistory();
     } catch (e) {
       tvPending(false);
+      unlockReveal();
       TV.idle("Deposit ETH, then create or join a room");
       txErr(e);
     }
@@ -1538,6 +1561,7 @@
       refreshRooms();
       if (activeRoomId === id) {
         // someone joined MY open room -> start the broadcast for me
+        lockReveal();
         read.getRoom(id).then((r) => TV.startFlip({ p1: r.player1, p2: r.player2, p1Heads: r.creatorHeads }));
       }
     });
