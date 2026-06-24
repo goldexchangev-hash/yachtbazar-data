@@ -854,7 +854,8 @@ body:not(.game-dice) [data-game="dice"] { display: none !important; }
 body.game-dice [data-game="flip"] { display: none !important; }
 
 /* ── Channel switcher ── */
-.channel-bar { position: relative; display: flex; gap: 0; max-width: 380px; margin: 12px auto 0; padding: 5px; align-items: stretch; border-radius: 14px; }
+.channel-bar { position: relative; display: flex; gap: 0; width: 100%; max-width: 380px; margin: 12px auto 0; padding: 5px; align-items: stretch; border-radius: 14px; box-sizing: border-box; }
+.channel-tab .ch-name, .channel-tab .ch-num { white-space: nowrap; }
 .channel-tab { position: relative; z-index: 2; flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; min-height: 52px; justify-content: center; background: transparent; border: 0; cursor: pointer; color: var(--muted); border-radius: 10px; transition: color .18s; }
 .channel-tab .ch-num { font-family: "Press Start 2P", var(--display); font-size: 10px; letter-spacing: .5px; opacity: .8; }
 .channel-tab .ch-name { font-family: var(--display); font-size: 14px; }
