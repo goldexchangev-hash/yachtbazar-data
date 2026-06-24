@@ -478,13 +478,11 @@
   async function raiseMaxBet() {
     try {
       toast("Raising the max bet… confirm in MetaMask");
-      // 3 ETH of headroom so the $2,000 ceiling holds even if ETH dips well below
-      // $700 — the UI still clamps display/bets to $2,000 and the live bankroll.
-      const tx = await contract.setMaxBet(E.parseEther("3"), { gasLimit: 80000 });
+      const tx = await contract.setMaxBet(E.parseEther("1"), { gasLimit: 80000 });
       await tx.wait();
       maxBet = await read.maxBet();
       setupSliders(); refreshHouse();
-      toast("Done — bets up to $2,000 are allowed now.", "ok");
+      toast("Done — bets up to $500 are allowed now.", "ok");
     } catch (e) { txErr(e); }
   }
   async function fundHouseTool() {
@@ -602,9 +600,9 @@
   // The deposit slider tops out at what the wallet can actually cover (rounded
   // down to the $5 step), never above the $2,000 ceiling.
   function depositCapUsd() {
-    if (!walletWei || walletWei <= 0n) return HARD_MAX_USD;
+    if (!walletWei || walletWei <= 0n) return 500;
     const usd = Math.floor(weiToUsd(depositableWei()) / 5) * 5;
-    return Math.max(10, Math.min(HARD_MAX_USD, usd));
+    return Math.max(10, Math.min(DEPOSIT_MAX_USD, usd));
   }
   function syncDepositSlider() {
     const s = $("deposit-input"); if (!s) return;
@@ -1004,10 +1002,11 @@
     } catch (e) { txErr(e); }
   }
 
-  // Sliders run in USD; the ETH amount is computed from the live price. The
-  // effective cap is the lesser of the $2,000 ceiling and what the contract's
-  // maxBet allows at the current price (house/table also clamp to the bankroll).
-  const HARD_MAX_USD = 2000;
+  // Sliders run in USD; the ETH amount is computed from the live price. Bets are
+  // capped at $500 (keeps house variance sane); deposits are bounded only by the
+  // wallet balance.
+  const HARD_MAX_USD = 500;
+  const DEPOSIT_MAX_USD = 100000;
   function betCapUsd() {
     const m = (maxBet && maxBet > 0n) ? Math.floor(weiToUsd(maxBet)) : HARD_MAX_USD;
     return Math.max(10, Math.min(HARD_MAX_USD, m));
