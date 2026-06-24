@@ -38,6 +38,33 @@ contract CoinFlipBetting {
     uint256 public constant HOUSE_FEE_BPS = 1000;
     uint256 public constant BPS_DENOMINATOR = 10_000;
 
+    // ---- Dice game (CH 09): roll 0..9999 (shown 0.00–99.99), roll under/over ----
+    uint256 public constant DICE_OUTCOMES = 10_000;       // roll space [0,9999]
+    uint256 public constant MIN_WIN_OUTCOMES = 100;       // >=1.00% chance (<=98x)
+    uint256 public constant MAX_WIN_OUTCOMES = 9_900;     // <=99.00% chance (>~1x)
+    uint256 public constant MAX_DICE_EDGE_BPS = 1_000;    // owner can't set edge above 10%
+    /// @notice Dice house edge in bps (200 = 2%). Owner-tunable via setDiceEdge.
+    uint256 public diceEdgeBps = 200;
+    uint256 public nextDiceGameId = 1;
+    /// @notice Single bet's max payout-above-stake is capped to this share of the
+    ///         bankroll (100 bps = 1%) so one big dice win can't drain the house.
+    uint256 public constant MAX_PAYOUT_BPS_OF_BANKROLL = 100;
+
+    struct DiceGame {
+        uint256 id;
+        address player;
+        uint256 betAmount;
+        uint16 target;
+        bool rollOver;
+        uint16 roll;
+        bool won;
+        uint256 payout;
+        uint256 multiplierBps;
+        uint256 settledAt;
+    }
+    mapping(uint256 => DiceGame) public diceGames;
+    uint256[] private _diceIds;
+
     /// @notice Wallet that receives the 10% fee (the host). Set at deploy.
     address public immutable treasury;
 
@@ -142,6 +169,11 @@ contract CoinFlipBetting {
     event HostRoomCreated(uint256 indexed roomId, address indexed creator, uint256 bank, string name);
     event HostFlip(uint256 indexed roomId, address indexed player, uint256 betAmount, bool playerWon, uint256 payout, uint256 fee);
     event HostRoomClosed(uint256 indexed roomId, uint256 refund);
+    event DiceRolled(
+        uint256 indexed gameId, address indexed player, uint256 betAmount,
+        uint16 target, bool rollOver, uint16 roll, bool won, uint256 payout, uint256 multiplierBps
+    );
+    event DiceEdgeUpdated(uint256 newEdgeBps);
 
     // --------------------------------------------------------------------- //
     //  Errors
@@ -164,6 +196,8 @@ contract CoinFlipBetting {
     error BankTooLow();
     error HostRoomStillActive();
     error TooManyOpen();
+    error DiceBadTarget();
+    error DiceEdgeTooHigh();
 
     // --------------------------------------------------------------------- //
     //  Constructor
@@ -538,6 +572,87 @@ contract CoinFlipBetting {
         hr.bank = 0;
         if (refund > 0) balances[hr.creator] += refund; // withdrawable, no direct send
         emit HostRoomClosed(roomId, refund);
+    }
+
+    // --------------------------------------------------------------------- //
+    //  Dice game (CH 09) — same house bankroll, settles synchronously
+    // --------------------------------------------------------------------- //
+
+    /// @notice Number of winning outcomes for a target + direction.
+    ///         UNDER: win if roll < target  -> `target` winning outcomes.
+    ///         OVER:  win if roll > target  -> `9999 - target` winning outcomes.
+    function _diceWinOutcomes(uint16 target, bool rollOver) internal pure returns (uint256) {
+        return rollOver ? (DICE_OUTCOMES - 1 - target) : target;
+    }
+
+    /// @notice Payout multiplier in bps (10000 = 1.00x) = (1 - edge) / winChance.
+    function _diceMultiplierBps(uint256 winOutcomes) internal view returns (uint256) {
+        return ((BPS_DENOMINATOR - diceEdgeBps) * DICE_OUTCOMES) / winOutcomes;
+    }
+
+    /// @notice Roll dice for `betAmount`. `target` in [0,9999]; if `rollOver` you
+    ///         win when roll > target, else when roll < target. Settles instantly
+    ///         from your in-game balance vs the house bankroll. Same prevrandao
+    ///         caveat as the flip (planned Chainlink VRF upgrade).
+    function playDice(uint256 betAmount, uint16 target, bool rollOver)
+        external
+        returns (uint256 gameId, uint16 roll, bool won, uint256 payout)
+    {
+        if (betAmount < MIN_BET) revert BetTooSmall();
+        if (betAmount > maxBet) revert BetTooHigh();
+        if (target > DICE_OUTCOMES - 1) revert DiceBadTarget();
+
+        uint256 winOutcomes = _diceWinOutcomes(target, rollOver);
+        if (winOutcomes < MIN_WIN_OUTCOMES || winOutcomes > MAX_WIN_OUTCOMES) revert DiceBadTarget();
+        if (balances[msg.sender] < betAmount) revert InsufficientBalance();
+
+        uint256 multiplierBps = _diceMultiplierBps(winOutcomes);
+        payout = (betAmount * multiplierBps) / BPS_DENOMINATOR; // total returned on a win
+        uint256 maxProfit = payout - betAmount;                 // the house's max loss
+        if (maxProfit > houseBankroll) revert HouseBankrollLow();
+        // a single win can't drain more than 1% of the bankroll
+        if (maxProfit > (houseBankroll * MAX_PAYOUT_BPS_OF_BANKROLL) / BPS_DENOMINATOR) revert HouseBankrollLow();
+
+        balances[msg.sender] -= betAmount; // escrow the stake
+
+        gameId = nextDiceGameId++;
+        roll = uint16(_random(gameId, msg.sender, treasury) % DICE_OUTCOMES);
+        won = rollOver ? (roll > target) : (roll < target);
+
+        if (won) {
+            balances[msg.sender] += payout; // stake back + winnings
+            houseBankroll -= maxProfit;     // house pays the profit
+        } else {
+            houseBankroll += betAmount;     // house keeps the stake
+        }
+
+        diceGames[gameId] = DiceGame({
+            id: gameId, player: msg.sender, betAmount: betAmount, target: target, rollOver: rollOver,
+            roll: roll, won: won, payout: won ? payout : 0, multiplierBps: multiplierBps, settledAt: block.timestamp
+        });
+        _diceIds.push(gameId);
+
+        totalFeesCollected += (betAmount * diceEdgeBps) / BPS_DENOMINATOR; // expected edge (stats)
+        totalGamesPlayed += 1;
+        totalWagered += betAmount;
+
+        emit DiceRolled(gameId, msg.sender, betAmount, target, rollOver, roll, won, won ? payout : 0, multiplierBps);
+        return (gameId, roll, won, won ? payout : 0);
+    }
+
+    function setDiceEdge(uint256 newEdgeBps) external onlyOwner {
+        if (newEdgeBps > MAX_DICE_EDGE_BPS) revert DiceEdgeTooHigh();
+        diceEdgeBps = newEdgeBps;
+        emit DiceEdgeUpdated(newEdgeBps);
+    }
+
+    function diceCount() external view returns (uint256) { return _diceIds.length; }
+
+    function getRecentDice(uint256 limit) external view returns (DiceGame[] memory recent) {
+        uint256 n = _diceIds.length;
+        uint256 count = limit > n ? n : limit;
+        recent = new DiceGame[](count);
+        for (uint256 i; i < count; ++i) recent[i] = diceGames[_diceIds[n - 1 - i]];
     }
 
     // --------------------------------------------------------------------- //

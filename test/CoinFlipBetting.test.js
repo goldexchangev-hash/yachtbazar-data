@@ -287,4 +287,75 @@ describe("CoinFlipBetting (prevrandao, no oracle)", function () {
     expect((await game.getOpenHostRooms()).length).to.equal(1);
     expect(await game.openTablesOf(alice.address)).to.equal(1n);
   });
+
+  function diceEvent(rcpt, game) {
+    const ev = rcpt.logs.map((l) => { try { return game.interface.parseLog(l); } catch { return null; } }).find((e) => e && e.name === "DiceRolled");
+    return ev.args;
+  }
+
+  it("dice: multiplier math + payout/bankroll accounting (win and loss)", async function () {
+    const { game, deployer, treasury, alice } = await deployFixture();
+    await game.connect(deployer).fundHouse({ value: ethers.parseEther("10") });
+    await game.connect(alice).deposit({ value: ethers.parseEther("1") });
+    const bet = ethers.parseEther("0.05");
+    const bankStart = await game.houseBankroll();
+    const balStart = await game.balances(alice.address);
+
+    // UNDER 5000 → 5000 win-outcomes (50%), edge 2% → 1.96x = 19600 bps
+    const a = diceEvent(await (await game.connect(alice).playDice(bet, 5000, false)).wait(), game);
+    expect(a.multiplierBps).to.equal(19600n); // (10000-200)*10000/5000
+    const payout = (bet * a.multiplierBps) / 10000n;
+    const maxProfit = payout - bet;
+    if (a.won) {
+      expect(a.roll).to.be.lessThan(5000);
+      expect(await game.balances(alice.address)).to.equal(balStart - bet + payout);
+      expect(await game.houseBankroll()).to.equal(bankStart - maxProfit);
+    } else {
+      expect(a.roll).to.be.greaterThanOrEqual(5000);
+      expect(await game.balances(alice.address)).to.equal(balStart - bet);
+      expect(await game.houseBankroll()).to.equal(bankStart + bet);
+    }
+    // conservation: contract ETH == sum balances + bankroll
+    const code = await ethers.provider.getBalance(await game.getAddress());
+    expect(code).to.equal((await game.balances(alice.address)) + (await game.houseBankroll()) + (await game.balances(treasury.address)));
+  });
+
+  it("dice: multiplier equals (10000-edge)*10000/winOutcomes", async function () {
+    const { game, deployer, alice } = await deployFixture();
+    await game.connect(deployer).fundHouse({ value: ethers.parseEther("50") });
+    await game.connect(alice).deposit({ value: ethers.parseEther("1") });
+    const bet = ethers.parseEther("0.01");
+    // UNDER 2500 (25%) → (9800*10000)/2500 = 39200 bps = 3.92x
+    const a = diceEvent(await (await game.connect(alice).playDice(bet, 2500, false)).wait(), game);
+    expect(a.multiplierBps).to.equal(39200n);
+    // OVER 8000 → winOutcomes 1999 → (9800*10000)/1999 = 49024 bps
+    const b = diceEvent(await (await game.connect(alice).playDice(bet, 8000, true)).wait(), game);
+    expect(b.winOutcomes ?? b.multiplierBps).to.equal(49024n); // multiplierBps
+  });
+
+  it("dice: enforces target bounds and bankroll cap", async function () {
+    const { game, deployer, alice } = await deployFixture();
+    await game.connect(deployer).fundHouse({ value: ethers.parseEther("1") });
+    await game.connect(alice).deposit({ value: ethers.parseEther("1") });
+    const bet = ethers.parseEther("0.01");
+    // winOutcomes 50 (<100 min) → reject
+    await expect(game.connect(alice).playDice(bet, 50, false)).to.be.revertedWithCustomError(game, "DiceBadTarget");
+    // winOutcomes 9950 (>9900 max) → reject
+    await expect(game.connect(alice).playDice(bet, 9950, false)).to.be.revertedWithCustomError(game, "DiceBadTarget");
+    // a 98x bet whose max-profit exceeds 1% of a small bankroll → reject
+    await expect(game.connect(alice).playDice(ethers.parseEther("0.5"), 100, false)).to.be.revertedWithCustomError(game, "HouseBankrollLow");
+  });
+
+  it("dice: owner sets edge (capped); getRecentDice returns history", async function () {
+    const { game, deployer, alice, bob } = await deployFixture();
+    await game.connect(deployer).fundHouse({ value: ethers.parseEther("20") });
+    await game.connect(alice).deposit({ value: ethers.parseEther("1") });
+    await expect(game.connect(bob).setDiceEdge(300)).to.be.revertedWithCustomError(game, "NotOwner");
+    await expect(game.connect(deployer).setDiceEdge(2000)).to.be.revertedWithCustomError(game, "DiceEdgeTooHigh");
+    await game.connect(deployer).setDiceEdge(100); // 1%
+    const a = diceEvent(await (await game.connect(alice).playDice(ethers.parseEther("0.01"), 5000, false)).wait(), game);
+    expect(a.multiplierBps).to.equal(19800n); // (10000-100)*10000/5000
+    expect(await game.diceCount()).to.equal(1n);
+    expect((await game.getRecentDice(10)).length).to.equal(1);
+  });
 });
