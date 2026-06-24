@@ -15,7 +15,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=21" />
+    <link rel="stylesheet" href="styles.css?v=22" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -237,7 +237,7 @@
         <!-- Host your own table (be-your-own-house link) -->
         <div class="card">
           <h2 class="card-title">🏦 Host your own table</h2>
-          <p class="muted ph-note">Share one link — anyone who opens it flips against <strong>your</strong> bank for any amount they pick. You're the house: you keep the 10% rake. Auto-refunds you if it sits idle for 5 minutes.</p>
+          <p class="muted ph-note">Share one link — <strong>many players</strong> can flip against <strong>your</strong> bank at once, each for any amount they pick (no wait line). You're the house: you keep <strong>half</strong> the 10% rake (5%), the platform takes the other 5%. Auto-refunds you if idle for 5 minutes.</p>
           <label class="field-label" for="host-table-name">Table name</label>
           <input id="host-table-name" class="input" type="text" maxlength="24" placeholder="My Casino" />
           <label class="field-label">Bank you put up <span class="muted">· $10–$500</span></label>
@@ -280,7 +280,7 @@
         <div class="card">
           <details class="dropdown" open>
             <summary class="card-title dd-summary">
-              <span>🧾 Your games <span class="pill" id="my-history-count">0</span></span>
+              <span>🧾 Your games <span class="pill" id="my-history-count">0</span> <span id="my-history-net" class="hist-net"></span></span>
               <span class="dd-arrow" aria-hidden="true">▾</span>
             </summary>
             <p class="muted" style="margin: 2px 0 8px; font-size: 12px;">Net change to your balance per flip — <span style="color:#34e39b">green = won</span>, <span style="color:#ff7a7a">red = lost</span>.</p>
@@ -397,10 +397,10 @@
     </div>
 
     <script src="vendor/ethers.umd.min.js"></script>
-    <script src="config.js?v=21"></script>
-    <script src="contract.js?v=21"></script>
-    <script src="chiptune.js?v=21"></script>
-    <script src="tv.js?v=21"></script>
-    <script src="app.js?v=21"></script>
+    <script src="config.js?v=22"></script>
+    <script src="contract.js?v=22"></script>
+    <script src="chiptune.js?v=22"></script>
+    <script src="tv.js?v=22"></script>
+    <script src="app.js?v=22"></script>
   </body>
 </html>

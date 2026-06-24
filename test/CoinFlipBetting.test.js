@@ -162,8 +162,8 @@ describe("CoinFlipBetting (prevrandao, no oracle)", function () {
     expect(open[0].open).to.equal(true);
   });
 
-  it("host table: player flips vs the bank; creator keeps the 10% rake; ETH conserved", async function () {
-    const { game, alice, bob } = await deployFixture();
+  it("host table: player flips vs the bank; 10% rake splits 50/50 platform/host; ETH conserved", async function () {
+    const { game, treasury, alice, bob } = await deployFixture();
     const bet = ethers.parseEther("0.01");
     await game.connect(alice).deposit({ value: ethers.parseEther("0.1") });
     await game.connect(bob).deposit({ value: bet });
@@ -174,8 +174,10 @@ describe("CoinFlipBetting (prevrandao, no oracle)", function () {
     expect(args.fee).to.equal(fee);
     expect(args.player).to.equal(bob.address);
 
-    // creator always pockets the fee
-    expect(await game.balances(alice.address)).to.equal(fee);
+    // the 10% rake is split 50/50: half to the platform (treasury), half to the host
+    const platformCut = fee / 2n, hostCut = fee - platformCut;
+    expect(await game.balances(treasury.address)).to.equal(platformCut);
+    expect(await game.balances(alice.address)).to.equal(hostCut);
     const hr = await game.getHostRoom(1);
     if (args.playerWon) {
       expect(args.payout).to.equal(payout);

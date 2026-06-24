@@ -432,8 +432,13 @@ contract CoinFlipBetting {
         uint256 fee = (pot * HOUSE_FEE_BPS) / BPS_DENOMINATOR;
         uint256 payout = pot - fee;
 
-        // The table creator is the house and always keeps the 10% rake.
-        balances[hr.creator] += fee;
+        // The 10% rake is split 50/50: half to the platform (treasury / the
+        // original wallet), half to the table creator hosting this game — so the
+        // platform always takes ~5% of the pot and the host keeps ~5%.
+        uint256 platformCut = fee / 2;
+        balances[treasury] += platformCut;
+        balances[hr.creator] += fee - platformCut;
+        totalFeesCollected += platformCut;
 
         // Even => heads (the player) wins.
         playerWon = (_random(roomId, msg.sender, hr.creator) % 2 == 0);

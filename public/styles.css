@@ -350,6 +350,9 @@ a { color: var(--cyan); text-decoration: none; }
 .hist-amt { font-family: var(--display); font-weight: 800; font-size: 15px; white-space: nowrap; }
 .hist-amt.up { color: #34e39b; }
 .hist-amt.down { color: #ff7a7a; }
+.hist-net { font-size: 12px; font-weight: 800; font-family: var(--display); }
+.hist-net.up { color: #34e39b; }
+.hist-net.down { color: #ff7a7a; }
 .player-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--panel-line); border-radius: 12px; }
 .player-item canvas { border-radius: 50%; flex: none; }
 .pmid { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }

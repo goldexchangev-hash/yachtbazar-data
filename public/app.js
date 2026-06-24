@@ -258,7 +258,9 @@
     renderWallet();
     wireEvents();
     connectWS();
+    loadHostHistory();
     await refreshAll();
+    seedHostHistory(); // backfill host-table flips from logs (async, best-effort)
     TV.idle("Deposit ETH, then create or join a room");
     $("bankroll").hidden = false;
     $("play-house").hidden = false;
@@ -699,7 +701,8 @@
         amountUsd: weiToUsd(deltaWei),
         sub: playerWon ? "You beat the table — paid from their bank" : "The table won — your stake went to the host",
       });
-      refreshBalances(); refreshTableInfo(); refreshPlayers();
+      addHostGame({ label: "Host table", won: playerWon, delta: deltaWei.toString(), ts: Math.floor(Date.now() / 1000), tx: rcpt.hash });
+      refreshBalances(); refreshTableInfo(); refreshPlayers(); refreshMyHistory();
     } catch (e) {
       TV.idle("Deposit ETH, then create or join a room");
       txErr(e);
@@ -727,6 +730,11 @@
         li.innerHTML =
           `<div class="rinfo"><div class="rname">${escapeHtml(t.name)}</div>` +
           `<div class="rmeta">#${id} · bank ${usdOf(t.bank)} · ${t.gamesPlayed} plays · auto-close ${mm}:${ss}</div></div>`;
+        const copy = document.createElement("button");
+        copy.className = "btn btn-ghost";
+        copy.textContent = "Copy link";
+        copy.onclick = () => navigator.clipboard?.writeText(hostUrlFor(id)).then(() => toast("Table link copied!", "ok"), () => {});
+        li.appendChild(copy);
         const btn = document.createElement("button");
         btn.className = "btn btn-ghost";
         btn.textContent = "Close & refund";
@@ -976,6 +984,10 @@
     NotRoomCreator: "Only the room creator can do that.",
     NothingToWithdraw: "Nothing to withdraw yet.",
     UnknownRoom: "That room doesn't exist.",
+    HostRoomNotOpen: "That table is closed.",
+    CannotPlayOwnTable: "You can't play against your own table.",
+    BankTooLow: "The table's bank can't cover that bet right now — another player may have just taken some. Try a smaller stake.",
+    HostRoomStillActive: "That table is still active — only the host can close it before it's been idle 5 minutes.",
   };
   function txErr(e) {
     console.error(e);
@@ -1192,26 +1204,74 @@
   }
 
   // ---------------------------------------------------------- your games (P&L)
-  // A per-flip ledger for the connected wallet, read from on-chain rooms. This is
-  // far clearer than MetaMask's "Contract interaction" rows: vs-house & PvP wins/
-  // losses move funds inside the contract's balance ledger, not your wallet ETH,
-  // so MetaMask shows no amount — only Deposit/Withdraw actually move wallet ETH.
+  // A per-flip ledger for the connected wallet. Far clearer than MetaMask's
+  // "Contract interaction" rows: vs-house & PvP wins/losses move funds inside the
+  // contract's balance ledger, not your wallet ETH, so MetaMask shows no amount —
+  // only Deposit/Withdraw actually move wallet ETH. vs-House & PvP come from the
+  // on-chain rooms; host-table flips come from HostFlip event logs (seeded once +
+  // appended live), cached in localStorage so they survive a reload.
+  let hostHistory = [];               // [{label, won, delta(str wei), ts, tx}]
+  const seenHostTx = new Set();
+  function hostHistKey() { return "coinflip_hosthist_" + (deployment.address || "") + "_" + (account || ""); }
+  function loadHostHistory() {
+    hostHistory = []; seenHostTx.clear();
+    try {
+      const raw = JSON.parse(localStorage.getItem(hostHistKey()) || "[]");
+      for (const e of raw) if (e && e.tx && !seenHostTx.has(e.tx)) { seenHostTx.add(e.tx); hostHistory.push(e); }
+    } catch {}
+  }
+  function saveHostHistory() {
+    try { localStorage.setItem(hostHistKey(), JSON.stringify(hostHistory.slice(-60))); } catch {}
+  }
+  function addHostGame(e) {
+    if (!e.tx || seenHostTx.has(e.tx)) return;
+    seenHostTx.add(e.tx);
+    hostHistory.push(e);
+    saveHostHistory();
+  }
+
+  // One-time backfill of this wallet's host-table flips from event logs.
+  async function seedHostHistory() {
+    if (!read || !chainOK || !account || !deployment.address) return;
+    try {
+      const latest = await provider.getBlockNumber();
+      const from = Math.max(0, latest - 9000); // recent window; safe under common getLogs caps
+      const evs = await read.queryFilter(read.filters.HostFlip(null, account), from, latest);
+      const head = await provider.getBlock(latest);
+      const baseTs = head ? Number(head.timestamp) : Math.floor(Date.now() / 1000);
+      for (const e of evs) {
+        const a = e.args;
+        const pot = a.betAmount * 2n;
+        const delta = a.playerWon ? pot - pot / 10n - a.betAmount : a.betAmount;
+        addHostGame({
+          label: "Host table",
+          won: a.playerWon,
+          delta: delta.toString(),
+          ts: baseTs - (latest - e.blockNumber) * 12, // ~12s/block on Sepolia
+          tx: e.transactionHash,
+        });
+      }
+      refreshMyHistory();
+    } catch (e) { /* RPC may reject the range or not index logs — skip gracefully */ }
+  }
+
   async function refreshMyHistory() {
     if (!read || !chainOK || !account) return;
     try {
       const rooms = await read.getRecentRooms(60);
-      const mine = [];
+      const games = [];
       for (const r of rooms) {
         if (Number(r.status) !== 2) continue; // settled only
         const isPlayer = eq(r.player1, account) || (eq(r.player2, account) && !r.isHouseGame);
         if (!isPlayer) continue;
         const won = eq(r.winner, account);
         const pot = r.betAmount * 2n;
-        const payout = pot - pot / 10n;
-        const delta = won ? payout - r.betAmount : r.betAmount; // net change to my balance
-        mine.push({ id: r.id.toString(), house: r.isHouseGame, won, delta });
+        const delta = won ? pot - pot / 10n - r.betAmount : r.betAmount;
+        games.push({ label: r.isHouseGame ? "vs House" : "PvP #" + r.id.toString(), won, delta, ts: Number(r.settledAt) });
       }
-      renderMyHistory(mine);
+      for (const h of hostHistory) games.push({ label: h.label, won: h.won, delta: BigInt(h.delta), ts: h.ts });
+      games.sort((a, b) => b.ts - a.ts); // newest first
+      renderMyHistory(games);
     } catch {}
   }
 
@@ -1219,14 +1279,27 @@
     const list = $("my-history-list");
     if (!list) return;
     $("my-history-count").textContent = games.length;
-    if (!games.length) { list.innerHTML = '<li class="empty">No games yet — your wins &amp; losses show here.</li>'; return; }
+    const netEl = $("my-history-net");
+    if (!games.length) {
+      if (netEl) netEl.textContent = "";
+      list.innerHTML = '<li class="empty">No games yet — your wins &amp; losses show here.</li>';
+      return;
+    }
+    // running net P&L across all shown games
+    let net = 0n;
+    for (const g of games) net += g.won ? g.delta : -g.delta;
+    if (netEl) {
+      const up = net >= 0n;
+      netEl.textContent = "net " + (up ? "+" : "−") + usdOf(up ? net : -net);
+      netEl.className = "hist-net " + (up ? "up" : "down");
+    }
     list.innerHTML = "";
-    for (const g of games.slice(0, 15)) {
+    for (const g of games.slice(0, 20)) {
       const li = document.createElement("li");
       li.className = "hist-item " + (g.won ? "won" : "lost");
       const label = document.createElement("span");
       label.className = "hist-label";
-      label.textContent = (g.house ? "vs House" : "PvP #" + g.id) + " · " + (g.won ? "won" : "lost");
+      label.textContent = g.label + " · " + (g.won ? "won" : "lost");
       const amt = document.createElement("span");
       amt.className = "hist-amt " + (g.won ? "up" : "down");
       amt.textContent = (g.won ? "+" : "−") + usdOf(g.delta);
