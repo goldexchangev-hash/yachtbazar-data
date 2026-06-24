@@ -116,3 +116,26 @@ npm test                       # 13 contract tests
 node --check public/app.js     # quick JS syntax check
 npm run compile && npm run artifact   # after any .sol change → refresh contract.js
 ```
+
+## ⏳ Pending contract redeploy (batched — DO when Chainlink VRF lands)
+
+The live site runs on contract `0x2BE6…8A30` (rake→bankroll). Two contract-level
+changes are **committed but NOT deployed** yet — batch them into one redeploy
+with the VRF upgrade to avoid extra churn:
+
+1. **Anti-spam bounded arrays (v5.6, in `contracts/CoinFlipBetting.sol`):**
+   compact O(open) room/table sets (swap-pop) + per-address open cap
+   (`MAX_OPEN_PER_ADDRESS=12`, `TooManyOpen` error, `openRoomsOf`/`openTablesOf`).
+   17/17 tests pass. `public/contract.js` already regenerated.
+2. **Chainlink VRF randomness (future):** replaces `block.prevrandao`
+   `_random()` + synchronous settlement. This is the real fix for the audit's
+   **critical** finding — the current same-block `prevrandao` flip is
+   simulatable, so any EOA can grind guaranteed wins. **Until redeployed with VRF
+   (or commit-reveal), keep the house bankroll small** (cheat can't win big).
+
+Redeploy flow (unchanged): house wallet `0x2F4B…aB39` → Host tools → Start a
+fresh game → paste new address into `public/config.js` `address` field → bump
+build tag/`?v=` → re-fund house bankroll (~20–30× max bet for low risk-of-ruin).
+
+Also deferred (no redeploy, frontend-only, optional): win/loss share cards,
+win-streak "ON FIRE" meter.
