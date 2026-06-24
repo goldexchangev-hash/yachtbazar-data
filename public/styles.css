@@ -458,6 +458,14 @@ a { color: var(--cyan); text-decoration: none; }
 .hs-tab { flex: 1; border: 0; background: transparent; color: var(--muted); font-family: var(--display); font-weight: 700; font-size: 12px; padding: 6px 4px; border-radius: 999px; cursor: pointer; transition: color 0.15s, background 0.15s; }
 .hs-tab:hover { color: #fff; }
 .hs-tab.active { color: #1a1300; background: linear-gradient(135deg, #ffd23f, #ffae00); }
+
+/* Matrix-style live ETH price ticker */
+.eth-ticker { display: flex; align-items: center; gap: 8px; background: #02110a; border: 1px solid rgba(0, 255, 120, 0.35); border-radius: 10px; padding: 6px 10px; margin-bottom: 12px; box-shadow: inset 0 0 18px rgba(0, 255, 120, 0.1); overflow: hidden; }
+.eth-ticker-tag { flex: none; font-family: var(--display); font-size: 9px; color: #2bff88; letter-spacing: 1px; text-shadow: 0 0 6px rgba(43, 255, 136, 0.8); animation: blink 1.4s steps(2) infinite; }
+.eth-ticker-win { flex: 1; overflow: hidden; white-space: nowrap; }
+.eth-ticker-track { display: inline-block; will-change: transform; font-family: "Press Start 2P", monospace; font-size: 11px; letter-spacing: 1px; color: #2bff88; text-shadow: 0 0 6px rgba(43, 255, 136, 0.7); animation: tickerScroll 26s linear infinite; }
+.eth-ticker-track.down { color: #ff6b6b; text-shadow: 0 0 6px rgba(255, 107, 107, 0.7); }
+@keyframes tickerScroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 .hs-hero { text-align: center; padding: 8px 0 12px; }
 .hs-hero .muted { font-size: 12px; }
 .hs-big { display: block; font-family: var(--display); font-size: clamp(30px, 7vw, 44px); color: #34e39b; text-shadow: 0 0 18px rgba(43, 227, 155, 0.4); line-height: 1.1; margin: 2px 0; }
@@ -569,7 +577,7 @@ a { color: var(--cyan); text-decoration: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .bg-glow, .scanlines, .idle-logo, .tuning-text, .waiting-dots span, .coin.spin, .chat-dot, .idle-sub,
-  #layer-result.tier-big, #layer-result.tier-mega, .tv-screen.quake, .tv-screen.quake-hard { animation: none !important; }
+  #layer-result.tier-big, #layer-result.tier-mega, .tv-screen.quake, .tv-screen.quake-hard, .eth-ticker-track { animation: none !important; }
   .tv-screen.quake, .tv-screen.quake-hard { transform: none !important; }
   .coin { transition: none !important; }
 }

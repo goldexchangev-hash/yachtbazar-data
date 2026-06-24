@@ -60,17 +60,32 @@
 
   // ---- USD <-> ETH (live price) ----
   let ethUsd = 3000; // fallback until the live price loads
+  let ethTrend = 0;  // +1 up, -1 down vs the previous fetch
   async function fetchEthUsd() {
+    const prev = ethUsd;
     try {
       const r = await fetch("https://api.coinbase.com/v2/prices/ETH-USD/spot", { cache: "no-store" });
       const p = parseFloat((await r.json())?.data?.amount);
-      if (p > 0) { ethUsd = p; return; }
+      if (p > 0) { ethUsd = p; if (prev) ethTrend = Math.sign(ethUsd - prev); updateEthTicker(); return; }
     } catch {}
     try {
       const r = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd");
       const u = (await r.json())?.ethereum?.usd;
-      if (u > 0) ethUsd = u;
+      if (u > 0) { ethUsd = u; if (prev) ethTrend = Math.sign(ethUsd - prev); }
     } catch {}
+    updateEthTicker();
+  }
+  // Matrix-style scrolling ETH price ticker above the chat.
+  function updateEthTicker() {
+    const t = document.getElementById("eth-ticker-track");
+    if (!t) return;
+    const arrow = ethTrend > 0 ? "▲" : ethTrend < 0 ? "▼" : "◆";
+    const price = ethUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const seg = "ETH/USD  $" + price + "  " + arrow + "       ◆       ";
+    const unit = seg.repeat(3);
+    t.textContent = unit + unit; // duplicated for a seamless −50% loop
+    t.classList.toggle("up", ethTrend >= 0);
+    t.classList.toggle("down", ethTrend < 0);
   }
   const usd = (n) => "$" + (+n).toLocaleString(undefined, { maximumFractionDigits: 2 });
   const weiToUsd = (wei) => { try { return (+E.formatEther(wei)) * ethUsd; } catch { return 0; } };
