@@ -13,6 +13,8 @@
   function loadStored() { try { return JSON.parse(localStorage.getItem("coinflip_deployment") || "null"); } catch { return null; } }
   function saveStored(d) { try { localStorage.setItem("coinflip_deployment", JSON.stringify(d)); } catch {} }
 
+  const onLocalhost = /^(localhost$|127\.|0\.0\.0\.0|\[?::1\]?)/.test(location.hostname);
+
   // Which contract + chain are we using?  URL link > local config.js > saved > none.
   let deployment = (() => {
     const a = params.get("contract"), c = params.get("chain");
@@ -20,9 +22,13 @@
     if (cfg.address) return { address: cfg.address, chainId: cfg.chainId || null }; // local dev (deploy:local)
     const s = loadStored();
     if (s && s.address) return s;
-    // Hosted with no game yet → default to Sepolia so Connect auto-switches there.
-    return { address: null, chainId: 11155111 };
+    return { address: null, chainId: onLocalhost ? 31337 : 11155111 };
   })();
+  // On a hosted site, never use the local Hardhat chain (stale config/localStorage).
+  if (!onLocalhost && deployment.chainId === 31337) {
+    deployment = { address: null, chainId: 11155111 };
+    try { localStorage.removeItem("coinflip_deployment"); } catch {}
+  }
   let hostTreasury = null; // read from the contract once connected
 
   // ---- state ----
@@ -43,6 +49,30 @@
   };
   const short = (a) => (a ? a.slice(0, 6) + "…" + a.slice(-4) : "—");
   const eq = (a, b) => a && b && a.toLowerCase() === b.toLowerCase();
+
+  // ---- USD <-> ETH (live price) ----
+  let ethUsd = 3000; // fallback until the live price loads
+  async function fetchEthUsd() {
+    try {
+      const r = await fetch("https://api.coinbase.com/v2/prices/ETH-USD/spot", { cache: "no-store" });
+      const p = parseFloat((await r.json())?.data?.amount);
+      if (p > 0) { ethUsd = p; return; }
+    } catch {}
+    try {
+      const r = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd");
+      const u = (await r.json())?.ethereum?.usd;
+      if (u > 0) ethUsd = u;
+    } catch {}
+  }
+  const usd = (n) => "$" + (+n).toLocaleString(undefined, { maximumFractionDigits: 2 });
+  const weiToUsd = (wei) => { try { return (+E.formatEther(wei)) * ethUsd; } catch { return 0; } };
+  const usdToWei = (d) => E.parseEther((Math.max(0, +d) / ethUsd).toFixed(8));
+  const usdOf = (wei) => usd(weiToUsd(wei)); // "$xx.xx" from wei
+  function setSliderUsd(id) {
+    const v = +$(id).value;
+    const valEl = $(id + "-val"); if (valEl) valEl.textContent = usd(v);
+    const ethEl = $(id + "-eth"); if (ethEl) ethEl.textContent = " ≈ " + (v / ethUsd).toFixed(4) + " ETH";
+  }
 
   // ---------------------------------------------------------- toast
   let toastTimer;
@@ -192,7 +222,7 @@
     TV.idle("Deposit ETH, then create or join a room");
     $("bankroll").hidden = false;
     $("play-house").hidden = false;
-    $("maxbet-hint").textContent = "· max " + fmt(maxBet) + " ETH";
+    $("maxbet-hint").textContent = "· $10–$500";
     setupHouseSlider();
   }
 
@@ -257,7 +287,7 @@
       contract = c.connect(signer);
       read = new E.Contract(addr, ABI, provider);
       // Seed a small house bankroll so vs-house works right away (best effort).
-      try { await (await contract.fundHouse({ value: E.parseEther("0.05"), gasLimit: 90_000n })).wait(); } catch {}
+      try { await (await contract.fundHouse({ value: E.parseEther("0.2"), gasLimit: 90_000n })).wait(); } catch {}
       maxBet = await read.maxBet();
       try { hostTreasury = await read.treasury(); } catch {}
       chainOK = true;
@@ -288,8 +318,8 @@
   async function refreshBalances() {
     try {
       const [gb, wb] = await Promise.all([read.balances(account), provider.getBalance(account)]);
-      $("game-balance").textContent = fmt(gb) + " ETH";
-      $("wallet-balance").textContent = fmt(wb) + " ETH";
+      $("game-balance").textContent = usdOf(gb);
+      $("wallet-balance").textContent = usdOf(wb);
     } catch {}
   }
 
@@ -297,8 +327,8 @@
     try {
       const [g, w, f] = await Promise.all([read.totalGamesPlayed(), read.totalWagered(), read.totalFeesCollected()]);
       $("stat-games").textContent = g.toString();
-      $("stat-wagered").textContent = fmt(w) + " ETH";
-      $("stat-fees").textContent = fmt(f) + " ETH";
+      $("stat-wagered").textContent = usdOf(w);
+      $("stat-fees").textContent = usdOf(f);
     } catch {}
   }
 
@@ -320,7 +350,7 @@
         li.innerHTML =
           `<div class="rinfo"><div class="rname">${escapeHtml(r.name)}</div>` +
           `<div class="rmeta">#${id} · by ${mine ? "you" : short(r.creator)}</div></div>` +
-          `<span class="rbet">${fmt(r.betAmount)} Ξ</span>`;
+          `<span class="rbet">${usdOf(r.betAmount)}</span>`;
         const btn = document.createElement("button");
         btn.className = "btn " + (mine ? "btn-ghost" : "btn-primary");
         btn.textContent = mine ? "Cancel" : "Join";
@@ -337,13 +367,13 @@
 
   // ---------------------------------------------------------- actions
   async function deposit() {
-    const v = parseFloat($("deposit-input").value);
-    if (!(v > 0)) return toast("Enter an amount to deposit", "err");
+    const v = parseFloat($("deposit-input").value); // USD
+    if (!(v > 0)) return toast("Enter an amount to deposit (in $)", "err");
     try {
       toast("Confirm the deposit in MetaMask…");
-      const tx = await contract.deposit({ value: E.parseEther(String(v)) });
+      const tx = await contract.deposit({ value: usdToWei(v), gasLimit: 80_000n });
       await tx.wait();
-      toast("Deposited " + v + " ETH", "ok");
+      toast("Deposited " + usd(v), "ok");
       refreshBalances();
     } catch (e) { txErr(e); }
   }
@@ -360,13 +390,13 @@
 
   async function createRoom() {
     const name = ($("room-name").value || "Coin Flip").trim();
-    const v = parseFloat($("bet-input").value);
-    if (!(v > 0)) return toast("Enter a bet amount", "err");
-    const bet = E.parseEther(String(v));
-    if (bet > maxBet) return toast("Max bet is " + fmt(maxBet) + " ETH", "err");
+    const v = parseFloat($("bet-input").value); // USD
+    if (!(v > 0)) return toast("Pick a bet amount", "err");
+    const bet = usdToWei(v);
+    if (bet > maxBet) return toast("Max bet is " + usdOf(maxBet), "err");
     try {
       toast("Creating room… confirm in MetaMask");
-      const tx = await contract.createRoom(bet, name);
+      const tx = await contract.createRoom(bet, name, { gasLimit: 300000 });
       const rcpt = await tx.wait();
       const ev = rcpt.logs.map((l) => safeParse(l)).find((p) => p && p.name === "RoomCreated");
       const id = ev ? ev.args.roomId.toString() : null;
@@ -389,7 +419,7 @@
       activeRoomId = id;
       lastRevealed = null;
       TV.startFlip({ p1: room ? room.creator : null, p2: account });
-      const tx = await contract.joinRoom(id);
+      const tx = await contract.joinRoom(id, { gasLimit: 250000 });
       await tx.wait();
       toast("You're in! Flipping…", "ok");
       refreshBalances(); refreshRooms();
@@ -403,13 +433,13 @@
 
   // Clicking "Flip vs House" opens the bet-confirmation modal (drag-chosen stake).
   function playHouse() {
-    const v = parseFloat($("house-bet").value);
+    const v = parseFloat($("house-bet").value); // USD
     if (!(v > 0)) return toast("Drag to pick a stake", "err");
-    const bet = E.parseEther(String(v));
-    if (bet > maxBet) return toast("Max bet is " + fmt(maxBet) + " ETH", "err");
+    const bet = usdToWei(v);
+    if (bet > maxBet) return toast("Max bet is " + usdOf(maxBet), "err");
     // The house must be able to match your stake from its bankroll.
-    const cap = E.parseEther(String($("house-bet").max || "0"));
-    if (bet > cap) return toast("House can only cover " + fmt(cap) + " ETH right now", "err");
+    const capUsd = parseFloat($("house-bet").max || "0");
+    if (v > capUsd) return toast("House can only cover " + usd(capUsd) + " right now", "err");
     openBetModal({ kind: "house", bet: bet });
   }
 
@@ -427,7 +457,7 @@
       lastRevealed = null;
       toast("Flipping vs the house… confirm in MetaMask");
       TV.startFlip({ p1: account, p2: "HOUSE" });
-      const tx = await contract.playHouse(bet);
+      const tx = await contract.playHouse(bet, { gasLimit: 250000 });
       const rcpt = await tx.wait();
       const ev = rcpt.logs.map((l) => safeParse(l)).find((p) => p && p.name === "HouseGameStarted");
       if (ev) activeRoomId = ev.args.roomId.toString();
@@ -443,23 +473,28 @@
   async function refreshHouse() {
     try {
       const b = await read.houseBankroll();
-      $("house-bankroll").textContent = fmt(b) + " ETH";
-      // House bets can't exceed what the bankroll can match.
-      const cap = b < maxBet ? b : maxBet;
+      $("house-bankroll").textContent = usdOf(b);
+      // House bets can't exceed what the bankroll can match (in USD, capped at $500).
+      const capWei = b < maxBet ? b : maxBet;
+      const capUsd = Math.max(10, Math.min(500, Math.floor(weiToUsd(capWei))));
       const s = $("house-bet");
-      s.max = (+E.formatEther(cap)).toFixed(3);
-      if (+s.value > +s.max) { s.value = s.max; $("house-bet-val").textContent = (+s.value).toFixed(3); }
+      s.max = String(capUsd);
+      if (+s.value > capUsd) s.value = String(capUsd);
+      setSliderUsd("house-bet");
     } catch {}
   }
 
-  function setupHouseSlider() {
-    const s = $("house-bet");
-    s.min = "0.001";
-    s.max = (+E.formatEther(maxBet)).toFixed(3);
-    s.step = "0.001";
-    if (+s.value > +s.max) s.value = s.max;
-    $("house-bet-val").textContent = (+s.value).toFixed(3);
+  // Sliders run in USD ($10–$500); the ETH amount is computed from the live price.
+  function setupSliders() {
+    for (const id of ["house-bet", "bet-input"]) {
+      const s = $(id);
+      if (!s) continue;
+      s.min = "10"; s.max = "500"; s.step = "5";
+      if (+s.value < 10) s.value = "25";
+      setSliderUsd(id);
+    }
   }
+  function setupHouseSlider() { setupSliders(); }
 
   // ---------------------------------------------------------- bet modal + negotiation
   let pendingBet = null;        // { kind, id?, room?, bet (BigInt) }
@@ -481,10 +516,10 @@
     if (isJoin) {
       raise.classList.remove("hidden");
       const s = $("join-bet");
-      s.min = (+E.formatEther(opts.room.betAmount)).toFixed(3); // can't go below the host's bet
-      s.max = (+E.formatEther(maxBet)).toFixed(3);
-      s.step = "0.001";
-      s.value = (+E.formatEther(opts.bet)).toFixed(3);
+      const minUsd = Math.max(10, Math.round(weiToUsd(opts.room.betAmount))); // host's bet in $
+      s.min = String(minUsd); s.max = "500"; s.step = "5";
+      s.value = String(minUsd);
+      $("join-bet-val").textContent = usd(minUsd);
     } else {
       raise.classList.add("hidden");
     }
@@ -497,11 +532,11 @@
     if (!pendingBet) return;
     pendingBet.bet = bet;
     const { pot, fee, win } = breakdown(bet);
-    $("bd-yourbet").textContent = fmt(bet) + " ETH";
-    $("bd-oppbet").textContent = fmt(bet) + " ETH";
-    $("bd-pot").textContent = fmt(pot) + " ETH";
-    $("bd-fee").textContent = fmt(fee) + " ETH";
-    $("bd-win").textContent = fmt(win) + " ETH";
+    $("bd-yourbet").textContent = usdOf(bet);
+    $("bd-oppbet").textContent = usdOf(bet);
+    $("bd-pot").textContent = usdOf(pot);
+    $("bd-fee").textContent = usdOf(fee);
+    $("bd-win").textContent = usdOf(win);
     const raised = pendingBet.kind === "join" && bet > pendingBet.room.betAmount;
     $("bet-accept").textContent = raised ? "📨 Propose bet to host" : "✓ Accept bet & flip";
     $("bet-hint").textContent = raised
@@ -523,7 +558,7 @@
   // --- joiner proposes a higher bet; host approves/denies over the socket ---
   function proposeBet(id, room, amount) {
     myProposal = { id: String(id), amount: amount.toString(), room: room };
-    toast("Proposed " + fmt(amount) + " ETH to the host — waiting…");
+    toast("Proposed " + usdOf(amount) + " to the host — waiting…");
     wsSend({ type: "bet-proposal", roomId: String(id), amount: amount.toString() });
   }
 
@@ -533,8 +568,8 @@
       if (!eq(r.creator, account) || Number(r.status) !== 0) return; // not my room / not open
       pendingProposal = { roomId: String(d.roomId), amount: BigInt(d.amount), proposer: d.from };
       $("nego-text").innerHTML =
-        escapeHtml(short(d.from)) + " wants to bet <b>" + fmt(BigInt(d.amount)) +
-        " ETH</b> (your room is " + fmt(r.betAmount) + " ETH). Accept to raise the stake for both of you.";
+        escapeHtml(short(d.from)) + " wants to bet <b>" + usdOf(BigInt(d.amount)) +
+        "</b> (your room is " + usdOf(r.betAmount) + "). Accept to raise the stake for both of you.";
       $("nego-modal").classList.remove("hidden");
     } catch (e) { console.error(e); }
   }
@@ -545,7 +580,7 @@
     if (!p) return;
     try {
       toast("Raising the room bet… confirm in MetaMask");
-      const tx = await contract.updateRoomBet(p.roomId, p.amount);
+      const tx = await contract.updateRoomBet(p.roomId, p.amount, { gasLimit: 120000 });
       await tx.wait();
       refreshBalances(); refreshRooms();
       wsSend({ type: "bet-response", roomId: p.roomId, amount: p.amount.toString(), accepted: true, to: p.proposer });
@@ -568,7 +603,7 @@
   function handleProposalResponse(d) {
     if (!eq(d.to, account) || !myProposal || myProposal.id !== String(d.roomId)) return;
     if (d.accepted) {
-      toast("Host accepted! Joining at " + fmt(BigInt(d.amount)) + " ETH…", "ok");
+      toast("Host accepted! Joining at " + usdOf(BigInt(d.amount)) + "…", "ok");
       read.getRoom(d.roomId).then((r) => doJoinRoom(String(d.roomId), r, BigInt(d.amount)));
     } else {
       toast("Host denied — pick another amount and propose again", "err");
@@ -789,13 +824,17 @@
     $("play-house-btn").onclick = playHouse;
     $("refresh-rooms").onclick = () => refreshRooms();
 
-    // House stake slider (live value)
-    $("house-bet").oninput = (e) => ($("house-bet-val").textContent = (+e.target.value).toFixed(3));
-    // Join raise slider (live value + recompute pot breakdown)
+    // House + create-room stake sliders (USD)
+    $("house-bet").oninput = () => setSliderUsd("house-bet");
+    $("bet-input").oninput = () => setSliderUsd("bet-input");
+    // Join raise slider (USD): at/near the host's bet use the exact amount, else convert
     $("join-bet").oninput = (e) => {
-      const val = (+e.target.value).toFixed(3);
-      $("join-bet-val").textContent = val;
-      updateBetModalAmount(E.parseEther(val));
+      const u = +e.target.value;
+      $("join-bet-val").textContent = usd(u);
+      const room = pendingBet && pendingBet.room;
+      const roomUsd = room ? weiToUsd(room.betAmount) : 0;
+      const bet = room && u <= roomUsd + 4 ? room.betAmount : usdToWei(u);
+      updateBetModalAmount(bet);
     };
     // Bet confirmation modal
     $("bet-accept").onclick = acceptBet;
@@ -840,6 +879,10 @@
     TV.init();
     wireUI();
     syncSoundBtn();
+    setupSliders();
+    // Live ETH→USD price: fetch now, refresh labels, and re-poll every 60s.
+    fetchEthUsd().then(() => { setupSliders(); if (read && chainOK) { refreshBalances(); refreshStats(); refreshHouse(); refreshRooms(); } });
+    setInterval(() => fetchEthUsd().then(() => { setupSliders(); if (read && chainOK) { refreshBalances(); refreshStats(); refreshHouse(); refreshRooms(); } }), 60000);
     $("connect-btn").classList.add("cta-pulse");
     const remoteHost = location.hostname && !/^(localhost|127\.|0\.0\.0\.0|\[?::1\]?)/.test(location.hostname);
     if (deployment.address && deployment.chainId === 31337 && remoteHost) {

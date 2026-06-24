@@ -15,7 +15,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=5" />
+    <link rel="stylesheet" href="styles.css?v=6" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -134,7 +134,7 @@
             </div>
           </div>
           <div class="bankroll-actions">
-            <input id="deposit-input" class="input" type="number" min="0" step="0.001" placeholder="0.01" />
+            <input id="deposit-input" class="input" type="number" min="0" step="1" placeholder="Amount in $ (e.g. 50)" />
             <button id="deposit-btn" class="btn btn-primary">Deposit</button>
             <button id="withdraw-btn" class="btn btn-ghost">Withdraw all</button>
           </div>
@@ -148,8 +148,8 @@
           </div>
           <p class="muted ph-note">Drag to choose your stake. You're HEADS. 10% house fee.</p>
           <div class="slider-wrap">
-            <input id="house-bet" class="slider" type="range" min="0.001" max="0.03" step="0.001" value="0.01" />
-            <div class="slider-val"><strong id="house-bet-val">0.010</strong> ETH</div>
+            <input id="house-bet" class="slider" type="range" min="10" max="500" step="5" value="25" />
+            <div class="slider-val"><strong id="house-bet-val">$25</strong><span class="eth-sub" id="house-bet-eth"></span></div>
           </div>
           <button id="play-house-btn" class="btn btn-primary btn-block">🪙 Flip vs House</button>
         </div>
@@ -180,10 +180,11 @@
           <h2 class="card-title">Create a room</h2>
           <label class="field-label" for="room-name">Room name</label>
           <input id="room-name" class="input" type="text" maxlength="24" placeholder="High Rollers" />
-          <label class="field-label" for="bet-input">
-            Bet amount (ETH) <span class="muted" id="maxbet-hint"></span>
-          </label>
-          <input id="bet-input" class="input" type="number" min="0" step="0.001" placeholder="0.01" />
+          <label class="field-label">Bet amount <span class="muted" id="maxbet-hint">· $10–$500</span></label>
+          <div class="slider-wrap">
+            <input id="bet-input" class="slider" type="range" min="10" max="500" step="5" value="25" />
+            <div class="slider-val"><strong id="bet-input-val">$25</strong><span class="eth-sub" id="bet-input-eth"></span></div>
+          </div>
           <button id="create-room-btn" class="btn btn-primary btn-block">Create & get share link</button>
           <div id="share-box" class="share-box hidden">
             <span class="muted">Share this link — unique to your room:</span>
@@ -283,8 +284,8 @@
         <div id="bet-raise" class="bet-raise hidden">
           <label class="field-label">Your bet (drag to raise — the host must approve a higher amount)</label>
           <div class="slider-wrap">
-            <input id="join-bet" class="slider" type="range" min="0" max="0" step="0.001" value="0" />
-            <div class="slider-val"><strong id="join-bet-val">0.000</strong> ETH</div>
+            <input id="join-bet" class="slider" type="range" min="10" max="500" step="5" value="10" />
+            <div class="slider-val"><strong id="join-bet-val">$10</strong></div>
           </div>
         </div>
 
@@ -314,10 +315,10 @@
     </div>
 
     <script src="vendor/ethers.umd.min.js"></script>
-    <script src="config.js?v=5"></script>
-    <script src="contract.js?v=5"></script>
-    <script src="chiptune.js?v=5"></script>
-    <script src="tv.js?v=5"></script>
-    <script src="app.js?v=5"></script>
+    <script src="config.js?v=6"></script>
+    <script src="contract.js?v=6"></script>
+    <script src="chiptune.js?v=6"></script>
+    <script src="tv.js?v=6"></script>
+    <script src="app.js?v=6"></script>
   </body>
 </html>

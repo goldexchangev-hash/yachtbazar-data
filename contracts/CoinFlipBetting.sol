@@ -31,7 +31,8 @@ contract CoinFlipBetting {
     uint256 public constant MIN_BET = 0.0001 ether;
 
     /// @notice Maximum bet per player, in wei. Pure ETH. Owner-adjustable.
-    uint256 public maxBet = 0.03 ether;
+    ///         Default 1 ETH so the UI's up-to-$500 slider always fits.
+    uint256 public maxBet = 1 ether;
 
     /// @notice House fee in basis points (1000 = 10%).
     uint256 public constant HOUSE_FEE_BPS = 1000;

@@ -105,8 +105,9 @@ a { color: var(--cyan); text-decoration: none; }
 .layout {
   position: relative; z-index: 2;
   display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(300px, 0.95fr);
+  align-items: start;
   gap: clamp(16px, 2vw, 26px);
-  padding: 6px clamp(14px, 4vw, 40px) 60px;
+  padding: 44px clamp(14px, 4vw, 40px) 60px; /* top room for the antenna */
   max-width: 1340px; margin: 0 auto;
 }
 .stage { min-width: 0; }
@@ -118,8 +119,9 @@ a { color: var(--cyan); text-decoration: none; }
 .card-title .btn-mini { margin-left: auto; }
 
 /* ───────────────────── The TV ───────────────────── */
-.tv { display: flex; flex-direction: column; align-items: center; margin: 14px 0 20px; }
-.tv-antenna { position: relative; height: 42px; width: 150px; opacity: 0.85; }
+.tv { display: flex; flex-direction: column; align-items: center; margin: 0 0 20px; position: relative; }
+/* antenna floats above the TV body (out of flow) so the TV top lines up with the sidebar */
+.tv-antenna { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); margin-bottom: -6px; height: 42px; width: 150px; opacity: 0.85; }
 .tv-antenna span {
   position: absolute; bottom: 0; left: 50%; width: 3px; height: 50px; transform-origin: bottom center;
   background: linear-gradient(#cfd6ff, #6b73a8); border-radius: 3px;
@@ -265,7 +267,8 @@ a { color: var(--cyan); text-decoration: none; }
 .slider { -webkit-appearance: none; appearance: none; flex: 1; height: 8px; border-radius: 999px; background: linear-gradient(90deg, var(--cyan), var(--magenta)); outline: none; }
 .slider::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; border-radius: 50%; background: #fff; border: 3px solid var(--cyan); cursor: pointer; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5); }
 .slider::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; background: #fff; border: 3px solid var(--cyan); cursor: pointer; }
-.slider-val { font-family: var(--display); font-size: 16px; white-space: nowrap; color: var(--gold); min-width: 96px; text-align: right; }
+.slider-val { font-family: var(--display); font-size: 16px; white-space: nowrap; color: var(--gold); min-width: 110px; text-align: right; }
+.eth-sub { display: block; font-family: var(--font); font-size: 10.5px; color: var(--muted); font-weight: 500; letter-spacing: 0; }
 
 /* ───────────────────── Bet modal breakdown ───────────────────── */
 .bet-card { max-width: 420px; }
