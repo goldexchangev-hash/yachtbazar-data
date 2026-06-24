@@ -27,7 +27,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=92" />
+    <link rel="stylesheet" href="styles.css?v=93" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -41,7 +41,7 @@
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.2</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.3</span>
       </div>
       <div class="topbar-right">
         <button id="sound-btn" class="btn btn-ghost" title="Play / silence background music">🔇 Music</button>
@@ -68,6 +68,33 @@
     <div id="house-wallet-banner" class="house-banner hidden">
       🏠 You're connected as the <strong>house wallet</strong> — you're on both sides of every flip, so you can't really win or lose. Switch to a different account in MetaMask to play as a challenger.
     </div>
+
+    <!-- ───────── Crypto TV Channels — game selector ───────── -->
+    <nav class="game-nav-wrap" aria-label="Crypto TV Channels">
+      <span class="game-nav-title">📺 Crypto TV Channels</span>
+      <div class="game-nav" id="game-nav" role="tablist" data-game="flip">
+        <button type="button" class="game-nav-btn active" id="ch-flip" role="tab" aria-selected="true" data-game="flip">
+          <svg class="gn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="8.4"/>
+            <path d="M12 7.4 L8.4 12 L12 13.9 L15.6 12 Z" fill="currentColor" stroke="none"/>
+            <path d="M8.7 12.7 L12 14.6 L15.3 12.7 L12 17 Z" fill="currentColor" stroke="none"/>
+          </svg>
+          <span class="gn-label">Coin Flip</span><span class="gn-ch">CH 08</span>
+        </button>
+        <button type="button" class="game-nav-btn" id="ch-dice" role="tab" aria-selected="false" data-game="dice">
+          <svg class="gn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true">
+            <rect x="4" y="4" width="16" height="16" rx="4.6"/>
+            <circle cx="9" cy="9" r="1.35" fill="currentColor" stroke="none"/>
+            <circle cx="15" cy="9" r="1.35" fill="currentColor" stroke="none"/>
+            <circle cx="12" cy="12" r="1.35" fill="currentColor" stroke="none"/>
+            <circle cx="9" cy="15" r="1.35" fill="currentColor" stroke="none"/>
+            <circle cx="15" cy="15" r="1.35" fill="currentColor" stroke="none"/>
+          </svg>
+          <span class="gn-label">Dice</span><span class="gn-ch">CH 09</span>
+        </button>
+        <span class="game-nav-thumb" aria-hidden="true"></span>
+      </div>
+    </nav>
 
     <main class="layout">
       <!-- ───────────────────── Left: the TV ───────────────────── -->
@@ -179,17 +206,6 @@
             </div>
           </div>
           <div class="tv-stand" aria-hidden="true"></div>
-        </div>
-
-        <!-- Game switcher — "change the channel" between Coin Flip (CH 08) and Dice (CH 09) -->
-        <div class="channel-bar card" id="channel-bar" role="tablist" aria-label="Pick a game" data-game="flip">
-          <button type="button" class="channel-tab active" id="ch-flip" role="tab" aria-selected="true" data-game="flip" data-ch="8">
-            <span class="ch-num">CH 08</span><span class="ch-name">🪙 COIN FLIP</span>
-          </button>
-          <span class="channel-glider" aria-hidden="true"></span>
-          <button type="button" class="channel-tab" id="ch-dice" role="tab" aria-selected="false" data-game="dice" data-ch="9">
-            <span class="ch-num">CH 09</span><span class="ch-name">🎲 DICE</span>
-          </button>
         </div>
 
         <!-- Win-animation theme switcher (hidden for now — locked to Scarfblade Films) -->
@@ -658,11 +674,11 @@
     </div>
 
     <script defer src="vendor/ethers.umd.min.js"></script>
-    <script defer src="config.js?v=92"></script>
-    <script defer src="contract.js?v=92"></script>
-    <script defer src="chiptune.js?v=92"></script>
-    <script defer src="scenes.js?v=92"></script>
-    <script defer src="tv.js?v=92"></script>
-    <script defer src="app.js?v=92"></script>
+    <script defer src="config.js?v=93"></script>
+    <script defer src="contract.js?v=93"></script>
+    <script defer src="chiptune.js?v=93"></script>
+    <script defer src="scenes.js?v=93"></script>
+    <script defer src="tv.js?v=93"></script>
+    <script defer src="app.js?v=93"></script>
   </body>
 </html>

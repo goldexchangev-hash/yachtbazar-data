@@ -1423,8 +1423,8 @@
   // ── Game switcher ("change the channel") ──
   function paintGameTabs(game) {
     document.body.classList.toggle("game-dice", game === "dice");
-    const bar = $("channel-bar"); if (bar) bar.dataset.game = game;
-    document.querySelectorAll("#channel-bar .channel-tab").forEach((b) => {
+    const bar = $("game-nav"); if (bar) bar.dataset.game = game;
+    document.querySelectorAll("#game-nav .game-nav-btn").forEach((b) => {
       const on = b.dataset.game === game;
       b.classList.toggle("active", on); b.setAttribute("aria-selected", on ? "true" : "false");
     });
@@ -1448,9 +1448,9 @@
       };
     });
     $("dice-roll-btn").onclick = playDiceClick;
-    document.querySelectorAll("#channel-bar .channel-tab").forEach((b) => { b.onclick = () => switchGame(b.dataset.game); });
-    // keyboard: ←/→ on a focused tab, and "C" to cycle
-    $("channel-bar").addEventListener("keydown", (e) => {
+    document.querySelectorAll("#game-nav .game-nav-btn").forEach((b) => { b.onclick = () => switchGame(b.dataset.game); });
+    // keyboard: ←/→ to switch channels
+    $("game-nav").addEventListener("keydown", (e) => {
       if (e.key === "ArrowLeft") switchGame("flip");
       else if (e.key === "ArrowRight") switchGame("dice");
     });
