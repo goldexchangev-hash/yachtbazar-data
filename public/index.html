@@ -27,7 +27,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=93" />
+    <link rel="stylesheet" href="styles.css?v=94" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -41,7 +41,7 @@
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.3</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.4</span>
       </div>
       <div class="topbar-right">
         <button id="sound-btn" class="btn btn-ghost" title="Play / silence background music">🔇 Music</button>
@@ -70,31 +70,41 @@
     </div>
 
     <!-- ───────── Crypto TV Channels — game selector ───────── -->
-    <nav class="game-nav-wrap" aria-label="Crypto TV Channels">
-      <span class="game-nav-title">📺 Crypto TV Channels</span>
-      <div class="game-nav" id="game-nav" role="tablist" data-game="flip">
-        <button type="button" class="game-nav-btn active" id="ch-flip" role="tab" aria-selected="true" data-game="flip">
-          <svg class="gn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <circle cx="12" cy="12" r="8.4"/>
-            <path d="M12 7.4 L8.4 12 L12 13.9 L15.6 12 Z" fill="currentColor" stroke="none"/>
-            <path d="M8.7 12.7 L12 14.6 L15.3 12.7 L12 17 Z" fill="currentColor" stroke="none"/>
-          </svg>
-          <span class="gn-label">Coin Flip</span><span class="gn-ch">CH 08</span>
+    <section class="channels" aria-label="Crypto TV Channels">
+      <header class="channels-head">
+        <h2 class="channels-title"><span class="channels-tv">📺</span> Crypto TV Channels</h2>
+        <span class="channels-sub">Pick a channel to play</span>
+      </header>
+      <div class="channels-grid" id="game-nav" role="tablist" data-game="flip">
+
+        <button type="button" class="game-card flip active" id="ch-flip" role="tab" aria-selected="true" data-game="flip">
+          <span class="gc-tile">
+            <svg class="gc-glyph" viewBox="0 0 100 100" aria-hidden="true">
+              <ellipse cx="50" cy="50" rx="29" ry="30" fill="#fff" opacity=".96"/>
+              <ellipse cx="50" cy="44" rx="29" ry="30" fill="#fff"/>
+              <path d="M50 28 L36 49 L50 57 L64 49 Z" fill="#7b54d8"/>
+              <path d="M38 52 L50 60 L62 52 L50 70 Z" fill="#9b78ee"/>
+            </svg>
+          </span>
+          <span class="gc-name">Coin Flip</span>
         </button>
-        <button type="button" class="game-nav-btn" id="ch-dice" role="tab" aria-selected="false" data-game="dice">
-          <svg class="gn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true">
-            <rect x="4" y="4" width="16" height="16" rx="4.6"/>
-            <circle cx="9" cy="9" r="1.35" fill="currentColor" stroke="none"/>
-            <circle cx="15" cy="9" r="1.35" fill="currentColor" stroke="none"/>
-            <circle cx="12" cy="12" r="1.35" fill="currentColor" stroke="none"/>
-            <circle cx="9" cy="15" r="1.35" fill="currentColor" stroke="none"/>
-            <circle cx="15" cy="15" r="1.35" fill="currentColor" stroke="none"/>
-          </svg>
-          <span class="gn-label">Dice</span><span class="gn-ch">CH 09</span>
+
+        <button type="button" class="game-card dice" id="ch-dice" role="tab" aria-selected="false" data-game="dice">
+          <span class="gc-tile">
+            <svg class="gc-glyph" viewBox="0 0 100 100" aria-hidden="true">
+              <rect x="26" y="26" width="48" height="48" rx="15" fill="#fff"/>
+              <circle cx="40" cy="40" r="5.2" fill="#e07a16"/>
+              <circle cx="60" cy="40" r="5.2" fill="#e07a16"/>
+              <circle cx="40" cy="60" r="5.2" fill="#e07a16"/>
+              <circle cx="60" cy="60" r="5.2" fill="#e07a16"/>
+              <circle cx="50" cy="50" r="5.2" fill="#e07a16"/>
+            </svg>
+          </span>
+          <span class="gc-name">Dice</span>
         </button>
-        <span class="game-nav-thumb" aria-hidden="true"></span>
+
       </div>
-    </nav>
+    </section>
 
     <main class="layout">
       <!-- ───────────────────── Left: the TV ───────────────────── -->
@@ -674,11 +684,11 @@
     </div>
 
     <script defer src="vendor/ethers.umd.min.js"></script>
-    <script defer src="config.js?v=93"></script>
-    <script defer src="contract.js?v=93"></script>
-    <script defer src="chiptune.js?v=93"></script>
-    <script defer src="scenes.js?v=93"></script>
-    <script defer src="tv.js?v=93"></script>
-    <script defer src="app.js?v=93"></script>
+    <script defer src="config.js?v=94"></script>
+    <script defer src="contract.js?v=94"></script>
+    <script defer src="chiptune.js?v=94"></script>
+    <script defer src="scenes.js?v=94"></script>
+    <script defer src="tv.js?v=94"></script>
+    <script defer src="app.js?v=94"></script>
   </body>
 </html>
