@@ -42,6 +42,9 @@
   let chainOK = false;
   let activeRoomId = null; // a room I'm a participant in, currently live
   let ws = null;
+  let wsPlayers = [];     // presence reported by a live chat server (only if one exists)
+  let chainPlayers = [];  // addresses seen in recent on-chain rooms (newest first)
+  let playerStats = {};   // addrLower -> { w, l, recent: ["W","L",…] newest-first }
   let userMutedMusic = false; // true only if the user explicitly turns music off
   let inviteRoomId = params.get("room");
 
@@ -51,6 +54,7 @@
   };
   const short = (a) => (a ? a.slice(0, 6) + "…" + a.slice(-4) : "—");
   const eq = (a, b) => a && b && a.toLowerCase() === b.toLowerCase();
+  const isZero = (a) => !a || /^0x0+$/i.test(a);
 
   // ---- USD <-> ETH (live price) ----
   let ethUsd = 3000; // fallback until the live price loads
@@ -70,6 +74,19 @@
   const weiToUsd = (wei) => { try { return (+E.formatEther(wei)) * ethUsd; } catch { return 0; } };
   const usdToWei = (d) => E.parseEther((Math.max(0, +d) / ethUsd).toFixed(8));
   const usdOf = (wei) => usd(weiToUsd(wei)); // "$xx.xx" from wei
+
+  // Auto-size the gas LIMIT to the actual transaction (eth_estimateGas + 30%),
+  // falling back to a safe fixed value if the flaky public RPC errors on the
+  // estimate. The gas PRICE is set live by MetaMask from current network rates.
+  async function estGas(method, args, overrides, fallback) {
+    try {
+      const fn = contract[method];
+      const est = overrides ? await fn.estimateGas(...args, overrides) : await fn.estimateGas(...args);
+      return (est * 13n) / 10n;
+    } catch {
+      return fallback;
+    }
+  }
   function setSliderUsd(id) {
     const v = +$(id).value;
     const valEl = $(id + "-val"); if (valEl) valEl.textContent = usd(v);
@@ -329,7 +346,8 @@
     if (!(v > 0)) return toast("Enter a $ amount to fund the house", "err");
     try {
       toast("Funding the house… confirm in MetaMask");
-      const tx = await contract.fundHouse({ value: usdToWei(v), gasLimit: 150000 });
+      const value = usdToWei(v);
+      const tx = await contract.fundHouse({ value, gasLimit: await estGas("fundHouse", [], { value }, 150_000n) });
       await tx.wait();
       toast("House funded with " + usd(v), "ok");
       refreshHouse();
@@ -356,7 +374,7 @@
   // ---------------------------------------------------------- reads / render
   async function refreshAll() {
     if (!read || !chainOK) return;
-    await Promise.all([refreshBalances(), refreshRooms(), refreshStats(), refreshHouse()]);
+    await Promise.all([refreshBalances(), refreshRooms(), refreshStats(), refreshHouse(), refreshPlayers()]);
   }
 
   async function refreshBalances() {
@@ -415,7 +433,8 @@
     if (!(v > 0)) return toast("Enter an amount to deposit (in $)", "err");
     try {
       toast("Confirm the deposit in MetaMask…");
-      const tx = await contract.deposit({ value: usdToWei(v), gasLimit: 130_000n });
+      const value = usdToWei(v);
+      const tx = await contract.deposit({ value, gasLimit: await estGas("deposit", [], { value }, 130_000n) });
       await tx.wait();
       toast("Deposited " + usd(v), "ok");
       refreshBalances();
@@ -444,7 +463,7 @@
     } catch {}
     try {
       toast("Creating room… confirm in MetaMask");
-      const tx = await contract.createRoom(bet, name, { gasLimit: 700000 });
+      const tx = await contract.createRoom(bet, name, { gasLimit: await estGas("createRoom", [bet, name], null, 700000n) });
       const rcpt = await tx.wait();
       const ev = rcpt.logs.map((l) => safeParse(l)).find((p) => p && p.name === "RoomCreated");
       const id = ev ? ev.args.roomId.toString() : null;
@@ -467,7 +486,7 @@
       activeRoomId = id;
       lastRevealed = null;
       TV.startFlip({ p1: room ? room.creator : null, p2: account });
-      const tx = await contract.joinRoom(id, { gasLimit: 700000 });
+      const tx = await contract.joinRoom(id, { gasLimit: await estGas("joinRoom", [id], null, 700000n) });
       await tx.wait();
       toast("You're in! Flipping…", "ok");
       refreshBalances(); refreshRooms();
@@ -509,7 +528,7 @@
       lastRevealed = null;
       toast("Flipping vs the house… confirm in MetaMask");
       TV.startFlip({ p1: account, p2: "HOUSE" });
-      const tx = await contract.playHouse(bet, { gasLimit: 700000 });
+      const tx = await contract.playHouse(bet, { gasLimit: await estGas("playHouse", [bet], null, 700000n) });
       const rcpt = await tx.wait();
       const ev = rcpt.logs.map((l) => safeParse(l)).find((p) => p && p.name === "HouseGameStarted");
       if (ev) activeRoomId = ev.args.roomId.toString();
@@ -632,7 +651,7 @@
     if (!p) return;
     try {
       toast("Raising the room bet… confirm in MetaMask");
-      const tx = await contract.updateRoomBet(p.roomId, p.amount, { gasLimit: 250000 });
+      const tx = await contract.updateRoomBet(p.roomId, p.amount, { gasLimit: await estGas("updateRoomBet", [p.roomId, p.amount], null, 300000n) });
       await tx.wait();
       refreshBalances(); refreshRooms();
       wsSend({ type: "bet-response", roomId: p.roomId, amount: p.amount.toString(), accepted: true, to: p.proposer });
@@ -686,7 +705,7 @@
           sub: youWon ? "You won the pot (minus 10% house)" : "The other side won · house kept 10%",
         });
         activeRoomId = null;
-        refreshBalances(); refreshHouse(); refreshStats(); refreshRooms();
+        refreshBalances(); refreshHouse(); refreshStats(); refreshRooms(); refreshPlayers();
       } else if ((status === 2 && !mine) || status === 3) {
         // settled room I'm not in, or cancelled → drop it silently, no reveal
         activeRoomId = null;
@@ -827,8 +846,8 @@
       ws.onopen = () => { wsTries = 0; wsSend({ type: "hello", address: account }); };
       ws.onmessage = (ev) => {
         let d; try { d = JSON.parse(ev.data); } catch { return; }
-        if (d.type === "players") renderPlayers(d.players || []);
-        else if (d.type === "rooms-updated" || d.type === "flip") { refreshRooms(); reconcile(); }
+        if (d.type === "players") { wsPlayers = d.players || []; renderRoster(); }
+        else if (d.type === "rooms-updated" || d.type === "flip") { refreshRooms(); refreshPlayers(); reconcile(); }
         else if (d.type === "chat") renderChatLine(d.from, d.text);
         else if (d.type === "bet-proposal") handleProposal(d);
         else if (d.type === "bet-response") handleProposalResponse(d);
@@ -840,23 +859,123 @@
   }
   function wsSend(obj) { try { ws && ws.readyState === 1 && ws.send(JSON.stringify(obj)); } catch {} }
 
+  // Build the per-wallet history + presence roster straight from on-chain rooms,
+  // so it works even on a static host (GitHub Pages) with no chat/presence server.
+  async function refreshPlayers() {
+    if (read && chainOK) {
+      try {
+        const rooms = await read.getRecentRooms(60);
+        const order = [], seen = new Set(), stats = {};
+        const touch = (a) => {
+          const k = a.toLowerCase();
+          if (!stats[k]) stats[k] = { w: 0, l: 0, recent: [] };
+          return stats[k];
+        };
+        const addOrder = (a) => {
+          if (isZero(a)) return;
+          const k = a.toLowerCase();
+          if (!seen.has(k)) { seen.add(k); order.push(a); }
+        };
+        for (const r of rooms) { // newest-first
+          const house = r.isHouseGame;
+          // presence: the creator + both human players (never the house wallet)
+          addOrder(r.creator);
+          addOrder(r.player1);
+          if (!house) addOrder(r.player2);
+          // win/loss record: settled games only (status 2)
+          if (Number(r.status) === 2) {
+            const p1 = touch(r.player1), p1won = eq(r.winner, r.player1);
+            p1.recent.push(p1won ? "W" : "L"); p1won ? p1.w++ : p1.l++;
+            if (!house && !isZero(r.player2)) {
+              const p2 = touch(r.player2), p2won = eq(r.winner, r.player2);
+              p2.recent.push(p2won ? "W" : "L"); p2won ? p2.w++ : p2.l++;
+            }
+          }
+        }
+        chainPlayers = order;
+        playerStats = stats;
+      } catch (e) { /* keep last-known roster */ }
+    }
+    renderRoster();
+  }
+
+  // Merge: you (always), any live-server presence, then on-chain participants.
+  function renderRoster() {
+    const merged = [], seen = new Set();
+    const add = (a) => { if (isZero(a)) return; const k = a.toLowerCase(); if (!seen.has(k)) { seen.add(k); merged.push(a); } };
+    if (account) add(account);
+    for (const a of wsPlayers) add(a);
+    for (const a of chainPlayers) add(a);
+    renderPlayers(merged);
+  }
+
+  // Longest run of consecutive wins (record) and the current active streak,
+  // computed from `recent` (newest-first).
+  function winStreaks(recent) {
+    let best = 0, run = 0;
+    for (const o of recent) { if (o === "W") { run++; if (run > best) best = run; } else run = 0; }
+    let cur = 0;
+    for (const o of recent) { if (o === "W") cur++; else break; }
+    return { best, cur };
+  }
+
+  function recordBadges(addr) {
+    const wrap = document.createElement("span");
+    wrap.className = "precord";
+    const st = playerStats[addr.toLowerCase()];
+    if (st && st.recent.length) {
+      // last 3, oldest→newest left-to-right
+      for (const o of st.recent.slice(0, 3).reverse()) {
+        const b = document.createElement("span");
+        b.className = "pbadge " + (o === "W" ? "win" : "loss");
+        b.textContent = o;
+        wrap.appendChild(b);
+      }
+      const t = document.createElement("span");
+      t.className = "ptally";
+      t.textContent = st.w + "–" + st.l;
+      wrap.appendChild(t);
+      // win-streak record (🔥). Highlight if they're riding it right now.
+      const { best, cur } = winStreaks(st.recent);
+      if (best >= 2) {
+        const s = document.createElement("span");
+        s.className = "pstreak" + (cur === best && cur >= 2 ? " hot" : "");
+        s.textContent = "🔥" + best;
+        s.title = "Best win streak: " + best + " in a row" + (cur >= 2 ? " · on " + cur + " now" : "");
+        wrap.appendChild(s);
+      }
+    } else {
+      const b = document.createElement("span");
+      b.className = "pbadge none";
+      b.textContent = "no games yet";
+      wrap.appendChild(b);
+    }
+    return wrap;
+  }
+
   function renderPlayers(players) {
     const ul = $("players-list");
     $("players-count").textContent = players.length;
     if (!players.length) { ul.innerHTML = '<li class="empty">No one tuned in yet.</li>'; return; }
     ul.innerHTML = "";
-    // Only the 5 most recent, newest first — keeps the panel compact.
-    const recent = players.slice(-5).reverse();
-    for (const p of recent) {
+    // You first, then the 7 most-recent participants — keeps the panel compact.
+    for (const p of players.slice(0, 8)) {
       const li = document.createElement("li");
       li.className = "player-item";
       const c = document.createElement("canvas");
       blockies(p, 8, 3, c);
       li.appendChild(c);
+      const mid = document.createElement("div");
+      mid.className = "pmid";
+      const top = document.createElement("div");
+      top.className = "ptop";
       const name = document.createElement("span");
       name.className = "pname"; name.textContent = short(p);
-      li.appendChild(name);
-      if (eq(p, account)) { const you = document.createElement("span"); you.className = "pyou"; you.textContent = "YOU"; li.appendChild(you); }
+      top.appendChild(name);
+      if (eq(p, account)) { const you = document.createElement("span"); you.className = "pyou"; you.textContent = "YOU"; top.appendChild(you); }
+      mid.appendChild(top);
+      mid.appendChild(recordBadges(p));
+      li.appendChild(mid);
       ul.appendChild(li);
     }
   }
@@ -933,7 +1052,7 @@
 
     // periodic lobby refresh + TV reveal reconciler (safety net for missed events)
     setInterval(() => {
-      if (chainOK && read) { refreshRooms(); refreshBalances(); refreshHouse(); reconcile(); }
+      if (chainOK && read) { refreshRooms(); refreshBalances(); refreshHouse(); refreshPlayers(); reconcile(); }
     }, 3000);
   }
 

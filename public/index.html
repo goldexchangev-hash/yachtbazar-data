@@ -15,7 +15,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=14" />
+    <link rel="stylesheet" href="styles.css?v=15" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -212,13 +212,14 @@
           </div>
         </div>
 
-        <!-- Active players (collapsible, scrollable, last 5) -->
+        <!-- Players + win/loss records (derived from on-chain history) -->
         <div class="card">
           <details class="dropdown" open>
             <summary class="card-title dd-summary">
-              <span>Active players <span class="pill" id="players-count">0</span></span>
+              <span>Players &amp; records <span class="pill" id="players-count">0</span></span>
               <span class="dd-arrow" aria-hidden="true">▾</span>
             </summary>
+            <p class="muted" style="margin: 2px 0 8px; font-size: 12px;">Last 3 games (newest right) · W–L tally · 🔥 best win streak</p>
             <ul id="players-list" class="players-list">
               <li class="empty">No one tuned in yet.</li>
             </ul>
@@ -332,10 +333,10 @@
     </div>
 
     <script src="vendor/ethers.umd.min.js"></script>
-    <script src="config.js?v=14"></script>
-    <script src="contract.js?v=14"></script>
-    <script src="chiptune.js?v=14"></script>
-    <script src="tv.js?v=14"></script>
-    <script src="app.js?v=14"></script>
+    <script src="config.js?v=15"></script>
+    <script src="contract.js?v=15"></script>
+    <script src="chiptune.js?v=15"></script>
+    <script src="tv.js?v=15"></script>
+    <script src="app.js?v=15"></script>
   </body>
 </html>

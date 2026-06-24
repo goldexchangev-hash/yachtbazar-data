@@ -1,9 +1,11 @@
 /* ============================================================
-   chiptune.js — chilled background music + retro SFX (Web Audio API).
+   chiptune.js — slow, calm background music + retro SFX (Web Audio API).
 
-   Music: a ~55-second, 16-bar lo-fi loop (A/B sections so it doesn't feel
-   repetitive) with a soft hi-hat groove — all synthesized, no copyrighted
-   audio. Drop your own track at public/music.mp3 to use that instead.
+   Music: a slow (~50 BPM) ~2-minute, 24-bar ambient lo-fi loop in 3 sections
+   (A/B/C so it doesn't feel repetitive). Soft swelling sine pads, a sparse
+   gentle melody, and just a faint pulse instead of a busy hi-hat — all
+   synthesized, no copyrighted audio. Drop your own track at public/music.mp3
+   to use that instead.
 
    window.Chiptune: .toggle() .start() .stop() .isOn()  .blip() .coin() .win() .lose()
    ============================================================ */
@@ -20,31 +22,42 @@
       }
   })();
 
-  const TEMPO = 72;
+  const TEMPO = 50; // slow & calm; BAR ≈ 4.8s, so 24 bars ≈ 1m55s before it loops
   const BEAT = 60 / TEMPO;
   const BAR = 4 * BEAT;
 
-  // 16-bar lo-fi progression. Each bar: chord (pad) + a sparse melody on 4 beats
-  // ("-" = rest). Section A (1-8) and a varied Section B (9-16) keep it fresh.
+  // 24-bar slow ambient progression in A-minor. Each bar: a soft pad chord plus
+  // a very sparse melody on 4 beats ("-" = rest, lots of space = calm). Three
+  // 8-bar sections (A/B/C) keep the long loop from feeling repetitive. The
+  // melody stays in a low register (oct 4-5) for a mellow, unhurried feel.
   const PROG = [
-    // ---- A ----
-    { chord: ["A2", "C4", "E4", "G4"], mel: ["E5", "-", "C5", "-"] },
-    { chord: ["D2", "F3", "A3", "C4"], mel: ["D5", "-", "A4", "F5"] },
-    { chord: ["G2", "B3", "D4", "F4"], mel: ["G4", "-", "B4", "-"] },
-    { chord: ["C3", "E4", "G4", "B4"], mel: ["C5", "E5", "-", "G5"] },
-    { chord: ["F2", "A3", "C4", "E4"], mel: ["A4", "-", "F5", "-"] },
-    { chord: ["E2", "G3", "B3", "D4"], mel: ["B4", "-", "G4", "B4"] },
-    { chord: ["D2", "F3", "A3", "C4"], mel: ["F5", "-", "D5", "-"] },
-    { chord: ["E2", "G#3", "B3", "D4"], mel: ["E5", "D5", "-", "B4"] },
-    // ---- B (lifts an octave, more movement) ----
-    { chord: ["A2", "C4", "E4", "G4"], mel: ["A5", "-", "E5", "C5"] },
-    { chord: ["F2", "A3", "C4", "E4"], mel: ["C6", "-", "A5", "-"] },
-    { chord: ["C3", "E4", "G4", "B4"], mel: ["G5", "E5", "-", "C5"] },
-    { chord: ["G2", "B3", "D4", "F4"], mel: ["D5", "-", "B4", "D5"] },
-    { chord: ["D2", "F3", "A3", "C4"], mel: ["F5", "A5", "-", "D5"] },
-    { chord: ["E2", "G3", "B3", "D4"], mel: ["G5", "-", "B5", "-"] },
-    { chord: ["F2", "A3", "C4", "E4"], mel: ["A5", "G5", "-", "F5"] },
-    { chord: ["E2", "G#3", "B3", "D4"], mel: ["E5", "-", "D5", "B4"] },
+    // ---- A: settle in ----
+    { chord: ["A2", "E3", "A3", "C4"], mel: ["-", "E4", "-", "-"] },
+    { chord: ["F2", "C3", "F3", "A3"], mel: ["-", "-", "A4", "-"] },
+    { chord: ["C3", "G3", "C4", "E4"], mel: ["G4", "-", "-", "E4"] },
+    { chord: ["G2", "D3", "G3", "B3"], mel: ["-", "D4", "-", "-"] },
+    { chord: ["D3", "A3", "D4", "F4"], mel: ["-", "F4", "-", "A4"] },
+    { chord: ["A2", "E3", "A3", "C4"], mel: ["E4", "-", "C4", "-"] },
+    { chord: ["E3", "B3", "E4", "G4"], mel: ["-", "-", "B4", "-"] },
+    { chord: ["E3", "B3", "E4", "G4"], mel: ["G4", "-", "-", "-"] },
+    // ---- B: gentle drift ----
+    { chord: ["F2", "C3", "F3", "A3"], mel: ["-", "A4", "-", "C5"] },
+    { chord: ["C3", "G3", "C4", "E4"], mel: ["-", "-", "E5", "-"] },
+    { chord: ["D3", "A3", "D4", "F4"], mel: ["D5", "-", "-", "A4"] },
+    { chord: ["A2", "E3", "A3", "C4"], mel: ["-", "C5", "-", "-"] },
+    { chord: ["G2", "D3", "G3", "B3"], mel: ["-", "B4", "-", "D5"] },
+    { chord: ["E3", "B3", "E4", "G4"], mel: ["E5", "-", "-", "-"] },
+    { chord: ["F2", "C3", "F3", "A3"], mel: ["-", "-", "A4", "-"] },
+    { chord: ["G2", "D3", "G3", "B3"], mel: ["G4", "-", "D4", "-"] },
+    // ---- C: come home ----
+    { chord: ["A2", "E3", "A3", "C4"], mel: ["-", "E4", "-", "A4"] },
+    { chord: ["F2", "C3", "F3", "A3"], mel: ["-", "-", "C5", "-"] },
+    { chord: ["C3", "G3", "C4", "E4"], mel: ["E5", "-", "-", "G4"] },
+    { chord: ["E3", "B3", "E4", "G4"], mel: ["-", "B4", "-", "-"] },
+    { chord: ["D3", "A3", "D4", "F4"], mel: ["-", "-", "F4", "-"] },
+    { chord: ["A2", "E3", "A3", "C4"], mel: ["A4", "-", "E4", "-"] },
+    { chord: ["E3", "B3", "E4", "G4"], mel: ["-", "G4", "-", "-"] },
+    { chord: ["A2", "E3", "A3", "C4"], mel: ["-", "-", "A3", "-"] },
   ];
 
   let ctx = null, master = null, musicGain = null, noiseBuf = null;
@@ -98,36 +111,35 @@
     osc.stop(start + dur + 0.03);
   }
 
-  function hat(start, peak) {
+  function hat(start, peak, cutoff) {
     if (!noiseBuf) return;
     const src = ctx.createBufferSource();
     src.buffer = noiseBuf;
     const hp = ctx.createBiquadFilter();
     hp.type = "highpass";
-    hp.frequency.value = 7000;
+    hp.frequency.value = cutoff == null ? 7000 : cutoff;
     const g = ctx.createGain();
     g.gain.setValueAtTime(peak, start);
-    g.gain.exponentialRampToValueAtTime(0.0001, start + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.0001, start + 0.08);
     src.connect(hp); hp.connect(g); g.connect(master);
-    src.start(start); src.stop(start + 0.06);
+    src.start(start); src.stop(start + 0.1);
   }
 
   function scheduleBar(t) {
     const bar = PROG[barIdx % PROG.length];
+    // Soft pads that swell in slowly and fade out — long attack/release = calm.
     for (const n of bar.chord) {
-      voice(NOTES[n], t, BAR * 0.98, "sine", musicGain, 0.3, 0.4, 0.6); // soft pad
+      voice(NOTES[n], t, BAR * 0.99, "sine", musicGain, 0.22, 1.2, 1.6);
     }
+    // Sparse, gently ringing melody (single soft triangle voice, no bright shimmer).
     bar.mel.forEach((n, i) => {
       if (n && n !== "-") {
-        voice(NOTES[n], t + i * BEAT, BEAT * 1.5, "triangle", musicGain, 0.22, 0.03, 0.25);
-        voice(NOTES[n] * 2, t + i * BEAT, BEAT * 0.6, "sine", musicGain, 0.05, 0.02, 0.2); // shimmer
+        voice(NOTES[n], t + i * BEAT, BEAT * 1.8, "triangle", musicGain, 0.15, 0.06, 0.8);
       }
     });
-    // lo-fi hat groove: soft tick on each beat, accent on the offbeats
-    for (let b = 0; b < 4; b++) {
-      hat(t + b * BEAT, 0.05);
-      hat(t + b * BEAT + BEAT * 0.5, 0.085);
-    }
+    // Just a faint, soft pulse on beats 1 & 3 — keeps a slow heartbeat, not a groove.
+    hat(t, 0.02, 3200);
+    hat(t + 2 * BEAT, 0.02, 3200);
     barIdx++;
   }
 
