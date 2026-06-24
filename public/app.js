@@ -292,7 +292,7 @@
       contract = c.connect(signer);
       read = new E.Contract(addr, ABI, provider);
       // Seed a small house bankroll so vs-house works right away (best effort).
-      try { await (await contract.fundHouse({ value: E.parseEther("0.2"), gasLimit: 90_000n })).wait(); } catch {}
+      try { await (await contract.fundHouse({ value: usdToWei(1000), gasLimit: 90_000n })).wait(); } catch {}
       maxBet = await read.maxBet();
       try { hostTreasury = await read.treasury(); } catch {}
       chainOK = true;
