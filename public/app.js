@@ -37,6 +37,15 @@
   let provider = null; // ethers BrowserProvider
   let signer = null;
   let account = null;
+  let myBestNetUsd = 0; // biggest single net win (for achievements)
+  // Referral: first-touch ?ref= is remembered; your own links carry ?ref=you.
+  const REF = (() => {
+    try {
+      const r = params.get("ref");
+      if (r && E && E.isAddress && E.isAddress(r) && !localStorage.getItem("coinflip_ref")) localStorage.setItem("coinflip_ref", r);
+      return localStorage.getItem("coinflip_ref") || null;
+    } catch { return null; }
+  })();
   let connecting = false; // true while connect() runs, to suppress the auto-reload
   let contract = null; // connected to signer
   let read = null; // connected to provider
@@ -451,6 +460,8 @@
     loadHostHistory();
     await refreshAll();
     seedHostHistory(); // backfill host-table flips from logs (async, best-effort)
+    checkDailyStreak();
+    renderInvite();
     TV.idle("Deposit ETH, then create or join a room");
     $("bankroll").hidden = false;
     $("play-house").hidden = false;
@@ -1018,9 +1029,9 @@
         side: coinHeads ? "HEADS" : "TAILS",
         youWon: playerWon,
         role: "participant",
-        amountUsd: rv.amountUsd,
+        amountUsd: playerWon ? weiToUsd(rv.netWei) : rv.amountUsd,
         tier: rv.tier,
-        sub: playerWon ? "POT WON! Paid from the table's bank (10% to host)" : "You lost your stake — it went to the host",
+        sub: playerWon ? "YOU WON! Net profit shown — your stake came back too (10% to host)" : "You lost your stake — it went to the host",
       });
       addHostGame({ label: "Host table", won: playerWon, amount: rv.amountWei.toString(), net: rv.netWei.toString(), ts: Math.floor(Date.now() / 1000), tx: rcpt.hash });
       refreshBalances(); refreshTableInfo(); refreshPlayers(); refreshMyHistory();
@@ -1261,9 +1272,9 @@
           side,
           youWon,
           role: "participant",
-          amountUsd: rv.amountUsd,
+          amountUsd: youWon ? weiToUsd(rv.netWei) : rv.amountUsd,
           tier: rv.tier,
-          sub: youWon ? "POT WON! Your stake back + winnings (10% to house)" : "You lost your stake — the pot went to the other side",
+          sub: youWon ? "YOU WON! Net profit shown — your stake came back too (10% to house)" : "You lost your stake — the pot went to the other side",
         });
         activeRoomId = null;
         refreshBalances(); refreshHouse(); refreshStats(); refreshRooms(); refreshPlayers(); refreshMyHistory();
@@ -1360,9 +1371,91 @@
     const q = new URLSearchParams();
     if (deployment.address) q.set("contract", deployment.address);
     if (deployment.chainId) q.set("chain", String(deployment.chainId));
+    if (account) q.set("ref", account); // your invite attribution
     if (id != null) q.set("room", String(id));
     const qs = q.toString();
     return qs ? base + "?" + qs : base;
+  }
+
+  // ---- Live wins feed (from the on-chain room scan) ----
+  function renderFeed(rooms) {
+    const list = $("feed-list"); if (!list) return;
+    const rows = [];
+    for (const r of rooms) {
+      if (Number(r.status) !== 2) continue; // settled only
+      const bet = r.betAmount, pot = bet * 2n, netWin = pot - pot / 10n - bet;
+      let who, won, amt;
+      if (r.isHouseGame) {
+        won = eq(r.winner, r.player1);
+        who = eq(account, r.player1) ? "you" : short(r.player1);
+        amt = won ? netWin : bet;
+      } else {
+        won = true; who = eq(account, r.winner) ? "you" : short(r.winner); amt = netWin;
+      }
+      rows.push({ who, won, amt });
+      if (rows.length >= 16) break;
+    }
+    if (!rows.length) { list.innerHTML = '<li class="empty">Recent flips will scroll here.</li>'; return; }
+    list.innerHTML = rows.map((x) =>
+      `<li class="feed-item ${x.won ? "win" : "loss"}"><span class="feed-who">${x.who}</span>` +
+      `<span class="feed-res">${x.won ? "won" : "lost"}</span>` +
+      `<span class="feed-amt ${x.won ? "up" : "down"}">${x.won ? "+" : "−"}${usdOf(x.amt)}</span></li>`
+    ).join("");
+  }
+
+  // ---- Daily streak (per account, UTC day) ----
+  function checkDailyStreak() {
+    if (!account) return;
+    const card = $("progress-card"); if (card) card.hidden = false;
+    let st = {};
+    try { st = JSON.parse(localStorage.getItem("coinflip_daily_" + account) || "{}"); } catch {}
+    const today = new Date().toISOString().slice(0, 10);
+    if (st.last !== today) {
+      const yest = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+      st.streak = st.last === yest ? (st.streak || 0) + 1 : 1;
+      st.last = today; st.best = Math.max(st.best || 0, st.streak);
+      try { localStorage.setItem("coinflip_daily_" + account, JSON.stringify(st)); } catch {}
+    }
+    const pill = $("daily-streak-pill"); if (pill) pill.textContent = "Day " + (st.streak || 1) + " 🔥";
+    const note = $("daily-streak-note");
+    if (note) note.textContent = "Checked in " + (st.streak || 1) + " day" + ((st.streak || 1) === 1 ? "" : "s") + " in a row · best " + (st.best || 1) + ".";
+  }
+
+  // ---- Achievements (cosmetic, from on-chain stats + best win) ----
+  function renderAchievements() {
+    const grid = $("achievements-grid"); if (!grid || !account) return;
+    const st = playerStats[account.toLowerCase()] || { w: 0, l: 0, recent: [] };
+    const games = st.w + st.l, best = winStreaks(st.recent).best;
+    const defs = [
+      { ic: "🎬", nm: "First Flip", got: games >= 1 },
+      { ic: "✅", nm: "First Win", got: st.w >= 1 },
+      { ic: "🎯", nm: "10 Games", got: games >= 10 },
+      { ic: "🏟️", nm: "50 Games", got: games >= 50 },
+      { ic: "🔥", nm: "3 Streak", got: best >= 3 },
+      { ic: "⚡", nm: "5 Streak", got: best >= 5 },
+      { ic: "💰", nm: "$100 Win", got: myBestNetUsd >= 100 },
+      { ic: "💎", nm: "$300 Win", got: myBestNetUsd >= 300 },
+    ];
+    grid.innerHTML = defs.map((d) =>
+      `<div class="ach ${d.got ? "got" : "locked"}" title="${d.nm}${d.got ? " ✓" : " (locked)"}"><span class="ach-ic">${d.ic}</span><span class="ach-nm">${d.nm}</span></div>`
+    ).join("");
+  }
+
+  function renderInvite() {
+    const inp = $("invite-link"); if (inp) inp.value = shareUrlFor(null);
+    const by = $("invited-by");
+    if (by) by.textContent = REF && (!account || !eq(REF, account)) ? "🎟️ Invited by " + short(REF) : "";
+  }
+
+  // hotkey helpers
+  function setHotSide(heads) {
+    const btn = document.querySelector('#house-side .side-btn[data-heads="' + (heads ? "1" : "0") + '"]');
+    if (btn) btn.click();
+  }
+  function stepHouseBet(delta) {
+    const s = $("house-bet"); if (!s) return;
+    s.value = String(Math.max(+s.min, Math.min(+s.max, (+s.value || 0) + delta)));
+    if (typeof setSliderUsd === "function") setSliderUsd("house-bet");
   }
   function showShareLink(id) {
     $("share-box").classList.remove("hidden");
@@ -1462,10 +1555,12 @@
         }
         chainPlayers = order;
         playerStats = stats;
+        renderFeed(rooms);
       } catch (e) { /* keep last-known roster */ }
     }
     renderRoster();
     renderLeaderboard();
+    renderAchievements();
   }
 
   // HIGH SCORES — rank recent participants by net record (wins − losses).
@@ -1646,6 +1741,11 @@
       }
       for (const h of hostHistory) games.push({ label: h.label, won: h.won, amount: BigInt(h.amount), net: BigInt(h.net), ts: h.ts });
       games.sort((a, b) => b.ts - a.ts); // newest first
+      // biggest single net win (for achievements)
+      let bestNet = 0n;
+      for (const g of games) if (g.won && g.net > bestNet) bestNet = g.net;
+      myBestNetUsd = Math.max(myBestNetUsd, weiToUsd(bestNet));
+      renderAchievements();
       renderMyHistory(games);
     } catch {}
   }
@@ -1783,6 +1883,31 @@
       navigator.clipboard?.writeText(inp.value).then(() => toast("Link copied!", "ok"), () => {});
     };
     const shareBtn = $("share-result-btn"); if (shareBtn) shareBtn.onclick = shareResultCard;
+    const inviteCopy = $("invite-copy");
+    if (inviteCopy) inviteCopy.onclick = () => {
+      const inp = $("invite-link"); if (!inp) return; inp.select();
+      navigator.clipboard?.writeText(inp.value).then(() => toast("Invite link copied! 🎟️", "ok"), () => {});
+    };
+    // ---- Keyboard hotkeys (skip while typing) ----
+    document.addEventListener("keydown", (e) => {
+      const el = e.target, tag = (el.tagName || "").toLowerCase();
+      if (tag === "input" || tag === "textarea" || el.isContentEditable) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const k = e.key.toLowerCase();
+      const betOpen = !$("bet-modal").classList.contains("hidden");
+      if (k === "escape") { closeBetModal(); $("help-modal").classList.add("hidden"); $("nego-modal").classList.add("hidden"); return; }
+      if (k === " " || k === "enter") {
+        e.preventDefault();
+        if (betOpen) $("bet-accept").click();            // confirm the open bet
+        else if (!$("play-house").hidden) $("play-house-btn").click(); // flip vs house
+        return;
+      }
+      if (betOpen) return;
+      if (k === "h") setHotSide(true);
+      else if (k === "t") setHotSide(false);
+      else if (k === "+" || k === "=" || k === "arrowup") { e.preventDefault(); stepHouseBet(5); }
+      else if (k === "-" || k === "_" || k === "arrowdown") { e.preventDefault(); stepHouseBet(-5); }
+    });
     $("help-btn").onclick = () => $("help-modal").classList.remove("hidden");
     $("help-close").onclick = () => $("help-modal").classList.add("hidden");
     $("help-modal").onclick = (e) => { if (e.target === $("help-modal")) $("help-modal").classList.add("hidden"); };
@@ -1863,6 +1988,7 @@
     syncSoundBtn();
     setupSliders();
     setupReadOnly();
+    renderInvite();
     // Start the music on the first tap/touch (mobile + desktop block autoplay
     // until a user gesture). Skips if the user has explicitly muted.
     // Fire on the COMPLETED gesture (touchend/click) — iOS won't unlock audio on

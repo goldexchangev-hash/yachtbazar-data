@@ -90,6 +90,24 @@ a { color: var(--cyan); text-decoration: none; }
 .lb-net.up { color: var(--green); }
 .lb-net.down { color: var(--red); }
 .lb-streak { font-size: 12px; }
+/* Live wins feed */
+.feed-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; max-height: 210px; overflow-y: auto; }
+.feed-list .empty { color: var(--muted); font-size: 13px; padding: 6px 2px; }
+.feed-item { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 7px; font-size: 12.5px; background: rgba(255,255,255,0.03); }
+.feed-item.win { border-left: 3px solid var(--green); }
+.feed-item.loss { border-left: 3px solid var(--red); }
+.feed-who { flex: 1; font-family: ui-monospace, monospace; color: #dfe6ff; }
+.feed-res { color: var(--muted); }
+.feed-amt { font-weight: 700; }
+.feed-amt.up { color: var(--green); } .feed-amt.down { color: var(--red); }
+/* Achievements grid */
+.ach-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.ach { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 3px; border-radius: 10px; text-align: center; background: rgba(255,255,255,0.03); border: 1px solid transparent; }
+.ach.got { background: rgba(255,210,63,0.12); border-color: rgba(255,210,63,0.4); }
+.ach.locked { opacity: 0.4; filter: grayscale(1); }
+.ach-ic { font-size: 18px; line-height: 1; }
+.ach-nm { font-size: 9px; color: #cdd5ee; line-height: 1.15; }
+kbd { font-family: ui-monospace, monospace; font-size: 11px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 5px; padding: 1px 5px; }
 /* Keyboard focus ring (mouse clicks stay clean via :focus-visible) */
 :focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; border-radius: 4px; }
 @keyframes blink { 50% { opacity: 0.25; } }

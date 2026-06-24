@@ -21,7 +21,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=62" />
+    <link rel="stylesheet" href="styles.css?v=63" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -35,7 +35,7 @@
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v6.2</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v6.3</span>
       </div>
       <div class="topbar-right">
         <button id="sound-btn" class="btn btn-ghost" title="Play / silence background music">🔇 Music</button>
@@ -407,6 +407,32 @@
           </details>
         </div>
 
+        <!-- Live wins feed (recent on-chain results scrolling) -->
+        <div class="card">
+          <details class="dropdown" open>
+            <summary class="card-title dd-summary"><span>📡 Live wins</span><span class="dd-arrow" aria-hidden="true">▾</span></summary>
+            <ul id="feed-list" class="feed-list"><li class="empty">Recent flips will scroll here.</li></ul>
+          </details>
+        </div>
+
+        <!-- Your progress: daily streak + achievements -->
+        <div class="card" id="progress-card" hidden>
+          <h2 class="card-title">🎖️ Your progress <span class="pill" id="daily-streak-pill">Day 1 🔥</span></h2>
+          <p class="muted" id="daily-streak-note" style="font-size: 12px; margin: 2px 0 8px;">Check in daily — your streak grows each day you play.</p>
+          <div id="achievements-grid" class="ach-grid"></div>
+        </div>
+
+        <!-- Invite friends (referral link) -->
+        <div class="card">
+          <h2 class="card-title">🎟️ Invite friends</h2>
+          <p class="muted" id="invited-by" style="font-size: 12px; margin: 2px 0 8px;"></p>
+          <div class="share-row">
+            <input id="invite-link" class="input share-input" readonly />
+            <button id="invite-copy" class="btn btn-ghost">Copy</button>
+          </div>
+          <p class="muted" style="font-size: 11px; margin-top: 6px;">Share your link — friends land straight into your game.</p>
+        </div>
+
         <!-- Your money in/out per game (clearer than MetaMask's contract activity) -->
         <div class="card">
           <details class="dropdown" open>
@@ -469,6 +495,10 @@
             to your wallet anytime.</li>
         </ol>
         <p class="help-foot muted">
+          <b>Hotkeys:</b> <kbd>Space</kbd> flip vs house / confirm bet · <kbd>H</kbd>/<kbd>T</kbd> pick side ·
+          <kbd>+</kbd>/<kbd>−</kbd> adjust stake · <kbd>Esc</kbd> close.
+        </p>
+        <p class="help-foot muted">
           The result is computed on‑chain and visible in the transaction on Etherscan.
           This is play‑money on a test network — never use real funds.
           (A Chainlink VRF randomness upgrade is planned for mainnet.)
@@ -518,11 +548,11 @@
     </div>
 
     <script defer src="vendor/ethers.umd.min.js"></script>
-    <script defer src="config.js?v=62"></script>
-    <script defer src="contract.js?v=62"></script>
-    <script defer src="chiptune.js?v=62"></script>
-    <script defer src="scenes.js?v=62"></script>
-    <script defer src="tv.js?v=62"></script>
-    <script defer src="app.js?v=62"></script>
+    <script defer src="config.js?v=63"></script>
+    <script defer src="contract.js?v=63"></script>
+    <script defer src="chiptune.js?v=63"></script>
+    <script defer src="scenes.js?v=63"></script>
+    <script defer src="tv.js?v=63"></script>
+    <script defer src="app.js?v=63"></script>
   </body>
 </html>
