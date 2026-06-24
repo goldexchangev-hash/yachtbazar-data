@@ -845,16 +845,35 @@
   // click. So on the user's FIRST interaction we "bless" the reveal element with
   // a silent (volume 0) gesture-initiated play — after which it's allowed to play
   // WITH audio later, even programmatically. (iOS Safari especially needs this.)
-  let revealBlessed = false;
+  const IS_MOBILE = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "");
+  let revealBlessed = false, vCtx = null, vSrc = null;
+  // On mobile, route the reel's audio through an unlocked Web Audio context so it
+  // can play WITH sound even though the reveal fires seconds after the tap (iOS &
+  // in-app browsers block delayed video-with-sound). Desktop already plays the
+  // element audio directly, so we leave it untouched there.
+  function setupVideoAudioGraph() {
+    if (!IS_MOBILE || vSrc) return;
+    const v = $("reveal-video"); if (!v) return;
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+      vCtx = new AC();
+      vSrc = vCtx.createMediaElementSource(v); // one-time; element audio now flows through vCtx
+      vSrc.connect(vCtx.destination);
+    } catch (e) { vCtx = null; vSrc = null; }
+  }
+  function resumeVideoCtx() { try { if (vCtx && vCtx.state !== "running") vCtx.resume(); } catch (e) {} }
   function blessRevealVideo() {
     if (revealBlessed) return;
     const v = $("reveal-video"); if (!v) return;
+    revealBlessed = true;
+    setupVideoAudioGraph();
+    resumeVideoCtx();
     try {
-      v.muted = false; v.volume = 0;
-      if (!v.getAttribute("src")) v.src = CINE.loss[1]; // smallest reel, just to satisfy play()
+      v.muted = true;                                  // silent prime (no audible blip)
+      if (!v.getAttribute("src")) v.src = CINE.loss[1];
       const p = v.play();
-      if (p && p.then) p.then(() => { try { v.pause(); v.currentTime = 0; } catch (e) {} revealBlessed = true; }).catch(() => {});
-    } catch (e) {}
+      if (p && p.then) p.then(() => { try { v.pause(); v.currentTime = 0; } catch (e) {} }).catch(() => { revealBlessed = false; });
+    } catch (e) { revealBlessed = false; }
   }
   function setupRevealAudioUnlock() {
     ["pointerdown", "touchend", "click", "keydown"].forEach((ev) => document.addEventListener(ev, blessRevealVideo, { passive: true }));
@@ -885,6 +904,7 @@
     clearTimeout(cineTimer);
     // Try to play WITH sound; duck the background music so the reel is heard.
     v.removeAttribute("muted"); v.muted = false; v.volume = 1; v.setAttribute("playsinline", "");
+    resumeVideoCtx();                                    // mobile: wake the Web Audio route
     try { window.Chiptune && Chiptune.duckMusic(true); } catch {}
     v.classList.add("show");                              // show BEFORE anything that could throw
     try { window.__winSceneActive = true; window.__cineActive = true; } catch {} // hold the TV's own cues
