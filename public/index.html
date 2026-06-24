@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0c0d16" />
+    <title>📺 TV Crypto Flip — provably-fair ETH coin flip</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bungee&family=Press+Start+2P&family=Space+Grotesk:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <!-- Animated backdrop -->
+    <div class="bg-grid" aria-hidden="true"></div>
+    <div class="bg-glow" aria-hidden="true"></div>
+
+    <!-- ───────────────────────── Header ───────────────────────── -->
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-tv">📺</span>
+        <span class="brand-name">TV<span class="brand-accent"> CRYPTO</span> FLIP</span>
+        <span class="brand-live"><i></i>ON&nbsp;AIR</span>
+      </div>
+      <div class="topbar-right">
+        <button id="sound-btn" class="btn btn-ghost" title="Play / silence background music">🔇 Music</button>
+        <button id="help-btn" class="btn btn-ghost" title="How to play">?</button>
+        <div id="net-badge" class="net-badge hidden"><i></i><span id="net-name">—</span></div>
+        <button id="connect-btn" class="btn btn-primary">Connect Wallet</button>
+        <div id="wallet-chip" class="wallet-chip hidden">
+          <canvas id="wallet-avatar" width="28" height="28"></canvas>
+          <span id="wallet-addr">0x…</span>
+        </div>
+      </div>
+    </header>
+
+    <main class="layout">
+      <!-- ───────────────────── Left: the TV ───────────────────── -->
+      <section class="stage">
+        <!-- Retro TV, redesigned to fit the neon theme -->
+        <div class="tv">
+          <div class="tv-antenna" aria-hidden="true"><span></span><span></span></div>
+
+          <!-- Super Nintendo sitting on top of the TV (pure CSS) -->
+          <div class="snes" aria-hidden="true">
+            <div class="snes-body">
+              <div class="snes-vents"><i></i><i></i><i></i><i></i><i></i></div>
+              <div class="snes-center">
+                <div class="snes-cart" id="snes-cart"></div>
+                <div class="snes-eject">EJECT</div>
+              </div>
+              <div class="snes-buttons">
+                <button class="snes-btn power"><span></span>POWER</button>
+                <button class="snes-btn reset"><span></span>RESET</button>
+              </div>
+              <div class="snes-label">SUPER <b>FLIP</b> 16‑BIT</div>
+            </div>
+          </div>
+          <div class="tv-body">
+            <div class="tv-screen-frame">
+              <div class="tv-screen" id="tv-screen">
+                <!-- canvas paints the static/noise -->
+                <canvas id="static-canvas" class="static-canvas"></canvas>
+                <div class="scanlines" aria-hidden="true"></div>
+                <div class="vignette" aria-hidden="true"></div>
+
+                <!-- Pixel scoreboard, shown during a match -->
+                <div class="scoreboard hidden" id="scoreboard">
+                  <div class="p p1"><span class="who">P1 ▲ HEADS</span><span class="addr" id="sb-p1">—</span></div>
+                  <div class="vs">VS</div>
+                  <div class="p p2"><span class="who">TAILS ▼ P2</span><span class="addr" id="sb-p2">—</span></div>
+                </div>
+
+                <!-- Screen content layers (one shown at a time) -->
+                <div class="screen-layer" id="layer-idle">
+                  <div class="idle-logo">📺</div>
+                  <div class="idle-title">TV CRYPTO FLIP</div>
+                  <div class="idle-sub" id="idle-sub">Connect your wallet to tune in</div>
+                </div>
+
+                <div class="screen-layer hidden" id="layer-waiting">
+                  <div class="standby-badge">● STANDBY</div>
+                  <div class="waiting-text">WAITING FOR<br />CHALLENGER</div>
+                  <div class="waiting-dots"><span></span><span></span><span></span></div>
+                  <div class="waiting-sub" id="waiting-sub">Share your room link to start</div>
+                </div>
+
+                <div class="screen-layer hidden" id="layer-tuning">
+                  <div class="tuning-text">BETS&nbsp;ARE&nbsp;IN</div>
+                  <div class="tuning-sub">Tuning the signal…</div>
+                </div>
+
+                <div class="screen-layer hidden" id="layer-countdown">
+                  <div class="count-num" id="count-num">3</div>
+                </div>
+
+                <div class="screen-layer hidden" id="layer-flip">
+                  <div class="coin" id="coin">
+                    <div class="coin-face coin-heads">Ξ<small>HEADS</small></div>
+                    <div class="coin-face coin-tails">★<small>TAILS</small></div>
+                  </div>
+                  <div class="flip-caption">FLIPPING…</div>
+                </div>
+
+                <div class="screen-layer hidden" id="layer-result">
+                  <div class="result-emoji" id="result-emoji">😄</div>
+                  <div class="result-headline" id="result-headline">WINNER</div>
+                  <div class="result-sub" id="result-sub"></div>
+                  <div class="result-coin" id="result-coin">HEADS</div>
+                </div>
+
+                <canvas id="confetti-canvas" class="confetti-canvas"></canvas>
+              </div>
+            </div>
+            <!-- Speaker + channel dials (nod to the original red CRT) -->
+            <div class="tv-controls">
+              <div class="tv-knobs">
+                <div class="knob"></div>
+                <div class="knob"></div>
+              </div>
+              <div class="tv-speaker" aria-hidden="true">
+                <span></span><span></span><span></span><span></span><span></span><span></span>
+              </div>
+              <div class="tv-channel" id="tv-channel">CH&nbsp;<b id="tv-channel-num">03</b></div>
+            </div>
+          </div>
+          <div class="tv-stand" aria-hidden="true"></div>
+        </div>
+
+        <!-- Bankroll controls under the TV -->
+        <div class="bankroll card" id="bankroll" hidden>
+          <div class="bankroll-bal">
+            <div>
+              <span class="muted">In-game balance</span>
+              <strong id="game-balance">0 ETH</strong>
+            </div>
+            <div>
+              <span class="muted">Wallet</span>
+              <strong id="wallet-balance">0 ETH</strong>
+            </div>
+          </div>
+          <div class="bankroll-actions">
+            <input id="deposit-input" class="input" type="number" min="0" step="0.001" placeholder="0.01" />
+            <button id="deposit-btn" class="btn btn-primary">Deposit</button>
+            <button id="withdraw-btn" class="btn btn-ghost">Withdraw all</button>
+          </div>
+        </div>
+
+        <!-- One-tap play vs the house -->
+        <div class="card play-house" id="play-house" hidden>
+          <div class="ph-head">
+            <h2 class="card-title">⚡ Quick play vs House</h2>
+            <span class="ph-bankroll muted">House: <strong id="house-bankroll">—</strong></span>
+          </div>
+          <p class="muted ph-note">Drag to choose your stake. You're HEADS. 10% house fee.</p>
+          <div class="slider-wrap">
+            <input id="house-bet" class="slider" type="range" min="0.001" max="0.03" step="0.001" value="0.01" />
+            <div class="slider-val"><strong id="house-bet-val">0.010</strong> ETH</div>
+          </div>
+          <button id="play-house-btn" class="btn btn-primary btn-block">🪙 Flip vs House</button>
+        </div>
+      </section>
+
+      <!-- ───────────────── Right: lobby / players ───────────────── -->
+      <aside class="sidebar">
+        <!-- Create room -->
+        <div class="card">
+          <h2 class="card-title">Create a room</h2>
+          <label class="field-label" for="room-name">Room name</label>
+          <input id="room-name" class="input" type="text" maxlength="24" placeholder="High Rollers" />
+          <label class="field-label" for="bet-input">
+            Bet amount (ETH) <span class="muted" id="maxbet-hint"></span>
+          </label>
+          <input id="bet-input" class="input" type="number" min="0" step="0.001" placeholder="0.01" />
+          <button id="create-room-btn" class="btn btn-primary btn-block">Create & get share link</button>
+          <div id="share-box" class="share-box hidden">
+            <span class="muted">Share this link — unique to your room:</span>
+            <div class="share-row">
+              <input id="share-link" class="input share-input" readonly />
+              <button id="copy-link-btn" class="btn btn-ghost">Copy</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Active players -->
+        <div class="card">
+          <h2 class="card-title">
+            Active players <span class="pill" id="players-count">0</span>
+          </h2>
+          <ul id="players-list" class="players-list">
+            <li class="empty">No one tuned in yet.</li>
+          </ul>
+        </div>
+
+        <!-- Trash-talk chat (Matrix terminal) -->
+        <div class="card chat-card">
+          <h2 class="card-title">💬 Trash talk <span class="chat-dot">▮</span></h2>
+          <div id="chat-log" class="chat-log">
+            <div class="chat-sys">// connect a wallet to chat · host is green, visitors red</div>
+          </div>
+          <div class="chat-input-row">
+            <span class="chat-prompt">&gt;</span>
+            <input id="chat-input" class="chat-input" maxlength="240" placeholder="type a message…" autocomplete="off" />
+            <button id="chat-send" class="btn btn-mini">SEND</button>
+          </div>
+        </div>
+
+        <!-- Open rooms -->
+        <div class="card">
+          <h2 class="card-title">
+            Open rooms <span class="pill" id="rooms-count">0</span>
+            <button id="refresh-rooms" class="btn btn-mini">↻</button>
+          </h2>
+          <ul id="rooms-list" class="rooms-list">
+            <li class="empty">No open rooms. Create one!</li>
+          </ul>
+        </div>
+
+        <!-- House info -->
+        <div class="card house-card">
+          <div class="house-row"><span class="muted">House fee</span><strong>10%</strong></div>
+          <div class="house-row"><span class="muted">Games played</span><strong id="stat-games">0</strong></div>
+          <div class="house-row"><span class="muted">Total wagered</span><strong id="stat-wagered">0 ETH</strong></div>
+          <div class="house-row"><span class="muted">Fees to treasury</span><strong id="stat-fees">0 ETH</strong></div>
+          <div class="house-row tiny"><span class="muted">Contract</span><a id="contract-link" class="mono" target="_blank" rel="noopener">—</a></div>
+        </div>
+      </aside>
+    </main>
+
+    <!-- Toast -->
+    <div id="toast" class="toast hidden"></div>
+
+    <!-- ─────────────────── Help / how-to-play modal ─────────────────── -->
+    <div id="help-modal" class="modal hidden">
+      <div class="modal-card">
+        <button id="help-close" class="modal-close">✕</button>
+        <h2>📺 How to play TV Crypto Flip</h2>
+        <ol class="help-steps">
+          <li><b>Install MetaMask</b> (browser extension or app) and create a wallet.</li>
+          <li><b>Switch to the test network.</b> Click <i>Connect Wallet</i> — the site
+            offers to add/switch to the right network automatically.</li>
+          <li><b>Get free test ETH.</b> On Sepolia, paste your address into a faucet
+            (e.g. <span class="mono">sepoliafaucet.com</span> or
+            <span class="mono">cloud.google.com/application/web3/faucet/ethereum/sepolia</span>).
+            On a local chain, test ETH is pre-funded — import a test key into MetaMask.</li>
+          <li><b>Deposit ETH</b> into the game from the panel under the TV.</li>
+          <li><b>Create or join a room.</b> Two players, equal bet. Max bet is shown by the
+            form. Everything is pure ETH — no tokens, no swaps.</li>
+          <li><b>Watch the TV.</b> When both bets are in: 3‑2‑1‑FLIP, a Chainlink‑VRF coin
+            decides it, and your screen shows WINNER 😄 or LOSER 😢.</li>
+          <li><b>Winner takes the pot minus the 10% house fee.</b> Withdraw your balance
+            to your wallet anytime.</li>
+        </ol>
+        <p class="help-foot muted">
+          Randomness is provided by Chainlink VRF v2.5 — provably fair and verifiable
+          on‑chain. This is play‑money on a test network; never use real funds.
+        </p>
+      </div>
+    </div>
+
+    <!-- Bet confirmation: lock in the bet + see the pot / 10% cut / winnings -->
+    <div id="bet-modal" class="modal hidden">
+      <div class="modal-card bet-card">
+        <button id="bet-close" class="modal-close">✕</button>
+        <h2 id="bet-modal-title">Lock in your bet</h2>
+
+        <!-- Custom-room joiners may raise the stake with this slider -->
+        <div id="bet-raise" class="bet-raise hidden">
+          <label class="field-label">Your bet (drag to raise — the host must approve a higher amount)</label>
+          <div class="slider-wrap">
+            <input id="join-bet" class="slider" type="range" min="0" max="0" step="0.001" value="0" />
+            <div class="slider-val"><strong id="join-bet-val">0.000</strong> ETH</div>
+          </div>
+        </div>
+
+        <div class="bet-breakdown">
+          <div class="bd-row"><span>Your bet</span><strong id="bd-yourbet">—</strong></div>
+          <div class="bd-row"><span id="bd-opplabel">Opponent bet</span><strong id="bd-oppbet">—</strong></div>
+          <div class="bd-row total"><span>Total pot</span><strong id="bd-pot">—</strong></div>
+          <div class="bd-row fee"><span>House cut (10%) → host pot</span><strong id="bd-fee">—</strong></div>
+          <div class="bd-row win"><span>🏆 Winner takes home</span><strong id="bd-win">—</strong></div>
+        </div>
+        <button id="bet-accept" class="btn btn-primary btn-block">✓ Accept bet &amp; flip</button>
+        <p id="bet-hint" class="muted bet-hint"></p>
+      </div>
+    </div>
+
+    <!-- Host approval of a raised bet proposed by a joiner -->
+    <div id="nego-modal" class="modal hidden">
+      <div class="modal-card">
+        <h2>🤝 Bet proposal</h2>
+        <p id="nego-text" class="nego-text">A player wants to raise the bet.</p>
+        <div class="nego-actions">
+          <button id="nego-accept" class="btn btn-primary">✓ Accept new bet</button>
+          <button id="nego-deny" class="btn btn-ghost">✕ Deny</button>
+        </div>
+        <p class="muted bet-hint">Deny and they'll pick again — keep going until you both agree.</p>
+      </div>
+    </div>
+
+    <!-- "Wrong network / not deployed" banner -->
+    <div id="setup-banner" class="setup-banner hidden"></div>
+
+    <script src="vendor/ethers.umd.min.js"></script>
+    <script src="config.js"></script>
+    <script src="chiptune.js"></script>
+    <script src="tv.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

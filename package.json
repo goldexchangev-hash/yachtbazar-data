@@ -1,0 +1,29 @@
+{
+  "name": "coinflip-vrf",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Provably-fair two-player ETH coin-flip betting game powered by Chainlink VRF v2.5",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "chain": "hardhat node",
+    "deploy:local": "hardhat run scripts/deploy.js --network localhost",
+    "deploy:sepolia": "hardhat run scripts/deploy.js --network sepolia",
+    "fulfill:local": "hardhat run scripts/localFulfiller.js --network localhost",
+    "fundhouse:local": "hardhat run scripts/fundHouse.js --network localhost",
+    "fundhouse:sepolia": "hardhat run scripts/fundHouse.js --network sepolia",
+    "serve": "node server/server.js",
+    "play:local": "node server/server.js",
+    "postinstall": "node scripts/link-oz.js"
+  },
+  "devDependencies": {
+    "@chainlink/contracts": "^1.3.0",
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "hardhat": "^2.22.10"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "ws": "^8.18.0"
+  }
+}
