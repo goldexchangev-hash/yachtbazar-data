@@ -437,6 +437,14 @@
       await startGameUI();
       showShareGameLink();
       toast("Game deployed — you're the host! 🎉", "ok");
+      // Surface the new address so the host can copy it (to bake into config.js
+      // and switch the whole live site over). prompt() pre-selects it for copy.
+      try {
+        window.prompt(
+          "✅ New contract deployed!\n\nCopy this address and send it over so the live site points at it:",
+          addr
+        );
+      } catch {}
     } catch (e) {
       btn.disabled = false;
       txErr(e);
@@ -523,12 +531,18 @@
       refreshHouse(); refreshBalances(); refreshHostPanel();
     } catch (e) { txErr(e); }
   }
-  function newGame() {
-    if (!confirm("Deploy a brand-new game? Your current balance stays in the OLD game — use 'Withdraw all' first if you want it back.")) return;
+  async function newGame() {
+    if (!account || !signer) { toast("Connect your wallet first, then redeploy.", "err"); return; }
+    if (!confirm(
+      "Deploy a BRAND-NEW game contract from this wallet?\n\n" +
+      "This mints a fresh contract on-chain (the latest version). Your balance stays " +
+      "in the OLD game — use 'Withdraw all' first if you want it back.\n\n" +
+      "When it finishes you'll get the new contract address to copy — send it over and " +
+      "the live site will be pointed at it for everyone."
+    )) return;
+    // Drop any stale ?contract / saved deployment so we deploy clean.
     try { localStorage.removeItem("coinflip_deployment"); } catch {}
-    const u = new URL(location.href);
-    ["contract", "chain", "room"].forEach((k) => u.searchParams.delete(k));
-    location.href = u.toString();
+    await deployContract();
   }
 
   async function disconnect() {
