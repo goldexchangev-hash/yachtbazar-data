@@ -91,6 +91,16 @@
     const v = +$(id).value;
     const valEl = $(id + "-val"); if (valEl) valEl.textContent = usd(v);
     const ethEl = $(id + "-eth"); if (ethEl) ethEl.textContent = "(approx ETH: " + (v / ethUsd).toFixed(4) + ")";
+    if (id === "bet-input") updateCreateBreakdown();
+  }
+  // Live preview under the create-room stake slider so it's obvious both players
+  // match the stake, and where the pot / winnings / 10% cut land.
+  function updateCreateBreakdown() {
+    const el = $("create-breakdown"); if (!el) return;
+    const v = +$("bet-input").value;
+    const pot = v * 2, fee = pot * 0.1, win = pot - fee;
+    el.innerHTML = "Both stake " + usd(v) + " → pot <strong>" + usd(pot) +
+      "</strong> · winner gets <strong>" + usd(win) + "</strong> · house keeps " + usd(fee) + " (10%)";
   }
 
   // ---------------------------------------------------------- toast

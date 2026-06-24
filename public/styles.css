@@ -263,6 +263,8 @@ a { color: var(--cyan); text-decoration: none; }
 .ph-bankroll { font-size: 12px; white-space: nowrap; }
 .ph-bankroll strong { color: var(--gold); }
 .ph-note { font-size: 12px; margin: 8px 0 10px; }
+.create-breakdown { font-size: 12px; margin: 6px 0 12px; line-height: 1.45; }
+.create-breakdown strong { color: var(--gold); }
 .host-tools .ht-body { display: flex; flex-direction: column; gap: 8px; padding-top: 6px; }
 .host-tools .ht-fund { margin: 0; }
 

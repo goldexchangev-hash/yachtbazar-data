@@ -15,7 +15,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=18" />
+    <link rel="stylesheet" href="styles.css?v=19" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -201,13 +201,15 @@
         <!-- Create room -->
         <div class="card">
           <h2 class="card-title">Create a room</h2>
+          <p class="muted ph-note">A 1-v-1 flip with a friend. You both wager the <strong>same</strong> amount — set it here, then share your link.</p>
           <label class="field-label" for="room-name">Room name</label>
           <input id="room-name" class="input" type="text" maxlength="24" placeholder="High Rollers" />
-          <label class="field-label">Bet amount <span class="muted" id="maxbet-hint">· $10–$500</span></label>
+          <label class="field-label">Stake each player puts in <span class="muted" id="maxbet-hint">· $10–$500</span></label>
           <div class="slider-wrap">
             <input id="bet-input" class="slider" type="range" min="10" max="500" step="5" value="25" />
             <div class="slider-val"><strong id="bet-input-val">$25</strong><span class="eth-sub" id="bet-input-eth"></span></div>
           </div>
+          <p class="muted create-breakdown" id="create-breakdown"></p>
           <button id="create-room-btn" class="btn btn-primary btn-block">Create & get share link</button>
           <div id="share-box" class="share-box hidden">
             <span class="muted">Share this link — unique to your room:</span>
@@ -339,10 +341,10 @@
     </div>
 
     <script src="vendor/ethers.umd.min.js"></script>
-    <script src="config.js?v=18"></script>
-    <script src="contract.js?v=18"></script>
-    <script src="chiptune.js?v=18"></script>
-    <script src="tv.js?v=18"></script>
-    <script src="app.js?v=18"></script>
+    <script src="config.js?v=19"></script>
+    <script src="contract.js?v=19"></script>
+    <script src="chiptune.js?v=19"></script>
+    <script src="tv.js?v=19"></script>
+    <script src="app.js?v=19"></script>
   </body>
 </html>
