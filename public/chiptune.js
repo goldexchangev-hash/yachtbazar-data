@@ -22,42 +22,32 @@
       }
   })();
 
-  const TEMPO = 50; // slow & calm; BAR ≈ 4.8s, so 24 bars ≈ 1m55s before it loops
+  const TEMPO = 96; // upbeat groove (Donkey Kong Country-ish); BAR = 2.5s
   const BEAT = 60 / TEMPO;
   const BAR = 4 * BEAT;
 
-  // 24-bar slow ambient progression in A-minor. Each bar: a soft pad chord plus
-  // a very sparse melody on 4 beats ("-" = rest, lots of space = calm). Three
-  // 8-bar sections (A/B/C) keep the long loop from feeling repetitive. The
-  // melody stays in a low register (oct 4-5) for a mellow, unhurried feel.
+  // 16-bar driving A-minor groove à la DKC: a bouncy bassline (built from each
+  // bar's `root`), soft pads, and a syncopated lead on an 8-slot (eighth-note)
+  // grid ("-" = rest). Two 8-bar sections (A grounded, B lifts an octave).
   const PROG = [
-    // ---- A: settle in ----
-    { chord: ["A2", "E3", "A3", "C4"], mel: ["-", "E4", "-", "-"] },
-    { chord: ["F2", "C3", "F3", "A3"], mel: ["-", "-", "A4", "-"] },
-    { chord: ["C3", "G3", "C4", "E4"], mel: ["G4", "-", "-", "E4"] },
-    { chord: ["G2", "D3", "G3", "B3"], mel: ["-", "D4", "-", "-"] },
-    { chord: ["D3", "A3", "D4", "F4"], mel: ["-", "F4", "-", "A4"] },
-    { chord: ["A2", "E3", "A3", "C4"], mel: ["E4", "-", "C4", "-"] },
-    { chord: ["E3", "B3", "E4", "G4"], mel: ["-", "-", "B4", "-"] },
-    { chord: ["E3", "B3", "E4", "G4"], mel: ["G4", "-", "-", "-"] },
-    // ---- B: gentle drift ----
-    { chord: ["F2", "C3", "F3", "A3"], mel: ["-", "A4", "-", "C5"] },
-    { chord: ["C3", "G3", "C4", "E4"], mel: ["-", "-", "E5", "-"] },
-    { chord: ["D3", "A3", "D4", "F4"], mel: ["D5", "-", "-", "A4"] },
-    { chord: ["A2", "E3", "A3", "C4"], mel: ["-", "C5", "-", "-"] },
-    { chord: ["G2", "D3", "G3", "B3"], mel: ["-", "B4", "-", "D5"] },
-    { chord: ["E3", "B3", "E4", "G4"], mel: ["E5", "-", "-", "-"] },
-    { chord: ["F2", "C3", "F3", "A3"], mel: ["-", "-", "A4", "-"] },
-    { chord: ["G2", "D3", "G3", "B3"], mel: ["G4", "-", "D4", "-"] },
-    // ---- C: come home ----
-    { chord: ["A2", "E3", "A3", "C4"], mel: ["-", "E4", "-", "A4"] },
-    { chord: ["F2", "C3", "F3", "A3"], mel: ["-", "-", "C5", "-"] },
-    { chord: ["C3", "G3", "C4", "E4"], mel: ["E5", "-", "-", "G4"] },
-    { chord: ["E3", "B3", "E4", "G4"], mel: ["-", "B4", "-", "-"] },
-    { chord: ["D3", "A3", "D4", "F4"], mel: ["-", "-", "F4", "-"] },
-    { chord: ["A2", "E3", "A3", "C4"], mel: ["A4", "-", "E4", "-"] },
-    { chord: ["E3", "B3", "E4", "G4"], mel: ["-", "G4", "-", "-"] },
-    { chord: ["A2", "E3", "A3", "C4"], mel: ["-", "-", "A3", "-"] },
+    // ---- A ----
+    { root: "A2", ch: ["A3", "C4", "E4"], mel: ["E4", "-", "A4", "-", "C5", "-", "B4", "-"] },
+    { root: "D2", ch: ["D3", "F3", "A3"], mel: ["-", "D5", "-", "A4", "F4", "-", "A4", "-"] },
+    { root: "E2", ch: ["E3", "G3", "B3"], mel: ["E4", "-", "G4", "B4", "-", "E5", "-", "D5"] },
+    { root: "A2", ch: ["A3", "C4", "E4"], mel: ["C5", "-", "A4", "-", "E4", "-", "-", "-"] },
+    { root: "F2", ch: ["F3", "A3", "C4"], mel: ["-", "A4", "C5", "-", "A4", "-", "F4", "-"] },
+    { root: "C3", ch: ["C4", "E4", "G4"], mel: ["G4", "-", "E4", "G4", "-", "C5", "-", "-"] },
+    { root: "D2", ch: ["D3", "F3", "A3"], mel: ["D5", "-", "A4", "-", "F4", "A4", "-", "-"] },
+    { root: "E2", ch: ["E3", "G#3", "B3"], mel: ["E5", "-", "D5", "B4", "-", "G#4", "-", "B4"] },
+    // ---- B (lifts an octave, busier) ----
+    { root: "A2", ch: ["A3", "C4", "E4"], mel: ["A5", "-", "E5", "C5", "-", "A4", "-", "C5"] },
+    { root: "F2", ch: ["F3", "A3", "C4"], mel: ["-", "C5", "-", "A4", "C5", "-", "F5", "-"] },
+    { root: "C3", ch: ["C4", "E4", "G4"], mel: ["G5", "-", "E5", "-", "C5", "E5", "-", "G4"] },
+    { root: "G2", ch: ["G3", "B3", "D4"], mel: ["D5", "-", "B4", "D5", "-", "G4", "-", "B4"] },
+    { root: "D2", ch: ["D3", "F3", "A3"], mel: ["F5", "-", "A5", "-", "D5", "-", "A4", "-"] },
+    { root: "E2", ch: ["E3", "G3", "B3"], mel: ["-", "B4", "-", "E5", "G5", "-", "E5", "-"] },
+    { root: "F2", ch: ["F3", "A3", "C4"], mel: ["A5", "-", "G5", "F5", "-", "C5", "-", "A4"] },
+    { root: "E2", ch: ["E3", "G#3", "B3"], mel: ["E5", "-", "B4", "-", "G#4", "-", "B4", "-"] },
   ];
 
   let ctx = null, master = null, musicGain = null, noiseBuf = null;
@@ -84,10 +74,10 @@
     master.gain.value = 0.6;
     master.connect(ctx.destination);
     musicGain = ctx.createGain();
-    musicGain.gain.value = 0.34; // clearly audible but still background
+    musicGain.gain.value = 0.42; // melodic content sits above the beat
     musicGain.connect(master);
-    // small noise buffer for the hi-hat
-    const len = Math.floor(ctx.sampleRate * 0.2);
+    // noise buffer for hi-hats + snare
+    const len = Math.floor(ctx.sampleRate * 0.3);
     noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
     const d = noiseBuf.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
@@ -125,21 +115,69 @@
     src.start(start); src.stop(start + 0.1);
   }
 
+  // Punchy bass note (warm triangle with a quick decay) — the DKC bounce.
+  function bass(freq, start, dur) {
+    if (!freq) return;
+    const osc = ctx.createOscillator(), g = ctx.createGain();
+    osc.type = "triangle";
+    osc.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, start);
+    g.gain.linearRampToValueAtTime(0.3, start + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0008, start + dur);
+    osc.connect(g); g.connect(master);
+    osc.start(start); osc.stop(start + dur + 0.02);
+  }
+
+  function kick(start) {
+    const osc = ctx.createOscillator(), g = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(130, start);
+    osc.frequency.exponentialRampToValueAtTime(45, start + 0.11);
+    g.gain.setValueAtTime(0.0001, start);
+    g.gain.linearRampToValueAtTime(0.24, start + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, start + 0.17);
+    osc.connect(g); g.connect(master);
+    osc.start(start); osc.stop(start + 0.19);
+  }
+
+  function snare(start) {
+    if (!noiseBuf) return;
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuf;
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass"; bp.frequency.value = 1900; bp.Q.value = 0.7;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, start);
+    g.gain.linearRampToValueAtTime(0.1, start + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, start + 0.13);
+    src.connect(bp); bp.connect(g); g.connect(master);
+    src.start(start); src.stop(start + 0.14);
+  }
+
   function scheduleBar(t) {
     const bar = PROG[barIdx % PROG.length];
-    // Soft pads that swell in slowly and fade out — long attack/release = calm.
-    for (const n of bar.chord) {
-      voice(NOTES[n], t, BAR * 0.99, "sine", musicGain, 0.22, 1.2, 1.6);
+    const eighth = BEAT / 2;
+    // Soft sustained pad under the groove.
+    for (const n of bar.ch) voice(NOTES[n], t, BAR * 0.96, "sine", musicGain, 0.12, 0.04, 0.45);
+    // Bouncing bassline built from the bar's root: root / octave-up / fifth-up,
+    // syncopated across the eighth-note grid.
+    const r = NOTES[bar.root];
+    if (r) {
+      const oct = r * 2, fifth = r * 1.4983;
+      const pat = { 0: r, 2: oct, 3: fifth, 4: r, 5: oct, 7: fifth };
+      for (const k in pat) bass(pat[k], t + k * eighth, eighth * 1.05);
     }
-    // Sparse, gently ringing melody (single soft triangle voice, no bright shimmer).
+    // Syncopated lead on the eighth grid.
     bar.mel.forEach((n, i) => {
       if (n && n !== "-") {
-        voice(NOTES[n], t + i * BEAT, BEAT * 1.8, "triangle", musicGain, 0.15, 0.06, 0.8);
+        voice(NOTES[n], t + i * eighth, eighth * 1.4, "triangle", musicGain, 0.2, 0.01, 0.12);
+        voice(NOTES[n] * 2, t + i * eighth, eighth * 0.5, "square", musicGain, 0.03, 0.01, 0.08); // soft sparkle
       }
     });
-    // Just a faint, soft pulse on beats 1 & 3 — keeps a slow heartbeat, not a groove.
-    hat(t, 0.02, 3200);
-    hat(t + 2 * BEAT, 0.02, 3200);
+    // Drum groove: kick on 1 & 3, snare backbeat on 2 & 4, hats on every eighth.
+    kick(t); kick(t + 2 * BEAT);
+    snare(t + BEAT); snare(t + 3 * BEAT);
+    for (let i = 0; i < 8; i++) hat(t + i * eighth, i % 2 ? 0.03 : 0.018, 9000);
     barIdx++;
   }
 
