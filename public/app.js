@@ -484,6 +484,9 @@
       for (const r of rooms) {
         if (Number(r.status) !== 2) continue; // settled only
         if (periodSec && Number(r.settledAt) < nowSec - periodSec) continue;
+        // The host testing the game against their own house isn't real earnings —
+        // exclude any settled game the host wallet personally took part in.
+        if (eq(r.player1, hostTreasury) || (!r.isHouseGame && eq(r.player2, hostTreasury))) continue;
         const bet = r.betAmount;
         pFees += (bet * 2n) / 10n;
         if (r.isHouseGame) pTable += eq(r.winner, hostTreasury) ? (bet * 8n) / 10n : -bet;
