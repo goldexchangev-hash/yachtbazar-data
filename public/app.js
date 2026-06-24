@@ -108,6 +108,78 @@
     return { amountUsd: weiToUsd(amountWei), amountWei, netWei, tier, potUsd };
   }
 
+  // ---- shareable win/loss card (canvas -> PNG -> Web Share / download) ----
+  let lastResult = null;
+  function setLastResult(r) {
+    lastResult = r;
+    const btn = $("share-result-btn");
+    if (btn) btn.classList.remove("hidden");
+  }
+  function drawShareCoin(g, cx, cy, rad) {
+    const grad = g.createRadialGradient(cx - rad * 0.3, cy - rad * 0.3, rad * 0.2, cx, cy, rad);
+    grad.addColorStop(0, "#fff3b0"); grad.addColorStop(0.55, "#ffcf3f"); grad.addColorStop(1, "#a9760a");
+    g.beginPath(); g.arc(cx, cy, rad, 0, Math.PI * 2); g.fillStyle = grad; g.fill();
+    g.lineWidth = 10; g.strokeStyle = "#7a5200"; g.stroke();
+    // Ethereum diamond, two stacked facets
+    g.fillStyle = "rgba(74,53,0,0.85)";
+    const s = rad * 0.72;
+    g.beginPath(); g.moveTo(cx, cy - s); g.lineTo(cx - s * 0.55, cy); g.lineTo(cx, cy + s * 0.18); g.lineTo(cx + s * 0.55, cy); g.closePath(); g.fill();
+    g.beginPath(); g.moveTo(cx, cy + s * 0.34); g.lineTo(cx - s * 0.55, cy + s * 0.1); g.lineTo(cx, cy + s); g.lineTo(cx + s * 0.55, cy + s * 0.1); g.closePath(); g.fill();
+  }
+  function drawShareCard(cv) {
+    const W = 1080, H = 1080, r = lastResult, won = r.won;
+    cv.width = W; cv.height = H;
+    const g = cv.getContext("2d");
+    const bg = g.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, "#0c0d16"); bg.addColorStop(1, "#141627");
+    g.fillStyle = bg; g.fillRect(0, 0, W, H);
+    g.strokeStyle = "rgba(57,231,255,0.06)"; g.lineWidth = 2;
+    for (let x = 0; x <= W; x += 60) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke(); }
+    for (let y = 0; y <= H; y += 60) { g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
+    const glow = g.createRadialGradient(W / 2, 330, 60, W / 2, 330, 560);
+    glow.addColorStop(0, won ? "rgba(52,227,155,0.25)" : "rgba(255,91,91,0.20)"); glow.addColorStop(1, "transparent");
+    g.fillStyle = glow; g.fillRect(0, 0, W, H);
+    g.textAlign = "center";
+    g.fillStyle = "#39e7ff"; g.font = "700 40px 'Press Start 2P', monospace";
+    g.fillText("📺 CRYPTO TV FLIP", W / 2, 112);
+    drawShareCoin(g, W / 2, 330, 132);
+    g.font = "700 88px 'Press Start 2P', monospace"; g.fillStyle = won ? "#34e39b" : "#ff5b5b";
+    g.fillText(won ? "WINNER" : "BUSTED", W / 2, 612);
+    g.font = "800 120px 'Space Grotesk', system-ui, sans-serif"; g.fillStyle = won ? "#2bff88" : "#ff7a7a";
+    g.fillText((won ? "+" : "−") + usd(r.amountUsd), W / 2, 738);
+    g.font = "500 40px 'Space Grotesk', system-ui, sans-serif"; g.fillStyle = "#b9c2e0";
+    const eth = (+E.formatEther(r.amountWei)).toFixed(4) + " ETH";
+    g.fillText(won ? eth + " · 1.8× payout" : eth + " · " + r.label, W / 2, 802);
+    g.font = "700 30px 'Press Start 2P', monospace"; g.fillStyle = "#ffcf3f";
+    g.fillText("COIN LANDED " + r.side, W / 2, 884);
+    g.font = "500 34px 'Space Grotesk', system-ui, sans-serif"; g.fillStyle = "#7f8bb0";
+    g.fillText("Provably on-chain · Sepolia testnet · play money", W / 2, 980);
+    g.fillStyle = "#39e7ff";
+    g.fillText("goldexchangev-hash.github.io/yachtbazar-data", W / 2, 1030);
+  }
+  async function shareResultCard() {
+    if (!lastResult) return;
+    try { await document.fonts.ready; } catch {}
+    const cv = document.createElement("canvas");
+    drawShareCard(cv);
+    const blob = await new Promise((res) => cv.toBlob(res, "image/png"));
+    if (!blob) return toast("Couldn't make the card — try again.", "err");
+    const file = new File([blob], "crypto-tv-flip.png", { type: "image/png" });
+    const text = (lastResult.won
+      ? "I just won " + usd(lastResult.amountUsd) + " flipping ETH on Crypto TV Flip! 🪙📺"
+      : "Took an L flipping ETH on Crypto TV Flip 🪙📺 — get me back")
+      + " https://goldexchangev-hash.github.io/yachtbazar-data/";
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], text }); return; }
+      catch (e) { if (e && e.name === "AbortError") return; }
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = "crypto-tv-flip.png"; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    try { await navigator.clipboard.writeText(text); toast("Card saved 📸 + caption copied", "ok"); }
+    catch { toast("Card saved 📸", "ok"); }
+  }
+
   // Auto-size the gas LIMIT to the actual transaction (eth_estimateGas + 30%),
   // falling back to a safe fixed value if the flaky public RPC errors on the
   // estimate. The gas PRICE is set live by MetaMask from current network rates.
@@ -939,6 +1011,7 @@
       const betAmt = ev ? ev.args.betAmount : bet;
       const rv = flipReveal(betAmt, playerWon);
       const coinHeads = playerWon ? wantsHeads : !wantsHeads; // the coin's actual face
+      setLastResult({ won: playerWon, side: coinHeads ? "HEADS" : "TAILS", amountUsd: rv.amountUsd, amountWei: rv.amountWei, betWei: betAmt, label: "Host table" });
       TV.revealResult({
         side: coinHeads ? "HEADS" : "TAILS",
         youWon: playerWon,
@@ -1180,6 +1253,7 @@
         const side = r.headsWon ? "HEADS" : "TAILS";
         const youWon = eq(r.winner, account);
         const rv = flipReveal(r.betAmount, youWon);
+        setLastResult({ won: youWon, side, amountUsd: rv.amountUsd, amountWei: rv.amountWei, betWei: r.betAmount, label: r.isHouseGame ? "vs House" : "PvP" });
         TV.revealResult({
           side,
           youWon,
@@ -1703,6 +1777,7 @@
       const inp = $("share-link"); inp.select();
       navigator.clipboard?.writeText(inp.value).then(() => toast("Link copied!", "ok"), () => {});
     };
+    const shareBtn = $("share-result-btn"); if (shareBtn) shareBtn.onclick = shareResultCard;
     $("help-btn").onclick = () => $("help-modal").classList.remove("hidden");
     $("help-close").onclick = () => $("help-modal").classList.add("hidden");
     $("help-modal").onclick = (e) => { if (e.target === $("help-modal")) $("help-modal").classList.add("hidden"); };
