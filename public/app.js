@@ -76,6 +76,7 @@
   const weiToUsd = (wei) => { try { return (+E.formatEther(wei)) * ethUsd; } catch { return 0; } };
   const usdToWei = (d) => E.parseEther((Math.max(0, +d) / ethUsd).toFixed(8));
   const usdOf = (wei) => usd(weiToUsd(wei)); // "$xx.xx" from wei
+  const signedUsd = (wei) => (wei < 0n ? "−" : "+") + usdOf(wei < 0n ? -wei : wei);
 
   // Reveal numbers for a flip. We show the POT WON (the full payout that lands in
   // your balance = pot − 10% house), not just the net profit, so a $50 bet win
@@ -284,28 +285,34 @@
         read.houseBankroll(), read.balances(account),
       ]);
       const gamesN = Number(games);
+      const holdings = bankroll + bal; // ALL the house's money in the contract
       // daily snapshot baseline
       const key = "coinflip_hoststats_" + (deployment.address || "");
       const today = new Date().toISOString().slice(0, 10);
       let snap = null;
       try { snap = JSON.parse(localStorage.getItem(key) || "null"); } catch {}
       if (!snap || snap.day !== today) {
-        snap = { day: today, fees: fees.toString(), games: gamesN, wagered: wagered.toString() };
+        snap = { day: today, fees: fees.toString(), games: gamesN, wagered: wagered.toString(), holdings: holdings.toString() };
         try { localStorage.setItem(key, JSON.stringify(snap)); } catch {}
       }
-      const feesToday = fees - BigInt(snap.fees);
-      const gamesToday = gamesN - snap.games;
-      const wageredToday = wagered - BigInt(snap.wagered);
+      if (snap.holdings == null) { snap.holdings = holdings.toString(); try { localStorage.setItem(key, JSON.stringify(snap)); } catch {} }
 
-      $("hs-profit-today").textContent = usdOf(feesToday);
-      $("hs-profit-sub").textContent = gamesToday + " game" + (gamesToday === 1 ? "" : "s") + " · " + usdOf(wageredToday) + " wagered today";
+      const profitToday = holdings - BigInt(snap.holdings); // total: rake + table winnings
+      const feesToday = fees - BigInt(snap.fees);
+      const tableToday = profitToday - feesToday; // the house's gambling win/loss
+      const gamesToday = gamesN - snap.games;
+
+      const pe = $("hs-profit-today");
+      pe.textContent = signedUsd(profitToday);
+      pe.style.color = profitToday < 0n ? "#ff7a7a" : "#34e39b";
+      $("hs-profit-sub").textContent = "rake " + usdOf(feesToday) + " · table " + signedUsd(tableToday) + " · " + gamesToday + " game" + (gamesToday === 1 ? "" : "s");
       $("hs-fees-total").textContent = usdOf(fees);
       $("hs-games-total").textContent = games.toString();
       $("hs-volume-total").textContent = usdOf(wagered);
       $("hs-take").textContent = (wagered > 0n ? (Number(fees) / Number(wagered) * 100) : 0).toFixed(1) + "%";
       $("hs-avg").textContent = gamesN > 0 ? usdOf(wagered / (2n * games)) : "$0";
       $("hs-bankroll").textContent = usdOf(bankroll);
-      $("hs-balance").textContent = usdOf(bal);
+      $("hs-balance").textContent = usdOf(holdings); // unified "house funds" = bankroll + balance
     } catch {}
   }
 
@@ -439,6 +446,28 @@
       await tx.wait();
       toast("House funded with " + usd(v), "ok");
       refreshHouse();
+    } catch (e) { txErr(e); }
+  }
+
+  // Release ALL house funds (bankroll + your balance) to your MetaMask wallet.
+  async function cashOutHouse() {
+    if (!ready()) return;
+    if (!confirm("Cash out ALL house funds (bankroll + balance) to your wallet?\n\nThis empties the house — players can't bet vs House until you deposit/fund it again.")) return;
+    try {
+      const [bankroll, bal] = await Promise.all([read.houseBankroll(), read.balances(account)]);
+      let any = false;
+      if (bankroll > 0n) {
+        toast("Releasing house bankroll… confirm in MetaMask");
+        await (await contract.withdrawHouse(bankroll, { gasLimit: await estGas("withdrawHouse", [bankroll], null, 150_000n) })).wait();
+        any = true;
+      }
+      if (bal > 0n) {
+        toast("Releasing your balance… confirm in MetaMask");
+        await (await contract.withdrawAll()).wait();
+        any = true;
+      }
+      toast(any ? "Cashed out to your wallet 🏦" : "Nothing to cash out", any ? "ok" : "err");
+      refreshHouse(); refreshBalances(); refreshHostPanel();
     } catch (e) { txErr(e); }
   }
   function newGame() {
@@ -1420,6 +1449,7 @@
     $("disconnect-btn").onclick = disconnect;
     $("raise-max-btn").onclick = raiseMaxBet;
     $("fund-house-btn").onclick = fundHouseTool;
+    $("cashout-house-btn").onclick = cashOutHouse;
     $("new-game-btn").onclick = newGame;
     $("deposit-btn").onclick = deposit;
     $("withdraw-btn").onclick = withdrawAll;
