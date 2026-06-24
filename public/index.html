@@ -15,7 +15,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=25" />
+    <link rel="stylesheet" href="styles.css?v=26" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -44,6 +44,11 @@
 
     <!-- Wrong-network / not-deployed / hint banner (in normal flow) -->
     <div id="setup-banner" class="setup-banner hidden"></div>
+
+    <!-- Shown when the connected wallet IS the house (treasury) -->
+    <div id="house-wallet-banner" class="house-banner hidden">
+      🏠 You're connected as the <strong>house wallet</strong> — you're on both sides of every flip, so you can't really win or lose. Switch to a different account in MetaMask to play as a challenger.
+    </div>
 
     <main class="layout">
       <!-- ───────────────────── Left: the TV ───────────────────── -->
@@ -424,10 +429,10 @@
     </div>
 
     <script src="vendor/ethers.umd.min.js"></script>
-    <script src="config.js?v=25"></script>
-    <script src="contract.js?v=25"></script>
-    <script src="chiptune.js?v=25"></script>
-    <script src="tv.js?v=25"></script>
-    <script src="app.js?v=25"></script>
+    <script src="config.js?v=26"></script>
+    <script src="contract.js?v=26"></script>
+    <script src="chiptune.js?v=26"></script>
+    <script src="tv.js?v=26"></script>
+    <script src="app.js?v=26"></script>
   </body>
 </html>

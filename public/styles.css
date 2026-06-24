@@ -448,6 +448,7 @@ a { color: var(--cyan); text-decoration: none; }
 
 .setup-banner { position: relative; z-index: 3; margin: 2px auto 0; width: fit-content; max-width: min(760px, 92vw); background: rgba(57, 231, 255, 0.1); border: 1px solid rgba(57, 231, 255, 0.3); color: #d7ecff; padding: 9px 18px; border-radius: 999px; font-weight: 600; font-size: 13.5px; text-align: center; box-shadow: var(--shadow); }
 .setup-banner.warn { background: rgba(255, 210, 63, 0.14); border-color: rgba(255, 210, 63, 0.5); color: #fff0c2; }
+.house-banner { position: relative; z-index: 3; margin: 8px auto 0; width: fit-content; max-width: min(820px, 94vw); background: rgba(255, 174, 0, 0.14); border: 1px solid rgba(255, 174, 0, 0.5); color: #ffe6b0; padding: 9px 18px; border-radius: 14px; font-weight: 600; font-size: 13.5px; text-align: center; box-shadow: var(--shadow); }
 
 /* ============================================================
    16-bit / SNES theme — the TV screen renders like a console game

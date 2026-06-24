@@ -268,10 +268,19 @@
   }
 
   // Common UI bring-up once a contract is connected.
+  // Warn when the connected wallet is the house itself (you'd be on both sides).
+  function updateHouseWalletBanner() {
+    const el = $("house-wallet-banner");
+    if (!el) return;
+    const isHouse = account && hostTreasury && eq(account, hostTreasury);
+    el.classList.toggle("hidden", !isHouse);
+  }
+
   async function startGameUI() {
     renderWallet();
     wireEvents();
     connectWS();
+    updateHouseWalletBanner();
     loadHostHistory();
     await refreshAll();
     seedHostHistory(); // backfill host-table flips from logs (async, best-effort)
@@ -409,6 +418,7 @@
   // ---------------------------------------------------------- reads / render
   async function refreshAll() {
     if (!read || !chainOK) return;
+    updateHouseWalletBanner();
     await Promise.all([refreshBalances(), refreshRooms(), refreshStats(), refreshHouse(), refreshPlayers(), refreshMyTables(), refreshMyHistory()]);
   }
 
