@@ -270,6 +270,45 @@
   }
 
   // Common UI bring-up once a contract is connected.
+  // Private host dashboard — only the house (treasury) wallet sees it. Uses the
+  // contract's exact lifetime totals + a per-day localStorage snapshot for "today".
+  async function refreshHostPanel() {
+    const card = $("host-stats-card");
+    if (!card) return;
+    const isHost = account && hostTreasury && eq(account, hostTreasury);
+    card.classList.toggle("hidden", !isHost);
+    if (!isHost || !read || !chainOK) return;
+    try {
+      const [fees, games, wagered, bankroll, bal] = await Promise.all([
+        read.totalFeesCollected(), read.totalGamesPlayed(), read.totalWagered(),
+        read.houseBankroll(), read.balances(account),
+      ]);
+      const gamesN = Number(games);
+      // daily snapshot baseline
+      const key = "coinflip_hoststats_" + (deployment.address || "");
+      const today = new Date().toISOString().slice(0, 10);
+      let snap = null;
+      try { snap = JSON.parse(localStorage.getItem(key) || "null"); } catch {}
+      if (!snap || snap.day !== today) {
+        snap = { day: today, fees: fees.toString(), games: gamesN, wagered: wagered.toString() };
+        try { localStorage.setItem(key, JSON.stringify(snap)); } catch {}
+      }
+      const feesToday = fees - BigInt(snap.fees);
+      const gamesToday = gamesN - snap.games;
+      const wageredToday = wagered - BigInt(snap.wagered);
+
+      $("hs-profit-today").textContent = usdOf(feesToday);
+      $("hs-profit-sub").textContent = gamesToday + " game" + (gamesToday === 1 ? "" : "s") + " · " + usdOf(wageredToday) + " wagered today";
+      $("hs-fees-total").textContent = usdOf(fees);
+      $("hs-games-total").textContent = games.toString();
+      $("hs-volume-total").textContent = usdOf(wagered);
+      $("hs-take").textContent = (wagered > 0n ? (Number(fees) / Number(wagered) * 100) : 0).toFixed(1) + "%";
+      $("hs-avg").textContent = gamesN > 0 ? usdOf(wagered / (2n * games)) : "$0";
+      $("hs-bankroll").textContent = usdOf(bankroll);
+      $("hs-balance").textContent = usdOf(bal);
+    } catch {}
+  }
+
   // Warn when the connected wallet is the house itself (you'd be on both sides).
   function updateHouseWalletBanner() {
     const el = $("house-wallet-banner");
@@ -424,7 +463,7 @@
   async function refreshAll() {
     if (!read || !chainOK) return;
     updateHouseWalletBanner();
-    await Promise.all([refreshBalances(), refreshRooms(), refreshStats(), refreshHouse(), refreshPlayers(), refreshMyTables(), refreshMyHistory()]);
+    await Promise.all([refreshBalances(), refreshRooms(), refreshStats(), refreshHouse(), refreshPlayers(), refreshMyTables(), refreshMyHistory(), refreshHostPanel()]);
   }
 
   async function refreshBalances() {
@@ -1455,7 +1494,7 @@
 
     // periodic lobby refresh + TV reveal reconciler (safety net for missed events)
     setInterval(() => {
-      if (chainOK && read) { refreshRooms(); refreshBalances(); refreshHouse(); refreshPlayers(); refreshMyTables(); refreshMyHistory(); reconcile(); }
+      if (chainOK && read) { refreshRooms(); refreshBalances(); refreshHouse(); refreshPlayers(); refreshMyTables(); refreshMyHistory(); refreshHostPanel(); reconcile(); }
     }, 3000);
   }
 

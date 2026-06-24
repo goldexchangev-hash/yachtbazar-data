@@ -15,7 +15,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=31" />
+    <link rel="stylesheet" href="styles.css?v=32" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -28,7 +28,7 @@
         <span class="brand-tv">📺</span>
         <span class="brand-name">TV<span class="brand-accent"> CRYPTO</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v3.1</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v3.2</span>
       </div>
       <div class="topbar-right">
         <button id="sound-btn" class="btn btn-ghost" title="Play / silence background music">🔇 Music</button>
@@ -210,6 +210,26 @@
               <p class="muted ph-note">Only you (the host) can do these. "Fresh game" deploys a new contract — withdraw your balance first if you want it back.</p>
             </div>
           </details>
+        </div>
+
+        <!-- Host earnings dashboard — only the locked house wallet sees this -->
+        <div class="card host-stats hidden" id="host-stats-card">
+          <h2 class="card-title">💼 Host earnings <span class="hs-private">private</span></h2>
+          <div class="hs-hero">
+            <span class="muted">Profit today (rake earned)</span>
+            <strong id="hs-profit-today" class="hs-big">$0</strong>
+            <span class="muted hs-sub" id="hs-profit-sub">0 games · $0 wagered today</span>
+          </div>
+          <div class="hs-grid">
+            <div class="hs-cell"><span class="muted">Fees all-time</span><strong id="hs-fees-total">$0</strong></div>
+            <div class="hs-cell"><span class="muted">Games all-time</span><strong id="hs-games-total">0</strong></div>
+            <div class="hs-cell"><span class="muted">Volume all-time</span><strong id="hs-volume-total">$0</strong></div>
+            <div class="hs-cell"><span class="muted">House take</span><strong id="hs-take">0%</strong></div>
+            <div class="hs-cell"><span class="muted">Avg bet</span><strong id="hs-avg">$0</strong></div>
+            <div class="hs-cell"><span class="muted">House bankroll</span><strong id="hs-bankroll">$0</strong></div>
+            <div class="hs-cell hs-cash"><span class="muted">Withdrawable (cash out)</span><strong id="hs-balance">$0</strong></div>
+          </div>
+          <p class="muted" style="font-size: 11px; margin-top: 8px;">“Today” counts from when you first opened the dashboard today. Only your house wallet can see this.</p>
         </div>
 
         <!-- In-browser hosting: deploy the game contract with one click -->
@@ -431,10 +451,10 @@
     </div>
 
     <script src="vendor/ethers.umd.min.js"></script>
-    <script src="config.js?v=31"></script>
-    <script src="contract.js?v=31"></script>
-    <script src="chiptune.js?v=31"></script>
-    <script src="tv.js?v=31"></script>
-    <script src="app.js?v=31"></script>
+    <script src="config.js?v=32"></script>
+    <script src="contract.js?v=32"></script>
+    <script src="chiptune.js?v=32"></script>
+    <script src="tv.js?v=32"></script>
+    <script src="app.js?v=32"></script>
   </body>
 </html>
