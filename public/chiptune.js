@@ -245,33 +245,66 @@
       voice(NOTES["B5"], t, 0.07, "square", master, 0.26);
       voice(NOTES["E6"], t + 0.07, 0.18, "square", master, 0.26);
     },
+    // Which win-scene theme is active, so the fanfare matches the visuals.
+    _theme() { try { return (window.WinScenes && window.WinScenes.getTheme && window.WinScenes.getTheme()) || "neon"; } catch (e) { return "neon"; } },
+    // Original melodic run: lead voice (+ optional lower-octave triangle harmony).
+    _run(notes, t0, step, type, peak, harm) {
+      notes.forEach((n, i) => {
+        if (!n || n === "-") return;
+        voice(NOTES[n], t0 + i * step, step * 1.35, type, master, peak, 0.01, step * 0.5);
+        if (harm) voice(NOTES[n] * 0.5, t0 + i * step, step * 1.1, "triangle", master, peak * 0.42, 0.02, step * 0.5);
+      });
+    },
+    _chord(notes, t0, dur, peak) { notes.forEach((n) => voice(NOTES[n], t0, dur, "triangle", master, peak, 0.03, dur * 0.6)); },
+
+    // Standard win: a short bright flourish (theme-flavored, freshly composed).
     win() {
       if (!this._sfx()) return;
       const t = ctx.currentTime;
-      ["C5", "E5", "G5", "C6", "E6"].forEach((n, i) => voice(NOTES[n], t + i * 0.1, 0.16, "square", master, 0.3));
+      if (this._theme() === "world") {
+        this._run(["A4", "D5", "F#5", "A5"], t, 0.12, "square", 0.28, true);
+        bass(NOTES["D2"], t, 0.45); bass(NOTES["A2"], t + 0.48, 0.5);
+      } else {
+        this._run(["G5", "C6", "E6", "C6", "E6", "G6"], t, 0.1, "square", 0.3);
+        bass(NOTES["C2"], t, 0.45); bass(NOTES["G2"], t + 0.5, 0.5);
+      }
     },
     lose() {
       if (!this._sfx()) return;
       const t = ctx.currentTime;
       ["G4", "F#4", "F4", "E4"].forEach((n, i) => voice(NOTES[n], t + i * 0.14, 0.22, "triangle", master, 0.34));
     },
-    // Big win ($100+ pot): a brighter rising arpeggio.
+    // Big win ($100+ net): a fuller rising fanfare + a resolving chord.
     bigwin() {
       if (!this._sfx()) return;
       const t = ctx.currentTime;
-      ["C5", "E5", "G5", "C6", "E6", "G6"].forEach((n, i) => voice(NOTES[n], t + i * 0.08, 0.2, "square", master, 0.32));
-      voice(NOTES["C6"], t + 0.55, 0.3, "triangle", master, 0.24);
+      if (this._theme() === "world") {
+        this._run(["D5", "F#5", "A5", "D6", "-", "C#6", "D6"], t, 0.12, "square", 0.3, true);
+        bass(NOTES["D2"], t, 0.5); bass(NOTES["A2"], t + 0.55, 0.5); bass(NOTES["D2"], t + 1.1, 0.6);
+        this._chord(["D5", "F#5", "A5", "D6"], t + 0.95, 0.7, 0.18);
+      } else {
+        this._run(["C5", "E5", "G5", "C6", "E6", "G6"], t, 0.08, "square", 0.32);
+        bass(NOTES["C2"], t, 0.5); bass(NOTES["G2"], t + 0.5, 0.6);
+        voice(NOTES["C6"], t + 0.55, 0.35, "triangle", master, 0.24, 0.02, 0.25);
+      }
     },
-    // Jackpot ($500+ pot): a long rising run + a triple sparkle on top.
+    // Jackpot / LEGENDARY ($300+ net): a full heroic finale fanfare.
     jackpot() {
       if (!this._sfx()) return;
       const t = ctx.currentTime;
-      const run = ["C5", "E5", "G5", "A5", "C6", "D6", "E6", "G6"];
-      run.forEach((n, i) => voice(NOTES[n], t + i * 0.07, 0.18, "square", master, 0.32));
-      [0, 0.22, 0.44].forEach((d) => {
-        voice(NOTES["E6"], t + 0.62 + d, 0.12, "triangle", master, 0.22);
-        voice(NOTES["G6"], t + 0.68 + d, 0.16, "square", master, 0.24);
-      });
+      if (this._theme() === "world") {
+        this._run(["A4", "D5", "F#5", "A5", "D6", "-", "C#6", "D6"], t, 0.12, "square", 0.32, true);
+        bass(NOTES["D2"], t, 0.5); bass(NOTES["A2"], t + 0.5, 0.5); bass(NOTES["G2"], t + 1.0, 0.5); bass(NOTES["A2"], t + 1.5, 0.55);
+        this._chord(["D5", "F#5", "A5", "D6"], t + 1.05, 1.0, 0.2);
+        [0, 0.24, 0.48].forEach((d) => voice(NOTES["F#6"], t + 1.2 + d, 0.13, "triangle", master, 0.2));
+      } else {
+        this._run(["C5", "E5", "G5", "A5", "C6", "D6", "E6", "G6"], t, 0.07, "square", 0.32);
+        bass(NOTES["C2"], t, 0.5); bass(NOTES["G2"], t + 0.5, 0.5); bass(NOTES["C2"], t + 1.0, 0.6);
+        [0, 0.22, 0.44].forEach((d) => {
+          voice(NOTES["E6"], t + 0.66 + d, 0.12, "triangle", master, 0.22);
+          voice(NOTES["G6"], t + 0.72 + d, 0.16, "square", master, 0.24);
+        });
+      }
     },
   };
 
