@@ -292,7 +292,7 @@
       contract = c.connect(signer);
       read = new E.Contract(addr, ABI, provider);
       // Seed a small house bankroll so vs-house works right away (best effort).
-      try { await (await contract.fundHouse({ value: usdToWei(1000), gasLimit: 90_000n })).wait(); } catch {}
+      try { await (await contract.fundHouse({ value: usdToWei(1000), gasLimit: 150_000n })).wait(); } catch {}
       maxBet = await read.maxBet();
       try { hostTreasury = await read.treasury(); } catch {}
       chainOK = true;
@@ -329,7 +329,7 @@
     if (!(v > 0)) return toast("Enter a $ amount to fund the house", "err");
     try {
       toast("Funding the house… confirm in MetaMask");
-      const tx = await contract.fundHouse({ value: usdToWei(v), gasLimit: 90000 });
+      const tx = await contract.fundHouse({ value: usdToWei(v), gasLimit: 150000 });
       await tx.wait();
       toast("House funded with " + usd(v), "ok");
       refreshHouse();
@@ -415,7 +415,7 @@
     if (!(v > 0)) return toast("Enter an amount to deposit (in $)", "err");
     try {
       toast("Confirm the deposit in MetaMask…");
-      const tx = await contract.deposit({ value: usdToWei(v), gasLimit: 80_000n });
+      const tx = await contract.deposit({ value: usdToWei(v), gasLimit: 130_000n });
       await tx.wait();
       toast("Deposited " + usd(v), "ok");
       refreshBalances();
@@ -444,7 +444,7 @@
     } catch {}
     try {
       toast("Creating room… confirm in MetaMask");
-      const tx = await contract.createRoom(bet, name, { gasLimit: 300000 });
+      const tx = await contract.createRoom(bet, name, { gasLimit: 700000 });
       const rcpt = await tx.wait();
       const ev = rcpt.logs.map((l) => safeParse(l)).find((p) => p && p.name === "RoomCreated");
       const id = ev ? ev.args.roomId.toString() : null;
@@ -467,7 +467,7 @@
       activeRoomId = id;
       lastRevealed = null;
       TV.startFlip({ p1: room ? room.creator : null, p2: account });
-      const tx = await contract.joinRoom(id, { gasLimit: 250000 });
+      const tx = await contract.joinRoom(id, { gasLimit: 700000 });
       await tx.wait();
       toast("You're in! Flipping…", "ok");
       refreshBalances(); refreshRooms();
@@ -509,7 +509,7 @@
       lastRevealed = null;
       toast("Flipping vs the house… confirm in MetaMask");
       TV.startFlip({ p1: account, p2: "HOUSE" });
-      const tx = await contract.playHouse(bet, { gasLimit: 250000 });
+      const tx = await contract.playHouse(bet, { gasLimit: 700000 });
       const rcpt = await tx.wait();
       const ev = rcpt.logs.map((l) => safeParse(l)).find((p) => p && p.name === "HouseGameStarted");
       if (ev) activeRoomId = ev.args.roomId.toString();
@@ -632,7 +632,7 @@
     if (!p) return;
     try {
       toast("Raising the room bet… confirm in MetaMask");
-      const tx = await contract.updateRoomBet(p.roomId, p.amount, { gasLimit: 120000 });
+      const tx = await contract.updateRoomBet(p.roomId, p.amount, { gasLimit: 250000 });
       await tx.wait();
       refreshBalances(); refreshRooms();
       wsSend({ type: "bet-response", roomId: p.roomId, amount: p.amount.toString(), accepted: true, to: p.proposer });
