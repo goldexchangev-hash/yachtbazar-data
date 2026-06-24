@@ -17,10 +17,11 @@
   let deployment = (() => {
     const a = params.get("contract"), c = params.get("chain");
     if (a) return { address: a, chainId: c ? Number(c) : null };
-    if (cfg.address) return { address: cfg.address, chainId: cfg.chainId || null };
+    if (cfg.address) return { address: cfg.address, chainId: cfg.chainId || null }; // local dev (deploy:local)
     const s = loadStored();
     if (s && s.address) return s;
-    return { address: null, chainId: cfg.chainId || null };
+    // Hosted with no game yet → default to Sepolia so Connect auto-switches there.
+    return { address: null, chainId: 11155111 };
   })();
   let hostTreasury = null; // read from the contract once connected
 
@@ -246,7 +247,9 @@
       }
       toast("Deploying your game… confirm in MetaMask");
       const factory = new E.ContractFactory(ABI, ART.bytecode, signer);
-      const c = await factory.deploy(account); // you become the house + fee recipient
+      // Explicit gasLimit skips eth_estimateGas — flaky public Sepolia RPCs make
+      // ethers throw "could not coalesce error" there even with funds available.
+      const c = await factory.deploy(account, { gasLimit: 3_500_000n });
       await c.waitForDeployment();
       const addr = await c.getAddress();
       deployment = { address: addr, chainId: Number(net.chainId) };
@@ -254,7 +257,7 @@
       contract = c.connect(signer);
       read = new E.Contract(addr, ABI, provider);
       // Seed a small house bankroll so vs-house works right away (best effort).
-      try { await (await contract.fundHouse({ value: E.parseEther("0.05") })).wait(); } catch {}
+      try { await (await contract.fundHouse({ value: E.parseEther("0.05"), gasLimit: 90_000n })).wait(); } catch {}
       maxBet = await read.maxBet();
       try { hostTreasury = await read.treasury(); } catch {}
       chainOK = true;
@@ -665,8 +668,10 @@
     for (const k of Object.keys(FRIENDLY_ERR)) if (blob.includes(k)) return toast(FRIENDLY_ERR[k], "err");
     if (e?.code === "ACTION_REJECTED" || /user (rejected|denied)/i.test(blob))
       return toast("You cancelled the transaction.", "err");
-    if (/insufficient funds|could not coalesce|gas required exceeds|intrinsic gas/i.test(blob))
-      return toast("Transaction failed — usually not enough test ETH for gas. Top up Sepolia ETH from a faucet and retry.", "err");
+    if (/could not coalesce|missing response|timeout|SERVER_ERROR|failed to fetch/i.test(blob))
+      return toast("Sepolia network hiccup (the public test RPC is flaky) — just click Deploy again.", "err");
+    if (/insufficient funds|gas required exceeds|intrinsic gas/i.test(blob))
+      return toast("Not enough test ETH for gas. Top up Sepolia ETH from a faucet and retry.", "err");
     const m = e?.shortMessage || e?.reason || e?.message || "Transaction failed";
     toast(m.length > 90 ? m.slice(0, 90) + "…" : m, "err");
   }
