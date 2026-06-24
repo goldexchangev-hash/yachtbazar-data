@@ -1176,13 +1176,31 @@
       for (var k = -1; k <= 1; k++) g.drawImage(rawimg(im.clouds), k * cw - off, cy, cw, ch);
       g.restore();
     }
-    var fh2 = P.h * 0.46, fw2 = fh2 * (616 / 110), fy = P.h - fh2, fo = (scroll * 0.5) % fw2;
+    // The hero stands on a SOLID flat ground band; the cliff art is pushed back
+    // as distant scenery so nobody floats in the transparent gap above its hill.
+    var groundY = P.h * 0.80;
     if (imgOk(im.far)) {
-      g.save(); g.imageSmoothingEnabled = false;
-      for (var j = -1; j <= 2; j++) g.drawImage(rawimg(im.far), j * fw2 - fo, fy, fw2, fh2);
+      var fbh = P.h * 0.52, fbw = fbh * (616 / 110), fby = groundY - fbh, fo = (scroll * 0.35) % fbw;
+      g.save(); g.imageSmoothingEnabled = false; g.globalAlpha = 0.95;
+      for (var j = -1; j <= 2; j++) g.drawImage(rawimg(im.far), j * fbw - fo, fby, fbw, fbh);
       g.restore();
-    } else { ground("#5a9e3a"); }
-    return fy + fh2 * 0.42; // crest where the hero stands
+      g.save(); g.globalAlpha = 0.16; g.fillStyle = "#bfe6f5"; g.fillRect(0, fby, P.w, fbh * 0.92); g.restore(); // haze
+    }
+    // flat grass-over-dirt ground in front, with scrolling texture for motion
+    var gcol = "#6cbf3f", gdk = "#3f8f2a", dirt = "#5a4326", dirtDk = "#43301a";
+    rect(-40, groundY, P.w + 80, P.h * 0.03, gcol);
+    rect(-40, groundY + P.h * 0.03, P.w + 80, Math.max(2, P.h * 0.014), gdk);
+    rect(-40, groundY + P.h * 0.044, P.w + 80, P.h, dirt);
+    g.fillStyle = dirtDk;
+    var cell = P.w * 0.05, so = scroll % cell, ds = Math.max(2, P.w * 0.012);
+    for (var row = 0; row < 6; row++) {
+      var yy = groundY + P.h * 0.07 + row * P.h * 0.03;
+      for (var x = -cell; x < P.w + cell; x += cell) g.fillRect((x - (row % 2) * cell / 2 - so) | 0, yy | 0, ds, ds);
+    }
+    g.fillStyle = gdk; // grass blades on the lip
+    var bw = P.w * 0.045, bo = scroll % bw;
+    for (var bx = -bw; bx < P.w + bw; bx += bw) g.fillRect((bx - bo) | 0, (groundY - P.h * 0.012) | 0, Math.max(1, P.w * 0.004), P.h * 0.014);
+    return groundY;
   }
   // hero state machine -> the right strip/fps
   function heroDraw(t, x, y, scale, state, flip) {
@@ -1322,6 +1340,153 @@
   function getTheme() { return activeTheme; }
   function listThemes() { return Object.keys(THEMES).map(function (k) { return { id: k, label: THEMES[k].label, credit: THEMES[k].credit || "" }; }); }
 
+  /* ==========================================================================
+     MAGIC CLIFFS "FLIP REVEAL" — replaces the spinning coin for the world theme.
+     A build-up loop (hero runs toward a stake of loot while the on-chain result
+     is pending) then branches into a WIN or LOSS reveal. The tell is DIRECTION:
+       WIN  -> hero turns to face the player; the loot flies AT the camera.
+       LOSS -> hero turns to the money and chops it; coins fall into the chasm.
+     Everything escalates with the bet tier (pouch -> sack -> chest -> hoard).
+     ========================================================================== */
+  var wf = null, wfRaf = 0, wfParts = [];
+  function betTier(betUsd) { betUsd = betUsd || 0; return betUsd < 50 ? 0 : betUsd < 150 ? 1 : betUsd < 350 ? 2 : 3; }
+
+  // the loot prop (bottom-center at x,gy). brokenP>0 splits it into halves.
+  function drawStake(x, gy, tier, t, brokenP) {
+    var s = P.h * (0.055 + tier * 0.013);
+    if (tier >= 2) { // treasure chest (+ coin piles for the hoard tier)
+      var w = s * 2.3, h = s * 1.5, bx = x - w / 2, by = gy - h, drop = (brokenP || 0) * P.h * 0.05, o = (brokenP || 0) * P.w * 0.06;
+      if (tier >= 3 && !brokenP) { for (var c = 0; c < 4; c++) { coin(bx - s * 0.5 + c * s * 0.3, gy - s * 0.25, s * 0.32, 0.2); coin(bx + w - s * 0.4 + (c % 2) * s * 0.3, gy - s * 0.25, s * 0.32, 0.5); } }
+      function chestHalf(hx, hw) { rect(hx, by + drop, hw, h, "#6a3f1a"); rect(hx, by + drop, hw, h * 0.34, "#d6a93a"); rect(hx, by + drop + h * 0.34, hw, Math.max(2, h * 0.05), "#3a2410"); }
+      if (brokenP > 0) { chestHalf(bx - o, w / 2 - 1); chestHalf(x + o, w / 2 - 1); }
+      else { chestHalf(bx, w); rect(x - s * 0.2, by + h * 0.42, s * 0.4, s * 0.55, "#d6a93a"); rect(x - s * 0.08, by + h * 0.52, s * 0.16, s * 0.2, "#3a2410"); }
+    } else { // pouch / sack
+      var ss = s * (tier ? 1.35 : 1.0);
+      if (brokenP > 0) { var o2 = brokenP * P.w * 0.05, dr = brokenP * P.h * 0.035;
+        rect(x - ss * 0.85 - o2, gy - ss * 1.2 + dr, ss * 0.8, ss * 1.2, "#9a6630"); rect(x + o2, gy - ss * 1.2 + dr, ss * 0.8, ss * 1.2, "#9a6630");
+      } else {
+        rect(x - ss * 0.78, gy - ss * 1.45, ss * 1.56, ss * 1.45, "#9a6630");
+        rect(x - ss * 0.82, gy - ss * 1.4, ss * 1.64, ss * 0.4, "#7a4a22");
+        rect(x - ss * 0.5, gy - ss * 1.78, ss * 1.0, ss * 0.45, "#6a3f1a"); // tied neck
+        g.fillStyle = "#ffd24a"; g.textAlign = "center"; g.font = "bold " + Math.round(ss * 0.95) + "px monospace"; g.fillText("$", x, gy - ss * 0.5);
+      }
+    }
+  }
+  function wfChasm(x, gy, prog) {
+    if (prog <= 0) return; var w = P.w * 0.17 * prog;
+    g.save(); g.fillStyle = "#140d1e"; g.beginPath();
+    g.moveTo(x - w, gy); g.lineTo(x - w * 0.7, gy + P.h * 0.06); g.lineTo(x - w * 0.2, gy + P.h * 0.22);
+    g.lineTo(x + w * 0.25, gy + P.h * 0.3); g.lineTo(x + w * 0.7, gy + P.h * 0.12); g.lineTo(x + w, gy);
+    g.closePath(); g.fill(); g.restore();
+  }
+  function wfSpawn(kind, n, x, y, rg) {
+    if (wfParts.length > 260) return;
+    for (var i = 0; i < n; i++) {
+      if (kind === "cam") wfParts.push({ k: "cam", x: x + (rg() - 0.5) * P.w * 0.06, y: y, vx: (rg() - 0.5) * 3, vy: -2 - rg() * 3.4, r: P.h * (0.012 + rg() * 0.012), sp: rg(), life: 1 });
+      else wfParts.push({ k: "pit", x: x + (rg() - 0.5) * P.w * 0.08, y: y, vx: (rg() - 0.5) * 4.5, vy: -3 - rg() * 2.5, r: P.h * (0.01 + rg() * 0.012), sp: rg(), life: 1.4 });
+    }
+  }
+  function wfStepParts(gy) {
+    for (var i = 0; i < wfParts.length; i++) {
+      var p = wfParts[i];
+      if (p.k === "cam") { p.vy += 0.05; p.x += p.vx; p.y += p.vy; p.sp += 0.06; p.life -= 0.012;
+        var sc = 1 + (1 - p.life) * 2.0; g.globalAlpha = Math.max(0, Math.min(1, p.life)); coin(p.x, p.y, p.r * sc, p.sp); g.globalAlpha = 1;
+      } else { p.vy += 0.26; p.x += p.vx; p.y += p.vy; p.sp += 0.09; if (p.y > gy + P.h * 0.02) p.life -= 0.05;
+        g.globalAlpha = Math.max(0, Math.min(1, p.life)); coin(p.x, p.y, p.r, p.sp); g.globalAlpha = 1; }
+    }
+    wfParts = wfParts.filter(function (p) { return p.life > 0 && p.y < P.h + 60; });
+  }
+  function wfText(won, rt) {
+    var sg = g.createLinearGradient(0, 0, 0, P.h * 0.34); sg.addColorStop(0, "rgba(8,8,16,0.66)"); sg.addColorStop(1, "rgba(8,8,16,0)");
+    g.fillStyle = sg; g.fillRect(0, 0, P.w, P.h * 0.34);
+    var pop = Math.max(0.02, Math.min(1, rt / 240));
+    g.save(); g.translate(P.w / 2, P.h * 0.115); g.scale(pop, pop); g.textAlign = "center";
+    g.font = "700 " + Math.round(P.h * 0.1) + "px 'Press Start 2P', monospace";
+    var head = won ? (wf.netUsd >= 300 ? "LEGENDARY!" : "YOU WIN!") : "BUSTED!";
+    g.fillStyle = won ? "#0a3" : "#3a1010"; g.fillText(head, 3, 3);
+    g.fillStyle = won ? "#34e39b" : "#ff6a6a"; g.fillText(head, 0, 0);
+    g.font = "800 " + Math.round(P.h * 0.135) + "px 'Press Start 2P', monospace";
+    var amt = won ? ("+$" + Math.round(wf.netUsd)) : ("−$" + Math.round(wf.betUsd));
+    g.fillStyle = won ? "#b25b00" : "#5a1414"; g.fillText(amt, 3, P.h * 0.135 + 3);
+    g.fillStyle = won ? "#ffd14a" : "#ff9a9a"; g.fillText(amt, 0, P.h * 0.135);
+    g.restore();
+  }
+  function wfBuildup(t) {
+    wf.scroll = t * 0.3;
+    var gy = worldBg(t, wf.scroll);
+    heroDraw(t, P.w * 0.32, gy, P.h / 150, "run", 1);
+    drawStake(P.w * 0.82, gy, wf.tier, t, 0);
+    if (t % 620 < 70) star(P.w * 0.82, gy - P.h * 0.2, P.h * 0.022, "#fff6c0"); // "this is the prize"
+  }
+  function wfReveal(rt) {
+    var gy = worldBg(performance.now() - wf.start, wf.scroll); // frozen scroll = camera settled
+    var tier = wf.tier, hs = P.h / 150 * (1 + tier * 0.05), rg = P.rg;
+    var stakeX = P.w * 0.7, heroX = P.w * 0.44;
+    if (wf.won) {
+      // WIN — hero faces the PLAYER (flip left); loot launches at the camera.
+      var st = rt < 240 ? "jump" : "idle";
+      if (rt < 150) drawStake(stakeX, gy, tier, rt, 0);
+      heroDraw(rt < 240 ? rt : rt, heroX, gy, hs, st, -1);
+      if (rt > 140 && rt < 172) { wfSpawn("cam", 8 + tier * 9, stakeX, gy - P.h * 0.11, rg); spawnConfetti(10 + tier * 8, rg); }
+      if (tier >= 2 && rt > 280 && rt % 130 < 16) wfSpawn("cam", 5, stakeX, gy - P.h * 0.11, rg);
+      if (tier >= 1 && rt > 220 && rt % 320 < 18) spawnFirework(P.w * (0.28 + rg() * 0.5), P.h * (0.2 + rg() * 0.28), rg);
+      wfStepParts(gy); stepFireworks(); stepConfetti();
+      if (rt < 260) { g.save(); g.globalAlpha = 0.34 * (1 - rt / 260); g.fillStyle = "#ffd24a"; g.fillRect(0, 0, P.w, P.h); g.restore(); }
+    } else {
+      // LOSS — hero faces the money (right), slashes; coins fall into the chasm.
+      var HIT = 230;
+      wfChasm(stakeX, gy, Math.min(1, (rt - HIT) / 320));
+      drawStake(stakeX, gy, tier, rt, rt < HIT ? 0 : Math.min(1, (rt - HIT) / 260));
+      heroDraw(rt, heroX, gy, hs, rt < 360 ? "attack" : "idle", 1);
+      if (rt > HIT && rt < HIT + 30) { wfSpawn("pit", 8 + tier * 9, stakeX, gy - P.h * 0.08, rg); shake(6 + tier * 2); }
+      if (rt > HIT && rt < HIT + 12) { g.save(); g.globalAlpha = 0.42; g.fillStyle = "#e6eeff"; g.fillRect(0, 0, P.w, P.h); g.restore(); }
+      wfStepParts(gy);
+      if (rt > HIT) { g.save(); g.globalAlpha = Math.min(0.3, (rt - HIT) / 900); g.fillStyle = "#39406a"; g.fillRect(0, 0, P.w, P.h); g.restore(); }
+    }
+    wfText(wf.won, rt);
+  }
+  function wfLoop(now) {
+    if (!wf) return;
+    g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, P.w, P.h);
+    g.fillStyle = "#0a0a14"; g.fillRect(0, 0, P.w, P.h);
+    if (wf.mode === "buildup") { g.save(); try { wfBuildup(now - wf.start); } catch (e) {} g.restore(); }
+    else {
+      var rt = now - wf.revealStart;
+      g.save(); if (rt < 480) shake(wf.won ? 2 : 4); try { wfReveal(rt); } catch (e) {} g.restore();
+      if (rt > wf.dur - 400) { g.fillStyle = "rgba(12,13,22," + Math.min(1, (rt - (wf.dur - 400)) / 400) + ")"; g.fillRect(0, 0, P.w, P.h); }
+      if (rt >= wf.dur) { wfStop(); return; }
+    }
+    wfRaf = requestAnimationFrame(wfLoop);
+  }
+  function wfStop() { if (wfRaf) cancelAnimationFrame(wfRaf); wfRaf = 0; wf = null; wfParts = []; try { window.__winSceneActive = false; } catch (e) {} if (cv) cv.classList.remove("on"); }
+  // Public: begin the build-up loop when a world-theme bet is placed.
+  function flipStart(opts) {
+    if (activeTheme !== "world") return false;
+    if (!cv || !g) init(); if (!cv || !g) return false;
+    loadWorld(); size();
+    opts = opts || {};
+    P = { w: cv.width, h: cv.height, rg: rnd(Math.floor((opts.betUsd || 25) * 7) + 3), reduce: reduce };
+    wfParts = [];
+    wf = { mode: "buildup", start: performance.now(), scroll: 0, tier: betTier(opts.betUsd), won: false, netUsd: 0, betUsd: opts.betUsd || 0 };
+    try { window.__winSceneActive = true; } catch (e) {}
+    cv.classList.add("on");
+    cancelAnimationFrame(wfRaf); wfRaf = requestAnimationFrame(wfLoop);
+    return true;
+  }
+  // Public: branch the build-up into the win/loss reveal once the result is known.
+  function flipReveal(opts) {
+    if (activeTheme !== "world") return false;
+    opts = opts || {};
+    if (!wf) { if (!flipStart(opts)) return false; }
+    wf.won = !!opts.won; wf.netUsd = Math.max(0, opts.netUsd || 0);
+    if (opts.betUsd != null) { wf.betUsd = opts.betUsd; wf.tier = betTier(opts.betUsd); }
+    wf.mode = "reveal"; wf.revealStart = performance.now();
+    wf.dur = reduce ? 1100 : (wf.won ? 1700 + wf.tier * 350 : 1400 + wf.tier * 300);
+    try { window.__onTvReveal && window.__onTvReveal(opts); } catch (e) {} // outcome is showing now -> release balance
+    return true;
+  }
+  function flipCancel() { if (wf) wfStop(); }
+
   function frame(now) {
     if (!playing) return;
     const t = now - startT;
@@ -1382,7 +1547,7 @@
     for (let i = 0; i < 40; i++) coin(r() * P.w, P.h * 0.55 + r() * P.h * 0.32, 4, 0.25);
   }
 
-  window.WinScenes = { init, play, stop, _select: selectScene, setTheme: setTheme, getTheme: getTheme, themes: listThemes };
+  window.WinScenes = { init, play, stop, _select: selectScene, setTheme: setTheme, getTheme: getTheme, themes: listThemes, flipStart: flipStart, flipReveal: flipReveal, flipCancel: flipCancel };
   function boot() { init(); if (activeTheme === "world") loadWorld(); }
   if (document.readyState !== "loading") boot();
   else document.addEventListener("DOMContentLoaded", boot);

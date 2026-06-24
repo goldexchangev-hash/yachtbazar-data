@@ -54,6 +54,7 @@
   let contract = null; // connected to signer
   let read = null; // connected to provider
   let maxBet = 0n;
+  let gameWei = 0n; // cached in-game (deposited) balance, refreshed by refreshBalances
   let walletWei = 0n; // last-seen wallet ETH balance (for the deposit cap)
   let chainOK = false;
   let activeRoomId = null; // a room I'm a participant in, currently live
@@ -220,14 +221,20 @@
   function rememberBet(usdVal) { if (!(usdVal > 0)) return; lastBetUsd = usdVal; try { localStorage.setItem("ctf_last_bet", String(usdVal)); } catch {} }
   function quickBet(id, mode) {
     const s = $(id); if (!s) return;
-    const min = +s.min || 10, max = +s.max || 500, step = +s.step || 5;
+    const min = +s.min || 10, step = +s.step || 5;
+    // The true ceiling RIGHT NOW = the slider cap (house/table cover + maxBet) AND
+    // your in-game balance — you can't stake more than you've actually deposited.
+    let max = +s.max || 500;
+    const balUsd = gameWei > 0n ? Math.floor(weiToUsd(gameWei) / step) * step : max;
+    max = Math.min(max, balUsd);
     const base = lastBetUsd > 0 ? lastBetUsd : (+s.value || min);
     let v = mode === "half" ? base / 2 : mode === "double" ? base * 2 : max;
     v = Math.round(v / step) * step;
     v = Math.max(min, Math.min(max, v));
     s.value = String(v);
     setSliderUsd(id);
-    if (mode === "double" && base * 2 > max) toast("Capped at the max available (" + usd(max) + ")", "ok");
+    if (mode === "max") toast("Max you can bet now: " + usd(max), "ok");
+    else if (mode === "double" && base * 2 > max) toast("Capped at the max available (" + usd(max) + ")", "ok");
     else if (mode === "half" && base / 2 < min) toast("Min bet is " + usd(min), "ok");
   }
   function wireQuickBet() {
@@ -253,7 +260,16 @@
       b.onclick = () => { WinScenes.setTheme(b.getAttribute("data-theme")); paint(); toast("Win theme: " + b.textContent, "ok"); };
     });
     const prev = $("theme-preview-btn");
-    if (prev) prev.onclick = () => { try { WinScenes.play({ amountUsd: 180 + Math.floor(Math.random() * 220), side: "HEADS" }); } catch {} };
+    if (prev) prev.onclick = () => {
+      try {
+        const amt = 60 + Math.floor(Math.random() * 380);
+        if (WinScenes.getTheme() === "world" && WinScenes.flipReveal) {
+          const win = Math.random() > 0.4;
+          WinScenes.flipStart({ betUsd: amt });
+          setTimeout(() => WinScenes.flipReveal({ won: win, netUsd: win ? Math.round(amt * 0.9) : 0, betUsd: amt }), 1100);
+        } else { WinScenes.play({ amountUsd: amt, side: "HEADS" }); }
+      } catch {}
+    };
     paint();
   }
   // Live preview under the create-room stake slider so it's obvious both players
@@ -794,9 +810,23 @@
   }
   window.__onTvReveal = unlockReveal;
 
+  // Outcome handoff to the win-animation engine. For the Magic Cliffs theme the
+  // whole reveal (build-up → win/loss) replaces the coin, so it handles BOTH
+  // outcomes; flipReveal returns true when it takes over. For Neon, only a WIN
+  // triggers a celebration scene over the landed coin.
+  function playOutcome(o) {
+    try {
+      if (window.WinScenes && WinScenes.flipReveal && WinScenes.flipReveal({ won: o.won, netUsd: o.netUsd, betUsd: o.betUsd })) return;
+      if (o.won && window.WinScenes && WinScenes.play) WinScenes.play({ amountUsd: o.netUsd, side: o.side });
+    } catch (e) {}
+  }
+  function flipBuildup(betWei) { try { window.WinScenes && WinScenes.flipStart && WinScenes.flipStart({ betUsd: weiToUsd(betWei) }); } catch (e) {} }
+  function cancelBuildup() { try { window.WinScenes && WinScenes.flipCancel && WinScenes.flipCancel(); } catch (e) {} }
+
   async function refreshBalances() {
     try {
       const [gb, wb] = await Promise.all([read.balances(account), provider.getBalance(account)]);
+      gameWei = gb; // cached so "Max" can read the live in-game balance instantly
       if (!revealLock) $("game-balance").textContent = usdOf(gb); // hold until the result is revealed
       $("wallet-balance").textContent = usdOf(wb);
       walletWei = wb;
@@ -962,6 +992,7 @@
     activeRoomId = id;
     lastRevealed = null;
     lockReveal();
+    flipBuildup(bet);
     TV.startFlip({ p1: room ? room.creator : null, p2: account, p1Heads: room ? room.creatorHeads : true });
     tvPending(true);
     toast("Sending your bet… confirm in your wallet", "ok");
@@ -975,7 +1006,7 @@
     } catch (e) {
       tvPending(false);
       activeRoomId = null;
-      unlockReveal();
+      unlockReveal(); cancelBuildup();
       TV.idle("Deposit ETH, then create or join a room");
       txErr(e);
     }
@@ -1005,6 +1036,7 @@
     lastRevealed = null;
     activeRoomId = null;
     lockReveal();
+    flipBuildup(bet);
     TV.startFlip({ p1: account, p2: "HOUSE", p1Heads: wantsHeads });
     tvPending(true);
     toast("Sending your bet… confirm in your wallet", "ok");
@@ -1014,7 +1046,7 @@
       try {
         predicted = await contract.playHouse.staticCall(bet, wantsHeads);
       } catch (e) {
-        tvPending(false); unlockReveal(); TV.idle("Deposit ETH, then create or join a room");
+        tvPending(false); unlockReveal(); cancelBuildup(); TV.idle("Deposit ETH, then create or join a room");
         return txErr(e);
       }
       activeRoomId = predicted.toString();
@@ -1030,7 +1062,7 @@
     } catch (e) {
       tvPending(false);
       activeRoomId = null;
-      unlockReveal();
+      unlockReveal(); cancelBuildup();
       TV.idle("Deposit ETH, then create or join a room");
       txErr(e);
     }
@@ -1136,13 +1168,14 @@
   async function doPlayTable(id, bet, wantsHeads) {
     activeRoomId = null; lastRevealed = null;
     lockReveal();
+    flipBuildup(bet);
     TV.startFlip({ p1: account, p2: "HOST", p1Heads: wantsHeads });
     tvPending(true);
     toast("Sending your bet… confirm in your wallet", "ok");
     try {
       let predicted;
       try { predicted = await contract.playHostRoom.staticCall(id, bet, wantsHeads); }
-      catch (e) { tvPending(false); unlockReveal(); TV.idle("Deposit ETH, then create or join a room"); return txErr(e); }
+      catch (e) { tvPending(false); unlockReveal(); cancelBuildup(); TV.idle("Deposit ETH, then create or join a room"); return txErr(e); }
       const tx = await contract.playHostRoom(id, bet, wantsHeads, { gasLimit: 500000n });
       const rcpt = await tx.wait();
       tvPending(false);
@@ -1152,7 +1185,7 @@
       const rv = flipReveal(betAmt, playerWon);
       const coinHeads = playerWon ? wantsHeads : !wantsHeads; // the coin's actual face
       setLastResult({ won: playerWon, side: coinHeads ? "HEADS" : "TAILS", amountUsd: rv.amountUsd, amountWei: rv.amountWei, betWei: betAmt, label: "Host table" });
-      if (playerWon && window.WinScenes) WinScenes.play({ amountUsd: weiToUsd(rv.netWei), side: coinHeads ? "HEADS" : "TAILS" });
+      playOutcome({ won: playerWon, netUsd: weiToUsd(rv.netWei), betUsd: weiToUsd(betAmt), side: coinHeads ? "HEADS" : "TAILS" });
       TV.revealResult({
         side: coinHeads ? "HEADS" : "TAILS",
         youWon: playerWon,
@@ -1165,7 +1198,7 @@
       refreshBalances(); refreshTableInfo(); refreshPlayers(); refreshMyHistory();
     } catch (e) {
       tvPending(false);
-      unlockReveal();
+      unlockReveal(); cancelBuildup();
       TV.idle("Deposit ETH, then create or join a room");
       txErr(e);
     }
@@ -1396,7 +1429,7 @@
         const youWon = eq(r.winner, account);
         const rv = flipReveal(r.betAmount, youWon);
         setLastResult({ won: youWon, side, amountUsd: rv.amountUsd, amountWei: rv.amountWei, betWei: r.betAmount, label: r.isHouseGame ? "vs House" : "PvP" });
-        if (youWon && window.WinScenes) WinScenes.play({ amountUsd: weiToUsd(rv.netWei), side });
+        playOutcome({ won: youWon, netUsd: weiToUsd(rv.netWei), betUsd: weiToUsd(r.betAmount), side });
         TV.revealResult({
           side,
           youWon,
@@ -1608,7 +1641,7 @@
       if (activeRoomId === id) {
         // someone joined MY open room -> start the broadcast for me
         lockReveal();
-        read.getRoom(id).then((r) => TV.startFlip({ p1: r.player1, p2: r.player2, p1Heads: r.creatorHeads }));
+        read.getRoom(id).then((r) => { flipBuildup(r.betAmount); TV.startFlip({ p1: r.player1, p2: r.player2, p1Heads: r.creatorHeads }); });
       }
     });
     read.on(read.filters.RoomCreated(), () => refreshRooms());
