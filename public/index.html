@@ -163,6 +163,24 @@
           </div>
           <button id="play-house-btn" class="btn btn-primary btn-block">🪙 Flip vs House</button>
         </div>
+
+        <!-- In-browser hosting: deploy the game contract with one click -->
+        <div class="card host-setup" id="host-setup" hidden>
+          <h2 class="card-title">🎬 Host a game</h2>
+          <p class="muted ph-note">
+            No game is set up on this network yet. Deploy one (you become the house &amp;
+            10% fee recipient), then share the link with players. Make sure you're on a
+            test network with some test ETH.
+          </p>
+          <button id="deploy-btn" class="btn btn-primary btn-block">🚀 Deploy game contract</button>
+          <div id="host-share" class="share-box hidden">
+            <span class="muted">✅ Live! Send this game link to players:</span>
+            <div class="share-row">
+              <input id="host-share-link" class="input share-input" readonly />
+              <button id="host-copy" class="btn btn-ghost">Copy</button>
+            </div>
+          </div>
+        </div>
       </section>
 
       <!-- ───────────────── Right: lobby / players ───────────────── -->
@@ -307,6 +325,7 @@
 
     <script src="vendor/ethers.umd.min.js"></script>
     <script src="config.js"></script>
+    <script src="contract.js"></script>
     <script src="chiptune.js"></script>
     <script src="tv.js"></script>
     <script src="app.js"></script>

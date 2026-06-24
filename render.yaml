@@ -1,0 +1,13 @@
+# Optional: deploy the FULL version (with live chat + active-players) to Render,
+# the same way as your other projects. Render → New → Blueprint → pick this repo.
+# (For just the game, GitHub Pages works with zero setup — see README.)
+services:
+  - type: web
+    name: tv-crypto-flip
+    runtime: node
+    plan: free
+    buildCommand: npm install --omit=dev
+    startCommand: node server/server.js
+    envVars:
+      - key: NODE_VERSION
+        value: "20"

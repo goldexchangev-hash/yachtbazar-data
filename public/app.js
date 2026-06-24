@@ -4,8 +4,25 @@
 (function () {
   "use strict";
   const $ = (id) => document.getElementById(id);
-  const cfg = window.COINFLIP_CONFIG || {};
   const E = window.ethers;
+  const cfg = window.COINFLIP_CONFIG || {};
+  const ART = window.COINFLIP_ARTIFACT || { abi: [], bytecode: "", defaultTreasury: null };
+  const ABI = ART.abi && ART.abi.length ? ART.abi : cfg.abi || [];
+  const params = new URLSearchParams(location.search);
+
+  function loadStored() { try { return JSON.parse(localStorage.getItem("coinflip_deployment") || "null"); } catch { return null; } }
+  function saveStored(d) { try { localStorage.setItem("coinflip_deployment", JSON.stringify(d)); } catch {} }
+
+  // Which contract + chain are we using?  URL link > local config.js > saved > none.
+  let deployment = (() => {
+    const a = params.get("contract"), c = params.get("chain");
+    if (a) return { address: a, chainId: c ? Number(c) : null };
+    if (cfg.address) return { address: cfg.address, chainId: cfg.chainId || null };
+    const s = loadStored();
+    if (s && s.address) return s;
+    return { address: null, chainId: cfg.chainId || null };
+  })();
+  let hostTreasury = null; // read from the contract once connected
 
   // ---- state ----
   let provider = null; // ethers BrowserProvider
@@ -17,7 +34,7 @@
   let chainOK = false;
   let activeRoomId = null; // a room I'm a participant in, currently live
   let ws = null;
-  let inviteRoomId = new URLSearchParams(location.search).get("room");
+  let inviteRoomId = params.get("room");
 
   const fmt = (wei) => {
     try { return (+E.formatEther(wei)).toLocaleString(undefined, { maximumFractionDigits: 5 }); }
@@ -95,7 +112,8 @@
     31337: { chainId: "0x7a69", chainName: "Hardhat Local", rpcUrls: ["http://127.0.0.1:8545"], nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 } },
     11155111: { chainId: "0xaa36a7", chainName: "Sepolia", rpcUrls: ["https://rpc.sepolia.org"], nativeCurrency: { name: "Sepolia Ether", symbol: "ETH", decimals: 18 }, blockExplorerUrls: ["https://sepolia.etherscan.io"] },
   };
-  const explorerBase = cfg.chainId === 11155111 ? "https://sepolia.etherscan.io/address/" : null;
+  function explorerFor(chainId) { return chainId === 11155111 ? "https://sepolia.etherscan.io/address/" : null; }
+  function netName(chainId) { return chainId === 31337 ? "Local" : chainId === 11155111 ? "Sepolia" : "Connected"; }
 
   // ---------------------------------------------------------- connect
   async function connect() {
@@ -113,24 +131,26 @@
       signer = await provider.getSigner();
       account = await signer.getAddress();
 
-      if (!cfg.address) {
-        banner("⚠ Contract not deployed yet. Run  npm run deploy:local  (or deploy:sepolia), then reload.", true);
+      if (!deployment.address) {
+        // No game deployed here yet — let this user host one from the browser.
+        banner("");
         renderWallet();
+        showHostSetup();
         return;
       }
-      contract = new E.Contract(cfg.address, cfg.abi, signer);
-      read = new E.Contract(cfg.address, cfg.abi, provider);
-      maxBet = await read.maxBet();
+      contract = new E.Contract(deployment.address, ABI, signer);
+      read = new E.Contract(deployment.address, ABI, provider);
+      try {
+        maxBet = await read.maxBet();
+      } catch (e) {
+        banner("⚠ No game found at this address on this network — switch networks, or deploy a new game.", true);
+        renderWallet();
+        showHostSetup();
+        return;
+      }
+      try { hostTreasury = await read.treasury(); } catch {}
 
-      renderWallet();
-      wireEvents();
-      connectWS();
-      await refreshAll();
-      TV.idle("Deposit ETH, then create or join a room");
-      $("bankroll").hidden = false;
-      $("play-house").hidden = false;
-      $("maxbet-hint").textContent = "· max " + fmt(maxBet) + " ETH";
-      setupHouseSlider();
+      await startGameUI();
       if (inviteRoomId) handleInvite();
     } catch (err) {
       console.error(err);
@@ -140,9 +160,13 @@
 
   async function ensureNetwork() {
     const net = await provider.getNetwork();
-    if (Number(net.chainId) === cfg.chainId) { chainOK = true; return; }
+    const want = deployment.chainId;
+    // No specific chain required (host can deploy on whatever testnet they're on).
+    if (!want) { chainOK = true; return; }
+    if (Number(net.chainId) === want) { chainOK = true; return; }
     chainOK = false;
-    const target = NETWORKS[cfg.chainId];
+    const target = NETWORKS[want];
+    if (!target) { chainOK = false; return; }
     try {
       await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: target.chainId }] });
     } catch (e) {
@@ -152,11 +176,23 @@
         throw e;
       }
     }
-    // re-create provider on the new chain
     provider = new E.BrowserProvider(window.ethereum, "any");
     provider.pollingInterval = 2000;
     const net2 = await provider.getNetwork();
-    chainOK = Number(net2.chainId) === cfg.chainId;
+    chainOK = Number(net2.chainId) === want;
+  }
+
+  // Common UI bring-up once a contract is connected.
+  async function startGameUI() {
+    renderWallet();
+    wireEvents();
+    connectWS();
+    await refreshAll();
+    TV.idle("Deposit ETH, then create or join a room");
+    $("bankroll").hidden = false;
+    $("play-house").hidden = false;
+    $("maxbet-hint").textContent = "· max " + fmt(maxBet) + " ETH";
+    setupHouseSlider();
   }
 
   function renderWallet() {
@@ -169,12 +205,55 @@
     const nb = $("net-badge");
     nb.classList.remove("hidden");
     nb.classList.toggle("wrong", !chainOK);
-    $("net-name").textContent = chainOK ? (cfg.network || "Connected") : "Wrong network";
-    if (explorerBase && cfg.address) {
-      const a = $("contract-link"); a.href = explorerBase + cfg.address; a.textContent = short(cfg.address);
-    } else if (cfg.address) {
-      $("contract-link").textContent = short(cfg.address);
+    $("net-name").textContent = chainOK ? netName(deployment.chainId) : "Wrong network";
+    const exp = explorerFor(deployment.chainId);
+    if (deployment.address) {
+      const a = $("contract-link");
+      if (exp) { a.href = exp + deployment.address; a.textContent = short(deployment.address); }
+      else a.textContent = short(deployment.address);
     }
+  }
+
+  // ---------------------------------------------------------- in-browser hosting
+  function showHostSetup() { $("host-setup").hidden = false; }
+  function hideHostSetup() { $("host-setup").hidden = true; }
+
+  async function deployContract() {
+    if (!ART.bytecode) return toast("Contract bytecode missing — rebuild with npm run artifact", "err");
+    const btn = $("deploy-btn");
+    btn.disabled = true;
+    try {
+      toast("Deploying your game… confirm in MetaMask");
+      const net = await provider.getNetwork();
+      const factory = new E.ContractFactory(ABI, ART.bytecode, signer);
+      const c = await factory.deploy(account); // you become the house + fee recipient
+      await c.waitForDeployment();
+      const addr = await c.getAddress();
+      deployment = { address: addr, chainId: Number(net.chainId) };
+      saveStored(deployment);
+      contract = c.connect(signer);
+      read = new E.Contract(addr, ABI, provider);
+      // Seed a small house bankroll so vs-house works right away (best effort).
+      try { await (await contract.fundHouse({ value: E.parseEther("0.05") })).wait(); } catch {}
+      maxBet = await read.maxBet();
+      try { hostTreasury = await read.treasury(); } catch {}
+      chainOK = true;
+      history.replaceState(null, "", shareUrlFor(null));
+      hideHostSetup();
+      await startGameUI();
+      showShareGameLink();
+      toast("Game deployed — you're the host! 🎉", "ok");
+    } catch (e) {
+      btn.disabled = false;
+      txErr(e);
+    }
+  }
+
+  function showShareGameLink() {
+    const box = $("host-share");
+    if (!box) return;
+    box.classList.remove("hidden");
+    $("host-share-link").value = shareUrlFor(null);
   }
 
   // ---------------------------------------------------------- reads / render
@@ -511,7 +590,7 @@
   // ---------------------------------------------------------- chat (Matrix terminal)
   function renderChatLine(from, text) {
     const log = $("chat-log");
-    const isHost = cfg.treasury && eq(from, cfg.treasury);
+    const isHost = hostTreasury && eq(from, hostTreasury);
     const sys = log.querySelector(".chat-sys");
     if (sys) sys.remove();
     const line = document.createElement("div");
@@ -573,12 +652,17 @@
 
   // ---------------------------------------------------------- share link
   function shareUrlFor(id) {
-    let base = location.origin;
+    let base = location.origin + location.pathname;
     if (window.__PUBLIC_HOST) {
       const port = location.port ? ":" + location.port : "";
-      base = `${location.protocol}//${window.__PUBLIC_HOST}${port}`;
+      base = `${location.protocol}//${window.__PUBLIC_HOST}${port}${location.pathname}`;
     }
-    return `${base}/?room=${id}`;
+    const q = new URLSearchParams();
+    if (deployment.address) q.set("contract", deployment.address);
+    if (deployment.chainId) q.set("chain", String(deployment.chainId));
+    if (id != null) q.set("room", String(id));
+    const qs = q.toString();
+    return qs ? base + "?" + qs : base;
   }
   function showShareLink(id) {
     $("share-box").classList.remove("hidden");
@@ -619,11 +703,12 @@
   }
 
   // ---------------------------------------------------------- websocket (active players)
+  let wsTries = 0;
   function connectWS() {
     try {
       const proto = location.protocol === "https:" ? "wss" : "ws";
       ws = new WebSocket(`${proto}://${location.host}`);
-      ws.onopen = () => wsSend({ type: "hello", address: account });
+      ws.onopen = () => { wsTries = 0; wsSend({ type: "hello", address: account }); };
       ws.onmessage = (ev) => {
         let d; try { d = JSON.parse(ev.data); } catch { return; }
         if (d.type === "players") renderPlayers(d.players || []);
@@ -632,7 +717,9 @@
         else if (d.type === "bet-proposal") handleProposal(d);
         else if (d.type === "bet-response") handleProposalResponse(d);
       };
-      ws.onclose = () => setTimeout(connectWS, 2500);
+      // Retry a few times, then give up (e.g. static host with no chat server).
+      ws.onclose = () => { if (wsTries++ < 5) setTimeout(connectWS, 2500); };
+      ws.onerror = () => { try { ws.close(); } catch {} };
     } catch (e) { console.warn("ws unavailable", e); }
   }
   function wsSend(obj) { try { ws && ws.readyState === 1 && ws.send(JSON.stringify(obj)); } catch {} }
@@ -691,6 +778,12 @@
     // Chat
     $("chat-send").onclick = sendChat;
     $("chat-input").addEventListener("keydown", (e) => { if (e.key === "Enter") sendChat(); });
+    // In-browser hosting
+    $("deploy-btn").onclick = deployContract;
+    $("host-copy").onclick = () => {
+      const inp = $("host-share-link"); inp.select();
+      navigator.clipboard?.writeText(inp.value).then(() => toast("Game link copied!", "ok"), () => {});
+    };
     $("copy-link-btn").onclick = () => {
       const inp = $("share-link"); inp.select();
       navigator.clipboard?.writeText(inp.value).then(() => toast("Link copied!", "ok"), () => {});
@@ -720,14 +813,14 @@
     syncSoundBtn();
     $("connect-btn").classList.add("cta-pulse");
     const remoteHost = location.hostname && !/^(localhost|127\.|0\.0\.0\.0|\[?::1\]?)/.test(location.hostname);
-    if (!cfg.address) {
-      banner("⚠ Contract not deployed yet. Run  npm run deploy:local  then reload this page.", true);
-    } else if (cfg.chainId === 31337 && remoteHost) {
+    if (deployment.address && deployment.chainId === 31337 && remoteHost) {
       banner(
-        "⚠ This game runs on a LOCAL test chain that only works on the host's own computer. " +
-          "To play from another device, ask the host to deploy to the Sepolia testnet.",
+        "⚠ This game is on a LOCAL test chain that only works on the host's own computer. " +
+          "For remote play, the host should deploy on the Sepolia testnet (Connect → 🚀 Deploy).",
         true
       );
+    } else if (!deployment.address) {
+      banner("👋 New here? Click Connect Wallet, then 🚀 Deploy a game (you'll be the host). Tap ? for help.");
     }
     if (inviteRoomId) toast("You've been invited to room #" + inviteRoomId + " — connect to join.");
   });
