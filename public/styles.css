@@ -396,6 +396,7 @@ kbd { font-family: ui-monospace, monospace; font-size: 11px; background: rgba(25
 
 /* ─────────────── Win-animation theme switcher ─────────────── */
 .theme-switch { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 10px 14px; margin: 10px 0; }
+.theme-switch[hidden] { display: none !important; } /* CSS display:flex would otherwise beat the hidden attribute */
 .theme-switch-label { font-family: var(--display); font-weight: 700; font-size: 13px; color: var(--gold); }
 .theme-toggle { display: inline-flex; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--panel-line); border-radius: 999px; padding: 3px; gap: 2px; }
 .theme-btn { border: 0; background: transparent; color: var(--muted); font-family: var(--display); font-weight: 700; font-size: 12px; padding: 6px 12px; border-radius: 999px; cursor: pointer; transition: color 0.15s, background 0.15s, box-shadow 0.15s; }
