@@ -905,8 +905,9 @@
     try { window.__winSceneActive = true; window.__cineActive = true; } catch {} // hold the TV's own cues
     v.onended = done;
     v.onerror = done;                                     // 404 / decode error -> reveal the TV result underneath
-    // fire the payoff once the reel reaches the chest-open climax (~2/3 in)
-    v.ontimeupdate = () => { const d = v.duration || 6; if (v.currentTime >= d * 0.66) pay(); };
+    // Payoff (balance update + coin-tally fanfare) fires only when the reel ENDS
+    // (via done()), so the in-game balance never changes before the animation
+    // finishes — no spoiler partway through.
     v.src = src;                                          // setting src (re)loads; it starts at 0 on its own
     try { v.load(); } catch {}
     cineTimer = setTimeout(done, 9500);                   // safety: never get stuck on the reel
