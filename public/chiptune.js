@@ -232,6 +232,15 @@
     },
     toggle() { return on ? (this.stop(), false) : this.start(); },
 
+    // Temporarily duck (or restore) the background music — used while a
+    // full-motion reel plays so its own audio can be heard over the loop.
+    duckMusic(down) {
+      try {
+        if (musicGain && ctx) musicGain.gain.setTargetAtTime(down ? 0.02 : 0.42, ctx.currentTime, 0.08);
+        if (audioEl) audioEl.volume = down ? 0.05 : 0.6;
+      } catch (e) {}
+    },
+
     _sfx() {
       ensureCtx();
       if (!ctx) return false;

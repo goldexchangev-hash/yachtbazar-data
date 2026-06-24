@@ -841,11 +841,14 @@
     loss: ["assets/losses/loss1.mp4", "assets/losses/loss2.mp4", "assets/losses/loss3.mp4", "assets/losses/loss4.mp4"],
   };
   let cineTimer = 0;
-  // The outcome "payoff" — win/loss sound + balance update — fires at the reel's
-  // CLIMAX (when Scarfblade opens the chest), not at the start, so it never
-  // spoils the result before the animation gets there.
-  function cinePayoff(won, netUsd) {
+  // The outcome "payoff" — balance update + (fallback) win/loss sound — fires at
+  // the reel's CLIMAX (when Scarfblade opens the chest), not at the start, so it
+  // never spoils the result early. If the reel is playing WITH its own audio we
+  // let that carry the moment; only when audio was blocked (muted fallback) do we
+  // play the chiptune fanfare instead.
+  function cinePayoff(won, netUsd, reelMuted) {
     try { window.__onTvReveal && window.__onTvReveal({}); } catch {}   // release the in-game balance now
+    if (!reelMuted) return;                                            // the video's own audio carries it
     try {
       const C = window.Chiptune;
       if (C) { if (!won) C.lose && C.lose(); else if (netUsd >= 300 && C.jackpot) C.jackpot(); else if (netUsd >= 100 && C.bigwin) C.bigwin(); else C.win && C.win(); }
@@ -857,10 +860,12 @@
     if (!list || !list.length) return false;
     const src = list[Math.floor(Math.random() * list.length)];
     let paid = false;
-    const pay = () => { if (paid) return; paid = true; cinePayoff(won, netUsd || 0); };
-    const done = () => { clearTimeout(cineTimer); v.onended = null; v.onerror = null; v.ontimeupdate = null; pay(); v.classList.remove("show"); try { v.pause(); } catch {} v.removeAttribute("src"); try { v.load(); } catch {} try { window.__winSceneActive = false; window.__cineActive = false; } catch {} };
+    const pay = () => { if (paid) return; paid = true; cinePayoff(won, netUsd || 0, v.muted); };
+    const done = () => { clearTimeout(cineTimer); v.onended = null; v.onerror = null; v.ontimeupdate = null; pay(); v.classList.remove("show"); try { v.pause(); } catch {} v.removeAttribute("src"); try { v.load(); } catch {} try { window.__winSceneActive = false; window.__cineActive = false; } catch {} try { window.Chiptune && Chiptune.duckMusic(false); } catch {} };
     clearTimeout(cineTimer);
-    v.muted = true; v.defaultMuted = true; v.setAttribute("muted", ""); v.setAttribute("playsinline", "");
+    // Try to play WITH sound; duck the background music so the reel is heard.
+    v.removeAttribute("muted"); v.muted = false; v.volume = 1; v.setAttribute("playsinline", "");
+    try { window.Chiptune && Chiptune.duckMusic(true); } catch {}
     v.classList.add("show");                              // show BEFORE anything that could throw
     try { window.__winSceneActive = true; window.__cineActive = true; } catch {} // hold the TV's own cues
     v.onended = done;
@@ -870,7 +875,12 @@
     v.src = src;                                          // setting src (re)loads; it starts at 0 on its own
     try { v.load(); } catch {}
     cineTimer = setTimeout(done, 9500);                   // safety: never get stuck on the reel
-    const go = () => { const p = v.play(); if (p && p.catch) p.catch(() => {}); };
+    // play with sound; if the browser blocks audio autoplay, retry muted so the
+    // reel still plays (the chiptune fanfare then covers the audio).
+    const go = () => {
+      const p = v.play();
+      if (p && p.catch) p.catch(() => { v.muted = true; const p2 = v.play(); if (p2 && p2.catch) p2.catch(() => {}); });
+    };
     if (v.readyState >= 2) go(); else v.oncanplay = () => { v.oncanplay = null; go(); };
     go();
     return true;
