@@ -343,9 +343,12 @@
       }
       toast("Deploying your game… confirm in MetaMask");
       const factory = new E.ContractFactory(ABI, ART.bytecode, signer);
+      // The house (treasury / fee recipient) is LOCKED to the fixed wallet below,
+      // not whoever deploys — so a player can never accidentally become the house.
+      const houseWallet = ART.defaultTreasury || account;
       // Explicit gasLimit skips eth_estimateGas — flaky public Sepolia RPCs make
       // ethers throw "could not coalesce error" there even with funds available.
-      const c = await factory.deploy(account, { gasLimit: 3_500_000n });
+      const c = await factory.deploy(houseWallet, { gasLimit: 3_500_000n });
       await c.waitForDeployment();
       const addr = await c.getAddress();
       deployment = { address: addr, chainId: Number(net.chainId) };
