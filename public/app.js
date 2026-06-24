@@ -334,6 +334,7 @@
       await ensureNetwork();
       signer = await provider.getSigner();
       account = await signer.getAddress();
+      await resolveActiveGame(provider); // honor the registry's active game
 
       if (!deployment.address) {
         // No game deployed here yet — let this user host one from the browser.
@@ -542,23 +543,64 @@
       maxBet = await read.maxBet();
       try { hostTreasury = await read.treasury(); } catch {}
       chainOK = true;
+      // If a registry is configured + we're the owner, flip the whole site to the
+      // new contract automatically — one tx, no code push, every visitor follows.
+      let auto = false;
+      if (cfg.registry && E.isAddress(cfg.registry)) {
+        try {
+          const reg = new E.Contract(cfg.registry, ["function owner() view returns (address)", "function setActiveGame(address)"], signer);
+          if (eq(await reg.owner(), account)) {
+            toast("Pointing the site at the new contract… confirm in MetaMask");
+            await (await reg.setActiveGame(addr, { gasLimit: 80000 })).wait();
+            auto = true;
+          }
+        } catch (e) { /* fall back to the manual prompt below */ }
+      }
       history.replaceState(null, "", shareUrlFor(null));
       hideHostSetup();
       await startGameUI();
       showShareGameLink();
-      toast("Game deployed — you're the host! 🎉", "ok");
-      // Surface the new address so the host can copy it (to bake into config.js
-      // and switch the whole live site over). prompt() pre-selects it for copy.
-      try {
-        window.prompt(
-          "✅ New contract deployed!\n\nCopy this address and send it over so the live site points at it:",
-          addr
-        );
-      } catch {}
+      toast(auto ? "Game deployed — the whole site is now on it! 🎉" : "Game deployed — you're the host! 🎉", "ok");
+      if (!auto) {
+        // No registry yet — surface the address so it can be baked into config.js.
+        try {
+          window.prompt(
+            "✅ New contract deployed!\n\nCopy this address and send it over so the live site points at it:",
+            addr
+          );
+        } catch {}
+      }
     } catch (e) {
       btn.disabled = false;
       txErr(e);
     }
+  }
+
+  async function deployRegistry() {
+    if (!account || !signer) return toast("Connect your wallet first.", "err");
+    if (!ART.registry || !ART.registry.bytecode) return toast("Registry artifact missing — rebuild with npm run artifact", "err");
+    if (!confirm(
+      "Deploy the one-time GAME REGISTRY?\n\n" +
+      "This is an immutable pointer that lets future redeploys switch the WHOLE site " +
+      "to a new contract with a single transaction — no code push. You'll send its " +
+      "address once to bake in, then never again.\n\nIt points at the current game to start."
+    )) return;
+    try {
+      toast("Deploying the registry… confirm in MetaMask");
+      const houseWallet = ART.defaultTreasury || account;
+      const cur = deployment.address || houseWallet;
+      const factory = new E.ContractFactory(ART.registry.abi, ART.registry.bytecode, signer);
+      const c = await factory.deploy(houseWallet, cur, { gasLimit: 600000n });
+      await c.waitForDeployment();
+      const addr = await c.getAddress();
+      toast("Registry deployed! 🛰️", "ok");
+      try {
+        window.prompt(
+          "✅ Registry deployed (one-time)!\n\nSend this address to bake into config.js. After that, redeploys flip the site automatically:",
+          addr
+        );
+      } catch {}
+    } catch (e) { txErr(e); }
   }
 
   function showShareGameLink() {
@@ -1823,6 +1865,7 @@
     $("cashout-house-btn").onclick = cashOutHouse;
     $("cashout-amount-btn").onclick = cashOutAmount;
     $("new-game-btn").onclick = newGame;
+    { const b = $("deploy-registry-btn"); if (b) b.onclick = deployRegistry; }
     document.querySelectorAll(".hs-tab").forEach((b) => {
       b.onclick = () => {
         document.querySelectorAll(".hs-tab").forEach((x) => x.classList.remove("active"));
@@ -1956,6 +1999,20 @@
   // house stats — loads for EVERYONE, even before a wallet is connected and on
   // mobile browsers that inject no wallet at all. The wallet provider replaces
   // this the moment you connect (betting still requires connecting).
+  // If a GameRegistry is configured, resolve the live game from it once (an
+  // explicit ?contract= share link always wins). Falls back to config.address.
+  let registryResolved = false;
+  async function resolveActiveGame(prov) {
+    if (registryResolved) return;
+    registryResolved = true;
+    try {
+      if (!cfg.registry || !E.isAddress(cfg.registry) || params.get("contract")) return;
+      const reg = new E.Contract(cfg.registry, ["function activeGame() view returns (address)"], prov);
+      const live = await reg.activeGame();
+      if (live && E.isAddress(live) && !/^0x0+$/i.test(live)) deployment.address = live;
+    } catch (e) { /* keep config.address fallback */ }
+  }
+
   async function setupReadOnly() {
     if (read || !deployment.address) return;
     const RO_RPC = {
@@ -1968,6 +2025,7 @@
     try {
       const ro = new E.JsonRpcProvider(url, chain);
       ro.pollingInterval = 8000;
+      await resolveActiveGame(ro); // may update deployment.address from the registry
       const code = await ro.getCode(deployment.address);
       if (!code || code === "0x") return; // nothing deployed there to read
       provider = ro;

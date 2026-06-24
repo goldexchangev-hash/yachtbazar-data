@@ -27,7 +27,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=65" />
+    <link rel="stylesheet" href="styles.css?v=66" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -41,7 +41,7 @@
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v6.5</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v6.6</span>
       </div>
       <div class="topbar-right">
         <button id="sound-btn" class="btn btn-ghost" title="Play / silence background music">🔇 Music</button>
@@ -242,7 +242,8 @@
                 <button id="fund-house-btn" class="btn btn-ghost">Fund house</button>
               </div>
               <button id="new-game-btn" class="btn btn-ghost btn-block">🔄 Start a fresh game (redeploy)</button>
-              <p class="muted ph-note">Only you (the host) can do these. "Fresh game" deploys a new contract — withdraw your balance first if you want it back.</p>
+              <button id="deploy-registry-btn" class="btn btn-ghost btn-block">🛰️ Deploy site registry (one-time)</button>
+              <p class="muted ph-note">Only you (the host) can do these. "Fresh game" deploys a new contract — withdraw your balance first if you want it back. The one-time registry lets future redeploys flip the whole site automatically.</p>
             </div>
           </details>
         </div>
@@ -554,11 +555,11 @@
     </div>
 
     <script defer src="vendor/ethers.umd.min.js"></script>
-    <script defer src="config.js?v=65"></script>
-    <script defer src="contract.js?v=65"></script>
-    <script defer src="chiptune.js?v=65"></script>
-    <script defer src="scenes.js?v=65"></script>
-    <script defer src="tv.js?v=65"></script>
-    <script defer src="app.js?v=65"></script>
+    <script defer src="config.js?v=66"></script>
+    <script defer src="contract.js?v=66"></script>
+    <script defer src="chiptune.js?v=66"></script>
+    <script defer src="scenes.js?v=66"></script>
+    <script defer src="tv.js?v=66"></script>
+    <script defer src="app.js?v=66"></script>
   </body>
 </html>

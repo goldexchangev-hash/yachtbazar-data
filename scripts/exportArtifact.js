@@ -11,10 +11,12 @@ const hre = require("hardhat");
 
 async function main() {
   const art = await hre.artifacts.readArtifact("CoinFlipBetting");
+  const reg = await hre.artifacts.readArtifact("GameRegistry");
   const out = {
     abi: art.abi,
     bytecode: art.bytecode,
     defaultTreasury: "0x2F4BEF94550C29c497b999B86b758F9771F7aB39",
+    registry: { abi: reg.abi, bytecode: reg.bytecode },
   };
   const file = path.join(__dirname, "..", "public", "contract.js");
   fs.writeFileSync(
