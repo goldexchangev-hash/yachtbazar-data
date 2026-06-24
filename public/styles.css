@@ -391,6 +391,8 @@ kbd { font-family: ui-monospace, monospace; font-size: 11px; background: rgba(25
 /* ─────────────── Full-motion win/loss video reel ─────────────── */
 .reveal-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: none; z-index: 30; background: #000; }
 .reveal-video.show { display: block; }
+/* Scarfblade Films replaces the coin: never twirl it before the reel plays. */
+.tv-screen.cine-theme #coin { display: none; }
 
 /* ─────────────── Win-animation theme switcher ─────────────── */
 .theme-switch { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 10px 14px; margin: 10px 0; }

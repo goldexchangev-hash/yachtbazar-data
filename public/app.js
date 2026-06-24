@@ -247,6 +247,9 @@
   // Win-animation theme switcher (Neon Nights vs Magic Cliffs side-scroller).
   function initThemeSwitch() {
     if (!window.WinScenes || !WinScenes.getTheme) return;
+    // Locked to the Scarfblade Films reels for now — the switcher card is hidden
+    // (we can re-enable it later when there are more animation sets to choose).
+    try { WinScenes.setTheme("cinematic"); } catch (e) {}
     const wrap = $("theme-toggle"); if (!wrap) return;
     const themes = (WinScenes.themes && WinScenes.themes()) || [];
     const creditEl = $("theme-credit");
@@ -255,6 +258,9 @@
       wrap.querySelectorAll(".theme-btn").forEach((b) => b.classList.toggle("active", b.getAttribute("data-theme") === cur));
       const meta = themes.find((t) => t.id === cur);
       if (creditEl) creditEl.textContent = (meta && meta.credit) || "";
+      // The cinematic reels replace the coin entirely — hide the spinning coin so
+      // it doesn't twirl before the video plays.
+      const tv = $("tv-screen"); if (tv) tv.classList.toggle("cine-theme", cur === "cinematic");
     }
     wrap.querySelectorAll(".theme-btn").forEach((b) => {
       b.onclick = () => { WinScenes.setTheme(b.getAttribute("data-theme")); paint(); toast("Win theme: " + b.textContent, "ok"); };
@@ -264,7 +270,7 @@
       try {
         const amt = 60 + Math.floor(Math.random() * 380);
         const theme = WinScenes.getTheme();
-        if (theme === "cinematic") { videoReveal(Math.random() > 0.4); }
+        if (theme === "cinematic") { const w = Math.random() > 0.4; videoReveal(w, w ? amt : 0); }
         else if (theme === "world" && WinScenes.flipReveal) {
           const win = Math.random() > 0.4;
           WinScenes.flipStart({ betUsd: amt });
@@ -822,7 +828,7 @@
   function playOutcome(o) {
     try {
       // "Scarfblade Films" theme: play a full-motion win/loss reel on the TV.
-      if (window.WinScenes && WinScenes.getTheme && WinScenes.getTheme() === "cinematic" && videoReveal(o.won)) return;
+      if (window.WinScenes && WinScenes.getTheme && WinScenes.getTheme() === "cinematic" && videoReveal(o.won, o.netUsd)) return;
       if (window.WinScenes && WinScenes.flipReveal && WinScenes.flipReveal({ won: o.won, netUsd: o.netUsd, betUsd: o.betUsd })) return;
       if (o.won && window.WinScenes && WinScenes.play) WinScenes.play({ amountUsd: o.netUsd, side: o.side });
     } catch (e) {}
@@ -835,23 +841,36 @@
     loss: ["assets/losses/loss1.mp4", "assets/losses/loss2.mp4", "assets/losses/loss3.mp4", "assets/losses/loss4.mp4"],
   };
   let cineTimer = 0;
-  function videoReveal(won) {
+  // The outcome "payoff" — win/loss sound + balance update — fires at the reel's
+  // CLIMAX (when Scarfblade opens the chest), not at the start, so it never
+  // spoils the result before the animation gets there.
+  function cinePayoff(won, netUsd) {
+    try { window.__onTvReveal && window.__onTvReveal({}); } catch {}   // release the in-game balance now
+    try {
+      const C = window.Chiptune;
+      if (C) { if (!won) C.lose && C.lose(); else if (netUsd >= 300 && C.jackpot) C.jackpot(); else if (netUsd >= 100 && C.bigwin) C.bigwin(); else C.win && C.win(); }
+    } catch {}
+  }
+  function videoReveal(won, netUsd) {
     const v = $("reveal-video"); if (!v) return false;
     const list = won ? CINE.win : CINE.loss;
     if (!list || !list.length) return false;
     const src = list[Math.floor(Math.random() * list.length)];
-    const done = () => { clearTimeout(cineTimer); v.onended = null; v.onerror = null; v.classList.remove("show"); try { v.pause(); } catch {} v.removeAttribute("src"); try { v.load(); } catch {} try { window.__winSceneActive = false; } catch {} };
+    let paid = false;
+    const pay = () => { if (paid) return; paid = true; cinePayoff(won, netUsd || 0); };
+    const done = () => { clearTimeout(cineTimer); v.onended = null; v.onerror = null; v.ontimeupdate = null; pay(); v.classList.remove("show"); try { v.pause(); } catch {} v.removeAttribute("src"); try { v.load(); } catch {} try { window.__winSceneActive = false; window.__cineActive = false; } catch {} };
     clearTimeout(cineTimer);
     v.muted = true; v.defaultMuted = true; v.setAttribute("muted", ""); v.setAttribute("playsinline", "");
     v.classList.add("show");                              // show BEFORE anything that could throw
-    try { window.__winSceneActive = true; } catch {}      // pause the TV static behind it
-    try { window.__onTvReveal && window.__onTvReveal({}); } catch {} // outcome is on screen now
+    try { window.__winSceneActive = true; window.__cineActive = true; } catch {} // hold the TV's own cues
     v.onended = done;
     v.onerror = done;                                     // 404 / decode error -> reveal the TV result underneath
+    // fire the payoff once the reel reaches the chest-open climax (~2/3 in)
+    v.ontimeupdate = () => { const d = v.duration || 6; if (v.currentTime >= d * 0.66) pay(); };
     v.src = src;                                          // setting src (re)loads; it starts at 0 on its own
     try { v.load(); } catch {}
     cineTimer = setTimeout(done, 9500);                   // safety: never get stuck on the reel
-    const go = () => { const p = v.play(); if (p && p.catch) p.catch(() => {}); }; // keep showing even if autoplay nudges back
+    const go = () => { const p = v.play(); if (p && p.catch) p.catch(() => {}); };
     if (v.readyState >= 2) go(); else v.oncanplay = () => { v.oncanplay = null; go(); };
     go();
     return true;

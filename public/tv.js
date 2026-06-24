@@ -263,14 +263,13 @@
       this.resultCoin.textContent = "RESULT: " + res.side;
       this._animateMoney(res);
       this._show("result");
-      // The outcome is now on screen — release the balance so it can update
-      // without spoiling win/loss before the animation reached this point.
-      try { window.__onTvReveal && window.__onTvReveal(res); } catch (e) {}
-
-      if (layer.classList.contains("win")) {
-        this._celebrate(layer, tier);
-      } else if (window.Chiptune) {
-        window.Chiptune.lose();
+      // While a full-motion cinematic reel is playing, hold the outcome cues
+      // (balance unlock + win/loss sound) until the reel hits its climax — the
+      // cinematic engine fires them itself. Otherwise release them now.
+      if (!window.__cineActive) {
+        try { window.__onTvReveal && window.__onTvReveal(res); } catch (e) {}
+        if (layer.classList.contains("win")) this._celebrate(layer, tier);
+        else if (window.Chiptune) window.Chiptune.lose();
       }
     },
 
