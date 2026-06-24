@@ -15,7 +15,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=33" />
+    <link rel="stylesheet" href="styles.css?v=34" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -28,7 +28,7 @@
         <span class="brand-tv">📺</span>
         <span class="brand-name">TV<span class="brand-accent"> CRYPTO</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v3.3</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v3.4</span>
       </div>
       <div class="topbar-right">
         <button id="sound-btn" class="btn btn-ghost" title="Play / silence background music">🔇 Music</button>
@@ -216,9 +216,9 @@
         <div class="card host-stats hidden" id="host-stats-card">
           <h2 class="card-title">💼 Host earnings <span class="hs-private">private</span></h2>
           <div class="hs-hero">
-            <span class="muted">Profit today (rake + table)</span>
+            <span class="muted">Profit today (rake earned)</span>
             <strong id="hs-profit-today" class="hs-big">+$0</strong>
-            <span class="muted hs-sub" id="hs-profit-sub">rake $0 · table +$0 · 0 games</span>
+            <span class="muted hs-sub" id="hs-profit-sub">0 games today · rake is your durable edge</span>
           </div>
           <div class="hs-grid">
             <div class="hs-cell"><span class="muted">Fees all-time</span><strong id="hs-fees-total">$0</strong></div>
@@ -230,7 +230,7 @@
             <div class="hs-cell hs-cash"><span class="muted">💰 House funds total (bankroll + balance)</span><strong id="hs-balance">$0</strong></div>
           </div>
           <button id="cashout-house-btn" class="btn btn-ghost btn-block" style="margin-top: 10px;">💸 Cash out all to my wallet</button>
-          <p class="muted" style="font-size: 11px; margin-top: 8px;">“Today” counts from when you first opened the dashboard today. Cash-out releases the contract funds to your real MetaMask wallet (empties the house until you fund it again). Only your house wallet can see this.</p>
+          <p class="muted" style="font-size: 11px; margin-top: 8px;">Profit = the 10% rake (your real edge) — it’s never affected by deposits, withdrawals, or cash-outs. The bankroll swings up &amp; down with each flip (variance), and “House funds total” reflects that. Cash-out releases the contract funds to your real MetaMask wallet (empties the house until you fund it again). “Today” counts from when you first opened the dashboard today. Only your house wallet can see this.</p>
         </div>
 
         <!-- In-browser hosting: deploy the game contract with one click -->
@@ -452,10 +452,10 @@
     </div>
 
     <script src="vendor/ethers.umd.min.js"></script>
-    <script src="config.js?v=33"></script>
-    <script src="contract.js?v=33"></script>
-    <script src="chiptune.js?v=33"></script>
-    <script src="tv.js?v=33"></script>
-    <script src="app.js?v=33"></script>
+    <script src="config.js?v=34"></script>
+    <script src="contract.js?v=34"></script>
+    <script src="chiptune.js?v=34"></script>
+    <script src="tv.js?v=34"></script>
+    <script src="app.js?v=34"></script>
   </body>
 </html>

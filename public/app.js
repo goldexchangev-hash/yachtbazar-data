@@ -297,15 +297,16 @@
       }
       if (snap.holdings == null) { snap.holdings = holdings.toString(); try { localStorage.setItem(key, JSON.stringify(snap)); } catch {} }
 
-      const profitToday = holdings - BigInt(snap.holdings); // total: rake + table winnings
       const feesToday = fees - BigInt(snap.fees);
-      const tableToday = profitToday - feesToday; // the house's gambling win/loss
       const gamesToday = gamesN - snap.games;
 
+      // Profit = the rake (totalFeesCollected only ever grows; never skewed by
+      // deposits/withdrawals/cash-outs). The bankroll swings up & down with each
+      // flip — that's variance/luck, not profit — so we don't call it profit.
       const pe = $("hs-profit-today");
-      pe.textContent = signedUsd(profitToday);
-      pe.style.color = profitToday < 0n ? "#ff7a7a" : "#34e39b";
-      $("hs-profit-sub").textContent = "rake " + usdOf(feesToday) + " · table " + signedUsd(tableToday) + " · " + gamesToday + " game" + (gamesToday === 1 ? "" : "s");
+      pe.textContent = "+" + usdOf(feesToday);
+      pe.style.color = "#34e39b";
+      $("hs-profit-sub").textContent = gamesToday + " game" + (gamesToday === 1 ? "" : "s") + " today · rake is your durable edge";
       $("hs-fees-total").textContent = usdOf(fees);
       $("hs-games-total").textContent = games.toString();
       $("hs-volume-total").textContent = usdOf(wagered);
