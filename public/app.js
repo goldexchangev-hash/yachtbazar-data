@@ -41,6 +41,7 @@
   let chainOK = false;
   let activeRoomId = null; // a room I'm a participant in, currently live
   let ws = null;
+  let userMutedMusic = false; // true only if the user explicitly turns music off
   let inviteRoomId = params.get("room");
 
   const fmt = (wei) => {
@@ -881,7 +882,12 @@
     $("help-btn").onclick = () => $("help-modal").classList.remove("hidden");
     $("help-close").onclick = () => $("help-modal").classList.add("hidden");
     $("help-modal").onclick = (e) => { if (e.target === $("help-modal")) $("help-modal").classList.add("hidden"); };
-    $("sound-btn").onclick = () => { if (window.Chiptune) { window.Chiptune.toggle(); syncSoundBtn(); } };
+    $("sound-btn").onclick = () => {
+      if (!window.Chiptune) return;
+      const on = window.Chiptune.toggle();
+      userMutedMusic = !on;
+      syncSoundBtn();
+    };
 
     if (window.ethereum) {
       window.ethereum.on?.("accountsChanged", () => location.reload());
@@ -902,6 +908,17 @@
     wireUI();
     syncSoundBtn();
     setupSliders();
+    // Start the music on the first tap/touch (mobile + desktop block autoplay
+    // until a user gesture). Skips if the user has explicitly muted.
+    const armMusic = () => {
+      if (!userMutedMusic && window.Chiptune && !window.Chiptune.isOn()) {
+        window.Chiptune.start();
+        syncSoundBtn();
+      }
+    };
+    ["pointerdown", "touchstart", "keydown", "click"].forEach((ev) =>
+      window.addEventListener(ev, armMusic, { once: true, passive: true })
+    );
     // Live ETH→USD price: fetch now, refresh labels, and re-poll every 60s.
     fetchEthUsd().then(() => { setupSliders(); if (read && chainOK) { refreshBalances(); refreshStats(); refreshHouse(); refreshRooms(); } });
     setInterval(() => fetchEthUsd().then(() => { setupSliders(); if (read && chainOK) { refreshBalances(); refreshStats(); refreshHouse(); refreshRooms(); } }), 60000);
