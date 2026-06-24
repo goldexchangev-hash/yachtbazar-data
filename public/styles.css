@@ -559,6 +559,11 @@ a { color: var(--cyan); text-decoration: none; }
 .eth-logo .e1, .eth-logo .e3 { fill: rgba(0,0,0,0.36); }   /* mid right faces  */
 .eth-logo .e5, .eth-logo .e6 { fill: rgba(255,255,255,0.34); } /* bright inner faces */
 
+/* Mini ETH diamond used inline on the "Heads" side-toggle buttons */
+.eth-mini { width: 0.92em; height: 0.92em; vertical-align: -0.15em; }
+.eth-mini polygon { fill: currentColor; opacity: 0.7; }
+.eth-mini polygon.b { opacity: 1; }
+
 /* tails reads as the "reverse" of the same minted coin */
 .coin-tails { filter: hue-rotate(18deg) brightness(0.94) saturate(0.85); }
 .coin-face small { font-family: "Press Start 2P", monospace; font-size: 9px; color: var(--c-ink); text-shadow: 0 1px 0 rgba(255,255,255,0.4); }
