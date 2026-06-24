@@ -15,7 +15,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=50" />
+    <link rel="stylesheet" href="styles.css?v=51" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -28,7 +28,7 @@
         <span class="brand-tv">📺</span>
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v5.0</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v5.1</span>
       </div>
       <div class="topbar-right">
         <button id="sound-btn" class="btn btn-ghost" title="Play / silence background music">🔇 Music</button>
@@ -164,6 +164,7 @@
             <div class="slider-wrap deposit-slider">
               <input id="deposit-input" class="slider" type="range" min="10" max="2000" step="5" value="50" />
               <div class="slider-val"><strong id="deposit-input-val">$50</strong><span class="eth-sub" id="deposit-input-eth"></span></div>
+              <span class="muted deposit-max-hint" id="deposit-max-hint">Slide all the way to deposit your wallet max</span>
             </div>
             <div class="bankroll-btns">
               <button id="deposit-btn" class="btn btn-primary">Deposit</button>
@@ -491,10 +492,10 @@
     </div>
 
     <script src="vendor/ethers.umd.min.js"></script>
-    <script src="config.js?v=50"></script>
-    <script src="contract.js?v=50"></script>
-    <script src="chiptune.js?v=50"></script>
-    <script src="tv.js?v=50"></script>
-    <script src="app.js?v=50"></script>
+    <script src="config.js?v=51"></script>
+    <script src="contract.js?v=51"></script>
+    <script src="chiptune.js?v=51"></script>
+    <script src="tv.js?v=51"></script>
+    <script src="app.js?v=51"></script>
   </body>
 </html>

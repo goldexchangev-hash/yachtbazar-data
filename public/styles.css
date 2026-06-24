@@ -299,6 +299,7 @@ a { color: var(--cyan); text-decoration: none; }
 .bankroll-actions .slider-wrap.deposit-slider { flex: 1 1 100%; margin: 2px 0 4px; }
 .bankroll-btns { display: flex; gap: 8px; flex: 1 1 100%; }
 .bankroll-btns .btn { flex: 1; }
+.deposit-max-hint { display: block; text-align: center; font-size: 11px; margin-top: 4px; opacity: 0.8; }
 
 /* Play vs House */
 .play-house { border-color: rgba(255, 210, 63, 0.35); }

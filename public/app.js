@@ -40,6 +40,7 @@
   let contract = null; // connected to signer
   let read = null; // connected to provider
   let maxBet = 0n;
+  let walletWei = 0n; // last-seen wallet ETH balance (for the deposit cap)
   let chainOK = false;
   let activeRoomId = null; // a room I'm a participant in, currently live
   let ws = null;
@@ -585,7 +586,37 @@
       const [gb, wb] = await Promise.all([read.balances(account), provider.getBalance(account)]);
       $("game-balance").textContent = usdOf(gb);
       $("wallet-balance").textContent = usdOf(wb);
+      walletWei = wb;
+      syncDepositSlider();
     } catch {}
+  }
+
+  // Keep ~0.01 ETH in the wallet so there's gas left for the bets that follow a
+  // "deposit max" — depositing the literal full balance would leave nothing to
+  // sign with.
+  function depositReserveWei() { try { return E.parseEther("0.01"); } catch { return 0n; } }
+  function depositableWei() {
+    const r = depositReserveWei();
+    return walletWei > r ? walletWei - r : 0n;
+  }
+  // The deposit slider tops out at what the wallet can actually cover (rounded
+  // down to the $5 step), never above the $2,000 ceiling.
+  function depositCapUsd() {
+    if (!walletWei || walletWei <= 0n) return HARD_MAX_USD;
+    const usd = Math.floor(weiToUsd(depositableWei()) / 5) * 5;
+    return Math.max(10, Math.min(HARD_MAX_USD, usd));
+  }
+  function syncDepositSlider() {
+    const s = $("deposit-input"); if (!s) return;
+    const max = depositCapUsd();
+    s.max = String(max);
+    if (+s.value > max) s.value = String(max);
+    if (+s.value < 10) s.value = String(Math.min(max, 50));
+    const hint = $("deposit-max-hint");
+    if (hint) hint.textContent = walletWei > 0n
+      ? "Max ≈ " + usd(weiToUsd(depositableWei())) + " (a little ETH kept for gas)"
+      : "Slide all the way to deposit your wallet max";
+    setSliderUsd("deposit-input");
   }
 
   async function refreshStats() {
@@ -645,14 +676,20 @@
 
   async function deposit() {
     if (!ready()) return;
-    const v = parseFloat($("deposit-input").value); // USD
+    const s = $("deposit-input");
+    const v = parseFloat(s.value); // USD
     if (!(v > 0)) return toast("Enter an amount to deposit (in $)", "err");
+    // Sliding all the way deposits the true wallet max (minus a gas reserve);
+    // otherwise convert the chosen $ amount, but never exceed the wallet.
+    const cap = depositableWei();
+    let value = (+s.value >= +s.max) ? cap : usdToWei(v);
+    if (value > cap) value = cap;
+    if (value <= 0n) return toast("Not enough ETH to deposit after leaving gas. Top up your wallet first.", "err");
     try {
       toast("Confirm the deposit in MetaMask…");
-      const value = usdToWei(v);
       const tx = await contract.deposit({ value, gasLimit: await estGas("deposit", [], { value }, 130_000n) });
       await tx.wait();
-      toast("Deposited " + usd(v), "ok");
+      toast("Deposited " + usd(weiToUsd(value)), "ok");
       refreshBalances();
     } catch (e) { txErr(e); }
   }
@@ -980,8 +1017,8 @@
     for (const id of ["house-bet", "bet-input", "deposit-input", "host-bank"]) {
       const s = $(id);
       if (!s) continue;
-      // Deposits aren't bounded by maxBet — let players load up to the ceiling.
-      s.min = "10"; s.max = String(id === "deposit-input" ? HARD_MAX_USD : cap); s.step = "5";
+      // Deposits aren't bounded by maxBet, but are bounded by the wallet balance.
+      s.min = "10"; s.max = String(id === "deposit-input" ? depositCapUsd() : cap); s.step = "5";
       if (+s.value < 10) s.value = id === "deposit-input" ? "50" : id === "host-bank" ? "100" : "25";
       setSliderUsd(id);
     }
