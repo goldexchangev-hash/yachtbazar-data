@@ -74,6 +74,9 @@ a { color: var(--cyan); text-decoration: none; }
 }
 .brand-live i { width: 8px; height: 8px; border-radius: 50%; background: var(--red); box-shadow: 0 0 10px var(--red); animation: blink 1.2s steps(2) infinite; }
 .build-tag { font-family: var(--display); font-size: 11px; font-weight: 700; letter-spacing: 0.5px; color: var(--cyan); border: 1px solid rgba(57, 231, 255, 0.35); background: rgba(57, 231, 255, 0.08); border-radius: 999px; padding: 3px 8px; }
+.testnet-chip { font-family: var(--display); font-size: 10px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase; color: #ffd56b; border: 1px solid rgba(255, 200, 60, 0.45); background: rgba(255, 200, 60, 0.10); border-radius: 999px; padding: 3px 8px; white-space: nowrap; }
+/* Keyboard focus ring (mouse clicks stay clean via :focus-visible) */
+:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; border-radius: 4px; }
 @keyframes blink { 50% { opacity: 0.25; } }
 
 .topbar-right { display: flex; align-items: center; gap: 10px; }
@@ -658,7 +661,8 @@ a { color: var(--cyan); text-decoration: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .bg-glow, .scanlines, .idle-logo, .tuning-text, .waiting-dots span, .coin.spin, .chat-dot, .idle-sub,
-  #layer-result.tier-big, #layer-result.tier-mega, .tv-screen.quake, .tv-screen.quake-hard, .eth-ticker-track, #play-house, .tv-pending { animation: none !important; }
+  #layer-result.tier-big, #layer-result.tier-mega, .tv-screen.quake, .tv-screen.quake-hard, .eth-ticker-track, #play-house, .tv-pending,
+  .win-banner, #layer-result.tier-mega .result-headline, #layer-result.tier-mega .result-money { animation: none !important; }
   .tv-screen.quake, .tv-screen.quake-hard { transform: none !important; }
   .coin { transition: none !important; }
 }

@@ -4,10 +4,16 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#0c0d16" />
-    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
-    <meta http-equiv="Pragma" content="no-cache" />
-    <meta http-equiv="Expires" content="0" />
-    <title>📺 Crypto TV Flip — provably-fair ETH coin flip</title>
+    <title>📺 Crypto TV Flip — on-chain ETH coin flip (testnet)</title>
+    <meta name="description" content="A retro 16-bit ETH coin-flip game on the Sepolia testnet. Flip against the house or a friend — settled on-chain, play-money only." />
+    <!-- Social share cards -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="📺 Crypto TV Flip — on-chain ETH coin flip" />
+    <meta property="og:description" content="Flip an ETH coin against the house or a friend. Settled on-chain on the Sepolia testnet — play-money only." />
+    <meta property="og:url" content="https://goldexchangev-hash.github.io/yachtbazar-data/" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="📺 Crypto TV Flip — on-chain ETH coin flip" />
+    <meta name="twitter:description" content="Flip an ETH coin against the house or a friend. Settled on-chain on the Sepolia testnet — play-money only." />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -15,7 +21,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=53" />
+    <link rel="stylesheet" href="styles.css?v=54" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -28,11 +34,12 @@
         <span class="brand-tv">📺</span>
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v5.3</span>
+        <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v5.4</span>
       </div>
       <div class="topbar-right">
         <button id="sound-btn" class="btn btn-ghost" title="Play / silence background music">🔇 Music</button>
-        <button id="help-btn" class="btn btn-ghost" title="How to play">?</button>
+        <button id="help-btn" class="btn btn-ghost" title="How to play" aria-label="How to play">?</button>
         <div id="net-badge" class="net-badge hidden"><i></i><span id="net-name">—</span></div>
         <button id="connect-btn" class="btn btn-primary">Connect Wallet</button>
         <div id="wallet-chip" class="wallet-chip hidden">
@@ -401,7 +408,7 @@
         <div class="card">
           <h2 class="card-title">
             Open rooms <span class="pill" id="rooms-count">0</span>
-            <button id="refresh-rooms" class="btn btn-mini">↻</button>
+            <button id="refresh-rooms" class="btn btn-mini" title="Refresh rooms" aria-label="Refresh open rooms">↻</button>
           </h2>
           <ul id="rooms-list" class="rooms-list">
             <li class="empty">No open rooms. Create one!</li>
@@ -420,12 +427,12 @@
     </main>
 
     <!-- Toast -->
-    <div id="toast" class="toast hidden"></div>
+    <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
     <!-- ─────────────────── Help / how-to-play modal ─────────────────── -->
-    <div id="help-modal" class="modal hidden">
+    <div id="help-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="How to play">
       <div class="modal-card">
-        <button id="help-close" class="modal-close">✕</button>
+        <button id="help-close" class="modal-close" aria-label="Close">✕</button>
         <h2>📺 How to play Crypto TV Flip</h2>
         <ol class="help-steps">
           <li><b>Install MetaMask</b> (browser extension or app) and create a wallet.</li>
@@ -438,22 +445,24 @@
           <li><b>Deposit ETH</b> into the game from the panel under the TV.</li>
           <li><b>Create or join a room.</b> Two players, equal bet. Max bet is shown by the
             form. Everything is pure ETH — no tokens, no swaps.</li>
-          <li><b>Watch the TV.</b> When both bets are in: 3‑2‑1‑FLIP, a Chainlink‑VRF coin
-            decides it, and your screen shows WINNER 😄 or LOSER 😢.</li>
+          <li><b>Watch the TV.</b> When both bets are in: 3‑2‑1‑FLIP — the coin is
+            decided on‑chain by the block's randomness (<span class="mono">prevrandao</span>),
+            settled instantly inside your transaction, and your screen shows WINNER 😄 or LOSER 😢.</li>
           <li><b>Winner takes the pot minus the 10% house fee.</b> Withdraw your balance
             to your wallet anytime.</li>
         </ol>
         <p class="help-foot muted">
-          Randomness is provided by Chainlink VRF v2.5 — provably fair and verifiable
-          on‑chain. This is play‑money on a test network; never use real funds.
+          The result is computed on‑chain and visible in the transaction on Etherscan.
+          This is play‑money on a test network — never use real funds.
+          (A Chainlink VRF randomness upgrade is planned for mainnet.)
         </p>
       </div>
     </div>
 
     <!-- Bet confirmation: lock in the bet + see the pot / 10% cut / winnings -->
-    <div id="bet-modal" class="modal hidden">
+    <div id="bet-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Confirm your bet">
       <div class="modal-card bet-card">
-        <button id="bet-close" class="modal-close">✕</button>
+        <button id="bet-close" class="modal-close" aria-label="Close">✕</button>
         <h2 id="bet-modal-title">Lock in your bet</h2>
         <div id="bet-side" class="bet-side hidden"></div>
 
@@ -479,7 +488,7 @@
     </div>
 
     <!-- Host approval of a raised bet proposed by a joiner -->
-    <div id="nego-modal" class="modal hidden">
+    <div id="nego-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Bet proposal">
       <div class="modal-card">
         <h2>🤝 Bet proposal</h2>
         <p id="nego-text" class="nego-text">A player wants to raise the bet.</p>
@@ -491,11 +500,11 @@
       </div>
     </div>
 
-    <script src="vendor/ethers.umd.min.js"></script>
-    <script src="config.js?v=53"></script>
-    <script src="contract.js?v=53"></script>
-    <script src="chiptune.js?v=53"></script>
-    <script src="tv.js?v=53"></script>
-    <script src="app.js?v=53"></script>
+    <script defer src="vendor/ethers.umd.min.js"></script>
+    <script defer src="config.js?v=54"></script>
+    <script defer src="contract.js?v=54"></script>
+    <script defer src="chiptune.js?v=54"></script>
+    <script defer src="tv.js?v=54"></script>
+    <script defer src="app.js?v=54"></script>
   </body>
 </html>

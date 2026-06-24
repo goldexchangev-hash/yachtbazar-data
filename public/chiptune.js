@@ -53,17 +53,23 @@
   let ctx = null, master = null, musicGain = null, noiseBuf = null;
   let on = false, barIdx = 0, nextBarTime = 0, schedulerTimer = null;
 
-  let audioEl = null, customReady = false;
-  (function probeCustom() {
+  // Optional custom soundtrack: drop a public/music.mp3 in to override the synth.
+  // We DON'T probe at page load (that fired a 404 on every visit since no file is
+  // shipped); instead we lazily check the first time the user enables music.
+  let audioEl = null, customReady = false, customProbed = false;
+  function probeCustom() {
+    if (customProbed) return;
+    customProbed = true;
     try {
       audioEl = new Audio("music.mp3");
       audioEl.loop = true;
       audioEl.volume = 0.6;
       audioEl.preload = "auto";
       audioEl.addEventListener("canplaythrough", () => (customReady = true), { once: true });
-      audioEl.addEventListener("error", () => (customReady = false));
+      audioEl.addEventListener("error", () => { customReady = false; audioEl = null; });
+      audioEl.load();
     } catch { audioEl = null; }
-  })();
+  }
 
   function ensureCtx() {
     if (ctx) return;
@@ -193,6 +199,7 @@
   const Chiptune = {
     isOn: () => on,
     start() {
+      probeCustom();
       ensureCtx();
       if (!ctx) {
         if (customReady && audioEl) { on = true; audioEl.currentTime = 0; audioEl.play().catch(() => {}); }

@@ -81,32 +81,43 @@
     _startStatic() {
       const ctx = this.sctx;
       ctx.imageSmoothingEnabled = false;
-      const w = this.staticCanvas.width;
-      const h = this.staticCanvas.height;
-      const PIX = 2; // pixel block size
-      const cols = Math.ceil(w / PIX);
-      const rows = Math.ceil(h / PIX);
-      const FRAME_MS = 45; // ~22fps — plenty for a noisy CRT, far cheaper than 60
+      const PIX = 4; // pixel block size (bigger = far less work)
+      const cols = Math.max(1, Math.ceil(this.staticCanvas.width / PIX));
+      const rows = Math.max(1, Math.ceil(this.staticCanvas.height / PIX));
+      // Fill a tiny offscreen buffer and upscale it (nearest-neighbor) — ONE
+      // drawImage per frame instead of thousands of fillRect calls.
+      const buf = document.createElement("canvas");
+      buf.width = cols; buf.height = rows;
+      const bctx = buf.getContext("2d");
+      const img = bctx.createImageData(cols, rows);
+      const data = img.data;
+      const paint = () => {
+        const W = this.staticCanvas.width, H = this.staticCanvas.height;
+        for (let i = 0; i < data.length; i += 4) {
+          const r = Math.random();
+          if (r > 0.985) { data[i] = 57; data[i + 1] = 231; data[i + 2] = 255; }
+          else if (r < 0.015) { data[i] = 255; data[i + 1] = 77; data[i + 2] = 157; }
+          else { const v = (Math.random() * 255) | 0; data[i] = data[i + 1] = data[i + 2] = v; }
+          data[i + 3] = 255;
+        }
+        bctx.putImageData(img, 0, 0);
+        ctx.clearRect(0, 0, W, H);
+        ctx.globalAlpha = this._staticIntensity;
+        ctx.drawImage(buf, 0, 0, W, H);
+        ctx.globalAlpha = 1;
+      };
+      // Reduced-motion / save-data: paint a single calm frame, no animation loop.
+      const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (reduce) { this._staticIntensity = Math.min(this._staticIntensity, 0.25); paint(); return; }
+      const FRAME_MS = 70; // ~14fps — plenty for a noisy CRT
       let last = 0;
       const tick = (t) => {
         this._staticRAF = requestAnimationFrame(tick);
+        if (document.hidden) return;          // don't burn cycles in a background tab
         if (t - last < FRAME_MS) return;
         last = t;
-        const intensity = this._staticIntensity;
-        if (intensity <= 0.02) {
-          ctx.clearRect(0, 0, w, h);
-          return;
-        }
-        for (let y = 0; y < rows; y++) {
-          for (let x = 0; x < cols; x++) {
-            const v = (Math.random() * 255) | 0;
-            const tint = Math.random();
-            if (tint > 0.985) ctx.fillStyle = `rgba(57,231,255,${intensity})`;
-            else if (tint < 0.015) ctx.fillStyle = `rgba(255,77,157,${intensity})`;
-            else ctx.fillStyle = `rgba(${v},${v},${v},${intensity})`;
-            ctx.fillRect(x * PIX, y * PIX, PIX, PIX);
-          }
-        }
+        if (this._staticIntensity <= 0.02) { ctx.clearRect(0, 0, this.staticCanvas.width, this.staticCanvas.height); return; }
+        paint();
       };
       this._staticRAF = requestAnimationFrame(tick);
     },

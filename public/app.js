@@ -235,6 +235,10 @@
     // listeners don't reload the page on the *initial* grant or network switch
     // (that reload is what made people click Connect twice).
     connecting = true;
+    // Tear down the public read-only provider + its poller/listeners before the
+    // wallet provider takes over (otherwise it keeps hammering the public RPC).
+    try { if (read) read.removeAllListeners(); } catch {}
+    try { if (provider && provider.destroy) provider.destroy(); } catch {}
     try {
       provider = new E.BrowserProvider(window.ethereum, "any");
       provider.pollingInterval = 2000; // tighter polling for events on injected providers
@@ -317,7 +321,7 @@
     try {
       const [fees, games, wagered, bankroll, bal, rooms] = await Promise.all([
         read.totalFeesCollected(), read.totalGamesPlayed(), read.totalWagered(),
-        read.houseBankroll(), read.balances(account), read.getRecentRooms(150),
+        read.houseBankroll(), read.balances(account), recentRooms(150),
       ]);
       const gamesN = Number(games);
       const holdings = bankroll + bal; // ALL the house's money in the contract
@@ -349,7 +353,7 @@
       $("hs-fees-total").textContent = usdOf(fees);
       $("hs-games-total").textContent = games.toString();
       $("hs-volume-total").textContent = usdOf(wagered);
-      $("hs-take").textContent = (wagered > 0n ? (Number(fees) / Number(wagered) * 100) : 0).toFixed(1) + "%";
+      $("hs-take").textContent = (wagered > 0n ? Number((fees * 10000n) / wagered) / 100 : 0).toFixed(1) + "%";
       $("hs-avg").textContent = gamesN > 0 ? usdOf(wagered / (2n * games)) : "$0";
       $("hs-bankroll").textContent = usdOf(bankroll);
       $("hs-balance").textContent = usdOf(holdings); // unified "house funds" = bankroll + balance
@@ -611,9 +615,16 @@
     if (+s.value > max) s.value = String(max);
     if (+s.value < 10) s.value = String(Math.min(max, 50));
     const hint = $("deposit-max-hint");
-    if (hint) hint.textContent = walletWei > 0n
-      ? "Max ≈ " + usd(weiToUsd(depositableWei())) + " (a little ETH kept for gas)"
-      : "Slide all the way to deposit your wallet max";
+    if (hint) {
+      if (account && walletWei <= depositReserveWei()) {
+        // No test ETH to play with — surface a faucet right where they're stuck.
+        hint.innerHTML = 'No test ETH? <a href="https://www.alchemy.com/faucets/ethereum-sepolia" target="_blank" rel="noopener">Get free Sepolia ETH ↗</a>';
+      } else {
+        hint.textContent = walletWei > 0n
+          ? "Max ≈ " + usd(weiToUsd(depositableWei())) + " (a little ETH kept for gas)"
+          : "Slide all the way to deposit your wallet max";
+      }
+    }
     setSliderUsd("deposit-input");
   }
 
@@ -1293,6 +1304,7 @@
 
   // ---------------------------------------------------------- contract events
   function wireEvents() {
+    try { read.removeAllListeners(); } catch {} // bind exactly once per read instance
     read.on(read.filters.PlayerJoined(), (roomId) => {
       const id = roomId.toString();
       refreshRooms();
@@ -1339,7 +1351,7 @@
   async function refreshPlayers() {
     if (read && chainOK) {
       try {
-        const rooms = await read.getRecentRooms(60);
+        const rooms = await recentRooms(60);
         const order = [], seen = new Set(), stats = {};
         const touch = (a) => {
           const k = a.toLowerCase();
@@ -1511,7 +1523,7 @@
   async function refreshMyHistory() {
     if (!read || !chainOK || !account) return;
     try {
-      const rooms = await read.getRecentRooms(60);
+      const rooms = await recentRooms(60);
       const games = [];
       for (const r of rooms) {
         if (Number(r.status) !== 2) continue; // settled only
@@ -1677,10 +1689,27 @@
     // learn our public share host (if the server was started with PUBLIC_HOST)
     fetch("/api/info").then((r) => r.json()).then((d) => { if (d.publicHost) window.__PUBLIC_HOST = d.publicHost; }).catch(() => {});
 
-    // periodic lobby refresh + TV reveal reconciler (safety net for missed events)
+    // Periodic lobby refresh + TV reveal reconciler — a BACKSTOP for missed
+    // events (events + ws cover the fast path). Skip when the tab is hidden, and
+    // keep the heavy on-chain scans (players/history/host panel) on a slower beat.
+    let heavyTick = 0;
     setInterval(() => {
-      if (chainOK && read) { refreshRooms(); refreshBalances(); refreshHouse(); refreshPlayers(); refreshMyTables(); refreshMyHistory(); refreshHostPanel(); reconcile(); }
-    }, 3000);
+      if (document.hidden || !(chainOK && read)) return;
+      refreshRooms(); refreshBalances(); refreshHouse(); reconcile();
+      if (++heavyTick % 3 === 0) { refreshPlayers(); refreshMyTables(); refreshMyHistory(); refreshHostPanel(); }
+    }, 12000);
+  }
+
+  // Shared short-TTL cache for getRecentRooms so the players / history / host-panel
+  // scans in one cycle don't each fire their own (expensive) RPC fetch.
+  let _recent = { t: 0, n: 0, rooms: null };
+  async function recentRooms(n) {
+    const now = Date.now();
+    if (_recent.rooms && _recent.n >= n && now - _recent.t < 5000) return _recent.rooms.slice(0, n);
+    const want = Math.max(n, 150);
+    const rooms = await read.getRecentRooms(want);
+    _recent = { t: now, n: want, rooms };
+    return rooms.slice(0, n);
   }
 
   // ---------------------------------------------------------- boot
@@ -1730,7 +1759,7 @@
     );
     // Live ETH→USD price: fetch now, refresh labels, and re-poll every 60s.
     fetchEthUsd().then(() => { setupSliders(); if (read && chainOK) { refreshBalances(); refreshStats(); refreshHouse(); refreshRooms(); } });
-    setInterval(() => fetchEthUsd().then(() => { setupSliders(); if (read && chainOK) { refreshBalances(); refreshStats(); refreshHouse(); refreshRooms(); } }), 60000);
+    setInterval(() => { if (document.hidden) return; fetchEthUsd().then(() => { setupSliders(); if (read && chainOK) { refreshBalances(); refreshStats(); refreshHouse(); refreshRooms(); } }); }, 60000);
     $("connect-btn").classList.add("cta-pulse");
     // On a phone with no injected wallet, nudge users into the MetaMask browser.
     if (/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) && !window.ethereum) {
