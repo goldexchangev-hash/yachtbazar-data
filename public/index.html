@@ -27,7 +27,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=911" />
+    <link rel="stylesheet" href="styles.css?v=912" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -41,7 +41,7 @@
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.11</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.12</span>
       </div>
       <div class="topbar-right">
         <button id="sound-btn" class="btn btn-ghost" title="Play / silence background music">🔇 Music</button>
@@ -117,6 +117,18 @@
             </svg>
           </span>
           <span class="gc-name">Dice #2</span>
+        </button>
+
+        <button type="button" class="game-card poker" id="ch-poker" role="tab" aria-selected="false" data-game="poker">
+          <span class="gc-tile">
+            <svg class="gc-glyph" viewBox="0 0 100 100" aria-hidden="true">
+              <rect x="20" y="22" width="38" height="54" rx="7" fill="#fff" transform="rotate(-10 39 49)"/>
+              <rect x="44" y="24" width="38" height="54" rx="7" fill="#fff" transform="rotate(9 63 51)"/>
+              <path d="M63 38 c-5 -7 -15 -2 -10 6 c2 4 8 9 10 11 c2 -2 8 -7 10 -11 c5 -8 -5 -13 -10 -6 Z" fill="#e0344e" transform="rotate(9 63 51)"/>
+              <path d="M37 40 l6 12 l-12 0 Z" fill="#16202e" transform="rotate(-10 39 49)"/>
+            </svg>
+          </span>
+          <span class="gc-name">Poker</span>
         </button>
 
       </div>
@@ -681,6 +693,45 @@
       </aside>
     </main>
 
+    <!-- ───────────── Poker room (CH 11) — full-width, no TV ───────────── -->
+    <section class="poker-view" id="poker-view" hidden>
+      <div class="poker-topline">
+        <div><span class="pk-title">♠ POKER ROOM</span> <span class="pk-sub">No-Limit Texas Hold'em · vs the house</span></div>
+        <div class="pk-house">Your chips: <b id="poker-chips">$0</b> &nbsp;·&nbsp; <button id="poker-leave" class="btn btn-ghost" hidden>Leave table</button></div>
+      </div>
+      <div class="poker-table" id="poker-table">
+        <div class="poker-rail">
+          <div class="poker-center">
+            <div class="poker-pot" id="poker-pot">POT $0</div>
+            <ol class="poker-board" id="poker-board"></ol>
+            <div class="poker-status" id="poker-status">Take a seat to start playing.</div>
+          </div>
+          <!-- seats injected by poker-ui.js -->
+        </div>
+      </div>
+      <div class="poker-herozone">
+        <div class="poker-hole" id="poker-hole"></div>
+        <div class="poker-hint" id="poker-hint"></div>
+        <div class="poker-actions" id="poker-actions"></div>
+      </div>
+
+      <!-- buy-in modal -->
+      <div class="poker-modal hidden" id="poker-buyin">
+        <div class="poker-card-modal">
+          <h3>Sit down</h3>
+          <p>Buy in with your in-game balance. Play No-Limit Hold'em against the house bots — stand up any time and your chips settle back to your balance.</p>
+          <div class="pm-row">
+            <input id="poker-buyin-range" type="range" min="0" max="100" step="1" value="50" />
+            <span class="pm-amt" id="poker-buyin-amt">$0</span>
+          </div>
+          <div class="bankroll-actions" style="justify-content:center;">
+            <button id="poker-buyin-cancel" class="btn btn-ghost">Cancel</button>
+            <button id="poker-buyin-go" class="btn btn-primary">Sit &amp; deal</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- Toast -->
     <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
@@ -760,11 +811,14 @@
     </div>
 
     <script defer src="vendor/ethers.umd.min.js"></script>
-    <script defer src="config.js?v=911"></script>
-    <script defer src="contract.js?v=911"></script>
-    <script defer src="chiptune.js?v=911"></script>
-    <script defer src="scenes.js?v=911"></script>
-    <script defer src="tv.js?v=911"></script>
-    <script defer src="app.js?v=911"></script>
+    <script defer src="config.js?v=912"></script>
+    <script defer src="contract.js?v=912"></script>
+    <script defer src="chiptune.js?v=912"></script>
+    <script defer src="scenes.js?v=912"></script>
+    <script defer src="tv.js?v=912"></script>
+    <script defer src="poker-engine.js?v=912"></script>
+    <script defer src="poker-bots.js?v=912"></script>
+    <script defer src="poker-ui.js?v=912"></script>
+    <script defer src="app.js?v=912"></script>
   </body>
 </html>

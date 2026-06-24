@@ -1594,12 +1594,13 @@
   }
 
   // ── Game switcher ("change the channel") ──
-  const GAME_CHANNEL = { flip: 8, dice: 9, twodice: 10 };
-  const GAME_TITLE = { flip: "CRYPTO TV FLIP", dice: "CRYPTO TV 0-100", twodice: "CRYPTO TV DICE #2" };
-  const GAME_ORDER = ["flip", "dice", "twodice"];
+  const GAME_CHANNEL = { flip: 8, dice: 9, twodice: 10, poker: 11 };
+  const GAME_TITLE = { flip: "CRYPTO TV FLIP", dice: "CRYPTO TV 0-100", twodice: "CRYPTO TV DICE #2", poker: "CRYPTO TV POKER" };
+  const GAME_ORDER = ["flip", "dice", "twodice", "poker"];
   function paintGameTabs(game) {
     document.body.classList.toggle("game-dice", game === "dice");
     document.body.classList.toggle("game-twodice", game === "twodice");
+    document.body.classList.toggle("game-poker", game === "poker"); // CSS hides the TV layout, shows #poker-view
     const bar = $("game-nav"); if (bar) bar.dataset.game = game;
     document.querySelectorAll("#game-nav .game-card").forEach((b) => {
       const on = b.dataset.game === game;
@@ -1612,9 +1613,29 @@
     currentGame = game;
     paintGameTabs(game);
     try { localStorage.setItem("ctf_game", game); } catch {}
-    if (window.TV && TV.changeChannel) TV.changeChannel(GAME_CHANNEL[game]);
+    // Poker is its own full-width view (no TV); everything else uses the TV channel.
+    if (game === "poker") { if (window.PokerUI) PokerUI.show(); }
+    else { if (window.PokerUI) PokerUI.hide(); if (window.TV && TV.changeChannel) TV.changeChannel(GAME_CHANNEL[game]); }
     if (game === "dice") { refreshDiceHouse(); diceReadouts(); }
     else if (game === "twodice") { refreshDiceHouse(); twoDiceReadouts(); }
+  }
+  // Poker chips are a session-local pool seeded from your in-game balance.
+  // Phase 1 (vs house bots) plays out client-side; net results are NOT yet
+  // written on-chain — the trusted house-signed settlement lands with the
+  // authoritative server in the multiplayer phase.
+  let pokerPoolUsd = null;
+  function pokerSeedUsd() { return gameWei > 0n ? weiToUsd(gameWei) : 0; }
+  function pokerAvailUsd() { return pokerPoolUsd != null ? pokerPoolUsd : pokerSeedUsd(); }
+  function initPoker() {
+    if (!window.PokerUI) return;
+    PokerUI.config({
+      getBalanceUsd: pokerAvailUsd,
+      onSit: (amt) => { if (pokerPoolUsd == null) pokerPoolUsd = pokerSeedUsd(); pokerPoolUsd = Math.max(0, pokerPoolUsd - amt); },
+      onLeave: (amt) => { if (pokerPoolUsd == null) pokerPoolUsd = pokerSeedUsd(); pokerPoolUsd += amt; },
+      usd: (n) => usd(n),
+      toast: (m, t) => toast(m, t),
+    });
+    PokerUI.mount();
   }
   function initDice() {
     const t = $("dice-target"); if (!t) return;
@@ -1650,11 +1671,13 @@
     });
     setSliderUsd("dice-stake");
     diceReadouts();
+    initPoker();
     // restore the last-played game silently (no CRT animation on load)
     let saved = "flip"; try { saved = localStorage.getItem("ctf_game") || "flip"; } catch {}
     if (!GAME_CHANNEL[saved]) saved = "flip";
     currentGame = saved;
     paintGameTabs(saved);
+    if (saved === "poker" && window.PokerUI) PokerUI.show();
     if (window.TV) TV._activeChannel = GAME_CHANNEL[saved] || 8;
   }
 

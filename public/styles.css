@@ -979,3 +979,105 @@ body.game-dice [data-game="flip"], body.game-twodice [data-game="flip"] { displa
 /* channel card accent for Dice #2 */
 .game-card.twodice.active { box-shadow: 0 0 0 2px #8a5bff inset, 0 8px 22px rgba(120,90,255,.28); }
 @media (prefers-reduced-motion: reduce) { .die.rolling { animation: none !important; } }
+
+/* ════════════════════ POKER ROOM (CH 11) — full-width neon table ════════════════════ */
+.poker-view { width: min(97vw, 1500px); margin: 0 auto; padding: 6px 0 28px; }
+.poker-topline { display:flex; justify-content:space-between; align-items:center; gap:10px; margin:2px 4px 10px; flex-wrap:wrap; }
+.poker-topline .pk-title { font-family: var(--display, "Bungee"); font-size: 18px; color:#eaf6ff; letter-spacing:1px; }
+.poker-topline .pk-sub { font-size:12px; color:#6b829e; }
+.poker-topline .pk-house { font-size:12px; color:#9fb3cc; }
+.poker-topline .pk-house b { color:#39ff9e; }
+
+/* the oval */
+.poker-table { position: relative; width: 100%; aspect-ratio: 16 / 9; }
+.poker-rail { position:absolute; inset:0; border-radius:50% / 50%;
+  background: radial-gradient(ellipse at 50% 42%, #14233a 0%, #0c1626 60%, #070d18 100%);
+  border: 3px solid #1c2b44;
+  box-shadow: 0 0 0 6px #0b1322, 0 0 28px 4px rgba(0,234,255,.16), inset 0 0 90px rgba(0,0,0,.65); }
+.poker-rail::after { content:""; position:absolute; inset:13%; border-radius:50% / 50%; border:1px dashed rgba(0,234,255,.10); pointer-events:none; }
+
+/* center: pot + board */
+.poker-center { position:absolute; left:50%; top:42%; transform:translate(-50%,-50%); text-align:center; z-index:2; width:max-content; }
+.poker-pot { font-family:"Press Start 2P", monospace; font-size:13px; color:#ffe34d; margin-bottom:10px; text-shadow:0 0 10px rgba(255,227,77,.4); }
+.poker-board { display:flex; gap:7px; justify-content:center; list-style:none; padding:0; margin:0; min-height:84px; }
+.poker-status { margin-top:10px; font-size:12px; color:#9fb3cc; min-height:16px; font-family:"Space Grotesk",sans-serif; }
+
+/* a playing card */
+.pcard { width:58px; height:82px; border-radius:8px; background:linear-gradient(160deg,#fff,#e7ecf5);
+  display:flex; flex-direction:column; align-items:center; justify-content:center; position:relative;
+  box-shadow:0 3px 8px rgba(0,0,0,.5); font-family:"Space Grotesk",sans-serif; font-weight:700; color:#16202e; }
+.pcard .pc-r { font-size:21px; line-height:1; }
+.pcard .pc-s { font-size:17px; line-height:1; }
+.pcard.red { color:#e0344e; }
+.pcard.back { background:repeating-linear-gradient(45deg,#15233c,#15233c 6px,#1c2f4e 6px,#1c2f4e 12px); border:1px solid #2a3d5c; }
+.pcard.back::after{ content:"♠"; color:rgba(0,234,255,.35); font-size:22px; }
+.pcard.sm { width:30px; height:43px; } .pcard.sm .pc-r{font-size:12px;} .pcard.sm .pc-s{font-size:10px;}
+.pcard.empty { background:rgba(255,255,255,.03); border:1px dashed #223550; box-shadow:none; }
+.pcard.lg { width:76px; height:108px; } .pcard.lg .pc-r{font-size:28px;} .pcard.lg .pc-s{font-size:22px;}
+
+/* seats */
+.pseat { position:absolute; transform:translate(-50%,-50%); width:130px; z-index:3; text-align:center; }
+.pseat__pod { display:flex; align-items:center; gap:8px; background:#0d1526; border:1px solid #223550;
+  border-radius:10px; padding:6px 9px; box-shadow:0 4px 14px rgba(0,0,0,.5); }
+.pseat__av { width:42px; height:42px; border-radius:50%; flex:none; position:relative; background:#1a2740;
+  border:2px solid #2a3d5c; display:grid; place-items:center; font-size:18px; }
+.pseat__meta { text-align:left; overflow:hidden; }
+.pseat__name { font:700 12px/1.1 "Space Grotesk",sans-serif; color:#cfe6ff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.pseat__stack { font:10px/1.3 "Press Start 2P",monospace; color:#39ff9e; }
+.pseat__cards { display:flex; gap:3px; justify-content:center; margin-bottom:4px; min-height:43px; }
+.pseat__bet { font:10px/1 "Press Start 2P",monospace; color:#ffe34d; background:#0c1626; border:1px solid #3a3a1a;
+  border-radius:6px; padding:3px 6px; display:inline-block; margin-top:5px; min-height:14px; }
+.pseat__bet:empty { display:none; }
+.pseat.is-hero .pseat__pod { border-color:#2f5d8a; }
+.pseat.is-active .pseat__pod { border-color:#00eaff; box-shadow:0 0 16px rgba(0,234,255,.55); }
+.pseat.is-folded { opacity:.38; filter:grayscale(.6); }
+.pseat.is-allin .pseat__stack { color:#ff4d6d; }
+/* dealer button */
+.pseat__d { position:absolute; top:-7px; right:-7px; width:22px; height:22px; border-radius:50%; background:#fff;
+  color:#0a0a12; font:700 10px/22px "Press Start 2P",monospace; text-align:center; box-shadow:0 0 10px #fff; display:none; }
+.pseat.has-button .pseat__d { display:block; }
+/* depleting timer ring on the active seat */
+.pseat.is-active .pseat__av::before { content:""; position:absolute; inset:-5px; border-radius:50%;
+  background: conic-gradient(#00eaff var(--timer,360deg), #1b2740 0);
+  -webkit-mask: radial-gradient(farthest-side,#0000 calc(100% - 4px),#000 0);
+          mask: radial-gradient(farthest-side,#0000 calc(100% - 4px),#000 0); }
+/* empty seat join target */
+.pseat.is-empty .pseat__pod, .pseat.is-empty .pseat__cards, .pseat.is-empty .pseat__bet { display:none; }
+.pseat__join { font:9px/1 "Press Start 2P",monospace; color:#33506f; cursor:pointer; background:transparent;
+  border:1.5px dashed #33506f; border-radius:50%; width:60px; height:60px; padding:0; transition:.15s; }
+.pseat__join:hover { color:#00eaff; border-color:#00eaff; box-shadow:0 0 14px rgba(0,234,255,.4); }
+.pseat.is-empty:not(.joinable) .pseat__join { opacity:.3; pointer-events:none; }
+
+/* hero zone: hole cards + action bar */
+.poker-herozone { display:flex; flex-direction:column; align-items:center; gap:12px; margin-top:14px; }
+.poker-hole { display:flex; gap:6px; min-height:108px; align-items:center; }
+.poker-actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:center; min-height:48px; }
+.pbtn { font:11px/1 "Press Start 2P",monospace; padding:14px 18px; border-radius:8px; border:2px solid; background:#0d1526;
+  cursor:pointer; letter-spacing:.04em; color:#cfe6ff; transition:transform .08s, box-shadow .15s; }
+.pbtn:active { transform:translateY(2px); }
+.pbtn[disabled]{ opacity:.3; cursor:not-allowed; }
+.pbtn.fold { color:#ff4d6d; border-color:#ff4d6d; }
+.pbtn.check, .pbtn.call { color:#39ff9e; border-color:#39ff9e; }
+.pbtn.raise { color:#0a0a12; background:#00eaff; border-color:#00eaff; box-shadow:0 0 16px rgba(0,234,255,.55); }
+.praise-wrap { display:flex; align-items:center; gap:8px; background:#0b1322; border:1px solid #223550; border-radius:10px; padding:6px 10px; }
+.praise-wrap input[type=range]{ accent-color:#00eaff; width:170px; }
+.praise-amt { font:11px/1 "Press Start 2P",monospace; color:#ffe34d; min-width:6ch; text-align:center; }
+.praise-presets { display:flex; gap:5px; }
+.ppreset { font:9px/1 "Press Start 2P",monospace; color:#9fb3cc; background:#0d1526; border:1px solid #223550; border-radius:6px; padding:7px 8px; cursor:pointer; }
+.ppreset:hover { color:#00eaff; border-color:#00eaff; }
+.poker-hint { font-size:12px; color:#6b829e; font-family:"Space Grotesk",sans-serif; min-height:16px; }
+
+/* buy-in / modal */
+.poker-modal { position:fixed; inset:0; background:rgba(4,6,12,.78); display:grid; place-items:center; z-index:200; }
+.poker-modal.hidden { display:none; }
+.poker-card-modal { background:#0c1424; border:1px solid #25395a; border-radius:14px; padding:22px 24px; width:min(92vw,380px); text-align:center; box-shadow:0 18px 60px rgba(0,0,0,.6); }
+.poker-card-modal h3 { font-family:"Bungee",sans-serif; color:#eaf6ff; margin:0 0 6px; font-size:18px; }
+.poker-card-modal p { color:#9fb3cc; font-size:12px; margin:0 0 14px; }
+.poker-card-modal .pm-row { display:flex; gap:8px; align-items:center; margin:10px 0; }
+.poker-card-modal input[type=range]{ accent-color:#00eaff; flex:1; }
+.poker-card-modal .pm-amt { font:13px/1 "Press Start 2P",monospace; color:#ffe34d; min-width:6ch; }
+@media (prefers-reduced-motion: reduce){ .pseat.is-active .pseat__av::before{ transition:none; } }
+
+/* when poker is active, the normal layout is hidden (handled by app.js body class) */
+body.game-poker .layout { display:none !important; }
+body:not(.game-poker) #poker-view { display:none !important; }
