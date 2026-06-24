@@ -865,9 +865,10 @@
   // never spoils the result early. If the reel is playing WITH its own audio we
   // let that carry the moment; only when audio was blocked (muted fallback) do we
   // play the chiptune fanfare instead.
-  function cinePayoff(won, netUsd, reelMuted) {
+  function cinePayoff(won, netUsd) {
     try { window.__onTvReveal && window.__onTvReveal({}); } catch {}   // release the in-game balance now
-    if (!reelMuted) return;                                            // the video's own audio carries it
+    // Always play the coin-tally win/loss jingle at the climax — it layers nicely
+    // OVER the reel's own audio (the player liked the "coins counting" sound).
     try {
       const C = window.Chiptune;
       if (C) { if (!won) C.lose && C.lose(); else if (netUsd >= 300 && C.jackpot) C.jackpot(); else if (netUsd >= 100 && C.bigwin) C.bigwin(); else C.win && C.win(); }
@@ -879,7 +880,7 @@
     if (!list || !list.length) return false;
     const src = list[Math.floor(Math.random() * list.length)];
     let paid = false;
-    const pay = () => { if (paid) return; paid = true; cinePayoff(won, netUsd || 0, v.muted); };
+    const pay = () => { if (paid) return; paid = true; cinePayoff(won, netUsd || 0); };
     const done = () => { clearTimeout(cineTimer); v.onended = null; v.onerror = null; v.ontimeupdate = null; pay(); v.classList.remove("show"); try { v.pause(); } catch {} v.removeAttribute("src"); try { v.load(); } catch {} try { window.__winSceneActive = false; window.__cineActive = false; } catch {} try { window.Chiptune && Chiptune.duckMusic(false); } catch {} };
     clearTimeout(cineTimer);
     // Try to play WITH sound; duck the background music so the reel is heard.
