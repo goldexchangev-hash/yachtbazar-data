@@ -6,6 +6,7 @@ services:
     name: tv-crypto-flip
     runtime: node
     plan: free
+    branch: claude/ethereum-betting-game-vrf-2dq50k
     buildCommand: npm install --omit=dev
     startCommand: node server/server.js
     envVars:
