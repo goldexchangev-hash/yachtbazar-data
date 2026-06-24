@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0c0d16" />
+    <title>Poker table preview</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Press+Start+2P&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css?v=914" />
+    <style>body{ background:#0a0a12; margin:0; padding:8px 0; }</style>
+  </head>
+  <body class="game-poker">
+    <!-- Standalone preview of the poker table — auto-sits with fake money so the
+         layout can be eyeballed at any width without a wallet or deposit. -->
+    <section class="poker-view" id="poker-view">
+      <div class="poker-topline">
+        <div><span class="pk-title">♠ POKER ROOM</span> <span class="pk-sub">PREVIEW · fake money</span></div>
+        <div class="pk-house">Your chips: <b id="poker-chips">$0</b> &nbsp;·&nbsp; <button id="poker-leave" class="btn btn-ghost" hidden>Leave table</button></div>
+      </div>
+      <div class="poker-table" id="poker-table">
+        <div class="poker-rail">
+          <div class="poker-center">
+            <div class="poker-pot" id="poker-pot">POT $0</div>
+            <ol class="poker-board" id="poker-board"></ol>
+            <div class="poker-status" id="poker-status">Take a seat to start playing.</div>
+          </div>
+        </div>
+      </div>
+      <div class="poker-herozone">
+        <div class="poker-hole" id="poker-hole"></div>
+        <div class="poker-hint" id="poker-hint"></div>
+        <div class="poker-actions" id="poker-actions"></div>
+      </div>
+      <div class="poker-modal hidden" id="poker-buyin">
+        <div class="poker-card-modal">
+          <h3>Sit down</h3>
+          <p>Preview buy-in.</p>
+          <div class="pm-row"><input id="poker-buyin-range" type="range" min="0" max="100" step="1" value="50" /><span class="pm-amt" id="poker-buyin-amt">$0</span></div>
+          <div class="bankroll-actions" style="justify-content:center;"><button id="poker-buyin-cancel" class="btn btn-ghost">Cancel</button><button id="poker-buyin-go" class="btn btn-primary">Sit &amp; deal</button></div>
+        </div>
+      </div>
+    </section>
+
+    <script src="poker-engine.js?v=914"></script>
+    <script src="poker-bots.js?v=914"></script>
+    <script src="poker-ui.js?v=914"></script>
+    <script>
+      PokerUI.config({
+        getBalanceUsd: () => 500,
+        onSit: () => {}, onLeave: () => {},
+        usd: (n) => "$" + Math.round(n).toLocaleString(),
+        toast: (m) => console.log("[toast]", m),
+      });
+      PokerUI.show();
+      PokerUI.sit(200); // auto-sit so the table is populated immediately
+    </script>
+  </body>
+</html>

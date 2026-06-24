@@ -21,7 +21,7 @@
 
   // ---- ellipse seat positions (hero at bottom-center) --------------------
   function seatPos(i) {
-    const cx = 50, cy = 50, a = 46, b = 44;
+    const cx = 50, cy = 50, a = 45, b = 43;
     const ang = (90 - (360 / SEATS) * i) * Math.PI / 180;
     return { left: cx + a * Math.cos(ang), top: cy + b * Math.sin(ang) };
   }
@@ -39,9 +39,9 @@
       el.style.top = pos.top + "%";
       el.innerHTML =
         '<div class="pseat__cards"></div>' +
-        '<div class="pseat__pod"><div class="pseat__av">🤖<span class="pseat__d">D</span></div>' +
-        '<div class="pseat__meta"><div class="pseat__name"></div><div class="pseat__stack"></div></div></div>' +
-        '<button class="pseat__join">+ SIT</button>' +
+        '<div class="pseat__av">🤖<span class="pseat__d">D</span></div>' +
+        '<div class="pseat__info"><span class="pseat__name"></span><span class="pseat__stack"></span></div>' +
+        '<button class="pseat__join">SIT</button>' +
         '<div class="pseat__bet"></div>';
       el.querySelector(".pseat__join").onclick = () => onSeatClick(i);
       rail.appendChild(el);
@@ -308,6 +308,7 @@
     mount() { if (this.mounted) return; build(); this.mounted = true; render(); },
     show() { this.mount(); $("poker-view").hidden = false; render(); },
     hide() { const v = $("poker-view"); if (v) v.hidden = true; },
+    sit(buyIn) { this.mount(); sitDown(buyIn || 200); }, // used by the preview page
     leaveTable,
     isSeated() { return !!seatOf(HERO); },
   };
