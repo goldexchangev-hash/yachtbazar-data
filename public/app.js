@@ -1271,7 +1271,7 @@
     const st = playerStats[addr.toLowerCase()];
     if (st && st.recent.length) {
       // last 3, oldest→newest left-to-right
-      for (const o of st.recent.slice(0, 3).reverse()) {
+      for (const o of st.recent.slice(0, 10).reverse()) {
         const b = document.createElement("span");
         b.className = "pbadge " + (o === "W" ? "win" : "loss");
         b.textContent = o;
