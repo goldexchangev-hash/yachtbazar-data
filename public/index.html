@@ -27,7 +27,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=99" />
+    <link rel="stylesheet" href="styles.css?v=910" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -41,7 +41,7 @@
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.9</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.10</span>
       </div>
       <div class="topbar-right">
         <button id="sound-btn" class="btn btn-ghost" title="Play / silence background music">🔇 Music</button>
@@ -387,6 +387,9 @@
             <button type="button" class="hs-tab" data-period="year">Year</button>
             <button type="button" class="hs-tab" data-period="all">All</button>
           </div>
+          <!-- Per-game earnings filter — injected from the HOST_GAMES registry,
+               so any future game shows up here automatically. -->
+          <div class="hs-tabs hs-gtabs" id="hs-game-tabs"></div>
           <div class="hs-hero">
             <span class="muted" id="hs-period-label">Grand total · last 24h</span>
             <strong id="hs-profit-today" class="hs-big">+$0</strong>
@@ -400,7 +403,7 @@
             <div class="hs-cell"><span class="muted">Fees all-time</span><strong id="hs-fees-total">$0</strong></div>
             <div class="hs-cell"><span class="muted">Games all-time</span><strong id="hs-games-total">0</strong></div>
             <div class="hs-cell"><span class="muted">Volume all-time</span><strong id="hs-volume-total">$0</strong></div>
-            <div class="hs-cell"><span class="muted">House take</span><strong id="hs-take">0%</strong></div>
+            <div class="hs-cell"><span class="muted">Net margin</span><strong id="hs-take">0%</strong></div>
             <div class="hs-cell"><span class="muted">Avg bet</span><strong id="hs-avg">$0</strong></div>
             <div class="hs-cell"><span class="muted">Bankroll (in play)</span><strong id="hs-bankroll">$0</strong></div>
             <div class="hs-cell hs-cash"><span class="muted">💰 House funds total (bankroll + balance)</span><strong id="hs-balance">$0</strong></div>
@@ -410,7 +413,7 @@
             <button id="cashout-amount-btn" class="btn btn-ghost">💸 Cash out</button>
           </div>
           <button id="cashout-house-btn" class="btn btn-ghost btn-block" style="margin-top: 6px;">Cash out everything to my wallet</button>
-          <p class="muted" style="font-size: 11px; margin-top: 8px;"><strong>Grand total</strong> = fees/rake <strong>+</strong> what you won (or lost) at the table, for the chosen period — computed from real game results, so deposits, withdrawals, and cash-outs never distort it. Both the rake and your table winnings now flow straight into the house bankroll. “House funds total” is the live pool plus any in-game balance. Cash-out releases the contract funds to your real MetaMask wallet (empties the house until you fund it again). Only your house wallet can see this.</p>
+          <p class="muted" style="font-size: 11px; margin-top: 8px;">Use the <strong>game tabs</strong> (All · Coin Flip · Dice) to break earnings down per game — any new game we add shows up here automatically. <strong>Grand total</strong> = fees/rake <strong>+</strong> what you won (or lost) at the table, for the chosen game and period — computed from real game results, so deposits, withdrawals, and cash-outs never distort it. <strong>Dice</strong> has no separate rake: the house edge is realized straight as the bankroll swing (you win the roller's stake on a loss, pay their profit on a win), so it shows under “Won at table.” <strong>Net margin</strong> = grand total ÷ volume. “House funds total” is the live pool plus any in-game balance (one bankroll backs every game). Cash-out releases the contract funds to your real MetaMask wallet (empties the house until you fund it again). Only your house wallet can see this.</p>
         </div>
 
         <!-- In-browser hosting: deploy the game contract with one click -->
@@ -684,11 +687,11 @@
     </div>
 
     <script defer src="vendor/ethers.umd.min.js"></script>
-    <script defer src="config.js?v=99"></script>
-    <script defer src="contract.js?v=99"></script>
-    <script defer src="chiptune.js?v=99"></script>
-    <script defer src="scenes.js?v=99"></script>
-    <script defer src="tv.js?v=99"></script>
-    <script defer src="app.js?v=99"></script>
+    <script defer src="config.js?v=910"></script>
+    <script defer src="contract.js?v=910"></script>
+    <script defer src="chiptune.js?v=910"></script>
+    <script defer src="scenes.js?v=910"></script>
+    <script defer src="tv.js?v=910"></script>
+    <script defer src="app.js?v=910"></script>
   </body>
 </html>

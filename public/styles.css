@@ -541,6 +541,10 @@ kbd { font-family: ui-monospace, monospace; font-size: 11px; background: rgba(25
 .hs-tab { flex: 1; border: 0; background: transparent; color: var(--muted); font-family: var(--display); font-weight: 700; font-size: 12px; padding: 6px 4px; border-radius: 999px; cursor: pointer; transition: color 0.15s, background 0.15s; }
 .hs-tab:hover { color: #fff; }
 .hs-tab.active { color: #1a1300; background: linear-gradient(135deg, #ffd23f, #ffae00); }
+/* Per-game earnings filter tabs — distinct (cyan/violet) so they read apart from the period tabs */
+.hs-gtab { flex: 1; border: 0; background: transparent; color: var(--muted); font-family: var(--display); font-weight: 700; font-size: 12px; padding: 6px 4px; border-radius: 999px; cursor: pointer; transition: color 0.15s, background 0.15s; }
+.hs-gtab:hover { color: #fff; }
+.hs-gtab.active { color: #06121f; background: linear-gradient(135deg, #51e0ff, #8a7dff); }
 
 /* Matrix-style live ETH price ticker */
 .eth-ticker { display: flex; align-items: center; gap: 8px; background: #02110a; border: 1px solid rgba(0, 255, 120, 0.35); border-radius: 10px; padding: 6px 10px; box-shadow: inset 0 0 18px rgba(0, 255, 120, 0.1); overflow: hidden; }

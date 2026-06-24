@@ -470,52 +470,112 @@
   const HS_PERIOD_SEC = { today: 86400, week: 604800, month: 2592000, year: 31536000, all: 0 };
   const HS_PERIOD_LABEL = { today: "last 24h", week: "this week", month: "this month", year: "this year", all: "all-time (recent)" };
 
+  // ── Host-earnings game registry ────────────────────────────────────────────
+  // Each game declares how to fetch its settled rounds and turn each one into a
+  // normalized earnings row. Add a game here and it AUTOMATICALLY gets its own
+  // earnings tab + breakdown — nothing else to wire. A row is:
+  //   { at, skip, bet, wagered, fees, table }
+  //   at      — settle time (unix s)         skip — exclude (host's own test play)
+  //   bet     — per-player stake             wagered — volume this round adds
+  //   fees    — rake credited to the house   table  — house bankroll swing (±)
+  // House net for a round = fees + table; the house's own test rounds are skipped.
+  const HOST_GAMES = [
+    {
+      key: "flip", label: "🪙 Coin Flip",
+      fetch: () => recentRooms(2000),
+      rows: (list) => list
+        .filter((r) => Number(r.status) === 2) // settled only
+        .map((r) => ({
+          at: Number(r.settledAt),
+          skip: eq(r.player1, hostTreasury) || (!r.isHouseGame && eq(r.player2, hostTreasury)),
+          bet: r.betAmount,
+          wagered: r.betAmount * 2n, // pot = both stakes
+          fees: (r.betAmount * 2n) / 10n, // 10% rake of the pot
+          table: r.isHouseGame ? (eq(r.winner, hostTreasury) ? (r.betAmount * 8n) / 10n : -r.betAmount) : 0n,
+        })),
+    },
+    {
+      key: "dice", label: "🎲 Dice",
+      fetch: () => recentDice(2000),
+      rows: (list) => list.map((d) => ({
+        at: Number(d.settledAt),
+        skip: eq(d.player, hostTreasury), // host's own test rolls
+        bet: d.betAmount,
+        wagered: d.betAmount, // single-sided vs the house
+        fees: 0n, // dice has no separate rake — the edge is realized in `table`
+        table: d.won ? -(d.payout - d.betAmount) : d.betAmount, // house P&L vs the roller
+      })),
+    },
+  ];
+  let hostGame = "all"; // "all" | a HOST_GAMES key
+
+  function renderHostGameTabs() {
+    const box = $("hs-game-tabs");
+    if (!box || box.dataset.built) return;
+    const mk = (key, label) =>
+      '<button type="button" class="hs-gtab' + (key === hostGame ? " active" : "") + '" data-game="' + key + '">' + label + "</button>";
+    box.innerHTML = mk("all", "All") + HOST_GAMES.map((g) => mk(g.key, g.label)).join("");
+    box.querySelectorAll(".hs-gtab").forEach((b) => {
+      b.onclick = () => {
+        hostGame = b.dataset.game;
+        box.querySelectorAll(".hs-gtab").forEach((x) => x.classList.toggle("active", x === b));
+        refreshHostPanel();
+      };
+    });
+    box.dataset.built = "1";
+  }
+
+  // Sum normalized rows over a period (periodSec = 0 → all-time, within the window).
+  function aggHostRows(rows, nowSec, periodSec) {
+    let fees = 0n, table = 0n, wagered = 0n, betSum = 0n, games = 0;
+    for (const x of rows) {
+      if (x.skip) continue;
+      if (periodSec && x.at < nowSec - periodSec) continue;
+      fees += x.fees; table += x.table; wagered += x.wagered; betSum += x.bet; games += 1;
+    }
+    return { fees, table, wagered, betSum, games, grand: fees + table };
+  }
+
   async function refreshHostPanel() {
     const card = $("host-stats-card");
     if (!card) return;
     const isHost = account && hostTreasury && eq(account, hostTreasury);
     card.classList.toggle("hidden", !isHost);
     if (!isHost || !read || !chainOK) return;
+    renderHostGameTabs();
     try {
-      const [fees, games, wagered, bankroll, bal, rooms] = await Promise.all([
-        read.totalFeesCollected(), read.totalGamesPlayed(), read.totalWagered(),
-        read.houseBankroll(), read.balances(account), recentRooms(150),
-      ]);
-      const gamesN = Number(games);
-      const holdings = bankroll + bal; // ALL the house's money in the contract
+      const [bankroll, bal] = await Promise.all([read.houseBankroll(), read.balances(account)]);
+      const holdings = bankroll + bal; // ALL the house's money in the contract (shared by every game)
       const nowSec = Math.floor(Date.now() / 1000);
       const periodSec = HS_PERIOD_SEC[hostPeriod] ?? 86400;
 
-      // Sum the house's results over the period from settled games:
-      //  rake  = 10% of every pot (credited to your balance, all game types)
-      //  table = vs-house gamble: win +0.8·bet, loss −bet (bankroll swing)
-      let pFees = 0n, pTable = 0n, pGames = 0, pWagered = 0n;
-      for (const r of rooms) {
-        if (Number(r.status) !== 2) continue; // settled only
-        if (periodSec && Number(r.settledAt) < nowSec - periodSec) continue;
-        // The host testing the game against their own house isn't real earnings —
-        // exclude any settled game the host wallet personally took part in.
-        if (eq(r.player1, hostTreasury) || (!r.isHouseGame && eq(r.player2, hostTreasury))) continue;
-        const bet = r.betAmount;
-        pFees += (bet * 2n) / 10n;
-        if (r.isHouseGame) pTable += eq(r.winner, hostTreasury) ? (bet * 8n) / 10n : -bet;
-        pGames += 1;
-        pWagered += bet * 2n;
-      }
-      const pGrand = pFees + pTable;
+      // Build each game's normalized rows once, then pick the active filter.
+      const perGame = {};
+      await Promise.all(HOST_GAMES.map(async (g) => {
+        let list = [];
+        try { list = await g.fetch(); } catch {}
+        perGame[g.key] = g.rows(list || []);
+      }));
+      const rows = hostGame === "all"
+        ? HOST_GAMES.flatMap((g) => perGame[g.key] || [])
+        : (perGame[hostGame] || []);
 
-      $("hs-period-label").textContent = "Grand total · " + (HS_PERIOD_LABEL[hostPeriod] || "last 24h");
+      const period = aggHostRows(rows, nowSec, periodSec); // selected period
+      const life = aggHostRows(rows, nowSec, 0);           // all-time (within the recent window)
+      const gLabel = hostGame === "all" ? "All games" : (HOST_GAMES.find((g) => g.key === hostGame)?.label || "");
+
+      $("hs-period-label").textContent = gLabel + " · " + (HS_PERIOD_LABEL[hostPeriod] || "last 24h");
       const pe = $("hs-profit-today");
-      pe.textContent = signedUsd(pGrand);
-      pe.style.color = pGrand < 0n ? "#ff7a7a" : "#34e39b";
-      $("hs-profit-sub").textContent = pGames + " game" + (pGames === 1 ? "" : "s") + " · " + usdOf(pWagered) + " wagered";
-      $("hs-period-fees").textContent = signedUsd(pFees);
-      $("hs-period-table").textContent = signedUsd(pTable);
-      $("hs-fees-total").textContent = usdOf(fees);
-      $("hs-games-total").textContent = games.toString();
-      $("hs-volume-total").textContent = usdOf(wagered);
-      $("hs-take").textContent = (wagered > 0n ? Number((fees * 10000n) / wagered) / 100 : 0).toFixed(1) + "%";
-      $("hs-avg").textContent = gamesN > 0 ? usdOf(wagered / (2n * games)) : "$0";
+      pe.textContent = signedUsd(period.grand);
+      pe.style.color = period.grand < 0n ? "#ff7a7a" : "#34e39b";
+      $("hs-profit-sub").textContent = period.games + " game" + (period.games === 1 ? "" : "s") + " · " + usdOf(period.wagered) + " wagered";
+      $("hs-period-fees").textContent = signedUsd(period.fees);
+      $("hs-period-table").textContent = signedUsd(period.table);
+      $("hs-fees-total").textContent = usdOf(life.fees);
+      $("hs-games-total").textContent = life.games.toString();
+      $("hs-volume-total").textContent = usdOf(life.wagered);
+      $("hs-take").textContent = (life.wagered > 0n ? Number((life.grand * 10000n) / life.wagered) / 100 : 0).toFixed(1) + "%";
+      $("hs-avg").textContent = life.games > 0 ? usdOf(life.betSum / BigInt(life.games)) : "$0";
       $("hs-bankroll").textContent = usdOf(bankroll);
       $("hs-balance").textContent = usdOf(holdings); // unified "house funds" = bankroll + balance
     } catch {}
@@ -2415,6 +2475,16 @@
     const rooms = await read.getRecentRooms(want);
     _recent = { t: now, n: want, rooms };
     return rooms.slice(0, n);
+  }
+  let _recentDice = { t: 0, n: 0, dice: null };
+  async function recentDice(n) {
+    const now = Date.now();
+    if (_recentDice.dice && _recentDice.n >= n && now - _recentDice.t < 5000) return _recentDice.dice.slice(0, n);
+    const want = Math.max(n, 150);
+    let dice = [];
+    try { dice = await read.getRecentDice(want); } catch { dice = []; }
+    _recentDice = { t: now, n: want, dice };
+    return dice.slice(0, n);
   }
 
   // ---------------------------------------------------------- boot
