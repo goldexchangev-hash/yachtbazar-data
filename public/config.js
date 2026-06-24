@@ -4,7 +4,7 @@
 // still overrides this if present. To point the site at a new game later, just
 // update `address` here and push.
 window.COINFLIP_CONFIG = {
-  address: "0x2e3e84a41d6a122233ebac7a2cf2d9b5cd032998",
+  address: "0x2BE6D59A6DfD8CE91D08c87D5110962Fa7648A30",
   chainId: 11155111,
   network: "sepolia",
   treasury: "0x2F4BEF94550C29c497b999B86b758F9771F7aB39",
