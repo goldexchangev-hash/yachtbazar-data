@@ -1348,8 +1348,38 @@
        LOSS -> hero turns to the money and chops it; coins fall into the chasm.
      Everything escalates with the bet tier (pouch -> sack -> chest -> hoard).
      ========================================================================== */
-  var wf = null, wfRaf = 0, wfParts = [];
+  var wf = null, wfRaf = 0, wfParts = [], wfRings = [];
   function betTier(betUsd) { betUsd = betUsd || 0; return betUsd < 50 ? 0 : betUsd < 150 ? 1 : betUsd < 350 ? 2 : 3; }
+
+  // a properly ROUND, shaded gold coin (the square fillRect coin looked blocky)
+  function roundCoin(x, y, r, spin) {
+    var w = Math.max(0.6, r * Math.abs(Math.cos(spin * Math.PI)) + r * 0.18);
+    g.fillStyle = "#8a5e08"; g.beginPath(); g.ellipse(x, y, w, r, 0, 0, 6.2832); g.fill();
+    g.fillStyle = "#ffd34a"; g.beginPath(); g.ellipse(x, y, Math.max(0.4, w - r * 0.22), r * 0.82, 0, 0, 6.2832); g.fill();
+    g.fillStyle = "rgba(255,255,255,0.55)"; g.beginPath(); g.ellipse(x - w * 0.32, y - r * 0.32, Math.max(0.4, w * 0.3), r * 0.24, 0, 0, 6.2832); g.fill();
+    if (w > r * 0.5) { g.fillStyle = "#9a6a06"; g.fillRect(x - Math.max(1, r * 0.08), y - r * 0.42, Math.max(1.5, r * 0.16), r * 0.84); } // Ξ stem
+  }
+  // expanding shockwave ring
+  function wfRing(x, y, col) { if (wfRings.length < 24) wfRings.push({ x: x, y: y, age: 0, col: col || "#fff6c0" }); }
+  function wfStepRings() {
+    for (var i = 0; i < wfRings.length; i++) { var r = wfRings[i]; r.age += 0.04; var rad = r.age * P.h * 0.6;
+      g.save(); g.globalAlpha = Math.max(0, 1 - r.age); g.strokeStyle = r.col; g.lineWidth = Math.max(2, P.h * 0.014 * (1 - r.age));
+      g.beginPath(); g.arc(r.x, r.y, rad, 0, 6.2832); g.stroke(); g.restore();
+    }
+    wfRings = wfRings.filter(function (r) { return r.age < 1; });
+  }
+  // rotating translucent god-rays behind the loot
+  function godRays(x, y, t, n, col) {
+    g.save(); g.translate(x, y); g.rotate(t / 1100); g.globalAlpha = 0.1; g.fillStyle = col || "#fff3b0";
+    for (var i = 0; i < n; i++) { g.rotate(6.2832 / n); g.beginPath(); g.moveTo(0, 0); g.lineTo(P.h, -P.h * 0.05); g.lineTo(P.h, P.h * 0.05); g.closePath(); g.fill(); }
+    g.restore();
+  }
+  // pulsing edge glow ("blink")
+  function vignette(col, a) {
+    var grd = g.createRadialGradient(P.w / 2, P.h * 0.45, P.h * 0.18, P.w / 2, P.h * 0.45, P.h * 0.8);
+    grd.addColorStop(0, "rgba(0,0,0,0)"); grd.addColorStop(1, col);
+    g.save(); g.globalAlpha = a; g.fillStyle = grd; g.fillRect(0, 0, P.w, P.h); g.restore();
+  }
 
   // the loot prop (bottom-center at x,gy). brokenP>0 splits it into halves.
   function drawStake(x, gy, tier, t, brokenP) {
@@ -1380,19 +1410,27 @@
     g.closePath(); g.fill(); g.restore();
   }
   function wfSpawn(kind, n, x, y, rg) {
-    if (wfParts.length > 260) return;
+    if (wfParts.length > 320) return;
     for (var i = 0; i < n; i++) {
-      if (kind === "cam") wfParts.push({ k: "cam", x: x + (rg() - 0.5) * P.w * 0.06, y: y, vx: (rg() - 0.5) * 3, vy: -2 - rg() * 3.4, r: P.h * (0.012 + rg() * 0.012), sp: rg(), life: 1 });
-      else wfParts.push({ k: "pit", x: x + (rg() - 0.5) * P.w * 0.08, y: y, vx: (rg() - 0.5) * 4.5, vy: -3 - rg() * 2.5, r: P.h * (0.01 + rg() * 0.012), sp: rg(), life: 1.4 });
+      // "cam" = fly toward the player (up first, then drift down-out, growing).
+      if (kind === "cam") wfParts.push({ k: "cam", x: x + (rg() - 0.5) * P.w * 0.07, y: y, vx: (rg() - 0.5) * 2.4, vy: -2.2 - rg() * 3.0, r: P.h * (0.013 + rg() * 0.013), sp: rg(), life: 1, trail: [] });
+      // "pit" = shatter then fall into the chasm.
+      else wfParts.push({ k: "pit", x: x + (rg() - 0.5) * P.w * 0.06, y: y, vx: (rg() - 0.5) * 3.2, vy: -3 - rg() * 2.4, r: P.h * (0.011 + rg() * 0.012), sp: rg(), life: 1.5, trail: [] });
     }
   }
   function wfStepParts(gy) {
     for (var i = 0; i < wfParts.length; i++) {
       var p = wfParts[i];
-      if (p.k === "cam") { p.vy += 0.05; p.x += p.vx; p.y += p.vy; p.sp += 0.06; p.life -= 0.012;
-        var sc = 1 + (1 - p.life) * 2.0; g.globalAlpha = Math.max(0, Math.min(1, p.life)); coin(p.x, p.y, p.r * sc, p.sp); g.globalAlpha = 1;
-      } else { p.vy += 0.26; p.x += p.vx; p.y += p.vy; p.sp += 0.09; if (p.y > gy + P.h * 0.02) p.life -= 0.05;
-        g.globalAlpha = Math.max(0, Math.min(1, p.life)); coin(p.x, p.y, p.r, p.sp); g.globalAlpha = 1; }
+      if (p.k === "cam") {
+        p.vy += 0.05; p.vx *= 0.99; p.x += p.vx; p.y += p.vy; p.sp += 0.05; p.life -= 0.009; // slower fade = longer
+        var sc = 1 + (1 - p.life) * 1.7; if (sc > 2.4) sc = 2.4;
+        // sparkle trail
+        g.globalAlpha = Math.max(0, Math.min(1, p.life)) * 0.5; roundCoin(p.x - p.vx * 1.5, p.y - p.vy * 1.5, p.r * sc * 0.7, p.sp);
+        g.globalAlpha = Math.max(0, Math.min(1, p.life)); roundCoin(p.x, p.y, p.r * sc, p.sp); g.globalAlpha = 1;
+      } else {
+        p.vy += 0.26; p.x += p.vx; p.y += p.vy; p.sp += 0.09; if (p.y > gy + P.h * 0.02) p.life -= 0.04;
+        g.globalAlpha = Math.max(0, Math.min(1, p.life)); roundCoin(p.x, p.y, p.r, p.sp); g.globalAlpha = 1;
+      }
     }
     wfParts = wfParts.filter(function (p) { return p.life > 0 && p.y < P.h + 60; });
   }
@@ -1403,8 +1441,10 @@
     g.save(); g.translate(P.w / 2, P.h * 0.115); g.scale(pop, pop); g.textAlign = "center";
     g.font = "700 " + Math.round(P.h * 0.1) + "px 'Press Start 2P', monospace";
     var head = won ? (wf.netUsd >= 300 ? "LEGENDARY!" : "YOU WIN!") : "BUSTED!";
+    // win headline BLINKS between bright colours; loss stays a steady red.
+    var blink = won && (Math.floor(rt / 160) % 2 === 0);
     g.fillStyle = won ? "#0a3" : "#3a1010"; g.fillText(head, 3, 3);
-    g.fillStyle = won ? "#34e39b" : "#ff6a6a"; g.fillText(head, 0, 0);
+    g.fillStyle = won ? (blink ? "#fff6a0" : "#34e39b") : "#ff6a6a"; g.fillText(head, 0, 0);
     g.font = "800 " + Math.round(P.h * 0.135) + "px 'Press Start 2P', monospace";
     var amt = won ? ("+$" + Math.round(wf.netUsd)) : ("−$" + Math.round(wf.betUsd));
     g.fillStyle = won ? "#b25b00" : "#5a1414"; g.fillText(amt, 3, P.h * 0.135 + 3);
@@ -1421,27 +1461,43 @@
   function wfReveal(rt) {
     var gy = worldBg(performance.now() - wf.start, wf.scroll); // frozen scroll = camera settled
     var tier = wf.tier, hs = P.h / 150 * (1 + tier * 0.05), rg = P.rg;
-    var stakeX = P.w * 0.7, heroX = P.w * 0.44;
+    var stakeX = P.w * 0.6;
     if (wf.won) {
-      // WIN — hero faces the PLAYER (flip left); loot launches at the camera.
-      var st = rt < 240 ? "jump" : "idle";
-      if (rt < 150) drawStake(stakeX, gy, tier, rt, 0);
-      heroDraw(rt < 240 ? rt : rt, heroX, gy, hs, st, -1);
-      if (rt > 140 && rt < 172) { wfSpawn("cam", 8 + tier * 9, stakeX, gy - P.h * 0.11, rg); spawnConfetti(10 + tier * 8, rg); }
-      if (tier >= 2 && rt > 280 && rt % 130 < 16) wfSpawn("cam", 5, stakeX, gy - P.h * 0.11, rg);
-      if (tier >= 1 && rt > 220 && rt % 320 < 18) spawnFirework(P.w * (0.28 + rg() * 0.5), P.h * (0.2 + rg() * 0.28), rg);
-      wfStepParts(gy); stepFireworks(); stepConfetti();
-      if (rt < 260) { g.save(); g.globalAlpha = 0.34 * (1 - rt / 260); g.fillStyle = "#ffd24a"; g.fillRect(0, 0, P.w, P.h); g.restore(); }
+      // WIN — the hero LEAPS in from the left and arcs OVER the loot (the "miss"),
+      // lands right and faces the PLAYER; loot flies at camera amid a light show.
+      var JUMP = 640, BURST = 320;
+      var jp = Math.min(1, rt / JUMP);
+      var hx = P.w * 0.3 + jp * P.w * 0.44;                   // 0.30 -> 0.74
+      var arc = Math.sin(jp * Math.PI) * P.h * 0.27;           // leap arc
+      var landed = rt >= JUMP;
+      var lootY = gy - P.h * 0.12;
+      if (rt > BURST) godRays(stakeX, lootY, rt, 14, "#fff0a0"); // rays behind everything
+      if (rt < BURST + 10) drawStake(stakeX, gy, tier, rt, 0);  // intact until he clears it
+      if (rt > BURST && rt < BURST + 36) { wfSpawn("cam", 13 + tier * 10, stakeX, lootY, rg); spawnConfetti(16 + tier * 9, rg); wfRing(stakeX, lootY, "#fff8d0"); wfRing(stakeX, lootY, "#ffd24a"); }
+      heroDraw(landed ? rt - JUMP : rt, hx, gy - arc, hs, landed ? "idle" : "jump", landed ? -1 : 1);
+      if (rt > BURST && rt % 150 < 16) wfSpawn("cam", 4 + tier * 2, stakeX, lootY, rg);                 // steady stream
+      if (rt > BURST && rt % 240 < 18) spawnFirework(P.w * (0.18 + rg() * 0.64), P.h * (0.16 + rg() * 0.3), rg);
+      // twinkle sparkles
+      if (rt > BURST) for (var s = 0; s < 4; s++) { if (Math.sin(rt / 110 + s * 1.7) > 0.4) star(P.w * (0.15 + ((s * 0.41 + rt * 0.0006) % 1) * 0.7), P.h * (0.18 + ((s * 0.57) % 1) * 0.42), P.h * 0.016, "#fff6e0"); }
+      wfStepParts(gy); wfStepRings(); stepFireworks(); stepConfetti();
+      // opening gold flash, then a steady "blink" pulse on the edges
+      if (rt < BURST) { g.save(); g.globalAlpha = 0.18 + 0.18 * Math.abs(Math.sin(rt / 45)); g.fillStyle = "#ffe27a"; g.fillRect(0, 0, P.w, P.h); g.restore(); }
+      else if (rt < BURST + 200) { g.save(); g.globalAlpha = 0.4 * (1 - (rt - BURST) / 200); g.fillStyle = "#fff6c8"; g.fillRect(0, 0, P.w, P.h); g.restore(); }
+      vignette("rgba(255,196,40," + (0.22 + 0.2 * Math.abs(Math.sin(rt / 170))) + ")", 1); // blink glow
     } else {
-      // LOSS — hero faces the money (right), slashes; coins fall into the chasm.
-      var HIT = 230;
-      wfChasm(stakeX, gy, Math.min(1, (rt - HIT) / 320));
+      // LOSS — the hero stands at the loot and CHOPS it; pieces + coins tumble
+      // into a chasm that yawns open beneath the stake. Cold, sharp, downward.
+      var HIT = 260, heroX = stakeX - P.w * 0.15;
+      wfChasm(stakeX, gy, Math.min(1, (rt - HIT) / 360));
       drawStake(stakeX, gy, tier, rt, rt < HIT ? 0 : Math.min(1, (rt - HIT) / 260));
-      heroDraw(rt, heroX, gy, hs, rt < 360 ? "attack" : "idle", 1);
-      if (rt > HIT && rt < HIT + 30) { wfSpawn("pit", 8 + tier * 9, stakeX, gy - P.h * 0.08, rg); shake(6 + tier * 2); }
-      if (rt > HIT && rt < HIT + 12) { g.save(); g.globalAlpha = 0.42; g.fillStyle = "#e6eeff"; g.fillRect(0, 0, P.w, P.h); g.restore(); }
-      wfStepParts(gy);
-      if (rt > HIT) { g.save(); g.globalAlpha = Math.min(0.3, (rt - HIT) / 900); g.fillStyle = "#39406a"; g.fillRect(0, 0, P.w, P.h); g.restore(); }
+      heroDraw(rt, heroX, gy, hs, rt < 440 ? "attack" : "idle", 1);
+      if (rt > HIT && rt < HIT + 32) { wfSpawn("pit", 10 + tier * 9, stakeX, gy - P.h * 0.08, rg); shake(7 + tier * 2); wfRing(stakeX, gy - P.h * 0.05, "#7a86c4"); }
+      if (rt > HIT && rt < HIT + 14) { g.save(); g.globalAlpha = 0.45; g.fillStyle = "#e6eeff"; g.fillRect(0, 0, P.w, P.h); g.restore(); } // cold slash flash
+      // dust rising from the chasm
+      if (rt > HIT && rt % 60 < 30) { g.save(); g.globalAlpha = 0.18; g.fillStyle = "#6a6a7a"; for (var d = 0; d < 4; d++) g.fillRect(stakeX + (rg() - 0.5) * P.w * 0.14, gy - ((rt - HIT) % 400) * 0.3 - d * P.h * 0.03, P.h * 0.02, P.h * 0.02); g.restore(); }
+      wfStepParts(gy); wfStepRings();
+      if (rt > HIT) { g.save(); g.globalAlpha = Math.min(0.32, (rt - HIT) / 800); g.fillStyle = "#2b3158"; g.fillRect(0, 0, P.w, P.h); g.restore(); } // desaturate/cool
+      vignette("rgba(20,16,34,0.4)", 1);
     }
     wfText(wf.won, rt);
   }
@@ -1458,14 +1514,14 @@
     }
     wfRaf = requestAnimationFrame(wfLoop);
   }
-  function wfStop() { if (wfRaf) cancelAnimationFrame(wfRaf); wfRaf = 0; wf = null; wfParts = []; try { window.__winSceneActive = false; } catch (e) {} if (cv) cv.classList.remove("on"); }
+  function wfStop() { if (wfRaf) cancelAnimationFrame(wfRaf); wfRaf = 0; wf = null; wfParts = []; wfRings = []; try { window.__winSceneActive = false; } catch (e) {} if (cv) cv.classList.remove("on"); }
   // Public: begin the build-up loop when a world-theme bet is placed.
   function flipStart(opts) {
     if (activeTheme !== "world") return false;
     if (!cv || !g) init(); if (!cv || !g) return false;
     loadWorld(); size();
     opts = opts || {};
-    P = { w: cv.width, h: cv.height, rg: rnd(Math.floor((opts.betUsd || 25) * 7) + 3), reduce: reduce };
+    P = { w: cv.width, h: cv.height, rg: rnd(Math.floor((opts.betUsd || 25) * 7) + 3), reduce: reduce, shake: reduce ? 0 : 1 };
     wfParts = [];
     wf = { mode: "buildup", start: performance.now(), scroll: 0, tier: betTier(opts.betUsd), won: false, netUsd: 0, betUsd: opts.betUsd || 0 };
     try { window.__winSceneActive = true; } catch (e) {}
@@ -1481,7 +1537,7 @@
     wf.won = !!opts.won; wf.netUsd = Math.max(0, opts.netUsd || 0);
     if (opts.betUsd != null) { wf.betUsd = opts.betUsd; wf.tier = betTier(opts.betUsd); }
     wf.mode = "reveal"; wf.revealStart = performance.now();
-    wf.dur = reduce ? 1100 : (wf.won ? 1700 + wf.tier * 350 : 1400 + wf.tier * 300);
+    wf.dur = reduce ? 1300 : (wf.won ? 3000 + wf.tier * 500 : 2400 + wf.tier * 400);
     try { window.__onTvReveal && window.__onTvReveal(opts); } catch (e) {} // outcome is showing now -> release balance
     return true;
   }
