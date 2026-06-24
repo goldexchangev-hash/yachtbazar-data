@@ -312,6 +312,14 @@ a { color: var(--cyan); text-decoration: none; }
 .chat-input:focus { border-color: #39ff14; box-shadow: 0 0 0 3px rgba(57, 255, 20, 0.15); }
 .chat-card .btn-mini { background: rgba(57, 255, 20, 0.16); color: #aaffc4; font-weight: 700; }
 
+/* ───────────────────── Dropdown (collapsible card section) ───────────────────── */
+.dropdown summary { list-style: none; cursor: pointer; outline: none; }
+.dropdown summary::-webkit-details-marker { display: none; }
+.dd-summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 0; }
+.dropdown[open] .dd-summary { margin-bottom: 12px; }
+.dd-arrow { color: var(--muted); transition: transform 0.2s ease; font-size: 12px; }
+.dropdown[open] .dd-arrow { transform: rotate(180deg); }
+
 /* ───────────────────── Players & rooms ───────────────────── */
 .players-list, .rooms-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; max-height: 260px; overflow-y: auto; }
 .players-list .empty, .rooms-list .empty { color: var(--muted); font-size: 14px; padding: 6px 2px; }

@@ -756,7 +756,9 @@
     $("players-count").textContent = players.length;
     if (!players.length) { ul.innerHTML = '<li class="empty">No one tuned in yet.</li>'; return; }
     ul.innerHTML = "";
-    for (const p of players) {
+    // Only the 5 most recent, newest first — keeps the panel compact.
+    const recent = players.slice(-5).reverse();
+    for (const p of recent) {
       const li = document.createElement("li");
       li.className = "player-item";
       const c = document.createElement("canvas");
