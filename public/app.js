@@ -210,6 +210,17 @@
   // ---------------------------------------------------------- connect
   async function connect() {
     if (!window.ethereum) {
+      const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+      if (isMobile) {
+        // Mobile Safari/Chrome inject no wallet. Bounce into MetaMask's own
+        // in-app browser via its universal link — it reopens THIS page (with the
+        // contract params) inside MetaMask, where window.ethereum exists. If MM
+        // isn't installed, the link lands on MetaMask's install page.
+        const target = location.host + location.pathname + location.search;
+        toast("Opening in the MetaMask app…", "ok");
+        location.href = "https://metamask.app.link/dapp/" + target;
+        return;
+      }
       toast("MetaMask not found — install it to play.", "err");
       window.open("https://metamask.io/download/", "_blank");
       return;
@@ -1605,11 +1616,38 @@
   }
 
   // ---------------------------------------------------------- boot
+  // Public read-only provider so the lobby — players & records, open rooms,
+  // house stats — loads for EVERYONE, even before a wallet is connected and on
+  // mobile browsers that inject no wallet at all. The wallet provider replaces
+  // this the moment you connect (betting still requires connecting).
+  async function setupReadOnly() {
+    if (read || !deployment.address) return;
+    const RO_RPC = {
+      11155111: "https://ethereum-sepolia-rpc.publicnode.com",
+      31337: "http://127.0.0.1:8545",
+    };
+    const chain = deployment.chainId || 11155111;
+    const url = RO_RPC[chain];
+    if (!url) return;
+    try {
+      const ro = new E.JsonRpcProvider(url, chain);
+      ro.pollingInterval = 8000;
+      const code = await ro.getCode(deployment.address);
+      if (!code || code === "0x") return; // nothing deployed there to read
+      provider = ro;
+      read = new E.Contract(deployment.address, ABI, ro);
+      chainOK = true;
+      try { hostTreasury = await read.treasury(); } catch {}
+      refreshStats(); refreshHouse(); refreshRooms(); refreshPlayers();
+    } catch {}
+  }
+
   window.addEventListener("DOMContentLoaded", () => {
     TV.init();
     wireUI();
     syncSoundBtn();
     setupSliders();
+    setupReadOnly();
     // Start the music on the first tap/touch (mobile + desktop block autoplay
     // until a user gesture). Skips if the user has explicitly muted.
     // Fire on the COMPLETED gesture (touchend/click) — iOS won't unlock audio on
