@@ -15,7 +15,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=22" />
+    <link rel="stylesheet" href="styles.css?v=23" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -98,6 +98,7 @@
                 </div>
 
                 <div class="screen-layer hidden" id="layer-result">
+                  <div class="win-banner" id="win-banner"></div>
                   <div class="result-emoji" id="result-emoji">😄</div>
                   <div class="result-headline" id="result-headline">WINNER</div>
                   <div class="result-money" id="result-money"></div>
@@ -212,47 +213,64 @@
 
       <!-- ───────────────── Right: lobby / players ───────────────── -->
       <aside class="sidebar">
-        <!-- Create room -->
-        <div class="card">
-          <h2 class="card-title">Create a room</h2>
-          <p class="muted ph-note">A 1-v-1 flip with a friend. You both wager the <strong>same</strong> amount — set it here, then share your link.</p>
-          <label class="field-label" for="room-name">Room name</label>
-          <input id="room-name" class="input" type="text" maxlength="24" placeholder="High Rollers" />
-          <label class="field-label">Stake each player puts in <span class="muted" id="maxbet-hint">· $10–$500</span></label>
-          <div class="slider-wrap">
-            <input id="bet-input" class="slider" type="range" min="10" max="500" step="5" value="25" />
-            <div class="slider-val"><strong id="bet-input-val">$25</strong><span class="eth-sub" id="bet-input-eth"></span></div>
+        <!-- Trash-talk chat (Matrix terminal) — kept up near the TV -->
+        <div class="card chat-card">
+          <h2 class="card-title">💬 Trash talk <span class="chat-dot">▮</span></h2>
+          <div id="chat-log" class="chat-log">
+            <div class="chat-sys">// connect a wallet to chat · host is green, visitors red</div>
           </div>
-          <p class="muted create-breakdown" id="create-breakdown"></p>
-          <button id="create-room-btn" class="btn btn-primary btn-block">Create & get share link</button>
-          <div id="share-box" class="share-box hidden">
-            <span class="muted">Share this link — unique to your room:</span>
-            <div class="share-row">
-              <input id="share-link" class="input share-input" readonly />
-              <button id="copy-link-btn" class="btn btn-ghost">Copy</button>
-            </div>
+          <div class="chat-input-row">
+            <span class="chat-prompt">&gt;</span>
+            <input id="chat-input" class="chat-input" maxlength="240" placeholder="type a message…" autocomplete="off" />
+            <button id="chat-send" class="btn btn-mini">SEND</button>
           </div>
         </div>
 
-        <!-- Host your own table (be-your-own-house link) -->
+        <!-- Create room (collapsible) -->
         <div class="card">
-          <h2 class="card-title">🏦 Host your own table</h2>
-          <p class="muted ph-note">Share one link — <strong>many players</strong> can flip against <strong>your</strong> bank at once, each for any amount they pick (no wait line). You're the house: you keep <strong>half</strong> the 10% rake (5%), the platform takes the other 5%. Auto-refunds you if idle for 5 minutes.</p>
-          <label class="field-label" for="host-table-name">Table name</label>
-          <input id="host-table-name" class="input" type="text" maxlength="24" placeholder="My Casino" />
-          <label class="field-label">Bank you put up <span class="muted">· $10–$500</span></label>
-          <div class="slider-wrap">
-            <input id="host-bank" class="slider" type="range" min="10" max="500" step="5" value="100" />
-            <div class="slider-val"><strong id="host-bank-val">$100</strong><span class="eth-sub" id="host-bank-eth"></span></div>
-          </div>
-          <button id="create-host-btn" class="btn btn-primary btn-block">Create host game link</button>
-          <div id="host-table-share" class="share-box hidden">
-            <span class="muted">Share this link — players flip against your bank:</span>
-            <div class="share-row">
-              <input id="host-table-link" class="input share-input" readonly />
-              <button id="host-table-copy" class="btn btn-ghost">Copy</button>
+          <details class="dropdown">
+            <summary class="card-title dd-summary"><span>Create a room</span><span class="dd-arrow" aria-hidden="true">▾</span></summary>
+            <p class="muted ph-note">A 1-v-1 flip with a friend. You both wager the <strong>same</strong> amount — set it here, then share your link.</p>
+            <label class="field-label" for="room-name">Room name</label>
+            <input id="room-name" class="input" type="text" maxlength="24" placeholder="High Rollers" />
+            <label class="field-label">Stake each player puts in <span class="muted" id="maxbet-hint">· $10–$500</span></label>
+            <div class="slider-wrap">
+              <input id="bet-input" class="slider" type="range" min="10" max="500" step="5" value="25" />
+              <div class="slider-val"><strong id="bet-input-val">$25</strong><span class="eth-sub" id="bet-input-eth"></span></div>
             </div>
-          </div>
+            <p class="muted create-breakdown" id="create-breakdown"></p>
+            <button id="create-room-btn" class="btn btn-primary btn-block">Create & get share link</button>
+            <div id="share-box" class="share-box hidden">
+              <span class="muted">Share this link — unique to your room:</span>
+              <div class="share-row">
+                <input id="share-link" class="input share-input" readonly />
+                <button id="copy-link-btn" class="btn btn-ghost">Copy</button>
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <!-- Host your own table (collapsible) -->
+        <div class="card">
+          <details class="dropdown">
+            <summary class="card-title dd-summary"><span>🏦 Host your own table</span><span class="dd-arrow" aria-hidden="true">▾</span></summary>
+            <p class="muted ph-note">Share one link — <strong>many players</strong> can flip against <strong>your</strong> bank at once, each for any amount they pick (no wait line). You're the house: you keep <strong>half</strong> the 10% rake (5%), the platform takes the other 5%. Auto-refunds you if idle for 5 minutes.</p>
+            <label class="field-label" for="host-table-name">Table name</label>
+            <input id="host-table-name" class="input" type="text" maxlength="24" placeholder="My Casino" />
+            <label class="field-label">Bank you put up <span class="muted">· $10–$500</span></label>
+            <div class="slider-wrap">
+              <input id="host-bank" class="slider" type="range" min="10" max="500" step="5" value="100" />
+              <div class="slider-val"><strong id="host-bank-val">$100</strong><span class="eth-sub" id="host-bank-eth"></span></div>
+            </div>
+            <button id="create-host-btn" class="btn btn-primary btn-block">Create host game link</button>
+            <div id="host-table-share" class="share-box hidden">
+              <span class="muted">Share this link — players flip against your bank:</span>
+              <div class="share-row">
+                <input id="host-table-link" class="input share-input" readonly />
+                <button id="host-table-copy" class="btn btn-ghost">Copy</button>
+              </div>
+            </div>
+          </details>
         </div>
 
         <!-- Your open tables (manage / close — auto-closes after 5 min idle) -->
@@ -283,24 +301,11 @@
               <span>🧾 Your games <span class="pill" id="my-history-count">0</span> <span id="my-history-net" class="hist-net"></span></span>
               <span class="dd-arrow" aria-hidden="true">▾</span>
             </summary>
-            <p class="muted" style="margin: 2px 0 8px; font-size: 12px;">Net change to your balance per flip — <span style="color:#34e39b">green = won</span>, <span style="color:#ff7a7a">red = lost</span>.</p>
+            <p class="muted" style="margin: 2px 0 8px; font-size: 12px;">Each row = <span style="color:#34e39b">pot won</span> / <span style="color:#ff7a7a">stake lost</span>. The “profit” tag up top is your true bottom line after stakes.</p>
             <ul id="my-history-list" class="hist-list">
               <li class="empty">No games yet — your wins &amp; losses show here.</li>
             </ul>
           </details>
-        </div>
-
-        <!-- Trash-talk chat (Matrix terminal) -->
-        <div class="card chat-card">
-          <h2 class="card-title">💬 Trash talk <span class="chat-dot">▮</span></h2>
-          <div id="chat-log" class="chat-log">
-            <div class="chat-sys">// connect a wallet to chat · host is green, visitors red</div>
-          </div>
-          <div class="chat-input-row">
-            <span class="chat-prompt">&gt;</span>
-            <input id="chat-input" class="chat-input" maxlength="240" placeholder="type a message…" autocomplete="off" />
-            <button id="chat-send" class="btn btn-mini">SEND</button>
-          </div>
         </div>
 
         <!-- Open rooms -->
@@ -397,10 +402,10 @@
     </div>
 
     <script src="vendor/ethers.umd.min.js"></script>
-    <script src="config.js?v=22"></script>
-    <script src="contract.js?v=22"></script>
-    <script src="chiptune.js?v=22"></script>
-    <script src="tv.js?v=22"></script>
-    <script src="app.js?v=22"></script>
+    <script src="config.js?v=23"></script>
+    <script src="contract.js?v=23"></script>
+    <script src="chiptune.js?v=23"></script>
+    <script src="tv.js?v=23"></script>
+    <script src="app.js?v=23"></script>
   </body>
 </html>

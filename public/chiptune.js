@@ -210,6 +210,24 @@
       const t = ctx.currentTime;
       ["G4", "F#4", "F4", "E4"].forEach((n, i) => voice(NOTES[n], t + i * 0.14, 0.22, "triangle", master, 0.34));
     },
+    // Big win ($100+ pot): a brighter rising arpeggio.
+    bigwin() {
+      if (!this._sfx()) return;
+      const t = ctx.currentTime;
+      ["C5", "E5", "G5", "C6", "E6", "G6"].forEach((n, i) => voice(NOTES[n], t + i * 0.08, 0.2, "square", master, 0.32));
+      voice(NOTES["C6"], t + 0.55, 0.3, "triangle", master, 0.24);
+    },
+    // Jackpot ($500+ pot): a long rising run + a triple sparkle on top.
+    jackpot() {
+      if (!this._sfx()) return;
+      const t = ctx.currentTime;
+      const run = ["C5", "E5", "G5", "A5", "C6", "D6", "E6", "G6"];
+      run.forEach((n, i) => voice(NOTES[n], t + i * 0.07, 0.18, "square", master, 0.32));
+      [0, 0.22, 0.44].forEach((d) => {
+        voice(NOTES["E6"], t + 0.62 + d, 0.12, "triangle", master, 0.22);
+        voice(NOTES["G6"], t + 0.68 + d, 0.16, "square", master, 0.24);
+      });
+    },
   };
 
   window.Chiptune = Chiptune;

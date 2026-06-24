@@ -77,6 +77,20 @@
   const usdToWei = (d) => E.parseEther((Math.max(0, +d) / ethUsd).toFixed(8));
   const usdOf = (wei) => usd(weiToUsd(wei)); // "$xx.xx" from wei
 
+  // Reveal numbers for a flip. We show the POT WON (the full payout that lands in
+  // your balance = pot − 10% house), not just the net profit, so a $50 bet win
+  // reads "+$90" not "+$40". A loss shows the stake you lost. `tier` escalates the
+  // celebration by total pot size: big ($100+) and mega ($500+).
+  function flipReveal(betWei, won) {
+    const pot = betWei * 2n;
+    const payout = pot - pot / 10n; // pot minus the 10% house cut
+    const amountWei = won ? payout : betWei; // pot won / stake lost
+    const netWei = won ? payout - betWei : -betWei; // true balance change (for the running total)
+    const potUsd = weiToUsd(pot);
+    const tier = won ? (potUsd >= 500 ? "mega" : potUsd >= 100 ? "big" : "normal") : "normal";
+    return { amountUsd: weiToUsd(amountWei), amountWei, netWei, tier, potUsd };
+  }
+
   // Auto-size the gas LIMIT to the actual transaction (eth_estimateGas + 30%),
   // falling back to a safe fixed value if the flaky public RPC errors on the
   // estimate. The gas PRICE is set live by MetaMask from current network rates.
@@ -691,17 +705,16 @@
       const ev = rcpt.logs.map((l) => safeParse(l)).find((p) => p && p.name === "HostFlip");
       const playerWon = ev ? ev.args.playerWon : predicted;
       const betAmt = ev ? ev.args.betAmount : bet;
-      const pot = betAmt * 2n;
-      const payout = pot - pot / 10n;
-      const deltaWei = playerWon ? payout - betAmt : betAmt;
+      const rv = flipReveal(betAmt, playerWon);
       TV.revealResult({
         side: playerWon ? "HEADS" : "TAILS",
         youWon: playerWon,
         role: "participant",
-        amountUsd: weiToUsd(deltaWei),
-        sub: playerWon ? "You beat the table — paid from their bank" : "The table won — your stake went to the host",
+        amountUsd: rv.amountUsd,
+        tier: rv.tier,
+        sub: playerWon ? "POT WON! Paid from the table's bank (10% to host)" : "You lost your stake — it went to the host",
       });
-      addHostGame({ label: "Host table", won: playerWon, delta: deltaWei.toString(), ts: Math.floor(Date.now() / 1000), tx: rcpt.hash });
+      addHostGame({ label: "Host table", won: playerWon, amount: rv.amountWei.toString(), net: rv.netWei.toString(), ts: Math.floor(Date.now() / 1000), tx: rcpt.hash });
       refreshBalances(); refreshTableInfo(); refreshPlayers(); refreshMyHistory();
     } catch (e) {
       TV.idle("Deposit ETH, then create or join a room");
@@ -911,17 +924,14 @@
         lastRevealed = activeRoomId;
         const side = r.headsWon ? "HEADS" : "TAILS";
         const youWon = eq(r.winner, account);
-        // Net change to your in-game balance from this flip: win = pot − 10% fee
-        // − your stake (your profit); loss = your whole stake.
-        const pot = r.betAmount * 2n;
-        const payout = pot - pot / 10n;
-        const deltaWei = youWon ? payout - r.betAmount : r.betAmount;
+        const rv = flipReveal(r.betAmount, youWon);
         TV.revealResult({
           side,
           youWon,
           role: "participant",
-          amountUsd: weiToUsd(deltaWei),
-          sub: youWon ? "Net win after the 10% house cut — added to your balance" : "Your stake went to the winner",
+          amountUsd: rv.amountUsd,
+          tier: rv.tier,
+          sub: youWon ? "POT WON! Your stake back + winnings (10% to house)" : "You lost your stake — the pot went to the other side",
         });
         activeRoomId = null;
         refreshBalances(); refreshHouse(); refreshStats(); refreshRooms(); refreshPlayers(); refreshMyHistory();
@@ -1212,7 +1222,7 @@
   // appended live), cached in localStorage so they survive a reload.
   let hostHistory = [];               // [{label, won, delta(str wei), ts, tx}]
   const seenHostTx = new Set();
-  function hostHistKey() { return "coinflip_hosthist_" + (deployment.address || "") + "_" + (account || ""); }
+  function hostHistKey() { return "coinflip_hosthist_v2_" + (deployment.address || "") + "_" + (account || ""); }
   function loadHostHistory() {
     hostHistory = []; seenHostTx.clear();
     try {
@@ -1242,11 +1252,12 @@
       for (const e of evs) {
         const a = e.args;
         const pot = a.betAmount * 2n;
-        const delta = a.playerWon ? pot - pot / 10n - a.betAmount : a.betAmount;
+        const payout = pot - pot / 10n;
         addHostGame({
           label: "Host table",
           won: a.playerWon,
-          delta: delta.toString(),
+          amount: (a.playerWon ? payout : a.betAmount).toString(), // pot won / stake lost
+          net: (a.playerWon ? payout - a.betAmount : -a.betAmount).toString(), // true change
           ts: baseTs - (latest - e.blockNumber) * 12, // ~12s/block on Sepolia
           tx: e.transactionHash,
         });
@@ -1266,10 +1277,12 @@
         if (!isPlayer) continue;
         const won = eq(r.winner, account);
         const pot = r.betAmount * 2n;
-        const delta = won ? pot - pot / 10n - r.betAmount : r.betAmount;
-        games.push({ label: r.isHouseGame ? "vs House" : "PvP #" + r.id.toString(), won, delta, ts: Number(r.settledAt) });
+        const payout = pot - pot / 10n;
+        const amount = won ? payout : r.betAmount;       // pot won / stake lost (gross)
+        const net = won ? payout - r.betAmount : -r.betAmount; // true balance change
+        games.push({ label: r.isHouseGame ? "vs House" : "PvP #" + r.id.toString(), won, amount, net, ts: Number(r.settledAt) });
       }
-      for (const h of hostHistory) games.push({ label: h.label, won: h.won, delta: BigInt(h.delta), ts: h.ts });
+      for (const h of hostHistory) games.push({ label: h.label, won: h.won, amount: BigInt(h.amount), net: BigInt(h.net), ts: h.ts });
       games.sort((a, b) => b.ts - a.ts); // newest first
       renderMyHistory(games);
     } catch {}
@@ -1285,12 +1298,12 @@
       list.innerHTML = '<li class="empty">No games yet — your wins &amp; losses show here.</li>';
       return;
     }
-    // running net P&L across all shown games
+    // running true profit across all shown games (after your stakes)
     let net = 0n;
-    for (const g of games) net += g.won ? g.delta : -g.delta;
+    for (const g of games) net += g.net;
     if (netEl) {
       const up = net >= 0n;
-      netEl.textContent = "net " + (up ? "+" : "−") + usdOf(up ? net : -net);
+      netEl.textContent = "profit " + (up ? "+" : "−") + usdOf(up ? net : -net);
       netEl.className = "hist-net " + (up ? "up" : "down");
     }
     list.innerHTML = "";
@@ -1299,10 +1312,10 @@
       li.className = "hist-item " + (g.won ? "won" : "lost");
       const label = document.createElement("span");
       label.className = "hist-label";
-      label.textContent = g.label + " · " + (g.won ? "won" : "lost");
+      label.textContent = g.label + " · " + (g.won ? "pot won" : "lost");
       const amt = document.createElement("span");
       amt.className = "hist-amt " + (g.won ? "up" : "down");
-      amt.textContent = (g.won ? "+" : "−") + usdOf(g.delta);
+      amt.textContent = (g.won ? "+" : "−") + usdOf(g.amount); // gross: pot won / stake lost
       li.appendChild(label);
       li.appendChild(amt);
       list.appendChild(li);

@@ -50,6 +50,8 @@
       this.resultMoney = $("result-money");
       this.resultSub = $("result-sub");
       this.resultCoin = $("result-coin");
+      this.winBanner = $("win-banner");
+      this.screenEl = $("tv-screen");
       this.channelNum = $("tv-channel-num");
 
       this.staticCanvas = $("static-canvas");
@@ -214,10 +216,14 @@
       await sleep(720);
       if (seq !== this._seq) return;
 
-      // Result screen (per-viewer).
+      // Result screen (per-viewer). Clear any prior celebration state.
       const layer = this.layers.result;
-      layer.classList.remove("win", "lose");
+      layer.classList.remove("win", "lose", "tier-big", "tier-mega");
+      this._clearCelebration();
       this._setStatic(0.04);
+
+      // Excitement tier escalates with total pot size (only on a win you're in).
+      const tier = res.youWon ? (res.tier === "mega" ? "mega" : res.tier === "big" ? "big" : "normal") : "normal";
 
       if (res.role === "spectator" || res.youWon === undefined) {
         layer.classList.add("win");
@@ -226,8 +232,8 @@
         this.resultSub.textContent = res.sub || "";
       } else if (res.youWon) {
         layer.classList.add("win");
-        this.resultEmoji.textContent = "😄";
-        this.resultHeadline.textContent = "YOU WIN!";
+        this.resultEmoji.textContent = tier === "mega" ? "🤑" : tier === "big" ? "🥳" : "😄";
+        this.resultHeadline.textContent = tier === "mega" ? "JACKPOT!" : tier === "big" ? "BIG WIN!" : "YOU WIN!";
         this.resultSub.textContent = res.sub || "Pot is yours";
       } else {
         layer.classList.add("lose");
@@ -240,11 +246,49 @@
       this._show("result");
 
       if (layer.classList.contains("win")) {
-        this._burstConfetti();
-        if (window.Chiptune) window.Chiptune.win();
+        this._celebrate(layer, tier);
       } else if (window.Chiptune) {
         window.Chiptune.lose();
       }
+    },
+
+    // Escalating win celebration: normal → big ($100+ pot) → mega ($500+ pot).
+    _celebrate(layer, tier) {
+      // Banner
+      if (this.winBanner) {
+        if (tier === "normal") {
+          this.winBanner.className = "win-banner";
+          this.winBanner.textContent = "";
+        } else {
+          this.winBanner.textContent = tier === "mega" ? "🎰 JACKPOT 🎰" : "💰 BIG WIN 💰";
+          this.winBanner.className = "win-banner show " + tier;
+          this.winBanner.style.animation = "none"; void this.winBanner.offsetWidth; this.winBanner.style.animation = "";
+        }
+      }
+      // Strobe / glow background on the result layer
+      if (tier === "big") layer.classList.add("tier-big");
+      if (tier === "mega") layer.classList.add("tier-mega");
+      // Screen shake
+      if (this.screenEl) {
+        this.screenEl.classList.remove("quake", "quake-hard");
+        void this.screenEl.offsetWidth;
+        if (tier === "big") this.screenEl.classList.add("quake");
+        if (tier === "mega") this.screenEl.classList.add("quake-hard");
+      }
+      // Confetti + sound, scaled to the tier
+      this._burstConfetti(tier);
+      const C = window.Chiptune;
+      if (C) {
+        if (tier === "mega" && C.jackpot) C.jackpot();
+        else if (tier === "big" && C.bigwin) C.bigwin();
+        else C.win();
+      }
+    },
+
+    _clearCelebration() {
+      if (this.winBanner) { this.winBanner.className = "win-banner"; this.winBanner.textContent = ""; }
+      if (this.screenEl) this.screenEl.classList.remove("quake", "quake-hard");
+      if (this.layers && this.layers.result) this.layers.result.classList.remove("tier-big", "tier-mega");
     },
 
     // Casino-style count-up: rises from $0 to the amount won (green +) or lost
@@ -301,23 +345,43 @@
       this._confettiRAF = null;
       if (this.cctx) this.cctx.clearRect(0, 0, this.confetti.width, this.confetti.height);
     },
-    _burstConfetti() {
+    _burstConfetti(tier) {
       this._sizeCanvases();
       const ctx = this.cctx;
       const W = this.confetti.width;
       const H = this.confetti.height;
-      const colors = ["#39e7ff", "#ff4d9d", "#ffd23f", "#45f0a6", "#ffffff"];
-      const N = 90;
+      const palettes = {
+        normal: ["#39e7ff", "#ff4d9d", "#ffd23f", "#45f0a6", "#ffffff"],
+        big: ["#ffd23f", "#ffae00", "#fff2b0", "#ffffff", "#45f0a6"],
+        mega: ["#ff4d9d", "#39e7ff", "#ffd23f", "#45f0a6", "#b14dff", "#ff7a3d", "#ffffff"],
+      };
+      const colors = palettes[tier] || palettes.normal;
+      const N = tier === "mega" ? 320 : tier === "big" ? 180 : 90;
+      const spread = tier === "mega" ? 15 : tier === "big" ? 11 : 9;
       const parts = [];
       for (let i = 0; i < N; i++) {
         parts.push({
-          x: W / 2 + (Math.random() - 0.5) * 40,
+          x: W / 2 + (Math.random() - 0.5) * 50,
           y: H / 2,
-          vx: (Math.random() - 0.5) * 9,
-          vy: -Math.random() * 9 - 3,
+          vx: (Math.random() - 0.5) * spread,
+          vy: -Math.random() * 10 - 3,
           s: 4 + Math.floor(Math.random() * 5), // chunky pixel squares
           c: colors[(Math.random() * colors.length) | 0],
-          life: 70 + Math.floor(Math.random() * 40),
+          life: 80 + Math.floor(Math.random() * 50),
+          coin: false,
+        });
+      }
+      // Falling gold coins rain down from the top for big/mega wins.
+      const coins = tier === "mega" ? 30 : tier === "big" ? 12 : 0;
+      for (let i = 0; i < coins; i++) {
+        parts.push({
+          x: Math.random() * W,
+          y: -20 - Math.random() * H,
+          vx: (Math.random() - 0.5) * 1.5,
+          vy: 2 + Math.random() * 3,
+          s: 16 + Math.floor(Math.random() * 12),
+          coin: true,
+          life: 220,
         });
       }
       const seq = this._seq;
@@ -328,12 +392,18 @@
         for (const p of parts) {
           if (p.life <= 0) continue;
           alive = true;
-          p.vy += 0.35; // gravity
+          p.vy += p.coin ? 0.08 : 0.35; // coins drift, confetti falls faster
           p.x += p.vx;
           p.y += p.vy;
           p.life--;
-          ctx.fillStyle = p.c;
-          ctx.fillRect(p.x | 0, p.y | 0, p.s, p.s);
+          if (p.coin) {
+            ctx.font = p.s + "px serif";
+            ctx.fillText("🪙", p.x | 0, p.y | 0);
+            if (p.y > H + 24) p.life = 0;
+          } else {
+            ctx.fillStyle = p.c;
+            ctx.fillRect(p.x | 0, p.y | 0, p.s, p.s);
+          }
         }
         if (alive) this._confettiRAF = requestAnimationFrame(step);
         else ctx.clearRect(0, 0, W, H);
