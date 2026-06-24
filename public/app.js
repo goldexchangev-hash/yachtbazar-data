@@ -557,11 +557,11 @@
 
   // Sliders run in USD ($10–$500); the ETH amount is computed from the live price.
   function setupSliders() {
-    for (const id of ["house-bet", "bet-input"]) {
+    for (const id of ["house-bet", "bet-input", "deposit-input"]) {
       const s = $(id);
       if (!s) continue;
       s.min = "10"; s.max = "500"; s.step = "5";
-      if (+s.value < 10) s.value = "25";
+      if (+s.value < 10) s.value = id === "deposit-input" ? "50" : "25";
       setSliderUsd(id);
     }
   }
@@ -1004,6 +1004,7 @@
     // House + create-room stake sliders (USD)
     $("house-bet").oninput = () => setSliderUsd("house-bet");
     $("bet-input").oninput = () => setSliderUsd("bet-input");
+    $("deposit-input").oninput = () => setSliderUsd("deposit-input");
     // Join raise slider (USD): at/near the host's bet use the exact amount, else convert
     $("join-bet").oninput = (e) => {
       const u = +e.target.value;

@@ -15,7 +15,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=15" />
+    <link rel="stylesheet" href="styles.css?v=16" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -135,9 +135,14 @@
             </div>
           </div>
           <div class="bankroll-actions">
-            <input id="deposit-input" class="input" type="number" min="0" step="1" placeholder="Amount in $ (e.g. 50)" />
-            <button id="deposit-btn" class="btn btn-primary">Deposit</button>
-            <button id="withdraw-btn" class="btn btn-ghost">Withdraw all</button>
+            <div class="slider-wrap deposit-slider">
+              <input id="deposit-input" class="slider" type="range" min="10" max="500" step="5" value="50" />
+              <div class="slider-val"><strong id="deposit-input-val">$50</strong><span class="eth-sub" id="deposit-input-eth"></span></div>
+            </div>
+            <div class="bankroll-btns">
+              <button id="deposit-btn" class="btn btn-primary">Deposit</button>
+              <button id="withdraw-btn" class="btn btn-ghost">Withdraw all</button>
+            </div>
           </div>
         </div>
 
@@ -333,10 +338,10 @@
     </div>
 
     <script src="vendor/ethers.umd.min.js"></script>
-    <script src="config.js?v=15"></script>
-    <script src="contract.js?v=15"></script>
-    <script src="chiptune.js?v=15"></script>
-    <script src="tv.js?v=15"></script>
-    <script src="app.js?v=15"></script>
+    <script src="config.js?v=16"></script>
+    <script src="contract.js?v=16"></script>
+    <script src="chiptune.js?v=16"></script>
+    <script src="tv.js?v=16"></script>
+    <script src="app.js?v=16"></script>
   </body>
 </html>
