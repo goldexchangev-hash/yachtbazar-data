@@ -232,7 +232,9 @@
       try { ownerAddr = await read.owner(); } catch {}
 
       await startGameUI();
-      if (eq(account, ownerAddr)) $("host-tools").hidden = false;
+      // Show Host tools to the contract owner OR the locked house wallet — so the
+      // house can always reach "Start a fresh game" even on a game someone else deployed.
+      if (eq(account, ownerAddr) || eq(account, ART.defaultTreasury)) $("host-tools").hidden = false;
       if (inviteRoomId) handleInvite();
       if (inviteHostId) loadHostTable(inviteHostId);
     } catch (err) {
