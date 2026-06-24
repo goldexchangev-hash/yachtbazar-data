@@ -21,7 +21,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=54" />
+    <link rel="stylesheet" href="styles.css?v=55" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -35,7 +35,7 @@
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v5.4</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v5.5</span>
       </div>
       <div class="topbar-right">
         <button id="sound-btn" class="btn btn-ghost" title="Play / silence background music">🔇 Music</button>
@@ -390,6 +390,20 @@
           </details>
         </div>
 
+        <!-- HIGH SCORES leaderboard (derived from recent on-chain results) -->
+        <div class="card">
+          <details class="dropdown" open>
+            <summary class="card-title dd-summary">
+              <span>🏆 High scores</span>
+              <span class="dd-arrow" aria-hidden="true">▾</span>
+            </summary>
+            <p class="muted" style="margin: 2px 0 8px; font-size: 12px;">Ranked by net record (wins − losses) from recent games.</p>
+            <ul id="leaderboard-list" class="leaderboard-list">
+              <li class="empty">No games yet — top the board first!</li>
+            </ul>
+          </details>
+        </div>
+
         <!-- Your money in/out per game (clearer than MetaMask's contract activity) -->
         <div class="card">
           <details class="dropdown" open>
@@ -501,10 +515,10 @@
     </div>
 
     <script defer src="vendor/ethers.umd.min.js"></script>
-    <script defer src="config.js?v=54"></script>
-    <script defer src="contract.js?v=54"></script>
-    <script defer src="chiptune.js?v=54"></script>
-    <script defer src="tv.js?v=54"></script>
-    <script defer src="app.js?v=54"></script>
+    <script defer src="config.js?v=55"></script>
+    <script defer src="contract.js?v=55"></script>
+    <script defer src="chiptune.js?v=55"></script>
+    <script defer src="tv.js?v=55"></script>
+    <script defer src="app.js?v=55"></script>
   </body>
 </html>

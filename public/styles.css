@@ -75,6 +75,21 @@ a { color: var(--cyan); text-decoration: none; }
 .brand-live i { width: 8px; height: 8px; border-radius: 50%; background: var(--red); box-shadow: 0 0 10px var(--red); animation: blink 1.2s steps(2) infinite; }
 .build-tag { font-family: var(--display); font-size: 11px; font-weight: 700; letter-spacing: 0.5px; color: var(--cyan); border: 1px solid rgba(57, 231, 255, 0.35); background: rgba(57, 231, 255, 0.08); border-radius: 999px; padding: 3px 8px; }
 .testnet-chip { font-family: var(--display); font-size: 10px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase; color: #ffd56b; border: 1px solid rgba(255, 200, 60, 0.45); background: rgba(255, 200, 60, 0.10); border-radius: 999px; padding: 3px 8px; white-space: nowrap; }
+/* on-chain verify link on each game row */
+.hist-verify { font-size: 10px; color: var(--cyan); text-decoration: none; opacity: 0.75; white-space: nowrap; }
+.hist-verify:hover { opacity: 1; text-decoration: underline; }
+/* HIGH SCORES leaderboard */
+.leaderboard-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.leaderboard-list .empty { color: var(--muted); font-size: 13px; padding: 6px 2px; }
+.lb-item { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 8px; background: rgba(255, 255, 255, 0.03); font-size: 13px; }
+.lb-item.me { background: rgba(57, 231, 255, 0.10); border: 1px solid rgba(57, 231, 255, 0.3); }
+.lb-rank { width: 22px; text-align: center; font-weight: 700; }
+.lb-who { flex: 1; font-family: ui-monospace, monospace; color: #e8ecff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lb-rec { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.lb-net { font-weight: 700; min-width: 30px; text-align: right; }
+.lb-net.up { color: var(--green); }
+.lb-net.down { color: var(--red); }
+.lb-streak { font-size: 12px; }
 /* Keyboard focus ring (mouse clicks stay clean via :focus-visible) */
 :focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; border-radius: 4px; }
 @keyframes blink { 50% { opacity: 0.25; } }

@@ -210,6 +210,8 @@
     11155111: { chainId: "0xaa36a7", chainName: "Sepolia", rpcUrls: ["https://rpc.sepolia.org"], nativeCurrency: { name: "Sepolia Ether", symbol: "ETH", decimals: 18 }, blockExplorerUrls: ["https://sepolia.etherscan.io"] },
   };
   function explorerFor(chainId) { return chainId === 11155111 ? "https://sepolia.etherscan.io/address/" : null; }
+  function explorerTx(hash) { const b = explorerFor(deployment.chainId); return b && hash ? b.replace("/address/", "/tx/") + hash : null; }
+  function explorerContract() { const b = explorerFor(deployment.chainId); return b && deployment.address ? b + deployment.address : null; }
   function netName(chainId) { return chainId === 31337 ? "Local" : chainId === 11155111 ? "Sepolia" : "Connected"; }
 
   // ---------------------------------------------------------- connect
@@ -1384,6 +1386,33 @@
       } catch (e) { /* keep last-known roster */ }
     }
     renderRoster();
+    renderLeaderboard();
+  }
+
+  // HIGH SCORES — rank recent participants by net record (wins − losses).
+  function renderLeaderboard() {
+    const list = $("leaderboard-list");
+    if (!list) return;
+    const rows = Object.entries(playerStats)
+      .map(([addr, s]) => ({ addr, w: s.w, l: s.l, net: s.w - s.l, best: winStreaks(s.recent).best, games: s.w + s.l }))
+      .filter((r) => r.games > 0)
+      .sort((a, b) => b.net - a.net || b.w - a.w || b.best - a.best)
+      .slice(0, 8);
+    if (!rows.length) { list.innerHTML = '<li class="empty">No games yet — top the board first!</li>'; return; }
+    list.innerHTML = "";
+    rows.forEach((r, i) => {
+      const mine = account && eq(account, r.addr);
+      const li = document.createElement("li");
+      li.className = "lb-item" + (mine ? " me" : "");
+      const rank = ["🥇", "🥈", "🥉"][i] || (i + 1) + ".";
+      li.innerHTML =
+        `<span class="lb-rank">${rank}</span>` +
+        `<span class="lb-who">${mine ? "you" : short(r.addr)}</span>` +
+        `<span class="lb-rec">${r.w}W–${r.l}L</span>` +
+        `<span class="lb-net ${r.net >= 0 ? "up" : "down"}">${r.net >= 0 ? "+" : ""}${r.net}</span>` +
+        (r.best >= 2 ? `<span class="lb-streak" title="Best win streak">🔥${r.best}</span>` : "");
+      list.appendChild(li);
+    });
   }
 
   // Merge: you (always), any live-server presence, then on-chain participants.
@@ -1567,6 +1596,15 @@
       const label = document.createElement("span");
       label.className = "hist-label";
       label.textContent = g.label + " · " + (g.won ? "pot won" : "lost");
+      // Verifiable on-chain: link the settlement tx (host games) or the
+      // contract's on-chain activity (room games) on Etherscan.
+      const href = explorerTx(g.tx) || explorerContract();
+      if (href) {
+        const v = document.createElement("a");
+        v.className = "hist-verify"; v.href = href; v.target = "_blank"; v.rel = "noopener";
+        v.textContent = " verify ↗"; v.title = "See this result settled on-chain (Etherscan)";
+        label.appendChild(v);
+      }
       const amt = document.createElement("span");
       amt.className = "hist-amt " + (g.won ? "up" : "down");
       amt.textContent = (g.won ? "+" : "−") + usdOf(g.amount); // gross: pot won / stake lost
