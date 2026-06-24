@@ -189,6 +189,10 @@
       this._setStatic(0.06);
       this._show("flip");
       this.coin.classList.remove("show-heads", "show-tails");
+      // Pick a random pixel-coin skin each flip for variety.
+      const SKINS = ["coin--gold", "coin--emerald", "coin--cyber", "coin--magma", "coin--royal", "coin--silver"];
+      this.coin.classList.remove(...SKINS);
+      this.coin.classList.add(SKINS[Math.floor(Math.random() * SKINS.length)]);
       this.coin.classList.add("spin");
       this._spinReadyAt = now() + 1500; // guarantee at least 1.5s of spin
 

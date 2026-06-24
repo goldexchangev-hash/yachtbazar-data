@@ -7,7 +7,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
-    <title>📺 TV Crypto Flip — provably-fair ETH coin flip</title>
+    <title>📺 Crypto TV Flip — provably-fair ETH coin flip</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -15,7 +15,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=40" />
+    <link rel="stylesheet" href="styles.css?v=41" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -26,9 +26,9 @@
     <header class="topbar">
       <div class="brand">
         <span class="brand-tv">📺</span>
-        <span class="brand-name">TV<span class="brand-accent"> CRYPTO</span> FLIP</span>
+        <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v4.0</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v4.1</span>
       </div>
       <div class="topbar-right">
         <button id="sound-btn" class="btn btn-ghost" title="Play / silence background music">🔇 Music</button>
@@ -75,7 +75,7 @@
                 <!-- Screen content layers (one shown at a time) -->
                 <div class="screen-layer" id="layer-idle">
                   <div class="idle-logo">📺</div>
-                  <div class="idle-title">TV CRYPTO FLIP</div>
+                  <div class="idle-title">CRYPTO TV FLIP</div>
                   <div class="idle-sub" id="idle-sub">Connect your wallet to tune in</div>
                 </div>
 
@@ -223,9 +223,13 @@
             <button type="button" class="hs-tab" data-period="all">All</button>
           </div>
           <div class="hs-hero">
-            <span class="muted" id="hs-period-label">Profit · last 24h</span>
+            <span class="muted" id="hs-period-label">Grand total · last 24h</span>
             <strong id="hs-profit-today" class="hs-big">+$0</strong>
             <span class="muted hs-sub" id="hs-profit-sub">0 games · $0 wagered</span>
+          </div>
+          <div class="hs-grid" style="margin-bottom: 8px;">
+            <div class="hs-cell"><span class="muted">Fees / rake (period)</span><strong id="hs-period-fees">+$0</strong></div>
+            <div class="hs-cell"><span class="muted">Won at table (period)</span><strong id="hs-period-table">+$0</strong></div>
           </div>
           <div class="hs-grid">
             <div class="hs-cell"><span class="muted">Fees all-time</span><strong id="hs-fees-total">$0</strong></div>
@@ -241,7 +245,7 @@
             <button id="cashout-amount-btn" class="btn btn-ghost">💸 Cash out</button>
           </div>
           <button id="cashout-house-btn" class="btn btn-ghost btn-block" style="margin-top: 6px;">Cash out everything to my wallet</button>
-          <p class="muted" style="font-size: 11px; margin-top: 8px;">Profit = the 10% rake (your real edge) — it’s never affected by deposits, withdrawals, or cash-outs. The bankroll swings up &amp; down with each flip (variance), and “House funds total” reflects that. Cash-out releases the contract funds to your real MetaMask wallet (empties the house until you fund it again). “Today” counts from when you first opened the dashboard today. Only your house wallet can see this.</p>
+          <p class="muted" style="font-size: 11px; margin-top: 8px;"><strong>Grand total</strong> = fees/rake <strong>+</strong> what you won (or lost) at the table, for the chosen period — computed from real game results, so deposits, withdrawals, and cash-outs never distort it. Both the rake and your table winnings now flow straight into the house bankroll. “House funds total” is the live pool plus any in-game balance. Cash-out releases the contract funds to your real MetaMask wallet (empties the house until you fund it again). Only your house wallet can see this.</p>
         </div>
 
         <!-- In-browser hosting: deploy the game contract with one click -->
@@ -403,7 +407,7 @@
     <div id="help-modal" class="modal hidden">
       <div class="modal-card">
         <button id="help-close" class="modal-close">✕</button>
-        <h2>📺 How to play TV Crypto Flip</h2>
+        <h2>📺 How to play Crypto TV Flip</h2>
         <ol class="help-steps">
           <li><b>Install MetaMask</b> (browser extension or app) and create a wallet.</li>
           <li><b>Switch to the test network.</b> Click <i>Connect Wallet</i> — the site
@@ -469,10 +473,10 @@
     </div>
 
     <script src="vendor/ethers.umd.min.js"></script>
-    <script src="config.js?v=40"></script>
-    <script src="contract.js?v=40"></script>
-    <script src="chiptune.js?v=40"></script>
-    <script src="tv.js?v=40"></script>
-    <script src="app.js?v=40"></script>
+    <script src="config.js?v=41"></script>
+    <script src="contract.js?v=41"></script>
+    <script src="chiptune.js?v=41"></script>
+    <script src="tv.js?v=41"></script>
+    <script src="app.js?v=41"></script>
   </body>
 </html>

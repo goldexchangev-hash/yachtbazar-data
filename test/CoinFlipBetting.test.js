@@ -55,7 +55,9 @@ describe("CoinFlipBetting (prevrandao, no oracle)", function () {
     const loser = res.winner === alice.address ? bob.address : alice.address;
     expect(await game.balances(res.winner)).to.equal(payout);
     expect(await game.balances(loser)).to.equal(0n);
-    expect(await game.balances(treasury.address)).to.equal(fee);
+    // the 10% rake now flows into the house bankroll, not the treasury balance
+    expect(await game.balances(treasury.address)).to.equal(0n);
+    expect(await game.houseBankroll()).to.equal(fee);
     // conservation: winnings + fee == both stakes
     expect(payout + fee).to.equal(pot);
     expect((await game.getRoom(1)).status).to.equal(2); // Settled
@@ -74,7 +76,7 @@ describe("CoinFlipBetting (prevrandao, no oracle)", function () {
     expect(res.winner === bob.address).to.equal(res.headsWon);
   });
 
-  it("vs house: fee to treasury, bankroll moves correctly either way", async function () {
+  it("vs house: rake into bankroll, bankroll moves correctly either way", async function () {
     const { game, deployer, treasury, alice } = await deployFixture();
     const bet = ethers.parseEther("0.01");
     await game.connect(deployer).fundHouse({ value: ethers.parseEther("1") });
@@ -84,18 +86,19 @@ describe("CoinFlipBetting (prevrandao, no oracle)", function () {
     const pot = bet * 2n;
     const fee = (pot * 1000n) / 10000n;
     const payout = pot - fee;
-    expect(await game.balances(treasury.address)).to.equal(fee);
+    // rake goes to the bankroll now, so the treasury balance stays empty
+    expect(await game.balances(treasury.address)).to.equal(0n);
 
     if (res.headsWon) {
-      // player (alice) won
+      // player (alice) won — bankroll = funded − matched stake + rake
       expect(res.winner).to.equal(alice.address);
       expect(await game.balances(alice.address)).to.equal(payout);
-      expect(await game.houseBankroll()).to.equal(ethers.parseEther("1") - bet);
+      expect(await game.houseBankroll()).to.equal(ethers.parseEther("1") - bet + fee);
     } else {
-      // house won
+      // house won — bankroll also reclaims the payout
       expect(res.winner).to.equal(treasury.address);
       expect(await game.balances(alice.address)).to.equal(0n);
-      expect(await game.houseBankroll()).to.equal(ethers.parseEther("1") - bet + payout);
+      expect(await game.houseBankroll()).to.equal(ethers.parseEther("1") - bet + fee + payout);
     }
   });
 
@@ -187,9 +190,11 @@ describe("CoinFlipBetting (prevrandao, no oracle)", function () {
     expect(args.fee).to.equal(fee);
     expect(args.player).to.equal(bob.address);
 
-    // the 10% rake is split 50/50: half to the platform (treasury), half to the host
+    // the 10% rake is split 50/50: the platform half flows into the house bankroll,
+    // the host half stays in the host creator's balance
     const platformCut = fee / 2n, hostCut = fee - platformCut;
-    expect(await game.balances(treasury.address)).to.equal(platformCut);
+    expect(await game.balances(treasury.address)).to.equal(0n);
+    expect(await game.houseBankroll()).to.equal(platformCut);
     expect(await game.balances(alice.address)).to.equal(hostCut);
     const hr = await game.getHostRoom(1);
     if (args.playerWon) {

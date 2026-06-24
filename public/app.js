@@ -285,14 +285,12 @@
     chainOK = Number(net2.chainId) === want;
   }
 
-  // Common UI bring-up once a contract is connected.
-  // Private host dashboard — only the house (treasury) wallet sees it. Profit per
-  // period (24h / week / month / year / all) is the rake earned, computed from a
-  // rolling daily snapshot ledger in localStorage + the contract's exact totals.
+  // Private host dashboard — only the house (treasury) wallet sees it. Profit for
+  // the selected period is summed straight from on-chain game results, so it shows
+  // the real winnings AND is never skewed by deposits/withdrawals/cash-outs.
   let hostPeriod = "today";
-  function hostLedgerKey() { return "coinflip_hostledger_" + (deployment.address || ""); }
-  function loadHostLedger() { try { return JSON.parse(localStorage.getItem(hostLedgerKey()) || "[]"); } catch { return []; } }
-  function saveHostLedger(l) { try { localStorage.setItem(hostLedgerKey(), JSON.stringify(l.slice(-500))); } catch {} }
+  const HS_PERIOD_SEC = { today: 86400, week: 604800, month: 2592000, year: 31536000, all: 0 };
+  const HS_PERIOD_LABEL = { today: "last 24h", week: "this week", month: "this month", year: "this year", all: "all-time (recent)" };
 
   async function refreshHostPanel() {
     const card = $("host-stats-card");
@@ -301,43 +299,37 @@
     card.classList.toggle("hidden", !isHost);
     if (!isHost || !read || !chainOK) return;
     try {
-      const [fees, games, wagered, bankroll, bal] = await Promise.all([
+      const [fees, games, wagered, bankroll, bal, rooms] = await Promise.all([
         read.totalFeesCollected(), read.totalGamesPlayed(), read.totalWagered(),
-        read.houseBankroll(), read.balances(account),
+        read.houseBankroll(), read.balances(account), read.getRecentRooms(150),
       ]);
       const gamesN = Number(games);
       const holdings = bankroll + bal; // ALL the house's money in the contract
       const nowSec = Math.floor(Date.now() / 1000);
-      const todayStr = new Date().toISOString().slice(0, 10);
+      const periodSec = HS_PERIOD_SEC[hostPeriod] ?? 86400;
 
-      // one snapshot per calendar day (captured at first load that day)
-      const ledger = loadHostLedger();
-      if (!ledger.length || ledger[ledger.length - 1].day !== todayStr) {
-        ledger.push({ day: todayStr, t: nowSec, f: fees.toString(), g: gamesN, v: wagered.toString() });
-        saveHostLedger(ledger);
+      // Sum the house's results over the period from settled games:
+      //  rake  = 10% of every pot (credited to your balance, all game types)
+      //  table = vs-house gamble: win +0.8·bet, loss −bet (bankroll swing)
+      let pFees = 0n, pTable = 0n, pGames = 0, pWagered = 0n;
+      for (const r of rooms) {
+        if (Number(r.status) !== 2) continue; // settled only
+        if (periodSec && Number(r.settledAt) < nowSec - periodSec) continue;
+        const bet = r.betAmount;
+        pFees += (bet * 2n) / 10n;
+        if (r.isHouseGame) pTable += eq(r.winner, hostTreasury) ? (bet * 8n) / 10n : -bet;
+        pGames += 1;
+        pWagered += bet * 2n;
       }
+      const pGrand = pFees + pTable;
 
-      // pick the baseline for the selected period
-      let bf = 0n, bg = 0, bv = 0n, label = "all-time", note = "";
-      if (hostPeriod === "all") {
-        // baseline 0 → exact lifetime rake
-      } else if (hostPeriod === "today") {
-        const e = ledger.find((x) => x.day === todayStr) || ledger[ledger.length - 1];
-        bf = BigInt(e.f); bg = e.g; bv = BigInt(e.v); label = "last 24h";
-      } else {
-        const days = { week: 7, month: 30, year: 365 }[hostPeriod] || 7;
-        const cutoff = nowSec - days * 86400;
-        let base = null;
-        for (const e of ledger) if (e.t <= cutoff) base = e;
-        if (!base) { base = ledger[0]; note = " · since first tracked"; }
-        bf = BigInt(base.f); bg = base.g; bv = BigInt(base.v);
-        label = { week: "this week", month: "this month", year: "this year" }[hostPeriod];
-      }
-      const pFees = fees - bf, pGames = gamesN - bg, pWagered = wagered - bv;
-
-      $("hs-period-label").textContent = "Profit · " + label + note;
-      $("hs-profit-today").textContent = "+" + usdOf(pFees);
+      $("hs-period-label").textContent = "Grand total · " + (HS_PERIOD_LABEL[hostPeriod] || "last 24h");
+      const pe = $("hs-profit-today");
+      pe.textContent = signedUsd(pGrand);
+      pe.style.color = pGrand < 0n ? "#ff7a7a" : "#34e39b";
       $("hs-profit-sub").textContent = pGames + " game" + (pGames === 1 ? "" : "s") + " · " + usdOf(pWagered) + " wagered";
+      $("hs-period-fees").textContent = signedUsd(pFees);
+      $("hs-period-table").textContent = signedUsd(pTable);
       $("hs-fees-total").textContent = usdOf(fees);
       $("hs-games-total").textContent = games.toString();
       $("hs-volume-total").textContent = usdOf(wagered);

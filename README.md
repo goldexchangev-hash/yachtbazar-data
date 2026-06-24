@@ -1,4 +1,4 @@
-# 📺 TV Crypto Flip
+# 📺 Crypto TV Flip
 
 A two-player (and vs-house) **ETH coin-flip** game with a retro **16-bit /
 SNES-on-a-CRT-TV** look. On-chain randomness with **no oracle, no subscription,

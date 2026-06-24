@@ -1,5 +1,5 @@
 /**
- * TV Crypto Flip — local game server.
+ * Crypto TV Flip — local game server.
  *
  *  - Serves the static frontend in ../public
  *  - Runs a WebSocket hub that tracks the "active players" (connected wallets)
@@ -127,7 +127,7 @@ function lanAddresses() {
 
 server.listen(PORT, HOST, () => {
   const line = "─".repeat(54);
-  console.log(`\n📺  TV Crypto Flip is live!\n${line}`);
+  console.log(`\n📺  Crypto TV Flip is live!\n${line}`);
   console.log(`  Local:    http://localhost:${PORT}`);
   for (const ip of lanAddresses()) {
     console.log(`  Network:  http://${ip}:${PORT}     ← share this on your wifi`);

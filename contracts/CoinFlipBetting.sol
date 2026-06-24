@@ -361,8 +361,9 @@ contract CoinFlipBetting {
         uint256 fee = (pot * HOUSE_FEE_BPS) / BPS_DENOMINATOR;
         uint256 payout = pot - fee;
 
-        // The 10% fee always goes to the treasury (the host's account).
-        balances[treasury] += fee;
+        // The 10% rake flows back into the house bankroll (the pool players
+        // bet against), not the host's separate in-game balance.
+        houseBankroll += fee;
 
         if (room.isHouseGame && !creatorWon) {
             houseBankroll += payout; // house won — refill bankroll
@@ -442,7 +443,7 @@ contract CoinFlipBetting {
         // original wallet), half to the table creator hosting this game — so the
         // platform always takes ~5% of the pot and the host keeps ~5%.
         uint256 platformCut = fee / 2;
-        balances[treasury] += platformCut;
+        houseBankroll += platformCut; // the platform's 5% flows into the house pool
         balances[hr.creator] += fee - platformCut;
         totalFeesCollected += platformCut;
 

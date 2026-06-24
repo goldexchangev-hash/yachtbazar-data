@@ -77,7 +77,7 @@ process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
 (async () => {
-  console.log("\x1b[35m📺 TV Crypto Flip — starting everything…\x1b[0m\n");
+  console.log("\x1b[35m📺 Crypto TV Flip — starting everything…\x1b[0m\n");
 
   console.log("→ starting local blockchain…");
   const node = run(NPX, ["hardhat", "node"]);
