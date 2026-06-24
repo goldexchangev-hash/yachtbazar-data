@@ -1279,7 +1279,7 @@
       }
       const t = document.createElement("span");
       t.className = "ptally";
-      t.textContent = st.w + "–" + st.l;
+      t.textContent = st.w + "W–" + st.l + "L";
       wrap.appendChild(t);
       // win-streak record (🔥). Highlight if they're riding it right now.
       const { best, cur } = winStreaks(st.recent);
