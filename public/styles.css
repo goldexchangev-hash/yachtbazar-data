@@ -252,7 +252,7 @@ kbd { font-family: ui-monospace, monospace; font-size: 11px; background: rgba(25
 .coin-tails { background: radial-gradient(circle at 35% 30%, #d6e4ff, #9fb6e8 55%, #6f86bd); color: #1f2b4d; transform: rotateX(180deg); }
 .flip-caption { position: absolute; bottom: 16px; font-family: var(--display); color: #fff; letter-spacing: 2px; font-size: 14px; opacity: 0.9; }
 /* "please wait" banner while a bet tx is signing/mining (esp. mobile) */
-.tv-pending { position: absolute; left: 0; right: 0; bottom: 40px; z-index: 8; text-align: center; padding: 0 14px;
+.tv-pending { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); z-index: 8; text-align: center; padding: 0 14px;
   font-family: "Press Start 2P", var(--display); font-size: clamp(7px, 1.7vw, 10px); line-height: 1.8;
   color: #ffe9a8; text-shadow: 2px 2px 0 #000; animation: tvPendBlink 1.1s steps(2, end) infinite; }
 @keyframes tvPendBlink { 50% { opacity: 0.4; } }
