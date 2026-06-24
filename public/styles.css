@@ -553,75 +553,191 @@ a { color: var(--cyan); text-decoration: none; }
 .scoreboard .p .addr { color: #fff; text-shadow: 2px 2px 0 #000; white-space: nowrap; }
 .scoreboard .vs { color: var(--gold); text-shadow: 2px 2px 0 #000; }
 
-/* ─────────── Pixel coin: round, chunky stamped-metal rim, skinnable ───────────
-   JS adds a coin--* class each flip to swap the metal for variety. Default
-   (no class) is the gold Ξ. The look is built from HARD-STOP radial bands +
-   a stepped inset-shadow rim, so it reads as a retro 16-bit minted coin. */
-.coin {
-  --c-hi: #fff6c0; --c-mid: #ffcf3f; --c-lo: #8a5c00; --c-ink: #4a3500;
-  --c-glow: rgba(255, 200, 60, 0.6);
-  /* fat voxel glow halo + grounding shadow */
-  filter:
-    drop-shadow(0 8px 10px rgba(0, 0, 0, 0.5))
-    drop-shadow(0 0 16px var(--c-glow))
-    drop-shadow(0 0 36px var(--c-glow));
-}
-.coin.coin--emerald { --c-hi:#d6ffe9; --c-mid:#2ee08c; --c-lo:#06633a; --c-ink:#01331f; --c-glow:rgba(46,224,140,0.55); }
-.coin.coin--cyber   { --c-hi:#e3fbff; --c-mid:#38d6ff; --c-lo:#0a4d66; --c-ink:#042a3a; --c-glow:rgba(56,214,255,0.55); }
-.coin.coin--magma   { --c-hi:#ffe6c2; --c-mid:#ff9b2f; --c-lo:#7a3a00; --c-ink:#4a2400; --c-glow:rgba(255,155,47,0.55); }
-.coin.coin--royal   { --c-hi:#f0e3ff; --c-mid:#b06bff; --c-lo:#3d1b6e; --c-ink:#25103f; --c-glow:rgba(176,107,255,0.55); }
-.coin.coin--silver  { --c-hi:#ffffff; --c-mid:#c7d2e0; --c-lo:#4a5568; --c-ink:#1f2733; --c-glow:rgba(199,210,224,0.5); }
+/* ───────────────────── COIN — neon arcade gold (smooth · round · glowing · glossy) ─────────────────────
+   Drop-in replacement for the old voxel coin. Perfectly round (border-radius:50%, NO clip-path,
+   NO pixelation). Rich layered 24k gold that pops on a dark CRT, polished metallic rim + masked
+   reeded edge, a traveling specular sweep, a warm pulsing halo, and a punchy white-gold rim-flash
+   on landing. Gold only — all color skins dropped.
+   Keeps every JS hook: .coin / .coin-face / .coin-heads / .coin-tails / .eth-logo + .e1..e6 /
+   .spin / .show-heads / .show-tails / coinSpin / show-heads / show-tails.
+   NOTE: layout (size, perspective, transform-style, transition, the coinSpin/show transforms)
+   is left to the existing JS-driven CSS — this block restyles the coin's *appearance* only. */
 
-/* Voxel/blocky outline: a stair-stepped "pixel circle" instead of a smooth ring. */
+.coin {
+  /* tunable gold + glow palette */
+  --g-light:  #fff6c2;   /* hot highlight       */
+  --g-bright: #ffe066;   /* vivid arcade gold   */
+  --g-mid:    #ffc41f;   /* core gold           */
+  --g-deep:   #e69500;   /* amber               */
+  --g-bronze: #a35a00;   /* shadowed rim        */
+  --g-edge:   #7a3d00;   /* deepest rim         */
+  --g-ink:    #5a3800;   /* engraving ink       */
+  --g-glow:      rgba(255, 196, 31, 0.75);
+  --g-glow-soft: rgba(255, 168, 0, 0.45);
+
+  will-change: transform, filter;
+  /* warm halo + grounding shadow; halo gently pulses while idle */
+  filter:
+    drop-shadow(0 14px 20px rgba(0, 0, 0, 0.6))
+    drop-shadow(0 0 14px var(--g-glow-soft))
+    drop-shadow(0 0 30px var(--g-glow-soft));
+  animation: coinHalo 2.4s ease-in-out infinite;
+}
+
+/* idle warm halo breathing */
+@keyframes coinHalo {
+  0%, 100% { filter: drop-shadow(0 14px 20px rgba(0,0,0,0.6)) drop-shadow(0 0 12px var(--g-glow-soft)) drop-shadow(0 0 26px var(--g-glow-soft)); }
+  50%      { filter: drop-shadow(0 14px 20px rgba(0,0,0,0.6)) drop-shadow(0 0 18px var(--g-glow))      drop-shadow(0 0 40px var(--g-glow)); }
+}
+
+/* While spinning: swap the slow idle halo for a brighter, faster glow shimmer.
+   (coinSpin itself is provided by the existing CSS/JS; we add a second glow track.) */
+.coin.spin { animation: coinSpin 0.45s linear infinite, coinSpinGlow 0.45s ease-in-out infinite; }
+@keyframes coinSpinGlow {
+  0%, 100% { filter: drop-shadow(0 14px 20px rgba(0,0,0,0.6)) drop-shadow(0 0 16px var(--g-glow))           drop-shadow(0 0 34px var(--g-glow-soft)); }
+  50%      { filter: drop-shadow(0 14px 20px rgba(0,0,0,0.6)) drop-shadow(0 0 26px rgba(255,255,255,0.25))  drop-shadow(0 0 52px var(--g-glow)); }
+}
+
+/* COOLER LANDING: on .show-heads / .show-tails the glow blooms white-gold then settles.
+   (The show-heads/show-tails *transforms* stay as defined in the existing CSS.) */
+.coin.show-heads,
+.coin.show-tails { animation: coinLandFlash 0.7s ease-out; }
+@keyframes coinLandFlash {
+  0%   { filter: drop-shadow(0 14px 20px rgba(0,0,0,0.6)) drop-shadow(0 0 14px var(--g-glow-soft)); }
+  18%  { filter: drop-shadow(0 14px 20px rgba(0,0,0,0.6)) drop-shadow(0 0 40px #ffffff) drop-shadow(0 0 72px var(--g-glow)) brightness(1.12); }
+  100% { filter: drop-shadow(0 14px 20px rgba(0,0,0,0.6)) drop-shadow(0 0 16px var(--g-glow-soft)) drop-shadow(0 0 32px var(--g-glow-soft)) brightness(1); }
+}
+
+/* ── Round metallic faces ──────────────────────────────────────────────── */
 .coin-face {
-  overflow: hidden; image-rendering: pixelated; color: var(--c-ink);
-  text-shadow: 0 2px 0 rgba(255,255,255,0.4), 0 -2px 0 rgba(0,0,0,0.28);
-  clip-path: polygon(
-    30% 0%, 70% 0%, 70% 10%, 80% 10%, 80% 20%, 90% 20%, 90% 30%,
-    100% 30%, 100% 70%, 90% 70%, 90% 80%, 80% 80%, 80% 90%, 70% 90%, 70% 100%,
-    30% 100%, 30% 90%, 20% 90%, 20% 80%, 10% 80%, 10% 70%,
-    0% 70%, 0% 30%, 10% 30%, 10% 20%, 20% 20%, 20% 10%, 30% 10%
-  );
+  border-radius: 50%;
+  overflow: hidden;
+  color: var(--g-ink);
+  text-shadow: 0 1px 0 rgba(255, 246, 194, 0.55), 0 -1px 1px rgba(90, 40, 0, 0.4);
+  /* layered gold: hot top-left highlight falling into deep amber/bronze rim */
   background:
-    radial-gradient(circle at 50% 50%,
-      var(--c-hi) 0 10%,
-      var(--c-mid) 10% 56%,
-      var(--c-lo) 56% 66%,
-      var(--c-mid) 66% 82%,
-      var(--c-lo) 82% 100%) !important;
-  /* chunky rim + HARD (0-blur) offset bevels = voxel depth (light TL, dark BR) */
+    radial-gradient(circle at 34% 28%,
+      var(--g-light)  0%,
+      var(--g-bright) 22%,
+      var(--g-mid)    46%,
+      var(--g-deep)   72%,
+      var(--g-bronze) 100%);
+  /* polished rim ring + two-axis satin inner sheen — no chunky voxel bevels */
   box-shadow:
-    inset 0 0 0 7px var(--c-lo),
-    inset 0 0 0 13px var(--c-mid),
-    inset 9px 9px 0 rgba(255,255,255,0.20),
-    inset -10px -10px 0 rgba(0,0,0,0.26);
+    inset 0 0 0 4px rgba(255, 246, 194, 0.45),   /* bright inner lip     */
+    inset 0 0 0 8px var(--g-edge),               /* solid dark rim band  */
+    inset 0 10px 18px rgba(255, 255, 255, 0.45), /* top inner gloss      */
+    inset 0 -14px 22px rgba(122, 61, 0, 0.55),   /* bottom inner shade   */
+    inset 8px 8px 16px rgba(255, 250, 220, 0.22),/* soft TL gloss        */
+    inset -8px -8px 18px rgba(80, 48, 4, 0.42),  /* soft BR depth        */
+    inset 0 0 28px rgba(255, 200, 60, 0.35);     /* warm inner glow      */
 }
-/* Bold blocky Ethereum diamond stamped on the heads face. */
+
+/* Reeded / fluted collector-coin edge: repeating conic ticks masked to a thin outer ring.
+   Brightens while spinning for a believable metallic shimmer. */
+.coin-face::before {
+  content: ""; position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+  background:
+    /* electric-gold rim light */
+    conic-gradient(from 220deg,
+      transparent 0deg, rgba(255, 246, 194, 0.55) 28deg, transparent 70deg,
+      transparent 180deg, rgba(255, 224, 102, 0.50) 215deg, transparent 260deg),
+    /* fine reeding */
+    repeating-conic-gradient(from 0deg,
+      rgba(255, 246, 200, 0.40) 0deg 1.6deg,
+      rgba(110, 68, 6, 0.40) 1.6deg 3.2deg);
+  -webkit-mask: radial-gradient(circle, transparent 0 88%, #000 90% 96.5%, transparent 98%);
+          mask: radial-gradient(circle, transparent 0 88%, #000 90% 96.5%, transparent 98%);
+  mix-blend-mode: screen; opacity: 0.85;
+  transition: filter 0.25s ease, opacity 0.25s ease;
+}
+.coin.spin .coin-face::before { opacity: 1; filter: brightness(1.35); }
+
+/* Glossy specular sweep that travels across the face (GPU-cheap translateX),
+   racing while spinning. */
+.coin-face::after {
+  content: ""; position: absolute; inset: -25%; pointer-events: none; border-radius: 50%;
+  background: linear-gradient(115deg,
+    transparent 38%,
+    rgba(255, 255, 255, 0.0) 44%,
+    rgba(255, 255, 255, 0.85) 50%,
+    rgba(255, 255, 255, 0.0) 56%,
+    transparent 62%);
+  transform: translateX(-120%);
+  mix-blend-mode: screen;
+  animation: coinSheen 3.4s ease-in-out infinite;
+}
+.coin.spin .coin-face::after { animation-duration: 0.9s; }
+@keyframes coinSheen {
+  0%   { transform: translateX(-120%); }
+  55%  { transform: translateX(120%); }
+  100% { transform: translateX(120%); }
+}
+
+/* Crisp white-gold rim-flash on landing — a sharp "stamp" pop layered over the bloom. */
+.coin.show-heads .coin-face::before,
+.coin.show-tails .coin-face::before { animation: coinRimFlash 0.7s ease-out; }
+@keyframes coinRimFlash {
+  0%   { opacity: 0.85; filter: brightness(1); }
+  22%  { opacity: 1;    filter: brightness(2.4) saturate(1.35); }
+  100% { opacity: 0.85; filter: brightness(1); }
+}
+
+.coin-face small {
+  font-family: var(--display, "Press Start 2P", monospace);
+  font-size: 11px; letter-spacing: 1px; margin-top: 4px;
+  color: var(--g-ink);
+  text-shadow: 0 1px 0 rgba(255, 246, 194, 0.6), 0 -1px 0 rgba(90, 40, 0, 0.3);
+}
+
+/* HEADS keeps the default gold; TAILS is a slightly deeper, warmer gold reverse. */
+.coin-tails {
+  transform: rotateX(180deg);            /* keep back face */
+  filter: brightness(0.97) saturate(1.05);
+  color: var(--g-edge);
+  font-size: clamp(40px, 11vw, 84px);
+  font-weight: 800; line-height: 1;
+  text-shadow:
+    0 2px 1px rgba(255, 246, 194, 0.55),
+    0 -1px 1px rgba(90, 40, 0, 0.6),
+    0 0 14px rgba(255, 200, 80, 0.4);    /* the ★ embossed + softly glowing */
+}
+
+/* ── Ethereum diamond on heads: smooth, gently embossed darker-gold facets ── */
 .coin-face .eth-logo {
-  width: 52%; height: auto; display: block; margin-bottom: 4px; shape-rendering: crispEdges;
-  filter: drop-shadow(0 2px 0 rgba(255,255,255,0.55)) drop-shadow(0 -2px 0 rgba(0,0,0,0.4)) drop-shadow(3px 3px 0 rgba(0,0,0,0.25));
+  width: 50%; height: auto; display: block; position: relative; z-index: 1;
+  margin-bottom: 2px;
+  shape-rendering: geometricPrecision;   /* no crispEdges */
+  filter:
+    drop-shadow(0 1px 0 rgba(255, 246, 194, 0.6))   /* top light edge  */
+    drop-shadow(0 -1px 1px rgba(90, 40, 0, 0.5));   /* under shadow    */
 }
-.eth-logo polygon { stroke: rgba(0,0,0,0.28); stroke-width: 4; stroke-linejoin: miter; }
-.eth-logo .e2, .eth-logo .e4 { fill: rgba(0,0,0,0.5); }    /* dark left faces  */
-.eth-logo .e1, .eth-logo .e3 { fill: rgba(0,0,0,0.3); }    /* mid right faces  */
-.eth-logo .e5, .eth-logo .e6 { fill: rgba(255,255,255,0.4); } /* bright inner faces */
+.eth-logo polygon { stroke: rgba(122, 61, 0, 0.45); stroke-width: 2; stroke-linejoin: round; }
+/* facet shading in deeper gold — lit upper faces lighter, lower faces darker */
+.eth-logo .e1 { fill: #cf8a12; }   /* upper-right        */
+.eth-logo .e2 { fill: #e8a52a; }   /* upper-left (lit)   */
+.eth-logo .e3 { fill: #a86600; }   /* lower-right        */
+.eth-logo .e4 { fill: #b87400; }   /* lower-left         */
+.eth-logo .e5 { fill: #8f5400; }   /* inner-right (shade)*/
+.eth-logo .e6 { fill: #a96400; }   /* inner-left         */
+
+/* ── Accessibility: no infinite pulse / sheen / spin-glow / land-flash ── */
+@media (prefers-reduced-motion: reduce) {
+  .coin { animation: none; }
+  .coin.spin { animation: coinSpin 0.6s linear infinite; }
+  .coin-face::after,
+  .coin.spin .coin-face::after { animation: none; transform: translateX(0); opacity: 0.35; }
+  .coin-face::before,
+  .coin.spin .coin-face::before { animation: none; }
+  .coin.show-heads, .coin.show-tails,
+  .coin.show-heads .coin-face::before, .coin.show-tails .coin-face::before { animation: none; }
+}
 
 /* Mini ETH diamond used inline on the "Heads" side-toggle buttons */
 .eth-mini { width: 0.92em; height: 0.92em; vertical-align: -0.15em; }
 .eth-mini polygon { fill: currentColor; opacity: 0.7; }
 .eth-mini polygon.b { opacity: 1; }
 
-/* tails reads as the "reverse" of the same minted coin */
-.coin-tails { filter: hue-rotate(18deg) brightness(0.94) saturate(0.85); }
-.coin-face small { font-family: "Press Start 2P", monospace; font-size: 9px; color: var(--c-ink); text-shadow: 0 1px 0 rgba(255,255,255,0.4); }
-/* glinting shine that sweeps across while the coin is spinning */
-.coin-face::after {
-  content: ""; position: absolute; inset: 0; pointer-events: none;
-  background: linear-gradient(115deg, transparent 36%, rgba(255,255,255,0.6) 47%, transparent 58%);
-  background-size: 240% 240%; background-position: 130% 130%; mix-blend-mode: screen; opacity: 0; transition: opacity 0.2s;
-}
-.coin.spin .coin-face::after { opacity: 1; animation: coinShine 1.1s linear infinite; }
-@keyframes coinShine { from { background-position: 130% 130%; } to { background-position: -30% -30%; } }
 
 /* Pixel "BONUS" sparkle stars layer for wins handled on confetti-canvas */
 
