@@ -838,18 +838,22 @@
   function videoReveal(won) {
     const v = $("reveal-video"); if (!v) return false;
     const list = won ? CINE.win : CINE.loss;
-    if (!list.length) return false;
+    if (!list || !list.length) return false;
     const src = list[Math.floor(Math.random() * list.length)];
-    const done = () => { clearTimeout(cineTimer); v.onended = null; v.classList.remove("show"); try { v.pause(); } catch {} v.removeAttribute("src"); try { v.load(); } catch {} try { window.__winSceneActive = false; } catch {} };
+    const done = () => { clearTimeout(cineTimer); v.onended = null; v.onerror = null; v.classList.remove("show"); try { v.pause(); } catch {} v.removeAttribute("src"); try { v.load(); } catch {} try { window.__winSceneActive = false; } catch {} };
     clearTimeout(cineTimer);
-    v.muted = true; v.src = src; v.currentTime = 0;
-    v.classList.add("show");
-    try { window.__winSceneActive = true; } catch {}     // pause the TV static behind it
+    v.muted = true; v.defaultMuted = true; v.setAttribute("muted", ""); v.setAttribute("playsinline", "");
+    v.classList.add("show");                              // show BEFORE anything that could throw
+    try { window.__winSceneActive = true; } catch {}      // pause the TV static behind it
     try { window.__onTvReveal && window.__onTvReveal({}); } catch {} // outcome is on screen now
     v.onended = done;
-    cineTimer = setTimeout(done, 9000);                  // safety: never get stuck on the reel
-    const p = v.play();
-    if (p && p.catch) p.catch(() => done());             // if playback is blocked, fall back to the TV result
+    v.onerror = done;                                     // 404 / decode error -> reveal the TV result underneath
+    v.src = src;                                          // setting src (re)loads; it starts at 0 on its own
+    try { v.load(); } catch {}
+    cineTimer = setTimeout(done, 9500);                   // safety: never get stuck on the reel
+    const go = () => { const p = v.play(); if (p && p.catch) p.catch(() => {}); }; // keep showing even if autoplay nudges back
+    if (v.readyState >= 2) go(); else v.oncanplay = () => { v.oncanplay = null; go(); };
+    go();
     return true;
   }
   function flipBuildup(betWei) { try { window.WinScenes && WinScenes.flipStart && WinScenes.flipStart({ betUsd: weiToUsd(betWei) }); } catch (e) {} }
