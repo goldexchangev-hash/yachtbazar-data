@@ -717,8 +717,17 @@
     const v = parseFloat($("fund-house-input").value);
     if (!(v > 0)) return toast("Enter a $ amount to fund the house", "err");
     try {
-      toast("Funding the house… confirm in MetaMask");
       const value = usdToWei(v);
+      // Funding spends REAL wallet ETH (not your in-game balance). Guard against
+      // asking for more than the wallet holds so MetaMask doesn't flag/fail it.
+      let wbal = walletWei;
+      try { wbal = await provider.getBalance(account); walletWei = wbal; } catch {}
+      const reserve = depositReserveWei(); // keep a little ETH for gas
+      if (value + reserve > wbal) {
+        const haveUsd = usd(weiToUsd(wbal > reserve ? wbal - reserve : 0n));
+        return toast("Your wallet only has " + usd(weiToUsd(wbal)) + " — you can fund up to about " + haveUsd + ". Top up Sepolia ETH for more.", "err");
+      }
+      toast("Funding the house… confirm in MetaMask");
       const tx = await contract.fundHouse({ value, gasLimit: await estGas("fundHouse", [], { value }, 150_000n) });
       await tx.wait();
       toast("House funded with " + usd(v), "ok");
