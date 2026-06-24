@@ -165,7 +165,11 @@ a { color: var(--cyan); text-decoration: none; }
 .idle-logo { font-size: clamp(40px, 9vw, 72px); filter: drop-shadow(0 0 16px rgba(57, 231, 255, 0.5)); animation: floaty 3s ease-in-out infinite; }
 @keyframes floaty { 50% { transform: translateY(-8px); } }
 .idle-title { font-family: var(--display); font-size: clamp(20px, 4.5vw, 34px); color: #fff; text-shadow: 0 0 18px rgba(57, 231, 255, 0.6); }
-.idle-sub { color: var(--cyan); font-weight: 600; }
+.idle-sub { color: #cdfaff; font-weight: 700; text-shadow: 0 0 6px rgba(57, 231, 255, 0.95), 0 0 16px rgba(57, 231, 255, 0.7), 0 1px 2px rgba(0, 0, 0, 0.6); animation: idleGlow 2.2s ease-in-out infinite; }
+@keyframes idleGlow {
+  0%, 100% { text-shadow: 0 0 5px rgba(57, 231, 255, 0.75), 0 0 12px rgba(57, 231, 255, 0.45), 0 1px 2px rgba(0, 0, 0, 0.6); }
+  50% { text-shadow: 0 0 11px rgba(57, 231, 255, 1), 0 0 26px rgba(57, 231, 255, 0.85), 0 1px 2px rgba(0, 0, 0, 0.6); }
+}
 
 /* Waiting / standby (static) */
 .standby-badge { position: absolute; top: 12px; left: 14px; font-size: 12px; font-weight: 700; letter-spacing: 1px; color: var(--red); text-shadow: 0 0 8px rgba(255, 91, 91, 0.8); }
@@ -478,6 +482,6 @@ a { color: var(--cyan); text-decoration: none; }
   .wallet-chip #wallet-addr { max-width: 96px; overflow: hidden; text-overflow: ellipsis; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .bg-glow, .scanlines, .idle-logo, .tuning-text, .waiting-dots span, .coin.spin, .chat-dot { animation: none !important; }
+  .bg-glow, .scanlines, .idle-logo, .tuning-text, .waiting-dots span, .coin.spin, .chat-dot, .idle-sub { animation: none !important; }
   .coin { transition: none !important; }
 }
