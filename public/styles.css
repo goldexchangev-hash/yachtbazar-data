@@ -250,6 +250,8 @@ a { color: var(--cyan); text-decoration: none; }
 .ph-bankroll { font-size: 12px; white-space: nowrap; }
 .ph-bankroll strong { color: var(--gold); }
 .ph-note { font-size: 12px; margin: 8px 0 10px; }
+.host-tools .ht-body { display: flex; flex-direction: column; gap: 8px; padding-top: 6px; }
+.host-tools .ht-fund { margin: 0; }
 
 /* ───────────────────── Forms ───────────────────── */
 .input {

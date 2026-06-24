@@ -15,7 +15,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=11" />
+    <link rel="stylesheet" href="styles.css?v=12" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -153,6 +153,22 @@
             <div class="slider-val"><strong id="house-bet-val">$25</strong><span class="eth-sub" id="house-bet-eth"></span></div>
           </div>
           <button id="play-house-btn" class="btn btn-primary btn-block">🪙 Flip vs House</button>
+        </div>
+
+        <!-- Host tools (owner only): adjust limits, fund house, redeploy -->
+        <div class="card host-tools" id="host-tools" hidden>
+          <details class="dropdown">
+            <summary class="card-title dd-summary"><span>⚙️ Host tools</span><span class="dd-arrow" aria-hidden="true">▾</span></summary>
+            <div class="ht-body">
+              <button id="raise-max-btn" class="btn btn-ghost btn-block">⬆️ Raise max bet (allow up to $500)</button>
+              <div class="bankroll-actions ht-fund">
+                <input id="fund-house-input" class="input" type="number" min="0" step="1" placeholder="Fund house $ (e.g. 200)" />
+                <button id="fund-house-btn" class="btn btn-ghost">Fund house</button>
+              </div>
+              <button id="new-game-btn" class="btn btn-ghost btn-block">🔄 Start a fresh game (redeploy)</button>
+              <p class="muted ph-note">Only you (the host) can do these. "Fresh game" deploys a new contract — withdraw your balance first if you want it back.</p>
+            </div>
+          </details>
         </div>
 
         <!-- In-browser hosting: deploy the game contract with one click -->
@@ -316,10 +332,10 @@
     </div>
 
     <script src="vendor/ethers.umd.min.js"></script>
-    <script src="config.js?v=11"></script>
-    <script src="contract.js?v=11"></script>
-    <script src="chiptune.js?v=11"></script>
-    <script src="tv.js?v=11"></script>
-    <script src="app.js?v=11"></script>
+    <script src="config.js?v=12"></script>
+    <script src="contract.js?v=12"></script>
+    <script src="chiptune.js?v=12"></script>
+    <script src="tv.js?v=12"></script>
+    <script src="app.js?v=12"></script>
   </body>
 </html>

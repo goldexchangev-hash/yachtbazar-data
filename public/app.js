@@ -30,6 +30,7 @@
     try { localStorage.removeItem("coinflip_deployment"); } catch {}
   }
   let hostTreasury = null; // read from the contract once connected
+  let ownerAddr = null; // contract owner (the host who deployed it)
 
   // ---- state ----
   let provider = null; // ethers BrowserProvider
@@ -181,8 +182,10 @@
         return;
       }
       try { hostTreasury = await read.treasury(); } catch {}
+      try { ownerAddr = await read.owner(); } catch {}
 
       await startGameUI();
+      if (eq(account, ownerAddr)) $("host-tools").hidden = false;
       if (inviteRoomId) handleInvite();
     } catch (err) {
       console.error(err);
@@ -309,6 +312,35 @@
     if (!box) return;
     box.classList.remove("hidden");
     $("host-share-link").value = shareUrlFor(null);
+  }
+
+  // ---- Host tools (owner only) ----
+  async function raiseMaxBet() {
+    try {
+      toast("Raising the max bet… confirm in MetaMask");
+      const tx = await contract.setMaxBet(E.parseEther("1"), { gasLimit: 80000 });
+      await tx.wait();
+      maxBet = await read.maxBet();
+      toast("Done — bets up to $500 are allowed now.", "ok");
+    } catch (e) { txErr(e); }
+  }
+  async function fundHouseTool() {
+    const v = parseFloat($("fund-house-input").value);
+    if (!(v > 0)) return toast("Enter a $ amount to fund the house", "err");
+    try {
+      toast("Funding the house… confirm in MetaMask");
+      const tx = await contract.fundHouse({ value: usdToWei(v), gasLimit: 90000 });
+      await tx.wait();
+      toast("House funded with " + usd(v), "ok");
+      refreshHouse();
+    } catch (e) { txErr(e); }
+  }
+  function newGame() {
+    if (!confirm("Deploy a brand-new game? Your current balance stays in the OLD game — use 'Withdraw all' first if you want it back.")) return;
+    try { localStorage.removeItem("coinflip_deployment"); } catch {}
+    const u = new URL(location.href);
+    ["contract", "chain", "room"].forEach((k) => u.searchParams.delete(k));
+    location.href = u.toString();
   }
 
   async function disconnect() {
@@ -841,6 +873,9 @@
   function wireUI() {
     $("connect-btn").onclick = connect;
     $("disconnect-btn").onclick = disconnect;
+    $("raise-max-btn").onclick = raiseMaxBet;
+    $("fund-house-btn").onclick = fundHouseTool;
+    $("new-game-btn").onclick = newGame;
     $("deposit-btn").onclick = deposit;
     $("withdraw-btn").onclick = withdrawAll;
     $("create-room-btn").onclick = createRoom;
