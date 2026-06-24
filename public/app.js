@@ -467,6 +467,7 @@
     seedHostHistory(); // backfill host-table flips from logs (async, best-effort)
     checkDailyStreak();
     renderInvite();
+    { const r = $("registry-target"); if (r && !r.value && deployment.address) r.value = deployment.address; }
     TV.idle("Deposit ETH, then create or join a room");
     $("bankroll").hidden = false;
     $("play-house").hidden = false;
@@ -602,6 +603,21 @@
           addr
         );
       } catch {}
+    } catch (e) { txErr(e); }
+  }
+
+  // Manually point the registry at a contract (owner only). Flips the whole site.
+  async function setActiveGameManual() {
+    if (!signer || !account) return toast("Connect your wallet first.", "err");
+    if (!cfg.registry || !E.isAddress(cfg.registry)) return toast("No registry configured.", "err");
+    const target = (($("registry-target") && $("registry-target").value) || deployment.address || "").trim();
+    if (!E.isAddress(target)) return toast("Enter a valid contract address to make active.", "err");
+    try {
+      const reg = new E.Contract(cfg.registry, ["function owner() view returns (address)", "function setActiveGame(address)"], signer);
+      if (!eq(await reg.owner(), account)) return toast("Only the registry owner (the house wallet) can do this.", "err");
+      toast("Pointing the whole site at " + short(target) + "… confirm in MetaMask");
+      await (await reg.setActiveGame(target, { gasLimit: 80000 })).wait();
+      toast("Done — every visitor now lands on this contract. 🎯", "ok");
     } catch (e) { txErr(e); }
   }
 
@@ -1868,6 +1884,7 @@
     $("cashout-amount-btn").onclick = cashOutAmount;
     $("new-game-btn").onclick = newGame;
     { const b = $("deploy-registry-btn"); if (b) b.onclick = deployRegistry; }
+    { const b = $("set-active-btn"); if (b) b.onclick = setActiveGameManual; }
     document.querySelectorAll(".hs-tab").forEach((b) => {
       b.onclick = () => {
         document.querySelectorAll(".hs-tab").forEach((x) => x.classList.remove("active"));

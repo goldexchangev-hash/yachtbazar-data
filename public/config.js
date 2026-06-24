@@ -7,7 +7,7 @@
 // (no code push). `address` below is the fallback if the registry is unset or
 // unreachable.
 window.COINFLIP_CONFIG = {
-  address: "0x2BE6D59A6DfD8CE91D08c87D5110962Fa7648A30",
+  address: "0xD7E584c341bDbF20848CFa162F65EfB406aA0Cbc",
   registry: "0x21Fc88619753254D2Cd5D74A2102D4A876fc1Fa1",
   chainId: 11155111,
   network: "sepolia",
