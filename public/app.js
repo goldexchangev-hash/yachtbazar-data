@@ -374,7 +374,7 @@
     TV.idle("Deposit ETH, then create or join a room");
     $("bankroll").hidden = false;
     $("play-house").hidden = false;
-    $("maxbet-hint").textContent = "· $10–$500";
+    $("maxbet-hint").textContent = "· $10–$" + betCapUsd().toLocaleString();
     setupHouseSlider();
   }
 
@@ -477,10 +477,13 @@
   async function raiseMaxBet() {
     try {
       toast("Raising the max bet… confirm in MetaMask");
-      const tx = await contract.setMaxBet(E.parseEther("1"), { gasLimit: 80000 });
+      // 3 ETH of headroom so the $2,000 ceiling holds even if ETH dips well below
+      // $700 — the UI still clamps display/bets to $2,000 and the live bankroll.
+      const tx = await contract.setMaxBet(E.parseEther("3"), { gasLimit: 80000 });
       await tx.wait();
       maxBet = await read.maxBet();
-      toast("Done — bets up to $500 are allowed now.", "ok");
+      setupSliders(); refreshHouse();
+      toast("Done — bets up to $2,000 are allowed now.", "ok");
     } catch (e) { txErr(e); }
   }
   async function fundHouseTool() {
@@ -775,9 +778,9 @@
     try {
       const b = await read.houseBankroll();
       $("house-bankroll").textContent = usdOf(b);
-      // House bets can't exceed what the bankroll can match (in USD, capped at $500).
+      // House bets can't exceed what the bankroll can match (USD, $2,000 ceiling).
       const capWei = b < maxBet ? b : maxBet;
-      const capUsd = Math.max(10, Math.min(500, Math.floor(weiToUsd(capWei))));
+      const capUsd = Math.max(10, Math.min(HARD_MAX_USD, Math.floor(weiToUsd(capWei))));
       const s = $("house-bet");
       s.max = String(capUsd);
       if (+s.value > capUsd) s.value = String(capUsd);
@@ -842,7 +845,7 @@
 
   function configureTableSlider(bankWei) {
     $("pt-bank").textContent = usdOf(bankWei);
-    const capUsd = Math.max(10, Math.min(500, Math.floor(weiToUsd(bankWei < maxBet ? bankWei : maxBet))));
+    const capUsd = Math.max(10, Math.min(HARD_MAX_USD, Math.floor(weiToUsd(bankWei < maxBet ? bankWei : maxBet))));
     const s = $("table-bet");
     s.min = "10"; s.step = "5"; s.max = String(capUsd);
     if (+s.value > capUsd) s.value = String(capUsd);
@@ -964,12 +967,21 @@
     } catch (e) { txErr(e); }
   }
 
-  // Sliders run in USD ($10–$500); the ETH amount is computed from the live price.
+  // Sliders run in USD; the ETH amount is computed from the live price. The
+  // effective cap is the lesser of the $2,000 ceiling and what the contract's
+  // maxBet allows at the current price (house/table also clamp to the bankroll).
+  const HARD_MAX_USD = 2000;
+  function betCapUsd() {
+    const m = (maxBet && maxBet > 0n) ? Math.floor(weiToUsd(maxBet)) : HARD_MAX_USD;
+    return Math.max(10, Math.min(HARD_MAX_USD, m));
+  }
   function setupSliders() {
+    const cap = betCapUsd();
     for (const id of ["house-bet", "bet-input", "deposit-input", "host-bank"]) {
       const s = $(id);
       if (!s) continue;
-      s.min = "10"; s.max = "500"; s.step = "5";
+      // Deposits aren't bounded by maxBet — let players load up to the ceiling.
+      s.min = "10"; s.max = String(id === "deposit-input" ? HARD_MAX_USD : cap); s.step = "5";
       if (+s.value < 10) s.value = id === "deposit-input" ? "50" : id === "host-bank" ? "100" : "25";
       setSliderUsd(id);
     }
@@ -997,7 +1009,7 @@
       raise.classList.remove("hidden");
       const s = $("join-bet");
       const minUsd = Math.max(10, Math.round(weiToUsd(opts.room.betAmount))); // host's bet in $
-      s.min = String(minUsd); s.max = "500"; s.step = "5";
+      s.min = String(minUsd); s.max = String(Math.max(minUsd, betCapUsd())); s.step = "5";
       s.value = String(minUsd);
       $("join-bet-val").textContent = usd(minUsd);
     } else {

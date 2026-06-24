@@ -15,7 +15,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=49" />
+    <link rel="stylesheet" href="styles.css?v=50" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -28,7 +28,7 @@
         <span class="brand-tv">📺</span>
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v4.9</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v5.0</span>
       </div>
       <div class="topbar-right">
         <button id="sound-btn" class="btn btn-ghost" title="Play / silence background music">🔇 Music</button>
@@ -162,7 +162,7 @@
           </div>
           <div class="bankroll-actions">
             <div class="slider-wrap deposit-slider">
-              <input id="deposit-input" class="slider" type="range" min="10" max="500" step="5" value="50" />
+              <input id="deposit-input" class="slider" type="range" min="10" max="2000" step="5" value="50" />
               <div class="slider-val"><strong id="deposit-input-val">$50</strong><span class="eth-sub" id="deposit-input-eth"></span></div>
             </div>
             <div class="bankroll-btns">
@@ -180,7 +180,7 @@
           </div>
           <p class="muted ph-note">Drag to choose your stake. You're HEADS. 10% house fee.</p>
           <div class="slider-wrap">
-            <input id="house-bet" class="slider" type="range" min="10" max="500" step="5" value="25" />
+            <input id="house-bet" class="slider" type="range" min="10" max="2000" step="5" value="25" />
             <div class="slider-val"><strong id="house-bet-val">$25</strong><span class="eth-sub" id="house-bet-eth"></span></div>
           </div>
           <div class="side-row">
@@ -201,7 +201,7 @@
           </div>
           <p class="muted ph-note" id="pt-sub">Flip against this table — you're HEADS. The host keeps 10%.</p>
           <div class="slider-wrap">
-            <input id="table-bet" class="slider" type="range" min="10" max="500" step="5" value="25" />
+            <input id="table-bet" class="slider" type="range" min="10" max="2000" step="5" value="25" />
             <div class="slider-val"><strong id="table-bet-val">$25</strong><span class="eth-sub" id="table-bet-eth"></span></div>
           </div>
           <div class="side-row">
@@ -219,7 +219,7 @@
           <details class="dropdown">
             <summary class="card-title dd-summary"><span>⚙️ Host tools</span><span class="dd-arrow" aria-hidden="true">▾</span></summary>
             <div class="ht-body">
-              <button id="raise-max-btn" class="btn btn-ghost btn-block">⬆️ Raise max bet (allow up to $500)</button>
+              <button id="raise-max-btn" class="btn btn-ghost btn-block">⬆️ Raise max bet (allow up to $2,000)</button>
               <div class="bankroll-actions ht-fund">
                 <input id="fund-house-input" class="input" type="number" min="0" step="1" placeholder="Fund house $ (e.g. 1000)" />
                 <button id="fund-house-btn" class="btn btn-ghost">Fund house</button>
@@ -314,9 +314,9 @@
             <p class="muted ph-note">A 1-v-1 flip with a friend. You both wager the <strong>same</strong> amount — set it here, then share your link.</p>
             <label class="field-label" for="room-name">Room name</label>
             <input id="room-name" class="input" type="text" maxlength="24" placeholder="High Rollers" />
-            <label class="field-label">Stake each player puts in <span class="muted" id="maxbet-hint">· $10–$500</span></label>
+            <label class="field-label">Stake each player puts in <span class="muted" id="maxbet-hint">· $10–$2,000</span></label>
             <div class="slider-wrap">
-              <input id="bet-input" class="slider" type="range" min="10" max="500" step="5" value="25" />
+              <input id="bet-input" class="slider" type="range" min="10" max="2000" step="5" value="25" />
               <div class="slider-val"><strong id="bet-input-val">$25</strong><span class="eth-sub" id="bet-input-eth"></span></div>
             </div>
             <p class="muted create-breakdown" id="create-breakdown"></p>
@@ -345,9 +345,9 @@
             <p class="muted ph-note">Share one link — <strong>many players</strong> can flip against <strong>your</strong> bank at once, each for any amount they pick (no wait line). You're the house: you keep <strong>half</strong> the 10% rake (5%), the platform takes the other 5%. Auto-refunds you if idle for 5 minutes.</p>
             <label class="field-label" for="host-table-name">Table name</label>
             <input id="host-table-name" class="input" type="text" maxlength="24" placeholder="My Casino" />
-            <label class="field-label">Bank you put up <span class="muted">· $10–$500</span></label>
+            <label class="field-label">Bank you put up <span class="muted">· $10–$2,000</span></label>
             <div class="slider-wrap">
-              <input id="host-bank" class="slider" type="range" min="10" max="500" step="5" value="100" />
+              <input id="host-bank" class="slider" type="range" min="10" max="2000" step="5" value="100" />
               <div class="slider-val"><strong id="host-bank-val">$100</strong><span class="eth-sub" id="host-bank-eth"></span></div>
             </div>
             <button id="create-host-btn" class="btn btn-primary btn-block">Create host game link</button>
@@ -460,7 +460,7 @@
         <div id="bet-raise" class="bet-raise hidden">
           <label class="field-label">Your bet (drag to raise — the host must approve a higher amount)</label>
           <div class="slider-wrap">
-            <input id="join-bet" class="slider" type="range" min="10" max="500" step="5" value="10" />
+            <input id="join-bet" class="slider" type="range" min="10" max="2000" step="5" value="10" />
             <div class="slider-val"><strong id="join-bet-val">$10</strong></div>
           </div>
         </div>
@@ -491,10 +491,10 @@
     </div>
 
     <script src="vendor/ethers.umd.min.js"></script>
-    <script src="config.js?v=49"></script>
-    <script src="contract.js?v=49"></script>
-    <script src="chiptune.js?v=49"></script>
-    <script src="tv.js?v=49"></script>
-    <script src="app.js?v=49"></script>
+    <script src="config.js?v=50"></script>
+    <script src="contract.js?v=50"></script>
+    <script src="chiptune.js?v=50"></script>
+    <script src="tv.js?v=50"></script>
+    <script src="app.js?v=50"></script>
   </body>
 </html>
