@@ -1128,25 +1128,199 @@
   function spawnFirework(x, y, rg) { if (fw.length > 240) return; const c = CONF[(rg() * CONF.length) | 0]; for (let i = 0; i < 16; i++) { const a = (i / 16) * Math.PI * 2; fw.push({ x, y, vx: Math.cos(a) * (1.5 + rg() * 1.5), vy: Math.sin(a) * (1.5 + rg() * 1.5), life: 1, c }); } }
   function stepFireworks() { for (const p of fw) { p.x += p.vx; p.y += p.vy; p.vy += 0.04; p.life -= 0.03; if (p.life > 0) rect(p.x, p.y, 2.5, 2.5, p.c); } fw = fw.filter((p) => p.life > 0); }
 
-  // Pick a scene + intensity from the NET amount won (profit over your stake —
-  // caps near $400 at the $500 max bet). Bands span that range so every tier
-  // still triggers; each band has a pool so same-size wins can roll different
-  // movies (escalation + variety).
+  /* ==========================================================================
+     "MAGIC CLIFFS" THEME — a real pixel-art side-scroller win sequence built on
+     ansimuz's Magic Cliffs asset pack (CC0 / public domain; credited in-app). A
+     sword hero runs across a parallax cliff, slashes enemies, and racks up coins,
+     escalating with the win. Images preload at init and animate frame-by-frame.
+     ========================================================================== */
+  var WORLD = { ready: false, loaded: 0, need: 0, img: {} };
+  function loadWorld() {
+    if (WORLD.need) return;
+    var files = { sky: "sky.png", clouds: "clouds.png", far: "far-grounds.png", sea: "sea.png",
+      idle: "hero-idle.png", run: "hero-run.png", jump: "hero-jump.png", attack: "hero-attack.png",
+      fox: "fox.png", dude: "shuriken-dude.png" };
+    var keys = Object.keys(files); WORLD.need = keys.length;
+    keys.forEach(function (k) {
+      try {
+        var im = new Image();
+        im.onload = function () { WORLD.loaded++; if (WORLD.loaded >= WORLD.need) WORLD.ready = true; };
+        im.onerror = function () { WORLD.loaded++; };
+        im.src = "assets/world/" + files[k];
+        WORLD.img[k] = im;
+      } catch (e) {}
+    });
+  }
+  function rawimg(i) { return i && (i._img || i); }
+  function imgOk(i) { return i && (i.complete || i._img) && (i.width || (i._img && i._img.width)); }
+  // draw frame `idx` of a horizontal sprite strip; (cx,cy) = bottom-center anchor
+  function anim(img, fw, fh, count, idx, cx, cy, scale, flip) {
+    if (!imgOk(img)) return;
+    idx = ((idx % count) + count) % count;
+    var dw = fw * scale, dh = fh * scale;
+    g.save();
+    g.imageSmoothingEnabled = false;
+    g.translate(cx, cy - dh);
+    if (flip < 0) { g.translate(dw, 0); g.scale(-1, 1); }
+    try { g.drawImage(rawimg(img), idx * fw, 0, fw, fh, 0, 0, dw, dh); } catch (e) {}
+    g.restore();
+  }
+  // parallax backdrop: sky fill, drifting clouds, scrolling cliff. Returns ground Y.
+  function worldBg(t, scroll) {
+    var im = WORLD.img;
+    if (imgOk(im.sky)) { g.save(); g.imageSmoothingEnabled = true; g.drawImage(rawimg(im.sky), 0, -P.h * 0.04, P.w, P.h * 1.08); g.restore(); }
+    else bg("#7fc9e8", "#dff3f6");
+    if (imgOk(im.clouds)) {
+      var cw = P.w * 1.15, ch = cw * (236 / 544), cy = P.h * 0.04, off = (t * 0.012) % cw;
+      g.save(); g.imageSmoothingEnabled = false;
+      for (var k = -1; k <= 1; k++) g.drawImage(rawimg(im.clouds), k * cw - off, cy, cw, ch);
+      g.restore();
+    }
+    var fh2 = P.h * 0.46, fw2 = fh2 * (616 / 110), fy = P.h - fh2, fo = (scroll * 0.5) % fw2;
+    if (imgOk(im.far)) {
+      g.save(); g.imageSmoothingEnabled = false;
+      for (var j = -1; j <= 2; j++) g.drawImage(rawimg(im.far), j * fw2 - fo, fy, fw2, fh2);
+      g.restore();
+    } else { ground("#5a9e3a"); }
+    return fy + fh2 * 0.42; // crest where the hero stands
+  }
+  // hero state machine -> the right strip/fps
+  function heroDraw(t, x, y, scale, state, flip) {
+    var im = WORLD.img;
+    if (state === "run") anim(im.run, 128, 96, 8, Math.floor(t / 70), x, y, scale, flip);
+    else if (state === "jump") anim(im.jump, 128, 96, 3, Math.min(2, Math.floor(t / 140)), x, y, scale, flip);
+    else if (state === "attack") anim(im.attack, 128, 96, 8, Math.floor(t / 50), x, y, scale, flip);
+    else anim(im.idle, 128, 96, 4, Math.floor(t / 160), x, y, scale, flip);
+  }
+  function foxDraw(t, x, y, scale, flip) { anim(WORLD.img.fox, 64, 48, 10, Math.floor(t / 60), x, y, scale, flip); }
+  function dudeDraw(t, x, y, scale, frame, flip) { anim(WORLD.img.dude, 80, 64, 9, frame, x, y, scale, flip); }
+
+  // $0–60 — a victory run across the cliffs, grabbing coins.
+  function sWorldStroll(t) {
+    var scroll = t * 0.28;
+    var gy = worldBg(t, scroll);
+    var hs = P.h / 150;
+    var hx = P.w * (0.22 + 0.12 * Math.sin(t / 600));
+    heroDraw(t, hx, gy, hs, "run", 1);
+    if (t % 50 < 8) spawnCoins(2 + P.step, hx + P.h * 0.2, gy - P.h * 0.2, P.h * 0.05, P.rg);
+    stepCoins();
+    if (P.step >= 3 && t < 40) spawnConfetti(10 + P.step * 3, P.rg);
+    stepConfetti();
+  }
+  // $60–130 — fox runs the cliff with you; coins everywhere.
+  function sWorldRun(t) {
+    var scroll = t * 0.34;
+    var gy = worldBg(t, scroll);
+    var hs = P.h / 150, fs = P.h / 170;
+    heroDraw(t, P.w * 0.3, gy, hs, "run", 1);
+    var fxx = P.w * (0.55 + 0.3 * Math.sin(t / 700 + 1));
+    foxDraw(t, fxx, gy, fs, 1);
+    if (t % 40 < 8) spawnCoins(2 + P.step, P.w * (0.3 + P.rg() * 0.5), gy - P.h * 0.22, P.h * 0.05, P.rg);
+    stepCoins();
+    if (t < 40) spawnConfetti(10 + P.step * 3, P.rg); stepConfetti();
+  }
+  // $130–220 — the hero charges a fox and slashes it; it bursts into coins.
+  function sWorldFight(t) {
+    var charge = Math.min(1, t / 900);
+    var gy = worldBg(t, t * 0.3 * (1 - charge));
+    var hs = P.h / 145, fs = P.h / 160;
+    var hx = P.w * (0.18 + charge * 0.3);
+    var hit = t > 900;
+    var foxX = P.w * 0.62;
+    if (!hit || t < 1100) foxDraw(t, foxX, gy, fs, -1);
+    heroDraw(hit ? t - 900 : t, hx, gy, hs, hit ? "attack" : "run", 1);
+    if (t > 950 && t < 1000) { spawnCoins(8 + P.step * 3, foxX, gy - P.h * 0.12, P.h * 0.06, P.rg); spawnFirework(foxX, gy - P.h * 0.12, P.rg); }
+    if (t % 60 < 8) spawnCoins(2, P.w * (0.2 + P.rg() * 0.5), gy - P.h * 0.2, P.h * 0.045, P.rg);
+    stepCoins(); stepFireworks();
+    if (t < 40) spawnConfetti(12 + P.step * 3, P.rg); stepConfetti();
+  }
+  // $220–320 — a duel with the shuriken-dude; he goes down, coins + confetti.
+  function sWorldDuel(t) {
+    var gy = worldBg(t, t * 0.18);
+    var hs = P.h / 140, ds = P.h / 150;
+    var hx = P.w * 0.34, dx = P.w * 0.64;
+    var beat = t % 800;
+    var heroState = beat < 360 ? "attack" : "idle";
+    var dudeFrame = beat < 360 ? Math.min(8, 4 + Math.floor(beat / 70)) : Math.floor(t / 120) % 4;
+    var downed = t > 1700;
+    heroDraw(t, hx, gy, hs, downed ? "idle" : heroState, 1);
+    if (!downed) dudeDraw(t, dx, gy, ds, dudeFrame, -1);
+    else if (t < 1900) dudeDraw(t, dx, gy, ds, 8, -1); // hurt frame
+    if (t > 1700 && t < 1760) { spawnCoins(12 + P.step * 3, dx, gy - P.h * 0.14, P.h * 0.07, P.rg); spawnFirework(dx, gy - P.h * 0.14, P.rg); }
+    if (beat > 320 && beat < 360) spawnFirework(dx, gy - P.h * 0.1, P.rg);
+    if (t % 60 < 8) spawnCoins(2, P.w * (0.25 + P.rg() * 0.5), gy - P.h * 0.2, P.h * 0.05, P.rg);
+    stepCoins(); stepFireworks();
+    if (t < 40) spawnConfetti(16, P.rg); stepConfetti();
+    if (downed) shake(P.step * 0.6);
+  }
+  // $320+ — LEGENDARY: clear both enemies, then a victory pose, fireworks, coin rain.
+  function sWorldFinale(t) {
+    var gy = worldBg(t, t * 0.12);
+    var hs = P.h / 130, fs = P.h / 160, ds = P.h / 150;
+    var phase = t < 700 ? 0 : t < 1500 ? 1 : 2;
+    var hx = P.w * 0.4;
+    if (phase === 0) { // slash the dude
+      heroDraw(t, hx, gy, hs, "attack", 1);
+      dudeDraw(t, P.w * 0.66, gy, ds, Math.min(8, 4 + Math.floor(t / 80)), -1);
+    } else if (phase === 1) { // slash the fox
+      heroDraw(t - 700, hx, gy, hs, "attack", 1);
+      if (t < 1300) foxDraw(t, P.w * 0.66, gy, fs, -1);
+      if (t > 800 && t < 860) { spawnCoins(14, P.w * 0.66, gy - P.h * 0.12, P.h * 0.08, P.rg); spawnFirework(P.w * 0.66, gy - P.h * 0.12, P.rg); }
+    } else { // victory idle + everything erupts
+      heroDraw(t, hx, gy, hs * 1.05, "idle", 1);
+    }
+    if (t > 700 && t % 700 < 60) spawnFirework(P.w * 0.66, gy - P.h * 0.12, P.rg);
+    if (phase === 2) {
+      if (t % 26 < 8) spawnCoins(5, P.w * (0.25 + P.rg() * 0.5), gy - P.h * 0.4, P.h * 0.09, P.rg);
+      if (t % 50 < 10) spawnFirework(P.w * (0.15 + P.rg() * 0.7), P.h * (0.16 + P.rg() * 0.34), P.rg);
+      if (t % 40 < 8) spawnConfetti(10, P.rg);
+    }
+    if (t < 60) spawnConfetti(40, P.rg);
+    stepCoins(); stepFireworks(); stepConfetti();
+    shake(P.step + 0.5);
+  }
+
+  // Two selectable THEMES (persisted). "neon" = original 16-bit set; "world" =
+  // the Magic Cliffs side-scroller. Bands key off NET amount won.
+  var THEMES = {
+    neon: {
+      label: "Neon Nights",
+      bands: [
+        { max: 35,  base: 0,   shake: 0,   epic: false, pool: [sArcade] },
+        { max: 75,  base: 35,  shake: 1,   epic: false, pool: [sLuckyCat, sCarnival] },
+        { max: 135, base: 75,  shake: 1,   epic: false, pool: [sPirate, sGoldRush] },
+        { max: 215, base: 135, shake: 1.2, epic: false, pool: [sStadium, sCasino] },
+        { max: 295, base: 215, shake: 1.6, epic: false, pool: [sHeist] },
+        { max: 1e9, base: 295, shake: 2.6, epic: true,  pool: [sKaiju, sEmperor] }
+      ]
+    },
+    world: {
+      label: "Magic Cliffs",
+      credit: "Art: “Magic Cliffs” by ansimuz (CC0)",
+      bands: [
+        { max: 60,  base: 0,   shake: 0,   epic: false, world: true, headline: "NICE RUN!",   pool: [sWorldStroll] },
+        { max: 130, base: 60,  shake: 0.5, epic: false, world: true, headline: "COIN DASH!",  pool: [sWorldRun] },
+        { max: 220, base: 130, shake: 1.0, epic: false, world: true, headline: "SLASH!",      pool: [sWorldFight] },
+        { max: 320, base: 220, shake: 1.4, epic: false, world: true, headline: "DUEL WON!",   pool: [sWorldDuel] },
+        { max: 1e9, base: 320, shake: 2.4, epic: true,  world: true, headline: "LEGENDARY!",  pool: [sWorldFinale] }
+      ]
+    }
+  };
+  var activeTheme = "neon";
+  try { activeTheme = localStorage.getItem("ctf_scene_theme") || "neon"; } catch (e) {}
+  if (!THEMES[activeTheme]) activeTheme = "neon";
+
   function selectScene(amt) {
-    var BANDS = [
-      { max: 35,  base: 0,   shake: 0,   epic: false, pool: [sArcade] },
-      { max: 75,  base: 35,  shake: 1,   epic: false, pool: [sLuckyCat, sCarnival] },
-      { max: 135, base: 75,  shake: 1,   epic: false, pool: [sPirate, sGoldRush] },
-      { max: 215, base: 135, shake: 1.2, epic: false, pool: [sStadium, sCasino] },
-      { max: 295, base: 215, shake: 1.6, epic: false, pool: [sHeist] },
-      { max: 1e9, base: 295, shake: 2.6, epic: true,  pool: [sKaiju, sEmperor] }
-    ];
+    var BANDS = (THEMES[activeTheme] || THEMES.neon).bands;
     var b = BANDS.find(function (x) { return amt < x.max; }) || BANDS[BANDS.length - 1];
     var span = (b.max >= 1e9 ? 150 : (b.max - b.base)) / 5;
     var step = Math.max(0, Math.min(4, Math.floor((amt - b.base) / span)));
     var fn = b.pool[Math.floor(Math.random() * b.pool.length)];
-    return { fn: fn, step: step, shake: b.shake, epic: b.epic };
+    return { fn: fn, step: step, shake: b.shake, epic: b.epic, headline: b.headline, world: b.world };
   }
+  function setTheme(name) { if (!THEMES[name]) return; activeTheme = name; try { localStorage.setItem("ctf_scene_theme", name); } catch (e) {} if (name === "world") loadWorld(); }
+  function getTheme() { return activeTheme; }
+  function listThemes() { return Object.keys(THEMES).map(function (k) { return { id: k, label: THEMES[k].label, credit: THEMES[k].credit || "" }; }); }
 
   function frame(now) {
     if (!playing) return;
@@ -1159,7 +1333,8 @@
     if (P.shake) shake(t < 300 ? 3 : 1);
     // Push the whole scene DOWN into a "stage" so the action plays BELOW the
     // title text (characters were getting hidden behind LEGENDARY!/amount).
-    g.translate(0, P.h * 0.14);
+    // Full-bleed world scenes draw edge-to-edge and keep their own headroom.
+    if (!scene.world) g.translate(0, P.h * 0.14);
     try { (P.reduce ? calmFrame : scene.fn)(t); } catch (e) { /* a buggy scene must never break the page */ }
     g.restore();
     winText(t);
@@ -1180,7 +1355,7 @@
     P = {
       w: cv.width, h: cv.height, amtUsd: amt, step: scene.step, shake: reduce ? 0 : scene.shake,
       rg: rnd(seed), side: opts.side || "HEADS", reduce: reduce,
-      headline: scene.epic ? "LEGENDARY!" : "WINNER!",
+      headline: scene.headline || (scene.epic ? "LEGENDARY!" : "WINNER!"),
       amtStr: "+$" + (amt >= 1000 ? (amt / 1000).toFixed(1) + "k" : Math.round(amt)),
     };
     try { window.__winSceneActive = true; } catch (e) {} // let the TV pause its static/confetti
@@ -1207,7 +1382,8 @@
     for (let i = 0; i < 40; i++) coin(r() * P.w, P.h * 0.55 + r() * P.h * 0.32, 4, 0.25);
   }
 
-  window.WinScenes = { init, play, stop, _select: selectScene };
-  if (document.readyState !== "loading") init();
-  else document.addEventListener("DOMContentLoaded", init);
+  window.WinScenes = { init, play, stop, _select: selectScene, setTheme: setTheme, getTheme: getTheme, themes: listThemes };
+  function boot() { init(); if (activeTheme === "world") loadWorld(); }
+  if (document.readyState !== "loading") boot();
+  else document.addEventListener("DOMContentLoaded", boot);
 })();

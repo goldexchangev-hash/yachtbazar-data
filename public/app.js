@@ -212,6 +212,50 @@
     const ethEl = $(id + "-eth"); if (ethEl) ethEl.textContent = "(approx ETH: " + (v / ethUsd).toFixed(4) + ")";
     if (id === "bet-input") updateCreateBreakdown();
   }
+
+  // Quick-bet: remember the last stake placed, then let one tap set ½×, 2× or the
+  // current max the slider allows (which already reflects house cover + the cap).
+  let lastBetUsd = 0;
+  try { lastBetUsd = +localStorage.getItem("ctf_last_bet") || 0; } catch {}
+  function rememberBet(usdVal) { if (!(usdVal > 0)) return; lastBetUsd = usdVal; try { localStorage.setItem("ctf_last_bet", String(usdVal)); } catch {} }
+  function quickBet(id, mode) {
+    const s = $(id); if (!s) return;
+    const min = +s.min || 10, max = +s.max || 500, step = +s.step || 5;
+    const base = lastBetUsd > 0 ? lastBetUsd : (+s.value || min);
+    let v = mode === "half" ? base / 2 : mode === "double" ? base * 2 : max;
+    v = Math.round(v / step) * step;
+    v = Math.max(min, Math.min(max, v));
+    s.value = String(v);
+    setSliderUsd(id);
+    if (mode === "double" && base * 2 > max) toast("Capped at the max available (" + usd(max) + ")", "ok");
+    else if (mode === "half" && base / 2 < min) toast("Min bet is " + usd(min), "ok");
+  }
+  function wireQuickBet() {
+    document.querySelectorAll(".quickbet-row").forEach((row) => {
+      const target = row.getAttribute("data-target");
+      row.querySelectorAll(".qbet").forEach((b) => { b.onclick = () => quickBet(target, b.getAttribute("data-mode")); });
+    });
+  }
+
+  // Win-animation theme switcher (Neon Nights vs Magic Cliffs side-scroller).
+  function initThemeSwitch() {
+    if (!window.WinScenes || !WinScenes.getTheme) return;
+    const wrap = $("theme-toggle"); if (!wrap) return;
+    const themes = (WinScenes.themes && WinScenes.themes()) || [];
+    const creditEl = $("theme-credit");
+    function paint() {
+      const cur = WinScenes.getTheme();
+      wrap.querySelectorAll(".theme-btn").forEach((b) => b.classList.toggle("active", b.getAttribute("data-theme") === cur));
+      const meta = themes.find((t) => t.id === cur);
+      if (creditEl) creditEl.textContent = (meta && meta.credit) || "";
+    }
+    wrap.querySelectorAll(".theme-btn").forEach((b) => {
+      b.onclick = () => { WinScenes.setTheme(b.getAttribute("data-theme")); paint(); toast("Win theme: " + b.textContent, "ok"); };
+    });
+    const prev = $("theme-preview-btn");
+    if (prev) prev.onclick = () => { try { WinScenes.play({ amountUsd: 180 + Math.floor(Math.random() * 220), side: "HEADS" }); } catch {} };
+    paint();
+  }
   // Live preview under the create-room stake slider so it's obvious both players
   // match the stake, and where the pot / winnings / 10% cut land.
   function updateCreateBreakdown() {
@@ -951,6 +995,7 @@
       const gb = await read.balances(account);
       if (gb < bet) return toast("Deposit first 👇 — your stake comes from your in-game balance (you have " + usdOf(gb) + ").", "err");
     } catch {}
+    rememberBet(v);
     openBetModal({ kind: "house", bet: bet, heads: sideOf("house-side") });
   }
 
@@ -1084,6 +1129,7 @@
       const gb = await read.balances(account);
       if (gb < bet) return toast("Deposit first 👇 — your stake comes from your in-game balance (you have " + usdOf(gb) + ").", "err");
     } catch {}
+    rememberBet(v);
     doPlayTable(currentTable.id, bet, sideOf("table-side"));
   }
 
@@ -1935,6 +1981,8 @@
     $("deposit-input").oninput = () => setSliderUsd("deposit-input");
     $("host-bank").oninput = () => setSliderUsd("host-bank");
     $("table-bet").oninput = () => setSliderUsd("table-bet");
+    wireQuickBet();
+    initThemeSwitch();
     // Join raise slider (USD): at/near the host's bet use the exact amount, else convert
     $("join-bet").oninput = (e) => {
       const u = +e.target.value;

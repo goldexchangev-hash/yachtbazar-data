@@ -388,6 +388,25 @@ kbd { font-family: ui-monospace, monospace; font-size: 11px; background: rgba(25
 .side-btn.active { color: #07101f; background: linear-gradient(135deg, #39e7ff, #ff4d9d); box-shadow: 0 0 14px rgba(57, 231, 255, 0.4); }
 .bet-side { text-align: center; font-family: var(--display); font-weight: 700; font-size: 14px; color: var(--gold); background: rgba(255, 210, 63, 0.08); border: 1px solid rgba(255, 210, 63, 0.25); border-radius: 10px; padding: 7px; margin: 8px 0; }
 
+/* ─────────────── Win-animation theme switcher ─────────────── */
+.theme-switch { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 10px 14px; margin: 10px 0; }
+.theme-switch-label { font-family: var(--display); font-weight: 700; font-size: 13px; color: var(--gold); }
+.theme-toggle { display: inline-flex; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--panel-line); border-radius: 999px; padding: 3px; gap: 2px; }
+.theme-btn { border: 0; background: transparent; color: var(--muted); font-family: var(--display); font-weight: 700; font-size: 12px; padding: 6px 12px; border-radius: 999px; cursor: pointer; transition: color 0.15s, background 0.15s, box-shadow 0.15s; }
+.theme-btn:hover { color: #fff; }
+.theme-btn.active { color: #07101f; background: linear-gradient(135deg, #39e7ff, #ff4d9d); box-shadow: 0 0 14px rgba(57, 231, 255, 0.4); }
+.theme-preview-btn { border: 1px solid var(--panel-line); background: rgba(255, 255, 255, 0.04); color: var(--muted); font-family: var(--display); font-weight: 700; font-size: 12px; padding: 6px 12px; border-radius: 10px; cursor: pointer; transition: color 0.15s, background 0.15s; }
+.theme-preview-btn:hover { color: #fff; background: rgba(57, 231, 255, 0.12); }
+.theme-credit { flex: 1 1 100%; font-size: 11px; color: var(--muted); opacity: 0.75; }
+
+/* ─────────────── Quick-bet buttons (½ last / 2× last / max) ─────────────── */
+.quickbet-row { display: flex; gap: 8px; margin: -4px 0 12px; }
+.qbet { flex: 1 1 0; border: 1px solid var(--panel-line); background: rgba(255, 255, 255, 0.04); color: var(--muted); font-family: var(--display); font-weight: 700; font-size: 12px; padding: 8px 4px; border-radius: 10px; cursor: pointer; transition: color 0.15s, background 0.15s, box-shadow 0.15s, transform 0.08s; }
+.qbet:hover { color: #fff; background: rgba(57, 231, 255, 0.12); box-shadow: 0 0 12px rgba(57, 231, 255, 0.25); }
+.qbet:active { transform: translateY(1px); }
+.qbet[data-mode="max"] { color: var(--gold); border-color: rgba(255, 210, 63, 0.35); }
+.qbet[data-mode="max"]:hover { background: rgba(255, 210, 63, 0.14); box-shadow: 0 0 12px rgba(255, 210, 63, 0.3); }
+
 /* ───────────────────── Bet modal breakdown ───────────────────── */
 .bet-card { max-width: 420px; }
 .bet-breakdown { margin: 14px 0; border: 1px solid var(--panel-line); border-radius: 14px; overflow: hidden; }
