@@ -223,8 +223,28 @@
     const btn = $("deploy-btn");
     btn.disabled = true;
     try {
+      let net = await provider.getNetwork();
+      if (Number(net.chainId) === 1) {
+        // Never deploy on mainnet — move them to the Sepolia test network.
+        toast("Switching MetaMask to Sepolia…");
+        try {
+          await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0xaa36a7" }] });
+        } catch (e) {
+          if (e.code === 4902) {
+            await window.ethereum.request({ method: "wallet_addEthereumChain", params: [NETWORKS[11155111]] });
+          } else { btn.disabled = false; return txErr(e); }
+        }
+        provider = new E.BrowserProvider(window.ethereum, "any");
+        provider.pollingInterval = 2000;
+        signer = await provider.getSigner();
+        net = await provider.getNetwork();
+      }
+      const bal = await provider.getBalance(account);
+      if (bal === 0n) {
+        btn.disabled = false;
+        return toast("This wallet has 0 test ETH on " + netName(Number(net.chainId)) + ". Get free Sepolia ETH from a faucet, then try again.", "err");
+      }
       toast("Deploying your game… confirm in MetaMask");
-      const net = await provider.getNetwork();
       const factory = new E.ContractFactory(ABI, ART.bytecode, signer);
       const c = await factory.deploy(account); // you become the house + fee recipient
       await c.waitForDeployment();
@@ -645,6 +665,8 @@
     for (const k of Object.keys(FRIENDLY_ERR)) if (blob.includes(k)) return toast(FRIENDLY_ERR[k], "err");
     if (e?.code === "ACTION_REJECTED" || /user (rejected|denied)/i.test(blob))
       return toast("You cancelled the transaction.", "err");
+    if (/insufficient funds|could not coalesce|gas required exceeds|intrinsic gas/i.test(blob))
+      return toast("Transaction failed — usually not enough test ETH for gas. Top up Sepolia ETH from a faucet and retry.", "err");
     const m = e?.shortMessage || e?.reason || e?.message || "Transaction failed";
     toast(m.length > 90 ? m.slice(0, 90) + "…" : m, "err");
   }
