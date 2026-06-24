@@ -15,7 +15,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=37" />
+    <link rel="stylesheet" href="styles.css?v=38" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -28,7 +28,7 @@
         <span class="brand-tv">📺</span>
         <span class="brand-name">TV<span class="brand-accent"> CRYPTO</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v3.7</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v3.8</span>
       </div>
       <div class="topbar-right">
         <button id="sound-btn" class="btn btn-ghost" title="Play / silence background music">🔇 Music</button>
@@ -236,7 +236,11 @@
             <div class="hs-cell"><span class="muted">Bankroll (in play)</span><strong id="hs-bankroll">$0</strong></div>
             <div class="hs-cell hs-cash"><span class="muted">💰 House funds total (bankroll + balance)</span><strong id="hs-balance">$0</strong></div>
           </div>
-          <button id="cashout-house-btn" class="btn btn-ghost btn-block" style="margin-top: 10px;">💸 Cash out all to my wallet</button>
+          <div class="bankroll-actions" style="margin-top: 10px;">
+            <input id="cashout-input" class="input" type="number" min="0" step="1" placeholder="Cash out $ (e.g. 100)" />
+            <button id="cashout-amount-btn" class="btn btn-ghost">💸 Cash out</button>
+          </div>
+          <button id="cashout-house-btn" class="btn btn-ghost btn-block" style="margin-top: 6px;">Cash out everything to my wallet</button>
           <p class="muted" style="font-size: 11px; margin-top: 8px;">Profit = the 10% rake (your real edge) — it’s never affected by deposits, withdrawals, or cash-outs. The bankroll swings up &amp; down with each flip (variance), and “House funds total” reflects that. Cash-out releases the contract funds to your real MetaMask wallet (empties the house until you fund it again). “Today” counts from when you first opened the dashboard today. Only your house wallet can see this.</p>
         </div>
 
@@ -459,10 +463,10 @@
     </div>
 
     <script src="vendor/ethers.umd.min.js"></script>
-    <script src="config.js?v=37"></script>
-    <script src="contract.js?v=37"></script>
-    <script src="chiptune.js?v=37"></script>
-    <script src="tv.js?v=37"></script>
-    <script src="app.js?v=37"></script>
+    <script src="config.js?v=38"></script>
+    <script src="contract.js?v=38"></script>
+    <script src="chiptune.js?v=38"></script>
+    <script src="tv.js?v=38"></script>
+    <script src="app.js?v=38"></script>
   </body>
 </html>

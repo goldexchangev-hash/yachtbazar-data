@@ -487,6 +487,35 @@
       refreshHouse(); refreshBalances(); refreshHostPanel();
     } catch (e) { txErr(e); }
   }
+
+  // Cash out a chosen $ amount to your wallet — your balance first, then bankroll.
+  async function cashOutAmount() {
+    if (!ready()) return;
+    const v = parseFloat($("cashout-input").value);
+    if (!(v > 0)) return toast("Enter a $ amount to cash out", "err");
+    let want = usdToWei(v);
+    try {
+      const [bankroll, bal] = await Promise.all([read.houseBankroll(), read.balances(account)]);
+      const total = bankroll + bal;
+      if (want > total) {
+        if (want - total > usdToWei(1)) return toast("That's more than the house has. Max is " + usdOf(total) + ".", "err");
+        want = total; // tiny rounding over — just take it all
+      }
+      const fromBal = want > bal ? bal : want;
+      const fromBank = want - fromBal;
+      if (fromBal > 0n) {
+        toast("Withdrawing from balance… confirm in MetaMask");
+        await (await contract.withdraw(fromBal, { gasLimit: await estGas("withdraw", [fromBal], null, 120_000n) })).wait();
+      }
+      if (fromBank > 0n) {
+        toast("Withdrawing from bankroll… confirm in MetaMask");
+        await (await contract.withdrawHouse(fromBank, { gasLimit: await estGas("withdrawHouse", [fromBank], null, 150_000n) })).wait();
+      }
+      $("cashout-input").value = "";
+      toast("Cashed out " + usd(v) + " to your wallet 🏦", "ok");
+      refreshHouse(); refreshBalances(); refreshHostPanel();
+    } catch (e) { txErr(e); }
+  }
   function newGame() {
     if (!confirm("Deploy a brand-new game? Your current balance stays in the OLD game — use 'Withdraw all' first if you want it back.")) return;
     try { localStorage.removeItem("coinflip_deployment"); } catch {}
@@ -1467,6 +1496,7 @@
     $("raise-max-btn").onclick = raiseMaxBet;
     $("fund-house-btn").onclick = fundHouseTool;
     $("cashout-house-btn").onclick = cashOutHouse;
+    $("cashout-amount-btn").onclick = cashOutAmount;
     $("new-game-btn").onclick = newGame;
     document.querySelectorAll(".hs-tab").forEach((b) => {
       b.onclick = () => {
