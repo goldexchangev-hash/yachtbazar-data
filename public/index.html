@@ -38,28 +38,15 @@
       </div>
     </header>
 
+    <!-- Wrong-network / not-deployed / hint banner (in normal flow) -->
+    <div id="setup-banner" class="setup-banner hidden"></div>
+
     <main class="layout">
       <!-- ───────────────────── Left: the TV ───────────────────── -->
       <section class="stage">
         <!-- Retro TV, redesigned to fit the neon theme -->
         <div class="tv">
           <div class="tv-antenna" aria-hidden="true"><span></span><span></span></div>
-
-          <!-- Super Nintendo sitting on top of the TV (pure CSS) -->
-          <div class="snes" aria-hidden="true">
-            <div class="snes-body">
-              <div class="snes-vents"><i></i><i></i><i></i><i></i><i></i></div>
-              <div class="snes-center">
-                <div class="snes-cart" id="snes-cart"></div>
-                <div class="snes-eject">EJECT</div>
-              </div>
-              <div class="snes-buttons">
-                <button class="snes-btn power"><span></span>POWER</button>
-                <button class="snes-btn reset"><span></span>RESET</button>
-              </div>
-              <div class="snes-label">SUPER <b>FLIP</b> 16‑BIT</div>
-            </div>
-          </div>
           <div class="tv-body">
             <div class="tv-screen-frame">
               <div class="tv-screen" id="tv-screen">
@@ -319,9 +306,6 @@
         <p class="muted bet-hint">Deny and they'll pick again — keep going until you both agree.</p>
       </div>
     </div>
-
-    <!-- "Wrong network / not deployed" banner -->
-    <div id="setup-banner" class="setup-banner hidden"></div>
 
     <script src="vendor/ethers.umd.min.js"></script>
     <script src="config.js"></script>

@@ -118,15 +118,15 @@ a { color: var(--cyan); text-decoration: none; }
 .card-title .btn-mini { margin-left: auto; }
 
 /* ───────────────────── The TV ───────────────────── */
-.tv { display: flex; flex-direction: column; align-items: center; margin: 8px 0 18px; }
-.tv-antenna { position: relative; height: 64px; width: 200px; }
+.tv { display: flex; flex-direction: column; align-items: center; margin: 14px 0 20px; }
+.tv-antenna { position: relative; height: 42px; width: 150px; opacity: 0.85; }
 .tv-antenna span {
-  position: absolute; bottom: 0; left: 50%; width: 3px; height: 70px; transform-origin: bottom center;
+  position: absolute; bottom: 0; left: 50%; width: 3px; height: 50px; transform-origin: bottom center;
   background: linear-gradient(#cfd6ff, #6b73a8); border-radius: 3px;
 }
-.tv-antenna span:first-child { transform: rotate(-32deg); }
-.tv-antenna span:last-child { transform: rotate(28deg); }
-.tv-antenna span::after { content: ""; position: absolute; top: -6px; left: -3px; width: 9px; height: 9px; border-radius: 50%; background: #cfd6ff; }
+.tv-antenna span:first-child { transform: rotate(-28deg); }
+.tv-antenna span:last-child { transform: rotate(24deg); }
+.tv-antenna span::after { content: ""; position: absolute; top: -5px; left: -3px; width: 8px; height: 8px; border-radius: 50%; background: #cfd6ff; }
 
 .tv-body {
   position: relative; width: min(100%, 760px);
@@ -351,7 +351,7 @@ a { color: var(--cyan); text-decoration: none; }
 .help-steps b { color: var(--cyan); }
 .help-foot { margin-top: 16px; font-size: 13px; line-height: 1.5; }
 
-.setup-banner { position: fixed; left: 50%; top: 70px; transform: translateX(-50%); z-index: 40; background: rgba(255, 91, 91, 0.14); border: 1px solid rgba(255, 91, 91, 0.5); color: #ffd9d9; padding: 10px 16px; border-radius: 12px; font-weight: 600; font-size: 14px; max-width: 92vw; text-align: center; }
+.setup-banner { position: relative; z-index: 3; margin: 2px auto 0; width: fit-content; max-width: min(760px, 92vw); background: rgba(57, 231, 255, 0.1); border: 1px solid rgba(57, 231, 255, 0.3); color: #d7ecff; padding: 9px 18px; border-radius: 999px; font-weight: 600; font-size: 13.5px; text-align: center; box-shadow: var(--shadow); }
 .setup-banner.warn { background: rgba(255, 210, 63, 0.14); border-color: rgba(255, 210, 63, 0.5); color: #fff0c2; }
 
 /* ============================================================
