@@ -150,24 +150,20 @@
       }
       if (on) return true;
       on = true;
-      // iOS/Safari unlock: play a 1-sample silent buffer inside the gesture.
+      // iOS/Safari unlock: play a 1-sample silent buffer + resume, all inside the gesture.
       try {
         const b = ctx.createBufferSource();
         b.buffer = ctx.createBuffer(1, 1, 22050);
         b.connect(ctx.destination);
         b.start(0);
       } catch {}
+      try { ctx.resume(); } catch {}
       if (customReady && audioEl) { audioEl.currentTime = 0; audioEl.play().catch(() => {}); return true; }
-      // Only begin scheduling AFTER the context is actually running, otherwise the
-      // first notes are scheduled in the past and you hear nothing on the 1st tap.
-      const begin = () => {
-        if (!on || !ctx) return;
-        barIdx = 0;
-        nextBarTime = ctx.currentTime + 0.18;
-        scheduler();
-      };
-      if (ctx.state === "suspended") ctx.resume().then(begin).catch(begin);
-      else begin();
+      // Schedule SYNCHRONOUSLY (not in a promise) so the first notes play on the very
+      // first tap; the 0.35s head-start covers the context's wake-up time.
+      barIdx = 0;
+      nextBarTime = ctx.currentTime + 0.35;
+      scheduler();
       return true;
     },
     stop() {
