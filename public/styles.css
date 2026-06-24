@@ -802,7 +802,7 @@ kbd { font-family: ui-monospace, monospace; font-size: 11px; background: rgba(25
   .sidebar { order: 2; }
 }
 @media (max-width: 560px) {
-  .brand-live, .build-tag { display: none; }
+  .brand-live { display: none; } /* keep .build-tag visible so the version shows on phones */
   .brand-name { font-size: 18px; }
   .topbar { padding: 12px 14px; flex-wrap: wrap; }
   .tv-body { padding: 14px 14px 12px; border-radius: 22px; }

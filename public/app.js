@@ -14,6 +14,10 @@
   function saveStored(d) { try { localStorage.setItem("coinflip_deployment", JSON.stringify(d)); } catch {} }
 
   const onLocalhost = /^(localhost$|127\.|0\.0\.0\.0|\[?::1\]?)/.test(location.hostname);
+  // Canonical public site (Render — has the live chat). All share/invite links +
+  // cards point here regardless of which mirror you're viewing it on.
+  const CANONICAL_URL = "https://tv-crypto-flip.onrender.com/";
+  function shareBase() { return onLocalhost ? (location.origin + location.pathname) : CANONICAL_URL; }
 
   // Which contract + chain are we using?  URL link > local config.js > saved > none.
   let deployment = (() => {
@@ -165,7 +169,7 @@
     g.font = "500 34px 'Space Grotesk', system-ui, sans-serif"; g.fillStyle = "#7f8bb0";
     g.fillText("Provably on-chain · Sepolia testnet · play money", W / 2, 980);
     g.fillStyle = "#39e7ff";
-    g.fillText("goldexchangev-hash.github.io/yachtbazar-data", W / 2, 1030);
+    g.fillText("tv-crypto-flip.onrender.com", W / 2, 1030);
   }
   async function shareResultCard() {
     if (!lastResult) return;
@@ -178,7 +182,7 @@
     const text = (lastResult.won
       ? "I just won " + usd(lastResult.amountUsd) + " flipping ETH on Crypto TV Flip! 🪙📺"
       : "Took an L flipping ETH on Crypto TV Flip 🪙📺 — get me back")
-      + " https://goldexchangev-hash.github.io/yachtbazar-data/";
+      + " " + CANONICAL_URL;
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       try { await navigator.share({ files: [file], text }); return; }
       catch (e) { if (e && e.name === "AbortError") return; }
@@ -925,11 +929,7 @@
   const closingTables = new Set();  // ids with an in-flight auto-close
 
   function hostUrlFor(id) {
-    let base = location.origin + location.pathname;
-    if (window.__PUBLIC_HOST) {
-      const port = location.port ? ":" + location.port : "";
-      base = `${location.protocol}//${window.__PUBLIC_HOST}${port}${location.pathname}`;
-    }
+    let base = shareBase();
     const q = new URLSearchParams();
     if (deployment.address) q.set("contract", deployment.address);
     if (deployment.chainId) q.set("chain", String(deployment.chainId));
@@ -1363,11 +1363,7 @@
 
   // ---------------------------------------------------------- share link
   function shareUrlFor(id) {
-    let base = location.origin + location.pathname;
-    if (window.__PUBLIC_HOST) {
-      const port = location.port ? ":" + location.port : "";
-      base = `${location.protocol}//${window.__PUBLIC_HOST}${port}${location.pathname}`;
-    }
+    let base = shareBase();
     const q = new URLSearchParams();
     if (deployment.address) q.set("contract", deployment.address);
     if (deployment.chainId) q.set("chain", String(deployment.chainId));
