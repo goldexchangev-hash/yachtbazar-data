@@ -27,7 +27,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=77" />
+    <link rel="stylesheet" href="styles.css?v=78" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -41,7 +41,7 @@
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v7.7</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v7.8</span>
       </div>
       <div class="topbar-right">
         <button id="sound-btn" class="btn btn-ghost" title="Play / silence background music">🔇 Music</button>
@@ -144,6 +144,8 @@
                 <canvas id="confetti-canvas" class="confetti-canvas"></canvas>
                 <!-- Pixel "win scene" movie overlay (escalates with the amount) -->
                 <canvas id="scene-canvas" class="scene-canvas"></canvas>
+                <!-- Full-motion win/loss video reel (Scarfblade Films theme) -->
+                <video id="reveal-video" class="reveal-video" muted playsinline preload="auto"></video>
 
                 <!-- Shown while a bet tx is being signed + mined (esp. slow on mobile) -->
                 <div id="tv-pending" class="tv-pending hidden">⏳ SENDING BET…<br />confirm in your wallet, then hold tight</div>
@@ -170,6 +172,7 @@
           <div class="theme-toggle" id="theme-toggle">
             <button type="button" class="theme-btn" data-theme="neon">Neon Nights</button>
             <button type="button" class="theme-btn" data-theme="world">Magic Cliffs</button>
+            <button type="button" class="theme-btn" data-theme="cinematic">Scarfblade Films</button>
           </div>
           <button type="button" class="theme-preview-btn" id="theme-preview-btn" title="Preview the win animation">▶ Preview</button>
           <span class="theme-credit" id="theme-credit"></span>
@@ -580,11 +583,11 @@
     </div>
 
     <script defer src="vendor/ethers.umd.min.js"></script>
-    <script defer src="config.js?v=77"></script>
-    <script defer src="contract.js?v=77"></script>
-    <script defer src="chiptune.js?v=77"></script>
-    <script defer src="scenes.js?v=77"></script>
-    <script defer src="tv.js?v=77"></script>
-    <script defer src="app.js?v=77"></script>
+    <script defer src="config.js?v=78"></script>
+    <script defer src="contract.js?v=78"></script>
+    <script defer src="chiptune.js?v=78"></script>
+    <script defer src="scenes.js?v=78"></script>
+    <script defer src="tv.js?v=78"></script>
+    <script defer src="app.js?v=78"></script>
   </body>
 </html>

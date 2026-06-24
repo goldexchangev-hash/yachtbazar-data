@@ -263,7 +263,9 @@
     if (prev) prev.onclick = () => {
       try {
         const amt = 60 + Math.floor(Math.random() * 380);
-        if (WinScenes.getTheme() === "world" && WinScenes.flipReveal) {
+        const theme = WinScenes.getTheme();
+        if (theme === "cinematic") { videoReveal(Math.random() > 0.4); }
+        else if (theme === "world" && WinScenes.flipReveal) {
           const win = Math.random() > 0.4;
           WinScenes.flipStart({ betUsd: amt });
           setTimeout(() => WinScenes.flipReveal({ won: win, netUsd: win ? Math.round(amt * 0.9) : 0, betUsd: amt }), 1100);
@@ -819,9 +821,36 @@
   // triggers a celebration scene over the landed coin.
   function playOutcome(o) {
     try {
+      // "Scarfblade Films" theme: play a full-motion win/loss reel on the TV.
+      if (window.WinScenes && WinScenes.getTheme && WinScenes.getTheme() === "cinematic" && videoReveal(o.won)) return;
       if (window.WinScenes && WinScenes.flipReveal && WinScenes.flipReveal({ won: o.won, netUsd: o.netUsd, betUsd: o.betUsd })) return;
       if (o.won && window.WinScenes && WinScenes.play) WinScenes.play({ amountUsd: o.netUsd, side: o.side });
     } catch (e) {}
+  }
+  // Cinematic reels: one of four per outcome, picked at random. Muted so they
+  // always autoplay (the chiptune fanfare carries the sound); on end the TV's
+  // landed-result shows underneath.
+  const CINE = {
+    win: ["assets/wins/win1.mp4", "assets/wins/win2.mp4", "assets/wins/win3.mp4", "assets/wins/win4.mp4"],
+    loss: ["assets/losses/loss1.mp4", "assets/losses/loss2.mp4", "assets/losses/loss3.mp4", "assets/losses/loss4.mp4"],
+  };
+  let cineTimer = 0;
+  function videoReveal(won) {
+    const v = $("reveal-video"); if (!v) return false;
+    const list = won ? CINE.win : CINE.loss;
+    if (!list.length) return false;
+    const src = list[Math.floor(Math.random() * list.length)];
+    const done = () => { clearTimeout(cineTimer); v.onended = null; v.classList.remove("show"); try { v.pause(); } catch {} v.removeAttribute("src"); try { v.load(); } catch {} try { window.__winSceneActive = false; } catch {} };
+    clearTimeout(cineTimer);
+    v.muted = true; v.src = src; v.currentTime = 0;
+    v.classList.add("show");
+    try { window.__winSceneActive = true; } catch {}     // pause the TV static behind it
+    try { window.__onTvReveal && window.__onTvReveal({}); } catch {} // outcome is on screen now
+    v.onended = done;
+    cineTimer = setTimeout(done, 9000);                  // safety: never get stuck on the reel
+    const p = v.play();
+    if (p && p.catch) p.catch(() => done());             // if playback is blocked, fall back to the TV result
+    return true;
   }
   function flipBuildup(betWei) { try { window.WinScenes && WinScenes.flipStart && WinScenes.flipStart({ betUsd: weiToUsd(betWei) }); } catch (e) {} }
   function cancelBuildup() { try { window.WinScenes && WinScenes.flipCancel && WinScenes.flipCancel(); } catch (e) {} }

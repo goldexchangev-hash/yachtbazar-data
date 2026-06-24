@@ -1322,14 +1322,19 @@
         { max: 320, base: 220, shake: 1.4, epic: false, world: true, headline: "DUEL WON!",   pool: [sWorldDuel] },
         { max: 1e9, base: 320, shake: 2.4, epic: true,  world: true, headline: "LEGENDARY!",  pool: [sWorldFinale] }
       ]
-    }
+    },
+    // Full-motion video reels (handled in app.js, not the canvas engine). The
+    // entry just makes it a selectable, persisted theme.
+    cinematic: { label: "Scarfblade Films", credit: "Cinematic win/loss video reels", video: true, bands: [] }
   };
   var activeTheme = "neon";
   try { activeTheme = localStorage.getItem("ctf_scene_theme") || "neon"; } catch (e) {}
   if (!THEMES[activeTheme]) activeTheme = "neon";
 
   function selectScene(amt) {
-    var BANDS = (THEMES[activeTheme] || THEMES.neon).bands;
+    var T = THEMES[activeTheme];
+    if (!T || !T.bands || !T.bands.length) T = THEMES.neon; // video themes have no canvas bands
+    var BANDS = T.bands;
     var b = BANDS.find(function (x) { return amt < x.max; }) || BANDS[BANDS.length - 1];
     var span = (b.max >= 1e9 ? 150 : (b.max - b.base)) / 5;
     var step = Math.max(0, Math.min(4, Math.floor((amt - b.base) / span)));
