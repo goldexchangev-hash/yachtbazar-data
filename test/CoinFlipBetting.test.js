@@ -42,7 +42,7 @@ describe("CoinFlipBetting (prevrandao, no oracle)", function () {
     const bet = ethers.parseEther("0.01");
     await game.connect(alice).deposit({ value: bet });
     await game.connect(bob).deposit({ value: bet });
-    await game.connect(alice).createRoom(bet, "PvP");
+    await game.connect(alice).createRoom(bet, "PvP", true);
     const res = await result(await game.connect(bob).joinRoom(1), game);
 
     const pot = bet * 2n;
@@ -61,13 +61,26 @@ describe("CoinFlipBetting (prevrandao, no oracle)", function () {
     expect((await game.getRoom(1)).status).to.equal(2); // Settled
   });
 
+  it("honors the creator's chosen side (player1 wins iff the coin matches their pick)", async function () {
+    const { game, alice, bob } = await deployFixture();
+    const bet = ethers.parseEther("0.01");
+    await game.connect(alice).deposit({ value: bet });
+    await game.connect(bob).deposit({ value: bet });
+    await game.connect(alice).createRoom(bet, "Tails", false); // alice picks TAILS
+    const res = await result(await game.connect(bob).joinRoom(1), game);
+    // res.headsWon = did the coin land heads. Alice chose tails → she wins only
+    // when the coin is NOT heads; bob (player2) holds the opposite side.
+    expect(res.winner === alice.address).to.equal(!res.headsWon);
+    expect(res.winner === bob.address).to.equal(res.headsWon);
+  });
+
   it("vs house: fee to treasury, bankroll moves correctly either way", async function () {
     const { game, deployer, treasury, alice } = await deployFixture();
     const bet = ethers.parseEther("0.01");
     await game.connect(deployer).fundHouse({ value: ethers.parseEther("1") });
     await game.connect(alice).deposit({ value: bet });
 
-    const res = await result(await game.connect(alice).playHouse(bet), game);
+    const res = await result(await game.connect(alice).playHouse(bet, true), game);
     const pot = bet * 2n;
     const fee = (pot * 1000n) / 10000n;
     const payout = pot - fee;
@@ -89,23 +102,23 @@ describe("CoinFlipBetting (prevrandao, no oracle)", function () {
   it("enforces min and max bet; owner can change max", async function () {
     const { game, deployer, alice } = await deployFixture();
     await game.connect(alice).deposit({ value: ethers.parseEther("1") });
-    await expect(game.connect(alice).createRoom(1000n, "dust")).to.be.revertedWithCustomError(game, "BetTooSmall");
+    await expect(game.connect(alice).createRoom(1000n, "dust", true)).to.be.revertedWithCustomError(game, "BetTooSmall");
     // default maxBet is 1 ETH, so 2 ETH is over the cap
-    await expect(game.connect(alice).createRoom(ethers.parseEther("2"), "big")).to.be.revertedWithCustomError(game, "BetTooHigh");
+    await expect(game.connect(alice).createRoom(ethers.parseEther("2"), "big", true)).to.be.revertedWithCustomError(game, "BetTooHigh");
     await game.connect(deployer).setMaxBet(ethers.parseEther("0.5"));
-    await expect(game.connect(alice).createRoom(ethers.parseEther("0.5"), "ok")).to.not.be.reverted;
+    await expect(game.connect(alice).createRoom(ethers.parseEther("0.5"), "ok", true)).to.not.be.reverted;
   });
 
   it("refunds on cancel; blocks self-join and over-betting", async function () {
     const { game, alice, bob } = await deployFixture();
     const bet = ethers.parseEther("0.01");
     await game.connect(alice).deposit({ value: bet });
-    await game.connect(alice).createRoom(bet, "Cancel");
+    await game.connect(alice).createRoom(bet, "Cancel", true);
     expect(await game.balances(alice.address)).to.equal(0n);
     await game.connect(alice).cancelRoom(1);
     expect(await game.balances(alice.address)).to.equal(bet);
 
-    await game.connect(alice).createRoom(bet, "Solo"); // room 2, escrows bet again? need balance
+    await game.connect(alice).createRoom(bet, "Solo", true); // room 2, escrows bet again? need balance
     // alice has `bet` again from refund; createRoom escrows it
     await expect(game.connect(alice).joinRoom(2)).to.be.revertedWithCustomError(game, "CannotJoinOwnRoom");
     await expect(game.connect(bob).joinRoom(2)).to.be.revertedWithCustomError(game, "InsufficientBalance");
@@ -114,7 +127,7 @@ describe("CoinFlipBetting (prevrandao, no oracle)", function () {
   it("creator renegotiates the room bet up and down", async function () {
     const { game, alice } = await deployFixture();
     await game.connect(alice).deposit({ value: ethers.parseEther("0.03") });
-    await game.connect(alice).createRoom(ethers.parseEther("0.01"), "Nego");
+    await game.connect(alice).createRoom(ethers.parseEther("0.01"), "Nego", true);
     expect(await game.balances(alice.address)).to.equal(ethers.parseEther("0.02"));
     await game.connect(alice).updateRoomBet(1, ethers.parseEther("0.025"));
     expect(await game.balances(alice.address)).to.equal(ethers.parseEther("0.005"));
@@ -137,10 +150,10 @@ describe("CoinFlipBetting (prevrandao, no oracle)", function () {
     for (const p of [alice, bob, carol, dave, treasury]) {
       await game.connect(p).deposit({ value: ethers.parseEther("0.05") });
     }
-    await game.connect(treasury).createRoom(bet, "Host's room"); // room 1
-    await game.connect(alice).playHouse(bet); // room 2
-    await game.connect(bob).playHouse(bet); // room 3
-    await game.connect(carol).playHouse(bet); // room 4
+    await game.connect(treasury).createRoom(bet, "Host's room", true); // room 1
+    await game.connect(alice).playHouse(bet, true); // room 2
+    await game.connect(bob).playHouse(bet, true); // room 3
+    await game.connect(carol).playHouse(bet, true); // room 4
     await game.connect(dave).joinRoom(1); // settles room 1
 
     for (const id of [1, 2, 3, 4]) expect((await game.getRoom(id)).status).to.equal(2);
@@ -169,7 +182,7 @@ describe("CoinFlipBetting (prevrandao, no oracle)", function () {
     await game.connect(bob).deposit({ value: bet });
     await game.connect(alice).createHostRoom(ethers.parseEther("0.1"), "T"); // id 1, alice balance -> 0
 
-    const args = hostFlip(await (await game.connect(bob).playHostRoom(1, bet)).wait(), game);
+    const args = hostFlip(await (await game.connect(bob).playHostRoom(1, bet, true)).wait(), game);
     const pot = bet * 2n, fee = pot / 10n, payout = pot - fee;
     expect(args.fee).to.equal(fee);
     expect(args.player).to.equal(bob.address);
@@ -195,9 +208,9 @@ describe("CoinFlipBetting (prevrandao, no oracle)", function () {
     const { game, alice, bob } = await deployFixture();
     await game.connect(alice).deposit({ value: ethers.parseEther("0.05") });
     await game.connect(alice).createHostRoom(ethers.parseEther("0.02"), "T"); // bank 0.02
-    await expect(game.connect(alice).playHostRoom(1, ethers.parseEther("0.01"))).to.be.revertedWithCustomError(game, "CannotPlayOwnTable");
+    await expect(game.connect(alice).playHostRoom(1, ethers.parseEther("0.01"), true)).to.be.revertedWithCustomError(game, "CannotPlayOwnTable");
     await game.connect(bob).deposit({ value: ethers.parseEther("0.05") });
-    await expect(game.connect(bob).playHostRoom(1, ethers.parseEther("0.03"))).to.be.revertedWithCustomError(game, "BankTooLow");
+    await expect(game.connect(bob).playHostRoom(1, ethers.parseEther("0.03"), true)).to.be.revertedWithCustomError(game, "BankTooLow");
   });
 
   it("host table: creator closes anytime and is refunded; double close reverts", async function () {

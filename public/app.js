@@ -513,7 +513,8 @@
     } catch {}
     try {
       toast("Creating room… confirm in MetaMask");
-      const tx = await contract.createRoom(bet, name, { gasLimit: await estGas("createRoom", [bet, name], null, 700000n) });
+      const heads = sideOf("create-side");
+      const tx = await contract.createRoom(bet, name, heads, { gasLimit: await estGas("createRoom", [bet, name, heads], null, 700000n) });
       const rcpt = await tx.wait();
       const ev = rcpt.logs.map((l) => safeParse(l)).find((p) => p && p.name === "RoomCreated");
       const id = ev ? ev.args.roomId.toString() : null;
@@ -563,16 +564,16 @@
       const gb = await read.balances(account);
       if (gb < bet) return toast("Deposit first 👇 — your stake comes from your in-game balance (you have " + usdOf(gb) + ").", "err");
     } catch {}
-    openBetModal({ kind: "house", bet: bet });
+    openBetModal({ kind: "house", bet: bet, heads: sideOf("house-side") });
   }
 
-  async function doPlayHouse(bet) {
+  async function doPlayHouse(bet, wantsHeads) {
     try {
       // Pre-validate AND learn the room id up-front so the result reveal can't
       // race ahead of us (VRF can settle near-instantly on a local chain).
       let predicted;
       try {
-        predicted = await contract.playHouse.staticCall(bet);
+        predicted = await contract.playHouse.staticCall(bet, wantsHeads);
       } catch (e) {
         return txErr(e);
       }
@@ -580,7 +581,7 @@
       lastRevealed = null;
       toast("Flipping vs the house… confirm in MetaMask");
       TV.startFlip({ p1: account, p2: "HOUSE" });
-      const tx = await contract.playHouse(bet, { gasLimit: await estGas("playHouse", [bet], null, 700000n) });
+      const tx = await contract.playHouse(bet, wantsHeads, { gasLimit: await estGas("playHouse", [bet, wantsHeads], null, 700000n) });
       const rcpt = await tx.wait();
       const ev = rcpt.logs.map((l) => safeParse(l)).find((p) => p && p.name === "HouseGameStarted");
       if (ev) activeRoomId = ev.args.roomId.toString();
@@ -690,24 +691,25 @@
       const gb = await read.balances(account);
       if (gb < bet) return toast("Deposit first 👇 — your stake comes from your in-game balance (you have " + usdOf(gb) + ").", "err");
     } catch {}
-    doPlayTable(currentTable.id, bet);
+    doPlayTable(currentTable.id, bet, sideOf("table-side"));
   }
 
-  async function doPlayTable(id, bet) {
+  async function doPlayTable(id, bet, wantsHeads) {
     try {
       let predicted;
-      try { predicted = await contract.playHostRoom.staticCall(id, bet); } catch (e) { return txErr(e); }
+      try { predicted = await contract.playHostRoom.staticCall(id, bet, wantsHeads); } catch (e) { return txErr(e); }
       activeRoomId = null; lastRevealed = null;
       toast("Flipping vs the table… confirm in MetaMask");
       TV.startFlip({ p1: account, p2: "HOST" });
-      const tx = await contract.playHostRoom(id, bet, { gasLimit: await estGas("playHostRoom", [id, bet], null, 400000n) });
+      const tx = await contract.playHostRoom(id, bet, wantsHeads, { gasLimit: await estGas("playHostRoom", [id, bet, wantsHeads], null, 400000n) });
       const rcpt = await tx.wait();
       const ev = rcpt.logs.map((l) => safeParse(l)).find((p) => p && p.name === "HostFlip");
       const playerWon = ev ? ev.args.playerWon : predicted;
       const betAmt = ev ? ev.args.betAmount : bet;
       const rv = flipReveal(betAmt, playerWon);
+      const coinHeads = playerWon ? wantsHeads : !wantsHeads; // the coin's actual face
       TV.revealResult({
-        side: playerWon ? "HEADS" : "TAILS",
+        side: coinHeads ? "HEADS" : "TAILS",
         youWon: playerWon,
         role: "participant",
         amountUsd: rv.amountUsd,
@@ -820,6 +822,17 @@
     } else {
       raise.classList.add("hidden");
     }
+    // Show which side you're on. Joiners get the opposite of the host's pick.
+    const sideEl = $("bet-side");
+    let yourHeads = null;
+    if (isJoin) yourHeads = !opts.room.creatorHeads;
+    else if (opts.kind === "house") yourHeads = opts.heads;
+    if (yourHeads === null) { sideEl.classList.add("hidden"); }
+    else {
+      sideEl.textContent = "Your side: " + (yourHeads ? "Ξ HEADS" : "★ TAILS") +
+        (isJoin ? " — host took " + (opts.room.creatorHeads ? "heads" : "tails") : "");
+      sideEl.classList.remove("hidden");
+    }
     updateBetModalAmount(opts.bet);
     $("bet-modal").classList.remove("hidden");
   }
@@ -847,7 +860,7 @@
     const p = pendingBet;
     closeBetModal();
     if (!p) return;
-    if (p.kind === "house") return doPlayHouse(p.bet);
+    if (p.kind === "house") return doPlayHouse(p.bet, p.heads);
     if (p.bet > p.room.betAmount) return proposeBet(p.id, p.room, p.bet);
     doJoinRoom(p.id, p.room, p.bet);
   }
@@ -1331,7 +1344,24 @@
     btn.classList.toggle("btn-ghost", !on);
   }
 
+  // Heads/Tails picker: returns true if the HEADS button is active in #id.
+  function sideOf(id) {
+    const el = document.querySelector("#" + id + " .side-btn.active");
+    return el ? el.dataset.heads === "1" : true;
+  }
+  function wireSideToggles() {
+    document.querySelectorAll(".side-toggle").forEach((tog) => {
+      tog.querySelectorAll(".side-btn").forEach((b) => {
+        b.onclick = () => {
+          tog.querySelectorAll(".side-btn").forEach((x) => x.classList.remove("active"));
+          b.classList.add("active");
+        };
+      });
+    });
+  }
+
   function wireUI() {
+    wireSideToggles();
     $("connect-btn").onclick = connect;
     $("disconnect-btn").onclick = disconnect;
     $("raise-max-btn").onclick = raiseMaxBet;

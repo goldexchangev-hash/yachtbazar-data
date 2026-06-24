@@ -325,6 +325,15 @@ a { color: var(--cyan); text-decoration: none; }
 .slider-val { font-family: var(--display); font-size: 16px; white-space: nowrap; color: var(--gold); min-width: 110px; text-align: right; }
 .eth-sub { display: block; font-family: var(--font); font-size: 10.5px; color: var(--muted); font-weight: 500; letter-spacing: 0; }
 
+/* Heads / Tails side picker */
+.side-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 4px 0 12px; flex-wrap: wrap; }
+.side-label { font-size: 12px; color: var(--muted); }
+.side-toggle { display: inline-flex; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--panel-line); border-radius: 999px; padding: 3px; gap: 2px; }
+.side-btn { border: 0; background: transparent; color: var(--muted); font-family: var(--display); font-weight: 700; font-size: 13px; padding: 6px 14px; border-radius: 999px; cursor: pointer; transition: color 0.15s, background 0.15s, box-shadow 0.15s; }
+.side-btn:hover { color: #fff; }
+.side-btn.active { color: #07101f; background: linear-gradient(135deg, #39e7ff, #ff4d9d); box-shadow: 0 0 14px rgba(57, 231, 255, 0.4); }
+.bet-side { text-align: center; font-family: var(--display); font-weight: 700; font-size: 14px; color: var(--gold); background: rgba(255, 210, 63, 0.08); border: 1px solid rgba(255, 210, 63, 0.25); border-radius: 10px; padding: 7px; margin: 8px 0; }
+
 /* ───────────────────── Bet modal breakdown ───────────────────── */
 .bet-card { max-width: 420px; }
 .bet-breakdown { margin: 14px 0; border: 1px solid var(--panel-line); border-radius: 14px; overflow: hidden; }

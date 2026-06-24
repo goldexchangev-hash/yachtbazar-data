@@ -61,10 +61,11 @@ contract CoinFlipBetting {
         address player2; // "tails"
         Status status;
         address winner;
-        bool headsWon; // true => player1 won
+        bool headsWon; // true => the coin landed HEADS (used for the TV coin side)
         uint256 createdAt;
         uint256 settledAt;
         bool isHouseGame; // true => player2 is the house bankroll
+        bool creatorHeads; // true => creator (player1) picked HEADS; player2 gets the other side
     }
 
     uint256 public nextRoomId = 1;
@@ -195,7 +196,7 @@ contract CoinFlipBetting {
     //  Rooms: create / cancel / update / join
     // --------------------------------------------------------------------- //
 
-    function createRoom(uint256 betAmount, string calldata name) external returns (uint256 roomId) {
+    function createRoom(uint256 betAmount, string calldata name, bool creatorHeads) external returns (uint256 roomId) {
         if (betAmount < MIN_BET) revert BetTooSmall();
         if (betAmount > maxBet) revert BetTooHigh();
         if (balances[msg.sender] < betAmount) revert InsufficientBalance();
@@ -215,7 +216,8 @@ contract CoinFlipBetting {
             headsWon: false,
             createdAt: block.timestamp,
             settledAt: 0,
-            isHouseGame: false
+            isHouseGame: false,
+            creatorHeads: creatorHeads
         });
         _roomIds.push(roomId);
 
@@ -291,7 +293,7 @@ contract CoinFlipBetting {
     /// @notice One-tap coin flip against the house. Your bet is matched from the
     ///         house bankroll; winner takes the pot minus the 10% fee. You are
     ///         "heads" (player1). Settles instantly.
-    function playHouse(uint256 betAmount) external returns (uint256 roomId) {
+    function playHouse(uint256 betAmount, bool wantsHeads) external returns (uint256 roomId) {
         if (betAmount < MIN_BET) revert BetTooSmall();
         if (betAmount > maxBet) revert BetTooHigh();
         if (balances[msg.sender] < betAmount) revert InsufficientBalance();
@@ -306,14 +308,15 @@ contract CoinFlipBetting {
             name: "Vs House",
             creator: msg.sender,
             betAmount: betAmount,
-            player1: msg.sender, // heads = you
-            player2: treasury, // tails = the house
+            player1: msg.sender, // you
+            player2: treasury, // the house takes the other side
             status: Status.Open,
             winner: address(0),
             headsWon: false,
             createdAt: block.timestamp,
             settledAt: 0,
-            isHouseGame: true
+            isHouseGame: true,
+            creatorHeads: wantsHeads
         });
         _roomIds.push(roomId);
 
@@ -348,8 +351,11 @@ contract CoinFlipBetting {
     function _settleFlip(uint256 roomId) internal {
         Room storage room = rooms[roomId];
 
-        bool headsWon = (_random(roomId, room.player1, room.player2) % 2 == 0);
-        address winner = headsWon ? room.player1 : room.player2;
+        // Flip the coin, then decide by the side the creator (player1) chose: they
+        // win when the coin lands on their side. Player2 always gets the other side.
+        bool headsLanded = (_random(roomId, room.player1, room.player2) % 2 == 0);
+        bool creatorWon = (headsLanded == room.creatorHeads);
+        address winner = creatorWon ? room.player1 : room.player2;
 
         uint256 pot = room.betAmount * 2;
         uint256 fee = (pot * HOUSE_FEE_BPS) / BPS_DENOMINATOR;
@@ -358,7 +364,7 @@ contract CoinFlipBetting {
         // The 10% fee always goes to the treasury (the host's account).
         balances[treasury] += fee;
 
-        if (room.isHouseGame && !headsWon) {
+        if (room.isHouseGame && !creatorWon) {
             houseBankroll += payout; // house won — refill bankroll
         } else {
             balances[winner] += payout; // a human winner
@@ -366,14 +372,14 @@ contract CoinFlipBetting {
 
         room.status = Status.Settled;
         room.winner = winner;
-        room.headsWon = headsWon;
+        room.headsWon = headsLanded; // the coin's actual side (for the TV)
         room.settledAt = block.timestamp;
 
         totalFeesCollected += fee;
         totalGamesPlayed += 1;
         totalWagered += pot;
 
-        emit FlipSettled(roomId, winner, headsWon, payout, fee);
+        emit FlipSettled(roomId, winner, headsLanded, payout, fee);
     }
 
     // --------------------------------------------------------------------- //
@@ -416,7 +422,7 @@ contract CoinFlipBetting {
     /// @notice Flip against a host table for `betAmount`. You are "heads"; the table
     ///         creator (the house) is "tails" and matches your bet from their bank.
     ///         The creator always collects the 10% rake. Settles instantly.
-    function playHostRoom(uint256 roomId, uint256 betAmount) external returns (bool playerWon) {
+    function playHostRoom(uint256 roomId, uint256 betAmount, bool wantsHeads) external returns (bool playerWon) {
         HostRoom storage hr = hostRooms[roomId];
         if (hr.id == 0 || !hr.open) revert HostRoomNotOpen();
         if (msg.sender == hr.creator) revert CannotPlayOwnTable();
@@ -440,8 +446,9 @@ contract CoinFlipBetting {
         balances[hr.creator] += fee - platformCut;
         totalFeesCollected += platformCut;
 
-        // Even => heads (the player) wins.
-        playerWon = (_random(roomId, msg.sender, hr.creator) % 2 == 0);
+        // Flip the coin; you win if it lands on the side you picked.
+        bool headsLanded = (_random(roomId, msg.sender, hr.creator) % 2 == 0);
+        playerWon = (headsLanded == wantsHeads);
         if (playerWon) {
             balances[msg.sender] += payout; // you take the pot (minus rake)
         } else {

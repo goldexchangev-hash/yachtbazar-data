@@ -15,7 +15,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=23" />
+    <link rel="stylesheet" href="styles.css?v=24" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -159,6 +159,13 @@
             <input id="house-bet" class="slider" type="range" min="10" max="500" step="5" value="25" />
             <div class="slider-val"><strong id="house-bet-val">$25</strong><span class="eth-sub" id="house-bet-eth"></span></div>
           </div>
+          <div class="side-row">
+            <span class="side-label">Your side</span>
+            <div class="side-toggle" id="house-side">
+              <button type="button" class="side-btn active" data-heads="1">Ξ&nbsp;Heads</button>
+              <button type="button" class="side-btn" data-heads="0">★&nbsp;Tails</button>
+            </div>
+          </div>
           <button id="play-house-btn" class="btn btn-primary btn-block">🪙 Flip vs House</button>
         </div>
 
@@ -172,6 +179,13 @@
           <div class="slider-wrap">
             <input id="table-bet" class="slider" type="range" min="10" max="500" step="5" value="25" />
             <div class="slider-val"><strong id="table-bet-val">$25</strong><span class="eth-sub" id="table-bet-eth"></span></div>
+          </div>
+          <div class="side-row">
+            <span class="side-label">Your side</span>
+            <div class="side-toggle" id="table-side">
+              <button type="button" class="side-btn active" data-heads="1">Ξ&nbsp;Heads</button>
+              <button type="button" class="side-btn" data-heads="0">★&nbsp;Tails</button>
+            </div>
           </div>
           <button id="play-table-btn" class="btn btn-primary btn-block">🪙 Flip vs this table</button>
         </div>
@@ -239,6 +253,13 @@
               <div class="slider-val"><strong id="bet-input-val">$25</strong><span class="eth-sub" id="bet-input-eth"></span></div>
             </div>
             <p class="muted create-breakdown" id="create-breakdown"></p>
+            <div class="side-row">
+              <span class="side-label">Pick your side (challenger gets the other)</span>
+              <div class="side-toggle" id="create-side">
+                <button type="button" class="side-btn active" data-heads="1">Ξ&nbsp;Heads</button>
+                <button type="button" class="side-btn" data-heads="0">★&nbsp;Tails</button>
+              </div>
+            </div>
             <button id="create-room-btn" class="btn btn-primary btn-block">Create & get share link</button>
             <div id="share-box" class="share-box hidden">
               <span class="muted">Share this link — unique to your room:</span>
@@ -366,6 +387,7 @@
       <div class="modal-card bet-card">
         <button id="bet-close" class="modal-close">✕</button>
         <h2 id="bet-modal-title">Lock in your bet</h2>
+        <div id="bet-side" class="bet-side hidden"></div>
 
         <!-- Custom-room joiners may raise the stake with this slider -->
         <div id="bet-raise" class="bet-raise hidden">
@@ -402,10 +424,10 @@
     </div>
 
     <script src="vendor/ethers.umd.min.js"></script>
-    <script src="config.js?v=23"></script>
-    <script src="contract.js?v=23"></script>
-    <script src="chiptune.js?v=23"></script>
-    <script src="tv.js?v=23"></script>
-    <script src="app.js?v=23"></script>
+    <script src="config.js?v=24"></script>
+    <script src="contract.js?v=24"></script>
+    <script src="chiptune.js?v=24"></script>
+    <script src="tv.js?v=24"></script>
+    <script src="app.js?v=24"></script>
   </body>
 </html>
