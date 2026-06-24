@@ -199,6 +199,10 @@
     b.textContent = msg;
     b.className = "setup-banner" + (warn ? " warn" : "");
   }
+  // "Sending bet… confirm in your wallet" banner on the TV while a tx signs/mines.
+  function tvPending(on) {
+    const el = $("tv-pending"); if (el) el.classList.toggle("hidden", !on);
+  }
 
   const NETWORKS = {
     31337: { chainId: "0x7a69", chainName: "Hardhat Local", rpcUrls: ["http://127.0.0.1:8545"], nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 } },
@@ -695,16 +699,20 @@
   }
 
   async function doJoinRoom(id, room, bet) {
+    activeRoomId = id;
+    lastRevealed = null;
+    TV.startFlip({ p1: room ? room.creator : null, p2: account, p1Heads: room ? room.creatorHeads : true });
+    tvPending(true);
+    toast("Sending your bet… confirm in your wallet", "ok");
     try {
-      activeRoomId = id;
-      lastRevealed = null;
-      TV.startFlip({ p1: room ? room.creator : null, p2: account, p1Heads: room ? room.creatorHeads : true });
-      const tx = await contract.joinRoom(id, { gasLimit: await estGas("joinRoom", [id], null, 700000n) });
+      const tx = await contract.joinRoom(id, { gasLimit: 700000n });
       await tx.wait();
+      tvPending(false);
       toast("You're in! Flipping…", "ok");
       refreshBalances(); refreshRooms();
       wsSend({ type: "flip", roomId: id });
     } catch (e) {
+      tvPending(false);
       activeRoomId = null;
       TV.idle("Deposit ETH, then create or join a room");
       txErr(e);
@@ -729,26 +737,34 @@
   }
 
   async function doPlayHouse(bet, wantsHeads) {
+    // Instant feedback: spin the coin + show the "confirm in wallet" banner the
+    // moment they accept, so the wait for the wallet popup isn't a dead screen.
+    lastRevealed = null;
+    activeRoomId = null;
+    TV.startFlip({ p1: account, p2: "HOUSE", p1Heads: wantsHeads });
+    tvPending(true);
+    toast("Sending your bet… confirm in your wallet", "ok");
     try {
-      // Pre-validate AND learn the room id up-front so the result reveal can't
-      // race ahead of us (VRF can settle near-instantly on a local chain).
+      // Learn the room id up-front so the result reveal can't race ahead of us.
       let predicted;
       try {
         predicted = await contract.playHouse.staticCall(bet, wantsHeads);
       } catch (e) {
+        tvPending(false); TV.idle("Deposit ETH, then create or join a room");
         return txErr(e);
       }
       activeRoomId = predicted.toString();
-      lastRevealed = null;
-      toast("Flipping vs the house… confirm in MetaMask");
-      TV.startFlip({ p1: account, p2: "HOUSE", p1Heads: wantsHeads });
-      const tx = await contract.playHouse(bet, wantsHeads, { gasLimit: await estGas("playHouse", [bet, wantsHeads], null, 700000n) });
+      // Fixed gas skips the eth_estimateGas round-trip — one less slow hop to the
+      // wallet popup on mobile (700k is plenty for playHouse).
+      const tx = await contract.playHouse(bet, wantsHeads, { gasLimit: 700000n });
       const rcpt = await tx.wait();
+      tvPending(false);
       const ev = rcpt.logs.map((l) => safeParse(l)).find((p) => p && p.name === "HouseGameStarted");
       if (ev) activeRoomId = ev.args.roomId.toString();
       refreshBalances(); refreshHouse(); refreshStats();
       wsSend({ type: "flip", roomId: activeRoomId });
     } catch (e) {
+      tvPending(false);
       activeRoomId = null;
       TV.idle("Deposit ETH, then create or join a room");
       txErr(e);
@@ -856,14 +872,17 @@
   }
 
   async function doPlayTable(id, bet, wantsHeads) {
+    activeRoomId = null; lastRevealed = null;
+    TV.startFlip({ p1: account, p2: "HOST", p1Heads: wantsHeads });
+    tvPending(true);
+    toast("Sending your bet… confirm in your wallet", "ok");
     try {
       let predicted;
-      try { predicted = await contract.playHostRoom.staticCall(id, bet, wantsHeads); } catch (e) { return txErr(e); }
-      activeRoomId = null; lastRevealed = null;
-      toast("Flipping vs the table… confirm in MetaMask");
-      TV.startFlip({ p1: account, p2: "HOST", p1Heads: wantsHeads });
-      const tx = await contract.playHostRoom(id, bet, wantsHeads, { gasLimit: await estGas("playHostRoom", [id, bet, wantsHeads], null, 400000n) });
+      try { predicted = await contract.playHostRoom.staticCall(id, bet, wantsHeads); }
+      catch (e) { tvPending(false); TV.idle("Deposit ETH, then create or join a room"); return txErr(e); }
+      const tx = await contract.playHostRoom(id, bet, wantsHeads, { gasLimit: 500000n });
       const rcpt = await tx.wait();
+      tvPending(false);
       const ev = rcpt.logs.map((l) => safeParse(l)).find((p) => p && p.name === "HostFlip");
       const playerWon = ev ? ev.args.playerWon : predicted;
       const betAmt = ev ? ev.args.betAmount : bet;
@@ -880,6 +899,7 @@
       addHostGame({ label: "Host table", won: playerWon, amount: rv.amountWei.toString(), net: rv.netWei.toString(), ts: Math.floor(Date.now() / 1000), tx: rcpt.hash });
       refreshBalances(); refreshTableInfo(); refreshPlayers(); refreshMyHistory();
     } catch (e) {
+      tvPending(false);
       TV.idle("Deposit ETH, then create or join a room");
       txErr(e);
     }
