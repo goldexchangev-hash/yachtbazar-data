@@ -424,7 +424,6 @@
       window.open("https://metamask.io/download/", "_blank");
       return;
     }
-    if (window.Chiptune) window.Chiptune.start(), syncSoundBtn();
     // Mark the whole connect as in-progress so the accountsChanged/chainChanged
     // listeners don't reload the page on the *initial* grant or network switch
     // (that reload is what made people click Connect twice).
@@ -436,10 +435,15 @@
     try {
       provider = new E.BrowserProvider(window.ethereum, "any");
       provider.pollingInterval = 2000; // tighter polling for events on injected providers
+      // Request accounts FIRST, while the tap's user-gesture is fresh — starting
+      // audio (or anything else) before this can swallow the gesture on iOS and
+      // stop the wallet prompt from surfacing.
       await provider.send("eth_requestAccounts", []);
       await ensureNetwork();
       signer = await provider.getSigner();
       account = await signer.getAddress();
+      // Connected — now it's safe to kick off the background music.
+      if (window.Chiptune) window.Chiptune.start(), syncSoundBtn();
       await resolveActiveGame(provider); // honor the registry's active game
 
       if (!deployment.address) {
