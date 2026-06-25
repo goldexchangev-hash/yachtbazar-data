@@ -158,6 +158,12 @@
         this.layers[k].classList.toggle("hidden", k !== name);
       }
       this._phase = name;
+      // The HEADS/TAILS scoreboard belongs ONLY to the coin-flip match screens —
+      // hide it on every other game (dice, crash, slots, balloon pop, idle…).
+      if (this.scoreboard) {
+        const flipScreen = name === "flip" || name === "result" || name === "countdown" || name === "tuning" || name === "waiting";
+        if (!flipScreen) this.scoreboard.classList.add("hidden");
+      }
     },
     setChannel(n) {
       if (this.channelNum) this.channelNum.textContent = String(n).padStart(2, "0");
