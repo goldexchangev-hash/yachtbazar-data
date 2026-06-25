@@ -256,8 +256,9 @@
 
   // ---- scene mapping + trajectory + main loop -------------------------------
   function rocketPath(progress) {
+    // Start above the bottom bet panel so the launch is visible from 1.00x.
     const e = easeOutCubic(clamp(progress, 0, 1));
-    return { x: lerp(VW * 0.16, VW * 0.76, e), y: lerp(VH * 0.82, VH * 0.24, easeInQuad(clamp(progress, 0, 1))) };
+    return { x: lerp(VW * 0.20, VW * 0.78, e), y: lerp(VH * 0.60, VH * 0.15, easeInQuad(clamp(progress, 0, 1))) };
   }
   function drawTrajectory() {
     trail.push({ x: rocket.x, y: rocket.y });

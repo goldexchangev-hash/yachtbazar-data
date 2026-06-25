@@ -73,6 +73,13 @@ contract CoinFlipBetting {
     uint256 public twoDiceEdgeBps = 200;
     uint256 public nextTwoDiceGameId = 1;
 
+    // ---- Crash (CH 12): pick an auto-cashout target; win bet*target if the
+    //      provably-fair crash point reaches it, else lose. Single-tx settle. ----
+    uint256 public constant CRASH_MIN_X100 = 101;      // 1.01x minimum target
+    uint256 public constant CRASH_MAX_X100 = 100_000;  // 1000x cap (bounds house liability)
+    uint256 public crashEdgeBps = 100;                 // 1% house edge, owner-tunable
+    uint256 public nextCrashGameId = 1;
+
     struct TwoDiceGame {
         uint256 id;
         address player;
@@ -204,6 +211,8 @@ contract CoinFlipBetting {
         uint8 target, bool rollOver, uint8 d1, uint8 d2, bool won, uint256 payout, uint256 multiplierBps
     );
     event TwoDiceEdgeUpdated(uint256 newEdgeBps);
+    event CrashRolled(uint256 indexed gameId, address indexed player, uint256 betAmount, uint256 targetX100, uint256 crashX100, bool won, uint256 payout);
+    event CrashEdgeUpdated(uint256 newEdgeBps);
 
     // --------------------------------------------------------------------- //
     //  Errors
@@ -790,6 +799,64 @@ contract CoinFlipBetting {
     }
 
     function twoDiceCount() external view returns (uint256) { return _twoDiceIds.length; }
+
+    // ---- Crash game (CH 12) -------------------------------------------------
+    /// @notice Provably-fair crash point (x100). Distribution P(crash>=M)=(1-edge)/M,
+    ///         i.e. M = (1-edge)/(1-X) for a uniform X in [0,1), floored at 1.00x
+    ///         (the floor realises the house edge) and capped at CRASH_MAX_X100.
+    function _crashPoint(uint256 gameId) internal returns (uint256) {
+        uint256 h = _random(gameId, msg.sender, treasury) % (2 ** 52);
+        uint256 denom = (2 ** 52) - h;
+        if (denom == 0) return CRASH_MAX_X100;
+        uint256 x100 = (100 * (BPS_DENOMINATOR - crashEdgeBps) * (2 ** 52)) / (BPS_DENOMINATOR * denom);
+        if (x100 < 100) x100 = 100;                 // instant bust = guaranteed loss vs any target>1
+        if (x100 > CRASH_MAX_X100) x100 = CRASH_MAX_X100;
+        return x100;
+    }
+
+    /// @notice Bet `betAmount` on the rocket reaching `targetX100` (e.g. 200 = 2.00x).
+    ///         Auto-cashout: win `bet*target` if the crash point reaches your target,
+    ///         else lose the stake. Settles instantly from your in-game balance.
+    function playCrash(uint256 betAmount, uint256 targetX100)
+        external
+        returns (uint256 gameId, uint256 crashX100, bool won, uint256 payout)
+    {
+        if (betAmount < MIN_BET) revert BetTooSmall();
+        if (betAmount > maxBet) revert BetTooHigh();
+        if (targetX100 < CRASH_MIN_X100 || targetX100 > CRASH_MAX_X100) revert DiceBadTarget();
+        if (balances[msg.sender] < betAmount) revert InsufficientBalance();
+
+        payout = (betAmount * targetX100) / 100;        // total returned on a win
+        uint256 maxProfit = payout - betAmount;         // the house's max loss
+        if (maxProfit > houseBankroll) revert HouseBankrollLow();
+        if (maxProfit > (houseBankroll * maxPayoutBpsOfBankroll) / BPS_DENOMINATOR) revert HouseBankrollLow();
+
+        balances[msg.sender] -= betAmount;              // escrow the stake
+
+        gameId = nextCrashGameId++;
+        crashX100 = _crashPoint(gameId);
+        won = crashX100 >= targetX100;
+
+        if (won) {
+            balances[msg.sender] += payout;             // stake back + winnings
+            houseBankroll -= maxProfit;
+        } else {
+            houseBankroll += betAmount;
+        }
+
+        totalFeesCollected += (betAmount * crashEdgeBps) / BPS_DENOMINATOR; // expected edge (stats)
+        totalGamesPlayed += 1;
+        totalWagered += betAmount;
+
+        emit CrashRolled(gameId, msg.sender, betAmount, targetX100, crashX100, won, won ? payout : 0);
+        return (gameId, crashX100, won, won ? payout : 0);
+    }
+
+    function setCrashEdge(uint256 newEdgeBps) external onlyOwner {
+        if (newEdgeBps > MAX_DICE_EDGE_BPS) revert DiceEdgeTooHigh();
+        crashEdgeBps = newEdgeBps;
+        emit CrashEdgeUpdated(newEdgeBps);
+    }
 
     function getRecentTwoDice(uint256 limit) external view returns (TwoDiceGame[] memory recent) {
         uint256 n = _twoDiceIds.length;

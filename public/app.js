@@ -119,6 +119,7 @@
   let connecting = false; // true while connect() runs, to suppress the auto-reload
   let contract = null; // connected to signer
   let twoDiceSupported = null; // null=unknown, true/false — does the active contract have Dice #2?
+  let crashSupported = null;   // null=unknown — does the active contract have Crash?
   // Off-registry (unofficial) contract detection — set when a ?contract= link
   // points somewhere other than the registry's official activeGame().
   let offRegistryContract = false, unofficialConfirmed = false, officialAddress = null;
@@ -508,7 +509,7 @@
       }
       contract = new E.Contract(deployment.address, ABI, signer);
       read = new E.Contract(deployment.address, ABI, provider);
-      twoDiceSupported = null; // re-probe Dice #2 support for this contract
+      twoDiceSupported = null; crashSupported = null; // re-probe game support for this contract
       try {
         maxBet = await read.maxBet();
       } catch (e) {
@@ -783,7 +784,7 @@
       saveStored(deployment);
       contract = c.connect(signer);
       read = new E.Contract(addr, ABI, provider);
-      twoDiceSupported = null; // re-probe Dice #2 support for this contract
+      twoDiceSupported = null; crashSupported = null; // re-probe game support for this contract
       // Seed a small house bankroll so vs-house works right away (best effort).
       try { await (await contract.fundHouse({ value: usdToWei(1000), gasLimit: 150_000n })).wait(); } catch {}
       maxBet = await read.maxBet();
@@ -1713,6 +1714,41 @@
       if (hint) hint.textContent = "⚠️ This house contract predates Dice #2 — it needs to be redeployed/upgraded before you can play it. Coin Flip and 0-100 still work here.";
     }
   }
+  // Same capability probe for the Crash game.
+  async function ensureCrashSupport() {
+    if (!contract) return null;
+    if (crashSupported === null) {
+      try { await contract.nextCrashGameId.staticCall(); crashSupported = true; }
+      catch (e) { if (e?.code === "CALL_EXCEPTION" || e?.code === "BAD_DATA") crashSupported = false; }
+    }
+    return crashSupported;
+  }
+  // On-chain Crash bet (auto-cashout). Returns the revealed crash point so the
+  // UI can animate the rocket; balance is settled on-chain in this one tx.
+  async function doPlayCrash(stakeUsd, targetX) {
+    if (!ready()) return null;
+    if ((await ensureCrashSupport()) === false) {
+      toast("Crash isn't on this house contract yet — it needs a redeploy/upgrade.", "err");
+      return null;
+    }
+    if (!(stakeUsd > 0)) { toast("Enter a stake", "err"); return null; }
+    let bet = usdToWei(stakeUsd);
+    if (maxBet > 0n && bet > maxBet) { toast("Max bet is " + usdOf(maxBet), "err"); return null; }
+    const targetX100 = Math.max(101, Math.min(100000, Math.round(targetX * 100)));
+    try {
+      bet = await clampBetToOnChain(bet);
+      toast("Launching… confirm in your wallet", "ok");
+      const tx = await contract.playCrash(bet, BigInt(targetX100), { gasLimit: 500000n });
+      const rcpt = await tx.wait();
+      const ev = rcpt.logs.map((l) => safeParse(l)).find((p) => p && p.name === "CrashRolled");
+      let crashX = targetX, won = false, payoutUsd = 0;
+      if (ev) { crashX = Number(ev.args.crashX100) / 100; won = ev.args.won; payoutUsd = weiToUsd(ev.args.payout); }
+      try { await refreshBalances(); } catch {}
+      refreshStats(); refreshHouse();
+      rememberBet(stakeUsd);
+      return { crashX, won, targetX, betUsd: stakeUsd, payoutUsd: won ? payoutUsd : 0 };
+    } catch (e) { txErr(e); return null; }
+  }
   async function playTwoDiceClick() {
     if (!ready()) return;
     if ((await ensureTwoDiceSupport()) === false)
@@ -1815,6 +1851,8 @@
       getBalanceUsd: () => weiToUsd(gameWei),
       usd: (n) => usd(n),
       toast: (m, t) => toast(m, t),
+      ready: () => ready(),
+      playCrash: (stakeUsd, targetX) => doPlayCrash(stakeUsd, targetX),
     });
   }
   function initDice() {

@@ -1,36 +1,38 @@
 /* ============================================================================
- * crash-ui.js — Crash channel controller.
+ * crash-ui.js — Crash channel controller (on-chain, MetaMask only).
  *
- * Wires the #crash-view shell to the provably-fair engine (CrashEngine) and the
- * canvas renderer (CrashRender). Phase 1 plays out CLIENT-SIDE against a local
- * balance seeded from your in-game balance (like poker) — on-chain auto-cashout
- * settlement lands with the contract function + redeploy.
+ * The bet is settled in one Sepolia transaction via the contract's playCrash
+ * (auto-cashout target, provably fair). The rocket animation is the REVEAL: the
+ * crash point comes back from chain, the rocket flies up to it, cashing out at
+ * your target if it got there. No play money.
  *
- * window.CrashGame.config({ getBalanceUsd, usd, toast }); .show(); .hide();
+ * window.CrashGame.config({ getBalanceUsd, usd, toast, ready, playCrash });
+ *   playCrash(stakeUsd, targetX) -> Promise<{crashX, won, targetX, betUsd, payoutUsd} | null>
  * ==========================================================================*/
 (function () {
   "use strict";
   const $ = (id) => document.getElementById(id);
-  const EDGE = 0.01, K = (window.CrashEngine && CrashEngine.DEFAULT_K) || 0.0001;
 
   let cfg = {
     getBalanceUsd: () => 0,
     usd: (n) => "$" + Math.round(n).toLocaleString(),
     toast: () => {},
+    ready: () => false,
+    playCrash: null,
   };
-  let mounted = false, balance = 0, round = null;
+  let mounted = false, busy = false, round = null;
 
-  function el() { return { mult: $("crash-mult"), sub: $("crash-sub"), bal: $("crash-bal"), hist: $("crash-history"), launch: $("crash-launch"), stake: $("crash-stake"), target: $("crash-target") }; }
+  function E() { return { mult: $("crash-mult"), sub: $("crash-sub"), bal: $("crash-bal"), launch: $("crash-launch") }; }
   function stakeVal() { return Math.max(0, +$("crash-stake").value || 0); }
   function targetVal() { return Math.max(1.01, +$("crash-target").value || 1.01); }
+  function balanceUsd() { return Math.max(0, +cfg.getBalanceUsd() || 0); }
 
   function refresh() {
-    const e = el(); if (!e.bal) return;
-    e.bal.textContent = "BALANCE " + cfg.usd(balance);
-    const inFlight = round && !round.done;
-    const profit = stakeVal() * (targetVal() - 1);
-    e.launch.textContent = inFlight ? "🚀 IN FLIGHT…" : "🚀 LAUNCH · win " + cfg.usd(profit);
-    e.launch.disabled = !!inFlight || stakeVal() <= 0 || stakeVal() > balance;
+    const e = E(); if (!e.bal) return;
+    e.bal.textContent = "BALANCE " + cfg.usd(balanceUsd());
+    if (busy) return;
+    e.launch.textContent = "🚀 LAUNCH · win " + cfg.usd(stakeVal() * (targetVal() - 1));
+    e.launch.disabled = stakeVal() <= 0;
   }
 
   function pillClass(x) { return x < 2 ? "lo" : x < 5 ? "mid" : x < 20 ? "hi" : "mega"; }
@@ -43,11 +45,13 @@
     while (hist.children.length > 16) hist.removeChild(hist.lastChild);
   }
 
+  // The reveal animation: rise to the on-chain crash point at a snappy, value-
+  // scaled pace, cashing out at the target on the way if we got there.
   function tick() {
     if (!round || round.done) return;
-    const e = el();
+    const e = E();
     const ms = performance.now() - round.t0;
-    let mult = CrashEngine.multiplierAtMs(ms, K);
+    let mult = CrashEngine.multiplierAtMs(ms, round.k);
     if (mult >= round.crashX) {
       CrashRender.setMult(round.crashX);
       CrashRender.setState("crashed");
@@ -57,11 +61,9 @@
     }
     if (!round.cashed && mult >= round.targetX) {
       round.cashed = true;
-      balance += round.stake * round.targetX; // pay stake*target (stake escrowed at launch)
       CrashRender.cashout();
       e.mult.className = "win";
-      e.sub.textContent = "CASHED " + round.targetX.toFixed(2) + "x · +" + cfg.usd(round.stake * (round.targetX - 1));
-      refresh();
+      e.sub.textContent = "CASHED " + round.targetX.toFixed(2) + "x · +" + cfg.usd(round.payoutUsd - round.betUsd);
     }
     CrashRender.setMult(mult);
     if (!round.cashed) e.mult.className = "";
@@ -69,17 +71,17 @@
   }
 
   function endRound() {
-    const e = el();
+    const e = E();
     round.done = true;
     addHistory(round.crashX);
-    if (round.cashed) {
+    if (round.won) {
       e.mult.className = "win"; e.mult.textContent = round.targetX.toFixed(2) + "x";
+      cfg.toast("Cashed out " + round.targetX.toFixed(2) + "x · +" + cfg.usd(round.payoutUsd - round.betUsd), "ok");
     } else {
       e.mult.className = "bust"; e.mult.textContent = "CRASH " + round.crashX.toFixed(2) + "x";
-      e.sub.textContent = "Busted — −" + cfg.usd(round.stake);
-      cfg.toast("Crashed at " + round.crashX.toFixed(2) + "x — −" + cfg.usd(round.stake), "err");
+      e.sub.textContent = "Busted at " + round.crashX.toFixed(2) + "x — −" + cfg.usd(round.betUsd);
     }
-    refresh();
+    busy = false; refresh();
     setTimeout(() => {
       if (round && round.done) {
         CrashRender.reset();
@@ -87,22 +89,34 @@
         e.sub.textContent = "Set a cash-out target and launch 🚀";
         refresh();
       }
-    }, 2600);
+    }, 2800);
   }
 
-  function launch() {
-    if (round && !round.done) return;
-    const stake = stakeVal();
-    if (!(stake > 0)) return cfg.toast("Enter a stake", "err");
-    if (stake > balance) return cfg.toast("Not enough balance for that stake", "err");
-    const e = el();
-    balance -= stake; // escrow
-    round = { crashX: CrashEngine.crashFromRandom(Math.random, EDGE), targetX: targetVal(), stake, t0: performance.now(), cashed: false, done: false };
-    CrashRender.reset();
-    CrashRender.setState("flying");
-    CrashRender.setMult(1);
+  function reveal(res) {
+    // pace the climb: ~1.8s base + grows mildly with the multiplier, capped ~9s
+    const revealMs = Math.max(1800, Math.min(9000, 1800 + 1400 * Math.log(Math.max(1.01, res.crashX))));
+    const k = Math.log(Math.max(1.01, res.crashX)) / revealMs;
+    round = { crashX: res.crashX, targetX: res.targetX, won: res.won, betUsd: res.betUsd, payoutUsd: res.payoutUsd, t0: performance.now(), k, cashed: false, done: false };
+    const e = E();
+    CrashRender.reset(); CrashRender.setState("flying"); CrashRender.setMult(1);
     e.mult.className = ""; e.mult.textContent = "1.00x"; e.sub.textContent = "🚀 to the moon…";
-    refresh();
+  }
+
+  async function launch() {
+    if (busy) return;
+    const stake = stakeVal(), target = targetVal();
+    if (!(stake > 0)) return cfg.toast("Enter a stake", "err");
+    if (typeof cfg.playCrash !== "function") return cfg.toast("Crash isn't wired up yet.", "err");
+    busy = true;
+    const e = E();
+    e.launch.disabled = true; e.launch.textContent = "🚀 CONFIRM IN WALLET…";
+    e.sub.textContent = "Confirm in your wallet…";
+    let res;
+    try { res = await cfg.playCrash(stake, target); }
+    catch (err) { res = null; }
+    if (!res) { busy = false; refresh(); E().sub.textContent = "Set a cash-out target and launch 🚀"; return; }
+    e.launch.textContent = "🚀 IN FLIGHT…";
+    reveal(res);
   }
 
   function wire() {
@@ -111,8 +125,8 @@
     $("crash-target").oninput = refresh;
     document.querySelectorAll("#crash-panel [data-target]").forEach((b) => b.onclick = () => { $("crash-target").value = b.dataset.target; refresh(); });
     document.querySelectorAll("#crash-panel [data-stake]").forEach((b) => b.onclick = () => {
-      const s = stakeVal();
-      $("crash-stake").value = b.dataset.stake === "half" ? Math.max(1, Math.floor(s / 2)) : b.dataset.stake === "double" ? Math.min(balance, Math.max(1, s * 2)) : Math.max(1, Math.floor(balance));
+      const s = stakeVal(), bal = balanceUsd();
+      $("crash-stake").value = b.dataset.stake === "half" ? Math.max(1, Math.floor(s / 2)) : b.dataset.stake === "double" ? Math.max(1, s * 2) : Math.max(1, Math.floor(bal));
       refresh();
     });
   }
@@ -127,15 +141,8 @@
 
   window.CrashGame = {
     config(c) { cfg = Object.assign(cfg, c || {}); },
-    show() {
-      const v = $("crash-view"); if (v) v.hidden = false;
-      mount();
-      // Seed the play-money balance from the real in-game balance each entry;
-      // fall back to a demo bankroll so the scene is always playable to look at.
-      balance = Math.max(0, +cfg.getBalanceUsd() || 0);
-      if (balance < 1) balance = 500;
-      refresh();
-    },
+    show() { const v = $("crash-view"); if (v) v.hidden = false; mount(); refresh(); },
     hide() { const v = $("crash-view"); if (v) v.hidden = true; },
+    refreshBalance() { refresh(); },
   };
 })();
