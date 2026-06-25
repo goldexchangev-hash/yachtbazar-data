@@ -1619,7 +1619,7 @@ body.chat-open .chat-drawer { transform: translateX(0); }
 .ba-row .slider-wrap.withdraw-slider { flex: 1 1 220px; margin: 0; min-width: 0; }
 .ba-btn { flex: 0 0 auto; min-width: 232px; }
 .ba-btn.is-busy { opacity: .8; cursor: progress; }
-@media (max-width: 600px) { .ba-btn { flex: 1 1 100%; min-width: 0; } }
+@media (max-width: 760px) { .ba-btn { flex: 1 1 100%; min-width: 0; } }
 
 /* ════════════════════════════════════════════════════════════════════
    Stake cohesion pass 2 — sweep remaining neon out of the SHELL.
