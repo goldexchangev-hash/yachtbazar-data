@@ -96,6 +96,13 @@
     if (this.els.pfHash) this.els.pfHash.textContent = this.commitHash.slice(0, 16) + "…";
     if (this.els.pfNonce) this.els.pfNonce.textContent = String(this.nonce);
     if (this.els.addCredits) this.els.addCredits.classList.toggle("hidden", this.balance >= this.bet);
+    this._updateActBtn();
+  };
+  // Fill the uniform action button's "BET $X · WIN $Y" amounts. Win is the profit
+  // if you bank at the auto cash-out target.
+  PressureGame.prototype._updateActBtn = function () {
+    const b = document.getElementById("pr-bet-hint"); if (b) b.textContent = Math.max(0, Math.round(this.bet));
+    const w = document.getElementById("pr-win-hint"); if (w) w.textContent = (this.bet * Math.max(0, this.autoMult - 1)).toFixed(2);
   };
 
   // ---------------- input wiring ----------------
@@ -145,6 +152,7 @@
       if (els.auto) els.auto.value = this.autoMult.toFixed(2);
       if (els.autoVal) els.autoVal.textContent = this.autoMult.toFixed(2) + "x";
       this.r.setAutoLine(this.autoMult);
+      this._updateActBtn();
     };
     this._setAuto = setAuto;
     if (els.autoSlider) els.autoSlider.addEventListener("input", () => setAuto(parseFloat(els.autoSlider.value)));

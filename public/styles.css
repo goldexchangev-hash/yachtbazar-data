@@ -1825,6 +1825,19 @@ body.demo-mode #bankroll { display: none !important; }
   -webkit-tap-highlight-color: transparent;
 }
 .action-dock .dice-roll-hint { margin-top: 6px; text-align: center; }
+
+/* UNIFORM action button across every game: VERB on top, BET · WIN below */
+.act-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  line-height: 1.15; padding: 10px 12px;
+}
+.act-btn .ab-verb { font-family: var(--display); font-weight: 800; font-size: 15px; letter-spacing: .5px; }
+.act-btn .ab-amt { font-weight: 700; font-size: 13px; opacity: .9; letter-spacing: .2px; }
+.act-btn .ab-amt b { font-weight: 800; }
+@media (max-width: 640px) {
+  .act-btn .ab-verb { font-size: 14px; }
+  .act-btn .ab-amt { font-size: 12px; }
+}
 /* demo bar now lives inside the TV column → center it perfectly over the TV */
 .stage > .demo-bar { width: 100%; max-width: 100%; margin: 0 auto; justify-content: center; }
 /* mobile "use MetaMask browser" hint sits directly above the demo bar, same width */

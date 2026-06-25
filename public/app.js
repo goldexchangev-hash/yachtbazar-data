@@ -225,6 +225,19 @@
     const valEl = $(id + "-val"); if (valEl) valEl.textContent = usd(v);
     const ethEl = $(id + "-eth"); if (ethEl) ethEl.textContent = "(approx ETH: " + (v / ethUsd).toFixed(4) + ")";
     if (id === "bet-input") updateCreateBreakdown();
+    if (id === "house-bet") updateFlipButton();
+  }
+  // Fill a uniform action button's "BET $X · WIN $Y" amounts. Win id is either
+  // {game}-payout-hint (dice/twodice/crash) or {game}-win-hint (slots/flip).
+  function setBtnAmts(game, betUsd, winUsd) {
+    const b = $(game + "-bet-hint"); if (b) b.textContent = Math.max(0, Math.round(betUsd || 0));
+    const w = $(game + "-payout-hint") || $(game + "-win-hint");
+    if (w) w.textContent = (winUsd > 0 ? winUsd : 0).toFixed(2);
+  }
+  // Coin flip pays the pot minus the 10% house cut = 1.8× stake → +0.8× profit.
+  function updateFlipButton() {
+    const s = $("house-bet"); if (!s) return;
+    setBtnAmts("house", +s.value || 0, (+s.value || 0) * 0.8);
   }
 
   // Quick-bet: remember the last stake placed, then let one tap set ½×, 2× or the
@@ -1539,7 +1552,7 @@
     $("dice-chance").textContent = chance.toFixed(2) + "%";
     $("dice-mult").textContent = mult.toFixed(2) + "×";
     $("dice-profit").textContent = "+$" + profit.toFixed(2);
-    $("dice-payout-hint").textContent = profit.toFixed(2);
+    setBtnAmts("dice", stake, profit);
     $("dice-mode-hint").textContent = diceMode === "under" ? "— roll under to win" : "— roll over to win";
     $("ob-target").style.left = pct + "%";
     if (diceMode === "under") { $("ob-win").style.cssText = "left:0;width:" + pct + "%"; $("ob-lose").style.cssText = "left:" + pct + "%;width:" + (100 - pct) + "%"; }
@@ -1629,7 +1642,7 @@
     $("td-chance").textContent = chance.toFixed(2) + "%";
     $("td-mult").textContent = combos > 0 ? mult.toFixed(2) + "×" : "—";
     $("td-profit").textContent = "+$" + profit.toFixed(2);
-    $("td-payout-hint").textContent = profit.toFixed(2);
+    setBtnAmts("td", stake, profit);
     // Spell out the winning totals so it's clear the target itself never wins
     // (the sum must be strictly under/over T — landing exactly on T loses).
     const winLo = over ? T + 1 : 2, winHi = over ? 12 : T - 1;
@@ -1740,7 +1753,7 @@
     $("crash-chance").textContent = chance.toFixed(2) + "%";
     $("crash-mult-ro").textContent = target.toFixed(2) + "×";
     $("crash-profit").textContent = "+$" + profit.toFixed(2);
-    $("crash-payout-hint").textContent = profit.toFixed(2);
+    setBtnAmts("crash", stake, profit);
     // affordability + validity guards (Crash shares the house bankroll + cap)
     let hint = "";
     let stakeWei = 0n; try { stakeWei = usdToWei(stake); } catch {}
@@ -1829,6 +1842,7 @@
     const capWei = diceMaxProfitWei();
     if (capWei > 0n && topWei > capWei) topWei = capWei;
     $("slots-maxwin").textContent = topWei > 0n ? usdOf(topWei) : "$0";
+    { const w = $("slots-win-hint"); if (w) w.textContent = topWei > 0n ? Math.round(weiToUsd(topWei)).toLocaleString() : "0"; } // jackpot potential
     // affordability guard
     let hint = "";
     let stakeWei = 0n; try { stakeWei = usdToWei(stake); } catch {}
@@ -1874,14 +1888,14 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=967").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=968").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=967"))
+      .then(() => loadScriptOnce("slots.js?v=968"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -1891,9 +1905,9 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=967"))
-      .then(() => loadScriptOnce("pressure-render.js?v=967"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=967"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=968"))
+      .then(() => loadScriptOnce("pressure-render.js?v=968"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=968"))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
