@@ -865,10 +865,12 @@
     if (!account || !signer) { toast("Connect your wallet first, then redeploy.", "err"); return; }
     if (!confirm(
       "Deploy a BRAND-NEW game contract from this wallet?\n\n" +
-      "This mints a fresh contract on-chain (the latest version). Your balance stays " +
-      "in the OLD game — use 'Withdraw all' first if you want it back.\n\n" +
-      "When it finishes you'll get the new contract address to copy — send it over and " +
-      "the live site will be pointed at it for everyone."
+      "This mints a fresh, EMPTY contract on-chain (the latest version — includes Dice #2). " +
+      "It does NOT move money: your in-game balance AND the house bankroll stay in the OLD " +
+      "contract.\n\nRecommended first: open 'Host earnings' → 'Cash out everything to my wallet' " +
+      "so you have the ETH to fund the new house. After it deploys, use 'Fund house' to set the " +
+      "new bankroll.\n\n" +
+      "When it finishes the site is auto-pointed at the new contract for everyone."
     )) return;
     // Drop any stale ?contract / saved deployment so we deploy clean.
     try { localStorage.removeItem("coinflip_deployment"); } catch {}
