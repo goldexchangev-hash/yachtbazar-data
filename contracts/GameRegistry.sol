@@ -15,7 +15,6 @@ contract GameRegistry {
     event OwnerTransferred(address indexed newOwner);
 
     error NotOwner();
-    error ZeroAddress();
 
     constructor(address _owner, address _initialGame) {
         owner = _owner == address(0) ? msg.sender : _owner;
@@ -25,14 +24,12 @@ contract GameRegistry {
 
     function setActiveGame(address game) external {
         if (msg.sender != owner) revert NotOwner();
-        if (game == address(0)) revert ZeroAddress();
         activeGame = game;
         emit ActiveGameSet(game, msg.sender);
     }
 
     function transferOwner(address newOwner) external {
         if (msg.sender != owner) revert NotOwner();
-        if (newOwner == address(0)) revert ZeroAddress(); // can't brick the registry
         owner = newOwner;
         emit OwnerTransferred(newOwner);
     }

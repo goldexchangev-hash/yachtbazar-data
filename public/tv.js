@@ -72,47 +72,66 @@
     },
 
     _sizeCanvases() {
-      // Render static at a low internal resolution for chunky 16-bit pixels.
-      this.staticCanvas.width = 200;
-      this.staticCanvas.height = 150;
+      // Fine-grained analog "snow": per-pixel noise at 256x192 (was a chunky
+      // 50x38 grid). Upscaled crisply to the screen for detailed static.
+      this.staticCanvas.width = 256;
+      this.staticCanvas.height = 192;
       const r = this.confetti.getBoundingClientRect();
       this.confetti.width = Math.max(2, Math.floor(r.width));
       this.confetti.height = Math.max(2, Math.floor(r.height));
     },
 
-    /* ---------------- static / noise ---------------- */
+    /* ---------------- static / noise (realistic analog snow) ----------------
+       Per-pixel RF-noise replication: a mid-gray-biased luminance LUT, faint
+       horizontal scanline correlation, a slow vertically-drifting hum bar,
+       sparkle highlights + rare neon speckle, a drifting warm/cool tint and the
+       occasional AGC brightness flicker. Rendered at the canvas's full 256x192
+       (was a chunky 50x38) via one 32-bit write per pixel; CSS upscales it. */
     _startStatic() {
       const ctx = this.sctx;
       ctx.imageSmoothingEnabled = false;
-      const PIX = 4; // pixel block size (bigger = far less work)
-      const cols = Math.max(1, Math.ceil(this.staticCanvas.width / PIX));
-      const rows = Math.max(1, Math.ceil(this.staticCanvas.height / PIX));
-      // Fill a tiny offscreen buffer and upscale it (nearest-neighbor) — ONE
-      // drawImage per frame instead of thousands of fillRect calls.
-      const buf = document.createElement("canvas");
-      buf.width = cols; buf.height = rows;
-      const bctx = buf.getContext("2d");
-      const img = bctx.createImageData(cols, rows);
-      const data = img.data;
-      const paint = () => {
-        const W = this.staticCanvas.width, H = this.staticCanvas.height;
-        for (let i = 0; i < data.length; i += 4) {
-          const r = Math.random();
-          if (r > 0.985) { data[i] = 57; data[i + 1] = 231; data[i + 2] = 255; }
-          else if (r < 0.015) { data[i] = 255; data[i + 1] = 77; data[i + 2] = 157; }
-          else { const v = (Math.random() * 255) | 0; data[i] = data[i + 1] = data[i + 2] = v; }
-          data[i + 3] = 255;
+      const W = this.staticCanvas.width, H = this.staticCanvas.height; // 256x192
+      const img = ctx.createImageData(W, H);
+      const buf32 = new Uint32Array(img.data.buffer); // 0xAABBGGRR (little-endian)
+      // mid-gray-biased luminance LUT (few pure blacks/whites — the realistic part)
+      const LUT = new Uint8Array(256);
+      for (let i = 0; i < 256; i++) { const u = i / 255, s = u * u * (3 - 2 * u); LUT[i] = (38 + (0.35 * u + 0.65 * s) * 178) | 0; }
+      let rng = (Date.now() ^ 0x9e3779b9) >>> 0;
+      const xr = () => { rng ^= rng << 13; rng ^= rng >>> 17; rng ^= rng << 5; return rng >>> 0; };
+      const HCORR = 0.32, SPARK = 14 /*~1.3% of 1024*/, HUM_AMP = 20, HUM_K = (1.6 * Math.PI * 2) / H;
+      let barPhase = 0;
+      const paint = (t) => {
+        barPhase += 0.05;                                 // slow vertical hum roll
+        const tintR = (Math.sin(t * 0.0007) * 9) | 0, tintB = (-tintR * 0.8) | 0;
+        const flicker = ((xr() & 0xffff) < 2600) ? ((xr() % 46) - 14) | 0 : 0; // ~4% AGC pump
+        let idx = 0;
+        for (let y = 0; y < H; y++) {
+          const rowBias = ((Math.sin(barPhase + y * HUM_K) * HUM_AMP) | 0) + flicker;
+          let prev = 128;
+          for (let x = 0; x < W; x++) {
+            const r = xr();
+            let l = LUT[r & 0xff];
+            l = (l + (prev - l) * HCORR) | 0; prev = l;   // horizontal scanline smear
+            l += rowBias;
+            let cr = l + tintR, cg = l, cb = l + tintB;
+            if (((r >>> 8) & 0x3ff) < SPARK) {            // sparkle / rare neon speckle
+              const k = (r >>> 18) & 7;
+              if (k === 0) { cr = 70; cg = 235; cb = 255; }      // cyan fleck
+              else if (k === 1) { cr = 255; cg = 90; cb = 170; } // magenta fleck
+              else { cr = cg = cb = 235 + ((r >>> 20) & 0x1f); } // white sparkle
+            }
+            cr = cr < 0 ? 0 : cr > 255 ? 255 : cr;
+            cg = cg < 0 ? 0 : cg > 255 ? 255 : cg;
+            cb = cb < 0 ? 0 : cb > 255 ? 255 : cb;
+            buf32[idx++] = 0xff000000 | (cb << 16) | (cg << 8) | cr;
+          }
         }
-        bctx.putImageData(img, 0, 0);
-        ctx.clearRect(0, 0, W, H);
-        ctx.globalAlpha = this._staticIntensity;
-        ctx.drawImage(buf, 0, 0, W, H);
-        ctx.globalAlpha = 1;
+        ctx.putImageData(img, 0, 0);
+        this.staticCanvas.style.opacity = String(this._staticIntensity); // intensity via element opacity
       };
-      // Reduced-motion / save-data: paint a single calm frame, no animation loop.
       const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      if (reduce) { this._staticIntensity = Math.min(this._staticIntensity, 0.25); paint(); return; }
-      const FRAME_MS = 70; // ~14fps — plenty for a noisy CRT
+      if (reduce) { this._staticIntensity = Math.min(this._staticIntensity, 0.25); paint(0); return; }
+      const FRAME_MS = 1000 / 30; // 30fps reads as analog snow and halves cost
       let last = 0;
       const tick = (t) => {
         this._staticRAF = requestAnimationFrame(tick);
@@ -120,14 +139,14 @@
         if (window.__winSceneActive) return;  // a win scene covers the TV — don't paint static
         if (t - last < FRAME_MS) return;
         last = t;
-        if (this._staticIntensity <= 0.02) { ctx.clearRect(0, 0, this.staticCanvas.width, this.staticCanvas.height); return; }
-        paint();
+        if (this._staticIntensity <= 0.02) { ctx.clearRect(0, 0, W, H); this.staticCanvas.style.opacity = "0"; return; }
+        paint(t);
       };
       this._staticRAF = requestAnimationFrame(tick);
     },
     _setStatic(i) {
       this._staticIntensity = i;
-      this.staticCanvas.style.opacity = i > 0 ? "1" : "0";
+      this.staticCanvas.style.opacity = i > 0 ? String(i) : "0";
     },
 
     /* ---------------- layer helpers ---------------- */
