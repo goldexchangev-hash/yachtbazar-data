@@ -1799,6 +1799,7 @@
       toast: (m, t) => toast(m, t),
       ready: () => ready(),
       playCrash: (stakeUsd, targetX) => doPlayCrash(stakeUsd, targetX),
+      probeSupport: () => ensureCrashSupport(),
     });
   }
   function initDice() {

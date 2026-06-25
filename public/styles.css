@@ -1167,3 +1167,7 @@ body:not(.game-crash) #crash-view { display: none !important; }
 /* channel tile gradient (deep space) */
 .game-card.crash .gc-tile { background: linear-gradient(160deg, #1b2a55 0%, #3b1f6e 55%, #0a0820 100%); }
 .game-card.crash.active .gc-tile { box-shadow: 0 0 0 3px rgba(255,255,255,.9), 0 0 22px 2px var(--cyan), 0 8px 18px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.45); }
+
+/* Crash: collapse the bet sheet during a flight so the scene is unobstructed */
+.crash-panel.is-flight .crash-fields { display: none; }
+.crash-panel.is-flight { padding-top: 8px; }

@@ -19,8 +19,9 @@
     toast: () => {},
     ready: () => false,
     playCrash: null,
+    probeSupport: null, // () => Promise<bool|null> — does the live contract have Crash?
   };
-  let mounted = false, busy = false, round = null;
+  let mounted = false, busy = false, round = null, unsupported = false;
 
   function E() { return { mult: $("crash-mult"), sub: $("crash-sub"), bal: $("crash-bal"), launch: $("crash-launch") }; }
   function stakeVal() { return Math.max(0, +$("crash-stake").value || 0); }
@@ -31,6 +32,11 @@
     const e = E(); if (!e.bal) return;
     e.bal.textContent = "BALANCE " + cfg.usd(balanceUsd());
     if (busy) return;
+    if (unsupported) {
+      e.launch.textContent = "🚀 NEEDS CONTRACT UPGRADE";
+      e.launch.disabled = true;
+      return;
+    }
     e.launch.textContent = "🚀 LAUNCH · win " + cfg.usd(stakeVal() * (targetVal() - 1));
     e.launch.disabled = stakeVal() <= 0;
   }
@@ -93,6 +99,7 @@
     setTimeout(() => {
       if (round && round.done) {
         CrashRender.reset();
+        const panel = $("crash-panel"); if (panel) panel.classList.remove("is-flight");
         e.mult.className = ""; e.mult.textContent = "1.00x";
         e.sub.textContent = "Set a cash-out target and launch 🚀";
         refresh();
@@ -108,12 +115,14 @@
     const k = lx / revealMs;
     round = { crashX: res.crashX, targetX: res.targetX, won: res.won, betUsd: res.betUsd, payoutUsd: res.payoutUsd, t0: performance.now(), cashAt: 0, k, cashed: false, done: false };
     const e = E();
+    const panel = $("crash-panel"); if (panel) panel.classList.add("is-flight"); // collapse the bet sheet so the scene is clear
     CrashRender.reset(); CrashRender.setState("flying"); CrashRender.setMult(1);
     e.mult.className = ""; e.mult.textContent = "1.00x"; e.sub.textContent = "🚀 to the moon…";
   }
 
   async function launch() {
     if (busy) return;
+    if (unsupported) return cfg.toast("Crash needs a contract upgrade — redeploy the house contract to enable it.", "err");
     const stake = stakeVal(), target = targetVal();
     if (!(stake > 0)) return cfg.toast("Enter a stake", "err");
     if (typeof cfg.playCrash !== "function") return cfg.toast("Crash isn't wired up yet.", "err");
@@ -151,7 +160,21 @@
 
   window.CrashGame = {
     config(c) { cfg = Object.assign(cfg, c || {}); },
-    show() { const v = $("crash-view"); if (v) v.hidden = false; mount(); refresh(); },
+    show() {
+      const v = $("crash-view"); if (v) v.hidden = false;
+      mount(); refresh();
+      // If the live contract predates Crash, say so clearly and disable LAUNCH.
+      if (cfg.probeSupport) {
+        Promise.resolve(cfg.probeSupport()).then((s) => {
+          unsupported = (s === false);
+          if (unsupported) {
+            const e = E();
+            if (e.sub) e.sub.textContent = "⚠️ Crash needs a contract upgrade — redeploy the house contract to enable it.";
+          }
+          refresh();
+        }).catch(() => {});
+      }
+    },
     hide() { const v = $("crash-view"); if (v) v.hidden = true; },
     refreshBalance() { refresh(); },
   };
