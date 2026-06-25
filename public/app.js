@@ -477,8 +477,17 @@
       window.open("https://metamask.io/download/", "_blank");
       return;
     }
-    // Let the user choose which installed wallet to connect with (EIP-6963).
-    const chosen = await pickWallet();
+    // Pick the wallet. On mobile you're inside ONE wallet's in-app browser, so
+    // connect to it directly (a desktop-style picker there is fragile and can
+    // silently no-op). On desktop, offer the EIP-6963 multi-wallet picker.
+    const isMobileUA = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+    let chosen;
+    if (isMobileUA) {
+      const list = discoveredWallets();
+      chosen = window.ethereum || (list[0] && list[0].provider) || null;
+    } else {
+      chosen = await pickWallet();
+    }
     if (!chosen) return; // no wallet, or the user dismissed the picker
     injected = chosen;
     attachWalletListeners(injected);
