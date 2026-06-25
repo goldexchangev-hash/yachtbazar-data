@@ -96,6 +96,12 @@ contract CoinFlipBetting {
     uint256 public crashEdgeBps = 100;
     uint256 public nextCrashGameId = 1;
 
+    // ---- Crypto Reels (CH 12): 5x3 weighted video slot, 9 lines, wild + scatter ----
+    /// @notice Informational edge in bps (~9.24%). The REAL edge lives in the
+    ///         weighted symbol table + paytable below; this is only for stats.
+    uint256 public constant SLOTS_EDGE_BPS = 924;
+    uint256 public nextSlotsGameId = 1;
+
     /// @notice Wallet that receives the 10% fee (the host). Set at deploy.
     address public immutable treasury;
 
@@ -216,6 +222,8 @@ contract CoinFlipBetting {
         uint256 targetX100, uint256 crashX100, bool won, uint256 payout
     );
     event CrashEdgeUpdated(uint256 newEdgeBps);
+    /// @param gridPacked 15 symbols (cell = reel*3+row), 4 bits each, LSB-first.
+    event SlotsRolled(uint256 indexed gameId, address indexed player, uint256 betAmount, uint256 gridPacked, uint256 payout);
 
     // --------------------------------------------------------------------- //
     //  Errors
@@ -869,6 +877,115 @@ contract CoinFlipBetting {
         if (newEdgeBps > MAX_DICE_EDGE_BPS) revert DiceEdgeTooHigh();
         crashEdgeBps = newEdgeBps;
         emit CrashEdgeUpdated(newEdgeBps);
+    }
+
+    // --------------------------------------------------------------------- //
+    //  Crypto Reels (CH 12): provably-fair 5x3 weighted slot
+    // --------------------------------------------------------------------- //
+
+    // Map a uniform roll in [0,99] to a symbol via the cumulative weights
+    // (cherry 22, bell 18, star 16, cash 13, eth 10, btc 7, seven 5, wild 5,
+    //  scatter 4). Ids: 0..6 regular, 7 = WILD, 8 = SCATTER.
+    function _slotsSym(uint256 r) internal pure returns (uint8) {
+        if (r < 22) return 0;
+        if (r < 40) return 1;
+        if (r < 56) return 2;
+        if (r < 69) return 3;
+        if (r < 79) return 4;
+        if (r < 86) return 5;
+        if (r < 91) return 6;
+        if (r < 96) return 7;
+        return 8;
+    }
+
+    // Paytable for a left-aligned run, in LINE-bet units (3 / 4 / 5 of a kind).
+    // Tuned for ~90% RTP. Scatter is handled separately (pays anywhere).
+    function _slotsPay(uint8 sym, uint256 count) internal pure returns (uint256) {
+        if (count < 3) return 0;
+        if (sym == 0) return count == 3 ? 5   : count == 4 ? 12  : 30;
+        if (sym == 1) return count == 3 ? 5   : count == 4 ? 16  : 42;
+        if (sym == 2) return count == 3 ? 9   : count == 4 ? 23  : 68;
+        if (sym == 3) return count == 3 ? 13  : count == 4 ? 42  : 115;
+        if (sym == 4) return count == 3 ? 20  : count == 4 ? 65  : 190;
+        if (sym == 5) return count == 3 ? 35  : count == 4 ? 110 : 350;
+        if (sym == 6) return count == 3 ? 55  : count == 4 ? 225 : 700;
+        if (sym == 7) return count == 3 ? 100 : count == 4 ? 450 : 2500;
+        return 0;
+    }
+
+    /// @notice Spin the reels for `betAmount` (the TOTAL stake across all 9
+    ///         lines, i.e. 9x the per-line bet). The 5x3 grid is drawn from one
+    ///         provably-fair seed; payout = total winning units * betAmount / 9,
+    ///         capped by the bankroll. Settles instantly from your balance.
+    function playSlots(uint256 betAmount)
+        external
+        returns (uint256 gameId, uint256 gridPacked, uint256 payout)
+    {
+        if (betAmount < MIN_BET) revert BetTooSmall();
+        if (betAmount > maxBet) revert BetTooHigh();
+        if (balances[msg.sender] < betAmount) revert InsufficientBalance();
+
+        balances[msg.sender] -= betAmount; // escrow the stake
+
+        gameId = nextSlotsGameId++;
+        uint256 seed = _random(gameId, msg.sender, treasury);
+
+        // Draw the 5x3 grid: cell index = reel*3 + row, each symbol from its own
+        // 16-bit slice of the seed (bias < 0.06%).
+        uint8[15] memory grid;
+        for (uint256 i = 0; i < 15; i++) {
+            uint256 r = ((seed >> (16 * i)) & 0xFFFF) % 100;
+            grid[i] = _slotsSym(r);
+            gridPacked |= uint256(grid[i]) << (4 * i);
+        }
+
+        // Evaluate the 9 paylines. Each line's per-reel row index is packed into
+        // a uint16 (2 bits per reel). Left-aligned runs of >=3 (wild substitutes).
+        uint16[9] memory LP = [uint16(341), 0, 682, 100, 582, 257, 425, 656, 26];
+        uint256 units = 0;
+        for (uint256 li = 0; li < 9; li++) {
+            uint256 lp = LP[li];
+            uint8 first = grid[lp & 3]; // reel 0
+            if (first == 8) continue;   // scatter is never a line symbol
+            uint8 paySym = first;
+            if (paySym == 7) {          // wild leader: pay as the first non-wild
+                for (uint256 r2 = 1; r2 < 5; r2++) {
+                    uint8 s = grid[r2 * 3 + ((lp >> (2 * r2)) & 3)];
+                    if (s != 7) { paySym = s; break; }
+                }
+            }
+            if (paySym == 8) continue;
+            uint256 count = 0;
+            for (uint256 r3 = 0; r3 < 5; r3++) {
+                uint8 s = grid[r3 * 3 + ((lp >> (2 * r3)) & 3)];
+                if (s == paySym || s == 7) count++;
+                else break;
+            }
+            units += _slotsPay(paySym, count);
+        }
+
+        // Scatter pays anywhere (3/4/5 = 4/22/120 x TOTAL bet = 36/198/1080 line units).
+        uint256 sc = 0;
+        for (uint256 i = 0; i < 15; i++) if (grid[i] == 8) sc++;
+        if (sc >= 3) units += sc == 3 ? 36 : sc == 4 ? 198 : 1080;
+
+        payout = (betAmount * units) / 9;
+
+        // Fund-safety cap: never pay more profit than the bankroll cap allows.
+        uint256 cap = (houseBankroll * maxPayoutBpsOfBankroll) / BPS_DENOMINATOR;
+        if (cap > houseBankroll) cap = houseBankroll;
+        if (payout > betAmount + cap) payout = betAmount + cap;
+
+        if (payout > 0) balances[msg.sender] += payout;
+        if (payout >= betAmount) houseBankroll -= (payout - betAmount); // house pays the net win
+        else houseBankroll += (betAmount - payout);                     // house keeps the net loss
+
+        totalFeesCollected += (betAmount * SLOTS_EDGE_BPS) / BPS_DENOMINATOR; // expected edge (stats)
+        totalGamesPlayed += 1;
+        totalWagered += betAmount;
+
+        emit SlotsRolled(gameId, msg.sender, betAmount, gridPacked, payout);
+        return (gameId, gridPacked, payout);
     }
 
     // --------------------------------------------------------------------- //
