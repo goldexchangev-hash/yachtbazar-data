@@ -78,6 +78,15 @@
   let winFx = null;               // { start, total, displayed, cells:Set, lines:[], big }
   let creditWinSynced = -1;       // guards the one-time HUD sync at count-up end
 
+  // Channel mode: embedded in the main TV page (no standalone HUD/credits). When
+  // true, app.js drives spins via CryptoReels.channelSpin against the on-chain
+  // result and owns the real-dollar balance; this file only renders the reels.
+  const CHANNEL = !document.getElementById("spin-btn");
+  let onChannelDone = null;   // fired when a channel spin's reveal finishes
+  let forcedGrid = null;      // when set, the next spin lands on exactly this 5x3 grid
+  let channelWinUsd = 0;      // dollar win to count up on the TV (channel mode)
+  let channelBetUsd = 0;      // dollar stake (for the BIG WIN threshold)
+
   /* ───────────────────────── Pixi app ───────────────────────── */
   const app = new PIXI.Application({
     width: W, height: H,
@@ -251,24 +260,32 @@
   }
 
   // The single seam to swap in a provably-fair RNG: return an integer stop index
-  // per reel. Here it's just uniform random over the strip.
+  // per reel. In channel mode we land on the contract's grid by patching the
+  // strip at the chosen stop so the visible 3-row window equals forcedGrid[reel].
   function spinOutcome(reelIndex) {
-    return (Math.random() * N) | 0;
+    const stop = (Math.random() * N) | 0;
+    if (forcedGrid) {
+      const strip = reels[reelIndex].strip;
+      for (let r = 0; r < ROWS; r++) strip[(stop + r) % N] = forcedGrid[reelIndex][r];
+    }
+    return stop;
   }
 
   /* ───────────────────────── Spin ───────────────────────── */
   function spin() {
     if (spinning) return;
-    if (credits < totalBet()) {
-      autoSet(false);
-      toast("Not enough credits — add more to keep playing.", "err");
-      revealAddCredits(true);
-      return;
+    if (!CHANNEL) {
+      if (credits < totalBet()) {
+        autoSet(false);
+        toast("Not enough credits — add more to keep playing.", "err");
+        revealAddCredits(true);
+        return;
+      }
+      credits -= totalBet();
+      saveCredits();
+      updateHUD(0);
     }
     clearWinFx();
-    credits -= totalBet();
-    saveCredits();
-    updateHUD(0);
     spinning = true;
     reelsLeft = REELS;
     setSpinUI(true);
@@ -372,20 +389,25 @@
   function onAllStopped() {
     spinning = false;
     const grid = readGrid();
-    const res = evaluate(grid);
+    const res = evaluate(grid); // cells/lines for highlighting; amount overridden in channel mode
 
-    if (res.total > 0) {
-      credits += res.total;
-      saveCredits();
-      const big = res.total >= totalBet() * BIG_WIN_MULT;
+    // In channel mode the amount shown is the on-chain dollar payout, not credits.
+    const shown = CHANNEL ? channelWinUsd : res.total;
+    const won = shown > 0;
+
+    if (won) {
+      if (!CHANNEL) { credits += res.total; saveCredits(); }
+      const big = CHANNEL ? (channelBetUsd > 0 && shown >= channelBetUsd * BIG_WIN_MULT)
+                          : (shown >= totalBet() * BIG_WIN_MULT);
       winFx = {
         start: performance.now(),
-        total: res.total,
+        total: shown,
         displayed: 0,
         cells: res.cells,
         lines: res.wins.map((w) => ({ line: LINES[w.lineIndex], count: w.count, color: LINE_COLORS[w.lineIndex % LINE_COLORS.length] })),
         big,
         scatter: res.scatterWin > 0,
+        usd: CHANNEL,
       };
       messageText.style.fill = 0x45f0a6;
       if (big) {
@@ -405,16 +427,20 @@
       messageText.style.fill = 0x9aa3c7;
     }
 
-    revealAddCredits(credits < totalBet());
     setSpinUI(false);
-    updateHUD(res.total);
-
-    // auto-spin continuation
-    if (autoOn && credits >= totalBet()) {
-      const delay = res.total > 0 ? (winFx && winFx.big ? 2000 : 1200) : 650;
-      setTimeout(() => { if (autoOn && !spinning) spin(); }, delay);
-    } else if (autoOn) {
-      autoSet(false);
+    if (!CHANNEL) {
+      revealAddCredits(credits < totalBet());
+      updateHUD(res.total);
+      // auto-spin continuation (standalone only)
+      if (autoOn && credits >= totalBet()) {
+        const delay = res.total > 0 ? (winFx && winFx.big ? 2000 : 1200) : 650;
+        setTimeout(() => { if (autoOn && !spinning) spin(); }, delay);
+      } else if (autoOn) {
+        autoSet(false);
+      }
+    } else if (onChannelDone) {
+      const cb = onChannelDone; onChannelDone = null;
+      cb({ won, winUsd: shown, big: winFx && winFx.big });
     }
   }
 
@@ -516,12 +542,12 @@
       drawWinFx(now);
       const k = Math.min(1, (now - winFx.start) / 900);
       winFx.displayed = Math.round(winFx.total * easeOutCubic(k));
-      messageText.text = "WIN  " + fmt(winFx.displayed);
+      messageText.text = "WIN  " + (winFx.usd ? "$" : "") + fmt(winFx.displayed);
       if (winFx.big) {
         bigWinText.scale.set(Math.min(1, easeOutBack(Math.min(1, (now - winFx.start) / 500))));
         bigWinText.rotation = Math.sin(now / 140) * 0.04;
       }
-      if (k >= 1 && winFx.displayed !== creditWinSynced) {
+      if (!CHANNEL && k >= 1 && winFx.displayed !== creditWinSynced) {
         creditWinSynced = winFx.displayed;
         updateHUD(winFx.total);
       }
@@ -638,6 +664,7 @@
   }
 
   function setSpinUI(isSpinning) {
+    if (!spinBtn) return; // channel mode: app.js owns the spin button
     spinBtn.disabled = isSpinning;
     spinBtn.classList.toggle("spinning", isSpinning);
     spinBtn.textContent = isSpinning ? "SPINNING" : "SPIN";
@@ -684,51 +711,67 @@
   function openRules() { rulesModal.classList.remove("hidden"); }
   function closeRules() { rulesModal.classList.add("hidden"); }
 
-  /* ───────────────────────── Wiring ───────────────────────── */
-  spinBtn.addEventListener("click", () => { ensureAudio(); spin(); });
-  betUp.addEventListener("click", () => { blip(); setBet(betIdx + 1); });
-  betDown.addEventListener("click", () => { blip(); setBet(betIdx - 1); });
-  maxBtn.addEventListener("click", () => { blip(); setBet(BET_STEPS.length - 1); });
-  autoBtn.addEventListener("click", () => { ensureAudio(); autoSet(!autoOn); });
-  addBtn.addEventListener("click", () => { credits += 1000; saveCredits(); updateHUD(); revealAddCredits(false); toast("+1000 credits added 💰", "ok"); });
-
-  rulesBtn.addEventListener("click", openRules);
-  rulesClose.addEventListener("click", closeRules);
-  rulesModal.addEventListener("click", (e) => { if (e.target === rulesModal) closeRules(); });
-
-  soundBtn.addEventListener("click", () => {
-    const on = Chiptune.toggle();
-    soundBtn.textContent = on ? "🔊 Music" : "🔇 Music";
-  });
-
-  document.addEventListener("keydown", (e) => {
-    if (e.code === "Space" && !e.repeat) {
-      const tag = (e.target && e.target.tagName) || "";
-      if (tag !== "INPUT" && tag !== "TEXTAREA") { e.preventDefault(); ensureAudio(); spin(); }
-    } else if (e.code === "Escape") {
-      closeRules();
-    }
-  });
-
   function ensureAudio() { try { Chiptune._sfx && Chiptune._sfx(); } catch (e) {} }
 
-  /* ───────────────────────── Boot ───────────────────────── */
-  buildPaytable();
-  setBet(betIdx);
-  updateHUD(0);
-  revealAddCredits(credits < totalBet());
-  // prime one render then drop the loading veil
+  /* ───────────────────────── Wiring + boot (standalone page only) ───────────────────────── */
+  if (!CHANNEL) {
+    spinBtn.addEventListener("click", () => { ensureAudio(); spin(); });
+    betUp.addEventListener("click", () => { blip(); setBet(betIdx + 1); });
+    betDown.addEventListener("click", () => { blip(); setBet(betIdx - 1); });
+    maxBtn.addEventListener("click", () => { blip(); setBet(BET_STEPS.length - 1); });
+    autoBtn.addEventListener("click", () => { ensureAudio(); autoSet(!autoOn); });
+    addBtn.addEventListener("click", () => { credits += 1000; saveCredits(); updateHUD(); revealAddCredits(false); toast("+1000 credits added 💰", "ok"); });
+
+    rulesBtn.addEventListener("click", openRules);
+    rulesClose.addEventListener("click", closeRules);
+    rulesModal.addEventListener("click", (e) => { if (e.target === rulesModal) closeRules(); });
+
+    soundBtn.addEventListener("click", () => {
+      const on = Chiptune.toggle();
+      soundBtn.textContent = on ? "🔊 Music" : "🔇 Music";
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.code === "Space" && !e.repeat) {
+        const tag = (e.target && e.target.tagName) || "";
+        if (tag !== "INPUT" && tag !== "TEXTAREA") { e.preventDefault(); ensureAudio(); spin(); }
+      } else if (e.code === "Escape") {
+        closeRules();
+      }
+    });
+
+    buildPaytable();
+    setBet(betIdx);
+    updateHUD(0);
+    revealAddCredits(credits < totalBet());
+  }
+
+  // prime one render then drop the loading veil (channel mode has no veil)
   renderReels();
   requestAnimationFrame(() => { if (loadingEl) loadingEl.classList.add("gone"); });
-  // also drop it on a timer in case rAF is throttled (e.g. headless preview)
   setTimeout(() => { if (loadingEl) loadingEl.classList.add("gone"); }, 400);
 
-  // Debug/test hook (harmless): lets a headless harness exercise the pure game
-  // logic without depending on the render loop. Not used by gameplay.
   window.CryptoReels = {
     app, reels, LINES, SYM,
     spin, evaluate, readGrid, spinOutcome,
     state: () => ({ credits, betIdx, lineBet: lineBet(), totalBet: totalBet(), spinning, autoOn }),
     setCredits: (n) => { credits = n; saveCredits(); updateHUD(); },
+    // ── Channel API (used by app.js when embedded in the TV page) ──
+    isChannel: CHANNEL,
+    isSpinning: () => spinning,
+    // Land the reels on a contract-decided grid (5 reels × 3 rows of symbol ids
+    // 0..8) and count up `winUsd` dollars. onDone({won,winUsd,big}) fires at the
+    // end of the reveal. Returns false if a spin is already running.
+    channelSpin: (grid, winUsd, betUsd, onDone) => {
+      if (spinning) return false;
+      forcedGrid = grid; channelWinUsd = winUsd || 0; channelBetUsd = betUsd || 0;
+      onChannelDone = (r) => { forcedGrid = null; if (onDone) onDone(r); };
+      try { app.ticker.start(); } catch (e) {} // never reveal against a stopped ticker (would strand onDone)
+      spin();
+      return true;
+    },
+    // Pause/resume the Pixi ticker so the slot doesn't burn CPU off-channel.
+    setActive: (on) => { try { on ? app.ticker.start() : app.ticker.stop(); } catch (e) {} },
+    setMessage: (t) => { try { messageText.text = t; messageText.style.fill = 0xffffff; } catch (e) {} },
   };
 })();

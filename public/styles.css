@@ -858,7 +858,8 @@ kbd { font-family: ui-monospace, monospace; font-size: 11px; background: rgba(25
 body:not(.game-dice) [data-game="dice"] { display: none !important; }
 body:not(.game-twodice) [data-game="twodice"] { display: none !important; }
 body:not(.game-crash) [data-game="crash"] { display: none !important; }
-body.game-dice [data-game="flip"], body.game-twodice [data-game="flip"], body.game-crash [data-game="flip"] { display: none !important; }
+body:not(.game-slots) [data-game="slots"] { display: none !important; }
+body.game-dice [data-game="flip"], body.game-twodice [data-game="flip"], body.game-crash [data-game="flip"], body.game-slots [data-game="flip"] { display: none !important; }
 /* …but the channel selector tiles are always visible (they're how you switch) */
 #game-nav .game-card { display: flex !important; }
 #game-nav .game-card[hidden] { display: none !important; } /* hidden channels (e.g. poker) stay hidden */
@@ -1260,3 +1261,18 @@ body:not(.game-poker) #poker-view { display:none !important; }
 }
 #crash-target.slider-dice:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 0 2px rgba(0,234,255,.25); }
 #crash-target-presets .qbet { font-weight: 700; }
+
+/* ════════════════════ CRYPTO REELS — slot on the TV (CH 12) ════════════════════ */
+/* The PixiJS canvas mounts here and is scaled to fit the TV screen. */
+#layer-slots { padding: 0; overflow: hidden; }
+.pixi-mount { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+/* Pixi appends a <canvas>; fit it to the screen while preserving the 960x600 aspect */
+.pixi-mount canvas { max-width: 100%; max-height: 100%; width: auto; height: auto; display: block; }
+/* Small status line overlaid at the bottom of the screen */
+.slots-hud { position: absolute; left: 0; right: 0; bottom: 5%; text-align: center; pointer-events: none; z-index: 3; }
+.slots-msg {
+  font-family: var(--display); font-weight: 700; font-size: clamp(11px, 3vw, 18px);
+  color: #bfe9ff; text-shadow: 0 0 10px rgba(0,234,255,.45); letter-spacing: 1px;
+}
+#layer-slots.win  .slots-msg { color: var(--green); text-shadow: 0 0 14px rgba(69,240,166,.6); }
+#layer-slots.lose .slots-msg { color: #9aa3c7; }

@@ -27,7 +27,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=944" />
+    <link rel="stylesheet" href="styles.css?v=945" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -41,7 +41,7 @@
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.44</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.45</span>
       </div>
       <div class="topbar-right">
         <button id="sound-btn" class="btn btn-ghost" title="Play / silence background music">🔇 Music</button>
@@ -130,6 +130,22 @@
             </svg>
           </span>
           <span class="gc-name">Crash</span>
+        </button>
+
+        <button type="button" class="game-card slots" id="ch-slots" role="tab" aria-selected="false" data-game="slots">
+          <span class="gc-tile">
+            <svg class="gc-glyph" viewBox="0 0 100 100" aria-hidden="true">
+              <rect x="20" y="24" width="60" height="44" rx="8" fill="#fff"/>
+              <rect x="27" y="33" width="13" height="26" rx="3" fill="#7b54d8"/>
+              <rect x="43.5" y="33" width="13" height="26" rx="3" fill="#16d1ff"/>
+              <rect x="60" y="33" width="13" height="26" rx="3" fill="#ff4d9d"/>
+              <circle cx="33.5" cy="46" r="3.4" fill="#fff"/>
+              <text x="50" y="50" font-size="13" text-anchor="middle" fill="#fff" font-family="monospace" font-weight="700">7</text>
+              <circle cx="66.5" cy="46" r="3.4" fill="#fff"/>
+              <rect x="34" y="70" width="32" height="8" rx="4" fill="#ffd23f"/>
+            </svg>
+          </span>
+          <span class="gc-name">Slots</span>
         </button>
 
         <button type="button" class="game-card poker" id="ch-poker" role="tab" aria-selected="false" data-game="poker" hidden>
@@ -252,6 +268,14 @@
                   <div class="crash-hud">
                     <div class="crash-mult" id="crash-mult">1.00×</div>
                     <div class="crash-sub" id="crash-sub">Set a target &amp; launch 🚀</div>
+                  </div>
+                </div>
+
+                <!-- Crypto Reels (CH 12): the PixiJS slot machine plays on the TV -->
+                <div class="screen-layer hidden" id="layer-slots">
+                  <div id="pixi-mount" class="pixi-mount"></div>
+                  <div class="slots-hud">
+                    <div class="slots-msg" id="slots-msg">PRESS SPIN</div>
                   </div>
                 </div>
 
@@ -504,6 +528,36 @@
 
           <button id="crash-launch" class="btn btn-primary btn-block dice-roll-btn">🚀 LAUNCH · win $<span id="crash-payout-hint">0.00</span></button>
           <div class="muted dice-roll-hint" id="crash-roll-hint"></div>
+        </div>
+
+        <!-- Crypto Reels (CH 12) — 5x3 slot, bet in real dollars -->
+        <div class="card dice-panel" id="slots-panel" data-game="slots" hidden>
+          <div class="ph-head">
+            <h2 class="card-title">🎰 Crypto Reels <span class="ch-tag">CH 12</span></h2>
+            <span class="ph-bankroll muted">House: <strong id="slots-house-bankroll">—</strong> · edge ~10%</span>
+          </div>
+
+          <p class="muted td-intro">5 reels · 9 paylines. Match symbols left→right — <strong>💎 Wild</strong> substitutes for any symbol, <strong>🪙 Scatter</strong> pays anywhere. Your total bet covers all 9 lines.</p>
+
+          <label class="field-label">Total bet <span class="muted">— this is what you risk per spin</span></label>
+          <div class="slider-wrap">
+            <input id="slots-stake" class="slider" type="range" min="10" max="500" step="5" value="25" />
+            <div class="slider-val"><strong id="slots-stake-val">$25</strong><span class="eth-sub" id="slots-stake-eth"></span></div>
+          </div>
+          <div class="quickbet-row" data-target="slots-stake">
+            <button type="button" class="qbet" data-mode="half">½ Last</button>
+            <button type="button" class="qbet" data-mode="double">2× Last</button>
+            <button type="button" class="qbet" data-mode="max">Max</button>
+          </div>
+
+          <div class="dice-readouts">
+            <div class="ro-cell"><span class="ro-k muted">Paylines</span><strong class="ro-v">9</strong></div>
+            <div class="ro-cell ro-mult"><span class="ro-k muted">RTP</span><strong class="ro-v">~90%</strong></div>
+            <div class="ro-cell ro-profit"><span class="ro-k muted">Max win</span><strong class="ro-v" id="slots-maxwin">$0</strong></div>
+          </div>
+
+          <button id="slots-spin" class="btn btn-primary btn-block dice-roll-btn">🎰 SPIN · bet $<span id="slots-bet-hint">25</span></button>
+          <div class="muted dice-roll-hint" id="slots-roll-hint"></div>
         </div>
 
         <!-- Host tools (owner only): adjust limits, fund house, redeploy -->
@@ -876,16 +930,16 @@
     </div>
 
     <script defer src="vendor/ethers.umd.min.js"></script>
-    <script defer src="config.js?v=944"></script>
-    <script defer src="contract.js?v=944"></script>
-    <script defer src="chiptune.js?v=944"></script>
-    <script defer src="scenes.js?v=944"></script>
-    <script defer src="tv.js?v=944"></script>
-    <script defer src="poker-engine.js?v=944"></script>
-    <script defer src="poker-bots.js?v=944"></script>
-    <script defer src="poker-ui.js?v=944"></script>
-    <script defer src="crash-engine.js?v=944"></script>
-    <script defer src="crash-render.js?v=944"></script>
-    <script defer src="app.js?v=944"></script>
+    <script defer src="config.js?v=945"></script>
+    <script defer src="contract.js?v=945"></script>
+    <script defer src="chiptune.js?v=945"></script>
+    <script defer src="scenes.js?v=945"></script>
+    <script defer src="tv.js?v=945"></script>
+    <script defer src="poker-engine.js?v=945"></script>
+    <script defer src="poker-bots.js?v=945"></script>
+    <script defer src="poker-ui.js?v=945"></script>
+    <script defer src="crash-engine.js?v=945"></script>
+    <script defer src="crash-render.js?v=945"></script>
+    <script defer src="app.js?v=945"></script>
   </body>
 </html>

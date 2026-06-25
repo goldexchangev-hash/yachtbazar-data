@@ -42,6 +42,7 @@
         dice: $("layer-dice"),
         twodice: $("layer-twodice"),
         crash: $("layer-crash"),
+        slots: $("layer-slots"),
       };
       this._activeChannel = 8; // 8 = Flip, 9 = Dice — so idle() advertises the active game
       this.scoreboard = $("scoreboard");
@@ -179,6 +180,7 @@
       this._clearConfetti();
       this.setChannel(this._activeChannel || 8); // keep showing the active game's channel
       if (this._activeChannel === 11) { this._crashIdle(); return; } // rocket waits on the pad
+      if (this._activeChannel === 12) { this._slotsIdle(); return; } // reels wait for a spin
       if (subtext) $("idle-sub").textContent = subtext;
       this._show("idle");
     },
@@ -205,6 +207,22 @@
       if (this._ensureCrash() && window.CrashRender) { window.CrashRender.reset(); }
     },
 
+    /* ---------------- slots (CH 12) ---------------- */
+    // The PixiJS slot engine (slots.js) is lazily injected by app.js; here we
+    // just show its layer and wake its ticker. Shows a loading note until ready.
+    _slotsIdle() {
+      this._setStatic(0.04);
+      this._show("slots");
+      const L = this.layers.slots; if (L) L.classList.remove("win", "lose");
+      const msg = $("slots-msg");
+      if (window.CryptoReels && window.CryptoReels.isChannel) {
+        window.CryptoReels.setActive(true);
+        if (msg) msg.textContent = "PRESS SPIN";
+      } else if (msg) {
+        msg.textContent = "LOADING REELS…";
+      }
+    },
+
     // Turn the dial between Coin Flip (08) and Dice (09) with a CRT "tune" effect.
     async changeChannel(num) {
       const seq = ++this._seq;
@@ -214,9 +232,9 @@
       const badge = $("tv-channel"); if (badge) { badge.classList.remove("changing"); void badge.offsetWidth; badge.classList.add("changing"); }
       await sleep(210); if (seq !== this._seq) return;
       this.setChannel(num); this._activeChannel = num;
-      if (num === 11) this._crashIdle(); else this._show("idle");
+      if (num === 11) this._crashIdle(); else if (num === 12) this._slotsIdle(); else this._show("idle");
       await sleep(160); if (seq !== this._seq) return;
-      if (num !== 11) this._setStatic(0.5);
+      if (num !== 11 && num !== 12) this._setStatic(0.5);
       this.screenEl.classList.remove("ch-switch");
       if (window.Chiptune) window.Chiptune.coin();
     },
@@ -378,6 +396,35 @@
         if (res.won) this._celebrate(L, tier);
         else if (window.Chiptune) window.Chiptune.lose();
       }
+    },
+
+    // Crypto Reels reveal: spin the Pixi reels to the contract's grid and count
+    // up the dollar payout. res = { grid:[5][3], winUsd, betUsd, won }
+    async revealSlots(res) {
+      const seq = ++this._seq;
+      const L = this.layers.slots;
+      L.classList.remove("win", "lose");
+      this._clearCelebration(); this._clearConfetti();
+      this.setChannel(12); this._activeChannel = 12;
+      this._setStatic(0.04);
+      this._show("slots");
+      const msg = $("slots-msg");
+      const release = () => { try { window.__onTvReveal && window.__onTvReveal(res); } catch (e) {} };
+      if (!(window.CryptoReels && window.CryptoReels.isChannel)) { release(); return; }
+      window.CryptoReels.setActive(true);
+      if (msg) msg.textContent = "SPINNING…";
+      const ok = window.CryptoReels.channelSpin(res.grid, res.winUsd, res.betUsd, (r) => {
+        if (seq !== this._seq) { release(); return; } // tuned away mid-spin
+        L.classList.toggle("win", !!r.won);
+        L.classList.toggle("lose", !r.won);
+        if (msg) msg.textContent = r.won ? ("WIN  +$" + (r.winUsd || 0).toFixed(2)) : "NO WIN";
+        release();
+        if (!window.__cineActive) {
+          if (r.won) this._celebrate(L, r.big ? "mega" : "normal");
+          else if (window.Chiptune) window.Chiptune.lose();
+        }
+      });
+      if (!ok) release(); // a spin was already running — don't strand the balance
     },
 
     waiting(opts = {}) {

@@ -54,6 +54,8 @@
   let contract = null; // connected to signer
   let twoDiceSupported = null; // null=unknown, true/false — does the active contract have Dice #2?
   let crashSupported = null;   // null=unknown, true/false — does the active contract have Crash?
+  let slotsSupported = null;   // null=unknown, true/false — does the active contract have Slots?
+  let slotsLoadPromise = null; // lazy-load guard for pixi.min.js + slots.js
   let read = null; // connected to provider
   let maxBet = 0n;
   let gameWei = 0n; // cached in-game (deposited) balance, refreshed by refreshBalances
@@ -418,6 +420,7 @@
       read = new E.Contract(deployment.address, ABI, provider);
       twoDiceSupported = null; // re-probe Dice #2 support for this contract
       crashSupported = null;   // re-probe Crash support for this contract
+      slotsSupported = null;   // re-probe Slots support for this contract
       try {
         maxBet = await read.maxBet();
       } catch (e) {
@@ -622,6 +625,7 @@
     $("dice-panel").hidden = false;
     { const td = $("twodice-panel"); if (td) td.hidden = false; }
     { const cp = $("crash-panel"); if (cp) cp.hidden = false; }
+    { const sp = $("slots-panel"); if (sp) sp.hidden = false; }
     refreshDiceHouse();
     $("maxbet-hint").textContent = "· $10–$" + betCapUsd().toLocaleString();
     setupHouseSlider();
@@ -695,6 +699,7 @@
       read = new E.Contract(addr, ABI, provider);
       twoDiceSupported = null; // re-probe Dice #2 support for this contract
       crashSupported = null;   // re-probe Crash support for this contract
+      slotsSupported = null;   // re-probe Slots support for this contract
       // Seed a small house bankroll so vs-house works right away (best effort).
       try { await (await contract.fundHouse({ value: usdToWei(1000), gasLimit: 150_000n })).wait(); } catch {}
       maxBet = await read.maxBet();
@@ -1435,6 +1440,7 @@
       const el = $("dice-house-bankroll"); if (el) el.textContent = usdOf(diceHouseWei);
       const el2 = $("td-house-bankroll"); if (el2) el2.textContent = usdOf(diceHouseWei); // Dice #2 shares the bankroll
       const el3 = $("crash-house-bankroll"); if (el3) el3.textContent = usdOf(diceHouseWei); // Crash shares the bankroll too
+      const el4 = $("slots-house-bankroll"); if (el4) el4.textContent = usdOf(diceHouseWei); // Slots shares the bankroll too
     } catch {}
     // Newer contracts expose an owner-tunable cap; old ones don't — fall back to 1%.
     try { if (read.maxPayoutBpsOfBankroll) dicePayoutCapBps = BigInt(await read.maxPayoutBpsOfBankroll()); } catch { dicePayoutCapBps = 100n; }
@@ -1730,15 +1736,124 @@
     }
   }
 
+  // ── Crypto Reels (CH 12): 5x3 slot, real-dollar bets, plays on the TV ──
+  const SLOTS_MAX_UNITS = 2500 / 9; // a single 5-of-a-kind wild line, in total-bet units
+  function slotsReadouts() {
+    const sEl = $("slots-stake"); if (!sEl) return;
+    const stake = +sEl.value;
+    setSliderUsd("slots-stake");
+    $("slots-bet-hint").textContent = Math.round(stake);
+    // honest "max win": the paytable jackpot for this stake, but never more than
+    // the house can currently pay (the bankroll cap).
+    let topWei = 0n; try { topWei = usdToWei(stake * SLOTS_MAX_UNITS); } catch {}
+    const capWei = diceMaxProfitWei();
+    if (capWei > 0n && topWei > capWei) topWei = capWei;
+    $("slots-maxwin").textContent = topWei > 0n ? usdOf(topWei) : "$0";
+    // affordability guard
+    let hint = "";
+    let stakeWei = 0n; try { stakeWei = usdToWei(stake); } catch {}
+    if (!(stake > 0)) hint = "Drag to pick a bet";
+    else if (gameWei > 0n && stakeWei > gameWei) hint = "Not enough in-game balance — deposit first 👇";
+    else if (maxBet > 0n && stakeWei > maxBet) hint = "Max bet is " + usdOf(maxBet);
+    const btn = $("slots-spin");
+    if (btn) { btn.disabled = !!hint; btn.style.opacity = hint ? "0.55" : ""; }
+    $("slots-roll-hint").textContent = hint;
+    if (slotsSupported === false) applySlotsSupport();
+  }
+  async function ensureSlotsSupport() {
+    if (!contract) return null;
+    if (slotsSupported === null) {
+      try { await contract.nextSlotsGameId.staticCall(); slotsSupported = true; }
+      catch (e) {
+        if (e?.code === "CALL_EXCEPTION" || e?.code === "BAD_DATA") slotsSupported = false;
+      }
+      applySlotsSupport();
+    }
+    return slotsSupported;
+  }
+  function applySlotsSupport() {
+    const btn = $("slots-spin"), hint = $("slots-roll-hint");
+    if (slotsSupported === false) {
+      if (btn) { btn.disabled = true; btn.style.opacity = "0.55"; }
+      if (hint) hint.textContent = "⚠️ This house contract predates Crypto Reels — it needs to be redeployed/upgraded before you can play it. The other channels still work here.";
+    }
+  }
+  // Lazily inject PixiJS + the slot engine the first time slots are used, so the
+  // ~1MB library never loads for players who never open this channel.
+  function loadScriptOnce(src) {
+    return new Promise((res, rej) => {
+      const s = document.createElement("script");
+      s.src = src; s.async = true;
+      s.onload = () => res(); s.onerror = () => rej(new Error("failed to load " + src));
+      document.body.appendChild(s);
+    });
+  }
+  function ensureSlotsLoaded() {
+    if (window.CryptoReels) return Promise.resolve(true);
+    if (slotsLoadPromise) return slotsLoadPromise;
+    slotsLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=945")
+      .then(() => loadScriptOnce("slots.js?v=945"))
+      .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
+      .catch((e) => { slotsLoadPromise = null; throw e; });
+    return slotsLoadPromise;
+  }
+  // Unpack the contract's 15-symbol grid (4 bits each, cell = reel*3+row) into [5][3].
+  function unpackSlotsGrid(packed) {
+    const p = BigInt(packed);
+    const grid = [[], [], [], [], []];
+    for (let i = 0; i < 15; i++) {
+      const sym = Number((p >> BigInt(4 * i)) & 0xFn);
+      grid[(i / 3) | 0][i % 3] = sym;
+    }
+    return grid;
+  }
+  async function playSlotsClick() {
+    if (!ready()) return;
+    if ((await ensureSlotsSupport()) === false)
+      return toast("Crypto Reels isn't on this house contract yet — it needs a redeploy. (The other channels still work.)", "err");
+    const stakeUsd = parseFloat($("slots-stake").value);
+    if (!(stakeUsd > 0)) return toast("Drag to pick a bet", "err");
+    const bet = usdToWei(stakeUsd);
+    if (bet > maxBet) return toast("Max bet is " + usdOf(maxBet), "err");
+    rememberBet(stakeUsd);
+    doPlaySlots(bet);
+  }
+  async function doPlaySlots(bet) {
+    activeRoomId = null; lastRevealed = null;
+    lockReveal();
+    tvPending(true);
+    toast("Spinning the reels… confirm in your wallet", "ok");
+    try {
+      ensureSlotsLoaded().catch(() => {}); // warm the engine while the tx mines
+      const tx = await contract.playSlots(bet, { gasLimit: 800000n });
+      const rcpt = await tx.wait();
+      tvPending(false);
+      const ev = rcpt.logs.map((l) => safeParse(l)).find((p) => p && p.name === "SlotsRolled");
+      if (!ev) { unlockReveal(); TV.idle(); refreshBalances(); refreshDiceHouse(); toast("Spin settled on-chain — check your balance.", "ok"); return; }
+      const a = ev.args;
+      const grid = unpackSlotsGrid(a.gridPacked);
+      const won = a.payout > 0n;
+      await ensureSlotsLoaded().catch(() => {}); // must be ready to animate the reveal
+      TV.revealSlots({ grid, winUsd: weiToUsd(a.payout), betUsd: weiToUsd(bet), won });
+      refreshBalances(); refreshDiceHouse(); refreshStats();
+    } catch (e) {
+      tvPending(false);
+      unlockReveal();
+      TV.idle("Pick a game and place a bet");
+      txErr(e);
+    }
+  }
+
   // ── Game switcher ("change the channel") ──
   // Poker is temporarily disabled (hidden from the channel bar) — to be revisited.
-  const GAME_CHANNEL = { flip: 8, dice: 9, twodice: 10, crash: 11 };
-  const GAME_TITLE = { flip: "CRYPTO TV FLIP", dice: "CRYPTO TV 0-100", twodice: "CRYPTO TV DICE #2", crash: "CRYPTO TV CRASH" };
-  const GAME_ORDER = ["flip", "dice", "twodice", "crash"];
+  const GAME_CHANNEL = { flip: 8, dice: 9, twodice: 10, crash: 11, slots: 12 };
+  const GAME_TITLE = { flip: "CRYPTO TV FLIP", dice: "CRYPTO TV 0-100", twodice: "CRYPTO TV DICE #2", crash: "CRYPTO TV CRASH", slots: "CRYPTO REELS" };
+  const GAME_ORDER = ["flip", "dice", "twodice", "crash", "slots"];
   function paintGameTabs(game) {
     document.body.classList.toggle("game-dice", game === "dice");
     document.body.classList.toggle("game-twodice", game === "twodice");
     document.body.classList.toggle("game-crash", game === "crash");
+    document.body.classList.toggle("game-slots", game === "slots");
     document.body.classList.toggle("game-poker", game === "poker"); // CSS hides the TV layout, shows #poker-view
     const bar = $("game-nav"); if (bar) bar.dataset.game = game;
     document.querySelectorAll("#game-nav .game-card").forEach((b) => {
@@ -1752,12 +1867,15 @@
     currentGame = game;
     paintGameTabs(game);
     try { localStorage.setItem("ctf_game", game); } catch {}
+    // leaving slots? pause its Pixi ticker so it doesn't burn CPU off-channel.
+    if (game !== "slots" && window.CryptoReels && CryptoReels.setActive) CryptoReels.setActive(false);
     // Poker is its own full-width view (no TV); everything else uses the TV channel.
     if (game === "poker") { if (window.PokerUI) PokerUI.show(); }
     else { if (window.PokerUI) PokerUI.hide(); if (window.TV && TV.changeChannel) TV.changeChannel(GAME_CHANNEL[game]); }
     if (game === "dice") { refreshDiceHouse(); diceReadouts(); }
     else if (game === "twodice") { refreshDiceHouse(); twoDiceReadouts(); ensureTwoDiceSupport(); }
     else if (game === "crash") { refreshDiceHouse(); crashReadouts(); ensureCrashSupport(); }
+    else if (game === "slots") { refreshDiceHouse(); slotsReadouts(); ensureSlotsSupport(); ensureSlotsLoaded().then(() => { if (window.CryptoReels) CryptoReels.setActive(true); }).catch(() => {}); }
   }
   // Poker chips are a session-local pool seeded from your in-game balance.
   // Phase 1 (vs house bots) plays out client-side; net results are NOT yet
@@ -1813,6 +1931,13 @@
       setSliderUsd("crash-stake");
       crashReadouts();
     }
+    // Crypto Reels controls (CH 12)
+    if ($("slots-stake")) {
+      $("slots-stake").oninput = () => slotsReadouts();
+      $("slots-spin").onclick = playSlotsClick;
+      setSliderUsd("slots-stake");
+      slotsReadouts();
+    }
     document.querySelectorAll("#game-nav .game-card").forEach((b) => { b.onclick = () => switchGame(b.dataset.game); });
     // keyboard: ←/→ to cycle channels through every game
     $("game-nav").addEventListener("keydown", (e) => {
@@ -1831,6 +1956,7 @@
     if (saved === "poker" && window.PokerUI) PokerUI.show();
     if (window.TV) TV._activeChannel = GAME_CHANNEL[saved] || 8;
     if (saved === "crash" && window.TV && TV._crashIdle) { try { TV._crashIdle(); } catch (e) {} }
+    if (saved === "slots") { ensureSlotsLoaded().then(() => { if (window.TV && TV._slotsIdle) TV._slotsIdle(); }).catch(() => {}); }
   }
 
   // My open tables: show bank + idle countdown, auto-close (refund) when stale.
