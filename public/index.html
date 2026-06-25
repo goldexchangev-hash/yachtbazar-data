@@ -27,7 +27,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=945" />
+    <link rel="stylesheet" href="styles.css?v=946" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -36,12 +36,13 @@
 
     <!-- ───────────────────────── Header ───────────────────────── -->
     <header class="topbar">
+      <button id="rail-toggle" class="rail-toggle" aria-label="Open menu" title="Menu">☰</button>
       <div class="brand">
         <span class="brand-tv">📺</span>
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.45</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.46</span>
       </div>
       <div class="topbar-right">
         <button id="sound-btn" class="btn btn-ghost" title="Play / silence background music">🔇 Music</button>
@@ -69,11 +70,14 @@
       🏠 You're connected as the <strong>house wallet</strong> — you're on both sides of every flip, so you can't really win or lose. Switch to a different account in MetaMask to play as a challenger.
     </div>
 
-    <!-- ───────── Crypto TV Channels — game selector ───────── -->
-    <section class="channels" aria-label="Crypto TV Channels">
+    <!-- ───────── Left sidebar (Stake-style): brand + games + essentials ───────── -->
+    <section class="channels" aria-label="Navigation">
+      <a class="rail-brand" href="/" aria-label="Crypto TV home">
+        <span class="rail-brand-tv">📺</span>
+        <span class="rail-brand-name">CRYPTO<span class="rail-brand-accent"> TV</span></span>
+      </a>
       <header class="channels-head">
-        <h2 class="channels-title"><span class="channels-tv">📺</span> Crypto TV Channels</h2>
-        <span class="channels-sub">Pick a channel to play</span>
+        <h2 class="channels-title">GAMES</h2>
       </header>
       <div class="channels-grid" id="game-nav" role="tablist" data-game="flip">
 
@@ -160,6 +164,18 @@
           <span class="gc-name">Poker</span>
         </button>
 
+      </div>
+
+      <!-- Essentials (real, working destinations) -->
+      <div class="rail-sep" aria-hidden="true"></div>
+      <nav class="rail-links" aria-label="Essentials">
+        <button type="button" class="rail-link" id="rail-wallet">💰 <span>Wallet</span></button>
+        <button type="button" class="rail-link" id="rail-howto">❓ <span>How to play</span></button>
+        <button type="button" class="rail-link" id="rail-host" hidden>⚙️ <span>Host tools</span></button>
+      </nav>
+      <div class="rail-foot">
+        <span class="rail-foot-net"><i></i> Sepolia testnet</span>
+        <span class="rail-foot-sub">Play money · provably fair</span>
       </div>
     </section>
 
@@ -930,16 +946,16 @@
     </div>
 
     <script defer src="vendor/ethers.umd.min.js"></script>
-    <script defer src="config.js?v=945"></script>
-    <script defer src="contract.js?v=945"></script>
-    <script defer src="chiptune.js?v=945"></script>
-    <script defer src="scenes.js?v=945"></script>
-    <script defer src="tv.js?v=945"></script>
-    <script defer src="poker-engine.js?v=945"></script>
-    <script defer src="poker-bots.js?v=945"></script>
-    <script defer src="poker-ui.js?v=945"></script>
-    <script defer src="crash-engine.js?v=945"></script>
-    <script defer src="crash-render.js?v=945"></script>
-    <script defer src="app.js?v=945"></script>
+    <script defer src="config.js?v=946"></script>
+    <script defer src="contract.js?v=946"></script>
+    <script defer src="chiptune.js?v=946"></script>
+    <script defer src="scenes.js?v=946"></script>
+    <script defer src="tv.js?v=946"></script>
+    <script defer src="poker-engine.js?v=946"></script>
+    <script defer src="poker-bots.js?v=946"></script>
+    <script defer src="poker-ui.js?v=946"></script>
+    <script defer src="crash-engine.js?v=946"></script>
+    <script defer src="crash-render.js?v=946"></script>
+    <script defer src="app.js?v=946"></script>
   </body>
 </html>

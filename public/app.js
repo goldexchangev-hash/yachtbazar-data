@@ -435,7 +435,7 @@
       await startGameUI();
       // Show Host tools to the contract owner OR the locked house wallet — so the
       // house can always reach "Start a fresh game" even on a game someone else deployed.
-      if (eq(account, ownerAddr) || eq(account, ART.defaultTreasury)) $("host-tools").hidden = false;
+      if (eq(account, ownerAddr) || eq(account, ART.defaultTreasury)) { $("host-tools").hidden = false; const rh = $("rail-host"); if (rh) rh.hidden = false; }
       if (inviteRoomId) handleInvite();
       if (inviteHostId) loadHostTable(inviteHostId);
     } catch (err) {
@@ -1791,8 +1791,8 @@
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
-    slotsLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=945")
-      .then(() => loadScriptOnce("slots.js?v=945"))
+    slotsLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=946")
+      .then(() => loadScriptOnce("slots.js?v=946"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -2863,6 +2863,22 @@
     $("help-btn").onclick = () => $("help-modal").classList.remove("hidden");
     $("help-close").onclick = () => $("help-modal").classList.add("hidden");
     $("help-modal").onclick = (e) => { if (e.target === $("help-modal")) $("help-modal").classList.add("hidden"); };
+
+    // ── Stake-style sidebar: mobile drawer toggle + essentials links ──
+    const closeRail = () => document.body.classList.remove("rail-open");
+    { const t = $("rail-toggle"); if (t) t.onclick = () => document.body.classList.toggle("rail-open"); }
+    // tap the dimmed overlay (the ::after) to close — listen on body when open
+    document.addEventListener("click", (e) => {
+      if (!document.body.classList.contains("rail-open")) return;
+      const rail = $("game-nav") && $("game-nav").closest(".channels");
+      const toggle = $("rail-toggle");
+      if (rail && !rail.contains(e.target) && e.target !== toggle) closeRail();
+    });
+    // selecting a game closes the drawer on mobile
+    document.querySelectorAll("#game-nav .game-card").forEach((b) => b.addEventListener("click", () => { if (window.matchMedia("(max-width:900px)").matches) closeRail(); }));
+    { const w = $("rail-wallet"); if (w) w.onclick = () => { closeRail(); const t = $("game-balance") || $("deposit-input"); if (t) t.scrollIntoView({ behavior: "smooth", block: "center" }); }; }
+    { const h = $("rail-howto"); if (h) h.onclick = () => { closeRail(); $("help-modal").classList.remove("hidden"); }; }
+    { const ht = $("rail-host"); if (ht) ht.onclick = () => { closeRail(); const t = $("host-tools"); if (t) { t.hidden = false; t.scrollIntoView({ behavior: "smooth", block: "center" }); } }; }
     $("sound-btn").onclick = () => {
       if (!window.Chiptune) return;
       const on = window.Chiptune.toggle();
