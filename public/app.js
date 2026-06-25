@@ -1869,8 +1869,8 @@
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
-    slotsLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=958")
-      .then(() => loadScriptOnce("slots.js?v=958"))
+    slotsLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=959")
+      .then(() => loadScriptOnce("slots.js?v=959"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -1994,15 +1994,19 @@
     const won = coinHeads === wantsHeads;
     const side = coinHeads ? "HEADS" : "TAILS";
     const betWei = usdToWei(v);
-    const rv = flipReveal(betWei, won);
-    demoUsd += (won ? weiToUsd(rv.amountWei) : 0) - v; demoSave();
+    const rv = flipReveal(betWei, won); // used for the TV display amounts only
+    // Win pays the pot minus the 10% house cut = 1.8× stake → +0.8× profit.
+    // Credit in plain USD to match the other demo games (no wei round-trip drift).
+    demoUsd += (won ? 0.8 * v : -v); demoSave();
     lockReveal();
     TV.startFlip({ p1: "DEMO", p2: "HOUSE", p1Heads: wantsHeads });
     const seq = TV._seq;
     // Reveal after the on-TV countdown (~tuning + 3·2·1 + FLIP), mirroring the
     // pause the real game has while the tx mines.
     setTimeout(() => {
-      if (!demoOn || TV._seq !== seq) return;
+      // Tuned away mid-flip → release the frozen balance now instead of waiting
+      // out the 20s safety timer.
+      if (!demoOn || TV._seq !== seq) { try { window.__onTvReveal && window.__onTvReveal({}); } catch (e) {} return; }
       playOutcome({ won, netUsd: weiToUsd(rv.netWei), betUsd: v, side });
       TV.revealResult({
         side, youWon: won, role: "participant",
