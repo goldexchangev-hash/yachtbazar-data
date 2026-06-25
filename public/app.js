@@ -441,8 +441,6 @@
       await ensureNetwork();
       signer = await provider.getSigner();
       account = await signer.getAddress();
-      // Connected — now it's safe to kick off the background music.
-      if (window.Chiptune) window.Chiptune.start(), syncSoundBtn();
       await resolveActiveGame(provider); // honor the registry's active game
 
       if (!deployment.address) {
@@ -2833,18 +2831,7 @@
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => { try { navigator.serviceWorker.register("sw.js"); } catch (e) {} });
     }
-    // Start the music on the first tap/touch (mobile + desktop block autoplay
-    // until a user gesture). Skips if the user has explicitly muted.
-    // Fire on the COMPLETED gesture (touchend/click) — iOS won't unlock audio on
-    // touchstart. Persistent so each tap re-kicks until it actually plays.
-    const armMusic = () => {
-      if (userMutedMusic || !window.Chiptune) return;
-      window.Chiptune.start(); // resumes + (re)starts; safe to call repeatedly
-      syncSoundBtn();
-    };
-    ["touchend", "click", "keydown"].forEach((ev) =>
-      window.addEventListener(ev, armMusic, { passive: true })
-    );
+    // Music NEVER auto-plays — it only starts when the user taps the Music button.
     // Live ETH→USD price: fetch now, refresh labels, and re-poll every 60s.
     fetchEthUsd().then(() => { setupSliders(); if (read && chainOK) { refreshBalances(); refreshStats(); refreshHouse(); refreshRooms(); } });
     setInterval(() => { if (document.hidden) return; fetchEthUsd().then(() => { setupSliders(); if (read && chainOK) { refreshBalances(); refreshStats(); refreshHouse(); refreshRooms(); } }); }, 60000);
