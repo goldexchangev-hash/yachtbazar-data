@@ -433,6 +433,9 @@
       try { ownerAddr = await read.owner(); } catch {}
 
       await startGameUI();
+      // Wallet is live: TV switches from static to the game room, profile unlocks.
+      if (window.TV && TV.setConnected) TV.setConnected(true);
+      { const rp = $("rail-profile"); if (rp) rp.hidden = false; }
       // Show Host tools to the contract owner OR the locked house wallet — so the
       // house can always reach "Start a fresh game" even on a game someone else deployed.
       if (eq(account, ownerAddr) || eq(account, ART.defaultTreasury)) { $("host-tools").hidden = false; const rh = $("rail-host"); if (rh) rh.hidden = false; }
@@ -1791,8 +1794,8 @@
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
-    slotsLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=950")
-      .then(() => loadScriptOnce("slots.js?v=950"))
+    slotsLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=951")
+      .then(() => loadScriptOnce("slots.js?v=951"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -1860,7 +1863,9 @@
       const on = b.dataset.game === game;
       b.classList.toggle("active", on); b.setAttribute("aria-selected", on ? "true" : "false");
     });
-    const title = $("idle-title"); if (title) title.textContent = GAME_TITLE[game] || GAME_TITLE.flip;
+    // The TV owns the idle title now (it shows SIGNAL LOST when disconnected).
+    if (window.TV && TV.setChannelTitle) TV.setChannelTitle(GAME_TITLE[game] || GAME_TITLE.flip);
+    else { const title = $("idle-title"); if (title) title.textContent = GAME_TITLE[game] || GAME_TITLE.flip; }
   }
   function switchGame(game) {
     if (game === currentGame || !GAME_CHANNEL[game]) return;
@@ -2213,20 +2218,27 @@
     if (s < 86400) return Math.floor(s / 3600) + "h";
     return Math.floor(s / 86400) + "d";
   }
-  function renderChatLine(from, text, ts) {
+  function renderChatLine(from, text, ts, name) {
     const log = $("chat-log");
     const isHost = hostTreasury && eq(from, hostTreasury);
     const sys = log.querySelector(".chat-sys");
     if (sys) sys.remove();
     const line = document.createElement("div");
     line.className = "chat-line " + (isHost ? "host" : "visitor");
+    const label = (name && String(name).trim()) ? String(name).trim() : short(from);
     const h = document.createElement("span");
     h.className = "chat-handle";
-    h.textContent = short(from) + (isHost ? "(host)" : "") + ":";
+    h.textContent = label + (isHost ? "(host)" : "");
+    // reveal/copy the real address (display names aren't unique)
+    const rev = document.createElement("button");
+    rev.type = "button"; rev.className = "chat-reveal"; rev.title = "Show address";
+    rev.textContent = "👁";
+    rev.onclick = () => { rev.replaceWith(document.createTextNode(" " + short(from))); try { navigator.clipboard && navigator.clipboard.writeText(from); } catch {} };
+    const colon = document.createElement("span"); colon.className = "chat-handle"; colon.textContent = ":";
     const t = document.createElement("span");
     t.className = "chat-text";
     t.textContent = " " + text;
-    line.appendChild(h); line.appendChild(t);
+    line.appendChild(h); line.appendChild(rev); line.appendChild(colon); line.appendChild(t);
     if (ts) { const a = document.createElement("span"); a.className = "chat-ago"; a.textContent = " " + agoLabel(ts); line.appendChild(a); }
     log.appendChild(line);
     while (log.children.length > 80) log.removeChild(log.firstChild);
@@ -2245,15 +2257,67 @@
     div.className = "chat-divider";
     div.textContent = "— recent chat —";
     log.appendChild(div);
-    for (const m of messages.slice(-60)) renderChatLine(m.from, m.text, m.ts);
+    for (const m of messages.slice(-60)) renderChatLine(m.from, m.text, m.ts, m.name);
   }
   function sendChat() {
     const inp = $("chat-input");
     const text = inp.value.trim();
     if (!text) return;
     if (!account) return toast("Connect a wallet to chat", "err");
-    wsSend({ type: "chat", text: text });
+    const myName = (window.Profile && account) ? Profile.name(account) : "";
+    wsSend({ type: "chat", text: text, name: myName || undefined });
     inp.value = "";
+  }
+
+  // ---------------------------------------------------------- player profile
+  async function openProfile() {
+    if (!account) return toast("Connect a wallet first", "err");
+    const pm = $("profile-modal"); if (!pm) return;
+    const p = window.Profile ? Profile.load(account) : {};
+    if ($("profile-name")) $("profile-name").value = p.name || "";
+    if ($("profile-bio")) $("profile-bio").value = p.bio || "";
+    if ($("profile-addr-short")) $("profile-addr-short").textContent = short(account);
+    try { if ($("profile-avatar")) blockies(account, 8, 8, $("profile-avatar")); } catch {}
+    pm.classList.remove("hidden");
+    renderProfileStats();
+  }
+  function saveProfile() {
+    if (!account || !window.Profile) return;
+    const name = ($("profile-name") ? $("profile-name").value : "").slice(0, 24).trim();
+    const bio = ($("profile-bio") ? $("profile-bio").value : "").slice(0, 160).trim();
+    Profile.save(account, { name, bio });
+    toast("Profile saved ✓", "ok");
+  }
+  function netStr(wei) { return (wei < 0n ? "-" : "+") + usdOf(wei < 0n ? -wei : wei); }
+  async function renderProfileStats() {
+    const box = $("profile-stats"), hist = $("profile-history");
+    if (!box || !window.Profile) return;
+    box.innerHTML = '<p class="muted">Loading your stats…</p>';
+    let rooms = [], dice = [], twoDice = [];
+    try { [rooms, dice, twoDice] = await Promise.all([
+      recentRooms(2000).catch(() => []), recentDice(2000).catch(() => []), recentTwoDice(2000).catch(() => []),
+    ]); } catch {}
+    const s = Profile.computeStats(account, { rooms, dice, twoDice }, eq);
+    const since = s.memberSinceSec ? new Date(s.memberSinceSec * 1000).toLocaleDateString() : "—";
+    const cell = (k, v) => '<div class="ps-cell"><span class="ps-k muted">' + k + '</span><strong class="ps-v">' + v + "</strong></div>";
+    box.innerHTML =
+      cell("Games played", s.played) +
+      cell("Win rate", s.played ? (s.winRate * 100).toFixed(0) + "%" : "—") +
+      cell("Wins / Losses", s.wins + " / " + s.losses) +
+      cell("Total wagered", usdOf(s.wageredWei)) +
+      cell("Biggest win", s.biggestWinWei > 0n ? usdOf(s.biggestWinWei) : "—") +
+      cell("Net result", netStr(s.netWei)) +
+      cell("Favorite game", s.favoriteGameLabel) +
+      cell("Member since", since);
+    if (hist) {
+      if (!s.history.length) { hist.innerHTML = '<p class="muted">No games yet — go play a channel!</p>'; }
+      else {
+        const lbl = (window.Profile && Profile.GAMES) || {};
+        hist.innerHTML = s.history.map((h) =>
+          '<div class="ph-row ' + (h.won ? "win" : "lose") + '"><span class="ph-game">' + (lbl[h.game] || h.game) +
+          '</span><span class="ph-net">' + netStr(h.net) + "</span></div>").join("");
+      }
+    }
   }
 
   async function cancelRoom(id) {
@@ -2452,7 +2516,7 @@
         let d; try { d = JSON.parse(ev.data); } catch { return; }
         if (d.type === "players") { wsPlayers = d.players || []; renderRoster(); }
         else if (d.type === "rooms-updated" || d.type === "flip") { refreshRooms(); refreshPlayers(); reconcile(); }
-        else if (d.type === "chat") renderChatLine(d.from, d.text);
+        else if (d.type === "chat") renderChatLine(d.from, d.text, undefined, d.name);
         else if (d.type === "chat-history") renderChatHistory(d.messages);
         else if (d.type === "bet-proposal") handleProposal(d);
         else if (d.type === "bet-response") handleProposalResponse(d);
@@ -2741,11 +2805,47 @@
 
   // ---------------------------------------------------------- sound + help
   function syncSoundBtn() {
-    const on = window.Chiptune && window.Chiptune.isOn();
+    const on = !!(window.Chiptune && window.Chiptune.isOn());
     const btn = $("sound-btn");
-    btn.textContent = on ? "🔊 Music: On" : "🔇 Music: Off";
-    btn.classList.toggle("btn-primary", on);
-    btn.classList.toggle("btn-ghost", !on);
+    if (btn) {
+      btn.textContent = (on ? "🔊" : "🔇") + " Music ▾";
+      btn.classList.toggle("btn-primary", on);
+      btn.classList.toggle("btn-ghost", !on);
+    }
+    const play = $("music-play"); if (play) play.textContent = on ? "⏸" : "▶";
+    if (window.Chiptune && Chiptune.current) {
+      const c = Chiptune.current();
+      const now = $("music-now"); if (now) now.textContent = (on ? "♪ " : "") + (c ? c.name : "—");
+      document.querySelectorAll("#music-tracks .mm-track").forEach((el, i) => el.classList.toggle("active", i === (c ? c.index : -1)));
+    }
+  }
+  // Build the track list once (from Chiptune.tracks()), then keep it in sync.
+  function renderTrackList() {
+    const wrap = $("music-tracks");
+    if (!wrap || !window.Chiptune || !Chiptune.tracks) return;
+    if (!wrap.dataset.built) {
+      wrap.innerHTML = Chiptune.tracks().map((t, i) =>
+        '<button type="button" class="mm-track" data-i="' + i + '">' + escapeHtml(t.name) + "</button>").join("");
+      wrap.querySelectorAll(".mm-track").forEach((el) => {
+        el.onclick = (e) => {
+          e.stopPropagation();
+          Chiptune.playTrack(+el.dataset.i);
+          if (!Chiptune.isOn()) Chiptune.start();
+          userMutedMusic = false;
+          syncSoundBtn();
+        };
+      });
+      wrap.dataset.built = "1";
+    }
+    syncSoundBtn();
+  }
+  // Skip to the next/previous track; start playback if it was paused.
+  function musicSkip(dir) {
+    if (!window.Chiptune) return;
+    dir < 0 ? Chiptune.prev() : Chiptune.next();
+    if (!Chiptune.isOn()) Chiptune.start();
+    userMutedMusic = false;
+    syncSoundBtn();
   }
 
   // Heads/Tails picker: returns true if the HEADS button is active in #id.
@@ -2847,7 +2947,7 @@
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const k = e.key.toLowerCase();
       const betOpen = !$("bet-modal").classList.contains("hidden");
-      if (k === "escape") { closeBetModal(); $("help-modal").classList.add("hidden"); $("nego-modal").classList.add("hidden"); return; }
+      if (k === "escape") { closeBetModal(); $("help-modal").classList.add("hidden"); $("nego-modal").classList.add("hidden"); { const pm = $("profile-modal"); if (pm) pm.classList.add("hidden"); } return; }
       if (k === " " || k === "enter") {
         e.preventDefault();
         if (betOpen) $("bet-accept").click();            // confirm the open bet
@@ -2879,6 +2979,15 @@
     { const w = $("rail-wallet"); if (w) w.onclick = () => { closeRail(); const t = $("game-balance") || $("deposit-input"); if (t) t.scrollIntoView({ behavior: "smooth", block: "center" }); }; }
     { const h = $("rail-howto"); if (h) h.onclick = () => { closeRail(); $("help-modal").classList.remove("hidden"); }; }
     { const ht = $("rail-host"); if (ht) ht.onclick = () => { closeRail(); const t = $("host-tools"); if (t) { t.hidden = false; t.scrollIntoView({ behavior: "smooth", block: "center" }); } }; }
+    { const rp = $("rail-profile"); if (rp) rp.onclick = () => { closeRail(); openProfile(); }; }
+    { const pc = $("profile-close"); if (pc) pc.onclick = () => $("profile-modal").classList.add("hidden"); }
+    { const pm = $("profile-modal"); if (pm) pm.onclick = (e) => { if (e.target === pm) pm.classList.add("hidden"); }; }
+    { const ps = $("profile-save"); if (ps) ps.onclick = saveProfile; }
+    { const pr = $("profile-addr-reveal"); if (pr) pr.onclick = () => {
+        const el = $("profile-addr-short");
+        if (el) el.textContent = account || "—";
+        try { navigator.clipboard && navigator.clipboard.writeText(account || ""); toast("Address copied", "ok"); } catch {}
+      }; }
 
     // ── Chat drawer: slide-in panel toggled from the top bar ──
     const closeChat = () => document.body.classList.remove("chat-open");
@@ -2895,12 +3004,20 @@
     { const b = $("bn-wallet"); if (b) b.onclick = () => { closeRail(); closeChat(); const t = $("game-balance") || $("deposit-input"); if (t) t.scrollIntoView({ behavior: "smooth", block: "center" }); }; }
     { const b = $("bn-chat"); if (b) b.onclick = (e) => { e.stopPropagation(); closeRail(); document.body.classList.toggle("chat-open"); }; }
     { const b = $("bn-help"); if (b) b.onclick = () => { closeRail(); closeChat(); $("help-modal").classList.remove("hidden"); }; }
-    $("sound-btn").onclick = () => {
-      if (!window.Chiptune) return;
-      const on = window.Chiptune.toggle();
-      userMutedMusic = !on;
-      syncSoundBtn();
-    };
+    // ── Music dropdown: open the track menu, play/pause, prev/next, pick a track ──
+    { const sb = $("sound-btn"); if (sb) sb.onclick = (e) => {
+        e.stopPropagation();
+        const menu = $("music-menu");
+        if (menu) { menu.classList.toggle("hidden"); if (!menu.classList.contains("hidden")) renderTrackList(); }
+      }; }
+    { const p = $("music-play"); if (p) p.onclick = (e) => { e.stopPropagation(); if (!window.Chiptune) return; const on = Chiptune.toggle(); userMutedMusic = !on; syncSoundBtn(); }; }
+    { const n = $("music-next"); if (n) n.onclick = (e) => { e.stopPropagation(); musicSkip(1); }; }
+    { const pv = $("music-prev"); if (pv) pv.onclick = (e) => { e.stopPropagation(); musicSkip(-1); }; }
+    document.addEventListener("click", (e) => {
+      const menu = $("music-menu"); if (!menu || menu.classList.contains("hidden")) return;
+      const wrap = menu.closest(".music-wrap");
+      if (wrap && !wrap.contains(e.target)) menu.classList.add("hidden");
+    });
 
     if (window.ethereum) {
       // Don't reload during the initial connect (that caused the "click twice"

@@ -15,40 +15,185 @@
   const NOTES = {};
   (function () {
     const names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-    for (let oct = 1; oct <= 6; oct++)
+    // Octaves 1–7 cover every note the SFX and the multi-track songbook need
+    // (sub-bass roots up through bright sparkle leads). Also register flat
+    // aliases (Db == C#, etc.) so tracks can spell chords either way.
+    const flats = { "C#": "Db", "D#": "Eb", "F#": "Gb", "G#": "Ab", "A#": "Bb" };
+    for (let oct = 1; oct <= 7; oct++)
       for (let i = 0; i < 12; i++) {
         const n = 12 * (oct + 1) + i;
-        NOTES[names[i] + oct] = 440 * Math.pow(2, (n - 69) / 12);
+        const f = 440 * Math.pow(2, (n - 69) / 12);
+        NOTES[names[i] + oct] = f;
+        if (flats[names[i]]) NOTES[flats[names[i]] + oct] = f;
       }
   })();
 
-  const TEMPO = 96; // upbeat groove (Donkey Kong Country-ish); BAR = 2.5s
-  const BEAT = 60 / TEMPO;
-  const BAR = 4 * BEAT;
+  // ── Tempo is now per-track. BEAT/BAR are recomputed from the active track's
+  // bpm whenever playback starts or the selection changes (see syncTempo()).
+  let BEAT = 60 / 96;
+  let BAR = 4 * BEAT;
 
-  // 16-bar driving A-minor groove à la DKC: a bouncy bassline (built from each
-  // bar's `root`), soft pads, and a syncopated lead on an 8-slot (eighth-note)
-  // grid ("-" = rest). Two 8-bar sections (A grounded, B lifts an octave).
-  const PROG = [
-    // ---- A ----
-    { root: "A2", ch: ["A3", "C4", "E4"], mel: ["E4", "-", "A4", "-", "C5", "-", "B4", "-"] },
-    { root: "D2", ch: ["D3", "F3", "A3"], mel: ["-", "D5", "-", "A4", "F4", "-", "A4", "-"] },
-    { root: "E2", ch: ["E3", "G3", "B3"], mel: ["E4", "-", "G4", "B4", "-", "E5", "-", "D5"] },
-    { root: "A2", ch: ["A3", "C4", "E4"], mel: ["C5", "-", "A4", "-", "E4", "-", "-", "-"] },
-    { root: "F2", ch: ["F3", "A3", "C4"], mel: ["-", "A4", "C5", "-", "A4", "-", "F4", "-"] },
-    { root: "C3", ch: ["C4", "E4", "G4"], mel: ["G4", "-", "E4", "G4", "-", "C5", "-", "-"] },
-    { root: "D2", ch: ["D3", "F3", "A3"], mel: ["D5", "-", "A4", "-", "F4", "A4", "-", "-"] },
-    { root: "E2", ch: ["E3", "G#3", "B3"], mel: ["E5", "-", "D5", "B4", "-", "G#4", "-", "B4"] },
-    // ---- B (lifts an octave, busier) ----
-    { root: "A2", ch: ["A3", "C4", "E4"], mel: ["A5", "-", "E5", "C5", "-", "A4", "-", "C5"] },
-    { root: "F2", ch: ["F3", "A3", "C4"], mel: ["-", "C5", "-", "A4", "C5", "-", "F5", "-"] },
-    { root: "C3", ch: ["C4", "E4", "G4"], mel: ["G5", "-", "E5", "-", "C5", "E5", "-", "G4"] },
-    { root: "G2", ch: ["G3", "B3", "D4"], mel: ["D5", "-", "B4", "D5", "-", "G4", "-", "B4"] },
-    { root: "D2", ch: ["D3", "F3", "A3"], mel: ["F5", "-", "A5", "-", "D5", "-", "A4", "-"] },
-    { root: "E2", ch: ["E3", "G3", "B3"], mel: ["-", "B4", "-", "E5", "G5", "-", "E5", "-"] },
-    { root: "F2", ch: ["F3", "A3", "C4"], mel: ["A5", "-", "G5", "F5", "-", "C5", "-", "A4"] },
-    { root: "E2", ch: ["E3", "G#3", "B3"], mel: ["E5", "-", "B4", "-", "G#4", "-", "B4", "-"] },
+  // ============================================================
+  //  SONGBOOK — original SNES-flavoured loops. None copy real melodies;
+  //  they're freshly composed progressions evoking the bright bounce of
+  //  Super Mario World and the swung, jazzy-melancholic DKC2 mood
+  //  ("Stickerbush Symphony", "Forest Interlude").
+  //
+  //  Bar shape is unchanged: { ch: [chord notes], root, mel: [8 eighth slots] }.
+  //  Each track: { id, name, bpm, prog: [bars] }, 8–16 bars, loops cleanly.
+  // ============================================================
+  const TRACKS = [
+    // ── 0. Neon Overworld — bright, bouncy major-key SMW romp (C major). ──
+    {
+      id: "overworld", name: "Neon Overworld", bpm: 144,
+      prog: [
+        { root: "C2", ch: ["C4", "E4", "G4"], mel: ["G4", "-", "C5", "E5", "-", "G5", "E5", "C5"] },
+        { root: "A2", ch: ["A3", "C4", "E4"], mel: ["A4", "-", "E5", "-", "C5", "A4", "-", "E5"] },
+        { root: "F2", ch: ["F3", "A3", "C4"], mel: ["F5", "-", "A5", "F5", "-", "C5", "A4", "-"] },
+        { root: "G2", ch: ["G3", "B3", "D4"], mel: ["G5", "F5", "-", "D5", "B4", "-", "G4", "-"] },
+        { root: "C2", ch: ["C4", "E4", "G4"], mel: ["E5", "-", "G5", "C6", "-", "G5", "E5", "-"] },
+        { root: "E2", ch: ["E3", "G#3", "B3"], mel: ["E5", "-", "B4", "E5", "G#5", "-", "B5", "-"] },
+        { root: "F2", ch: ["F3", "A3", "C4"], mel: ["A5", "-", "G5", "F5", "-", "A5", "C6", "-"] },
+        { root: "G2", ch: ["G3", "B3", "D4"], mel: ["D5", "G5", "-", "F5", "D5", "-", "G4", "-"] },
+      ],
+    },
+    // ── 1. Stickerbush Nights — swung jazzy DKC2 mood (A minor, 7ths). ──
+    {
+      id: "stickerbush", name: "Stickerbush Nights", bpm: 100,
+      prog: [
+        { root: "A2", ch: ["A3", "C4", "E4", "G4"], mel: ["E4", "-", "A4", "-", "C5", "-", "B4", "-"] },
+        { root: "D2", ch: ["D3", "F3", "A3", "C4"], mel: ["-", "D5", "-", "A4", "F4", "-", "A4", "-"] },
+        { root: "F2", ch: ["F3", "A3", "C4", "E4"], mel: ["C5", "-", "A4", "C5", "-", "E5", "-", "D5"] },
+        { root: "E2", ch: ["E3", "G3", "B3", "D4"], mel: ["B4", "-", "E5", "-", "D5", "B4", "-", "-"] },
+        { root: "A2", ch: ["A3", "C4", "E4", "G4"], mel: ["A4", "-", "C5", "E5", "-", "A5", "-", "G5"] },
+        { root: "C3", ch: ["C4", "E4", "G4", "B4"], mel: ["E5", "-", "G5", "-", "B4", "C5", "-", "E5"] },
+        { root: "D2", ch: ["D3", "F3", "A3", "C4"], mel: ["F5", "-", "D5", "A4", "-", "C5", "-", "-"] },
+        { root: "E2", ch: ["E3", "G#3", "B3", "D4"], mel: ["E5", "-", "D5", "B4", "-", "G#4", "-", "B4"] },
+      ],
+    },
+    // ── 2. Jackpot Jungle — upbeat casino/bonus tune (D major, snappy). ──
+    {
+      id: "jackpot", name: "Jackpot Jungle", bpm: 138,
+      prog: [
+        { root: "D2", ch: ["D4", "F#4", "A4"], mel: ["D5", "-", "F#5", "A5", "-", "F#5", "D5", "-"] },
+        { root: "G2", ch: ["G3", "B3", "D4"], mel: ["B4", "-", "D5", "G5", "-", "D5", "B4", "-"] },
+        { root: "A2", ch: ["A3", "C#4", "E4"], mel: ["A5", "-", "E5", "C#5", "-", "A4", "-", "E5"] },
+        { root: "D2", ch: ["D4", "F#4", "A4"], mel: ["F#5", "A5", "-", "D6", "-", "A5", "F#5", "-"] },
+        { root: "B2", ch: ["B3", "D4", "F#4"], mel: ["B4", "-", "F#5", "-", "D5", "B4", "-", "F#5"] },
+        { root: "G2", ch: ["G3", "B3", "D4"], mel: ["G5", "-", "B5", "D6", "-", "B5", "G5", "-"] },
+        { root: "A2", ch: ["A3", "C#4", "E4"], mel: ["A5", "-", "C#6", "-", "E5", "A5", "-", "C#6"] },
+        { root: "A2", ch: ["A3", "C#4", "E4", "G4"], mel: ["E6", "-", "C#6", "A5", "-", "E5", "-", "-"] },
+      ],
+    },
+    // ── 3. Coral Cove — chill, dreamy underwater feel (G major, floaty). ──
+    {
+      id: "coral", name: "Coral Cove", bpm: 96,
+      prog: [
+        { root: "G2", ch: ["G3", "B3", "D4"], mel: ["D5", "-", "-", "G5", "-", "B5", "-", "-"] },
+        { root: "E2", ch: ["E3", "G3", "B3", "D4"], mel: ["-", "B4", "-", "E5", "-", "G5", "-", "-"] },
+        { root: "C3", ch: ["C4", "E4", "G4"], mel: ["G5", "-", "-", "E5", "-", "C5", "-", "G4"] },
+        { root: "D2", ch: ["D4", "F#4", "A4"], mel: ["A4", "-", "D5", "-", "F#5", "-", "A5", "-"] },
+        { root: "G2", ch: ["G3", "B3", "D4"], mel: ["B5", "-", "-", "D6", "-", "B5", "G5", "-"] },
+        { root: "C3", ch: ["C4", "E4", "G4", "B4"], mel: ["-", "E5", "-", "G5", "-", "C6", "-", "B5"] },
+        { root: "A2", ch: ["A3", "C4", "E4"], mel: ["E5", "-", "-", "A5", "-", "C6", "-", "-"] },
+        { root: "D2", ch: ["D4", "F#4", "A4", "C5"], mel: ["A5", "-", "F#5", "-", "D5", "-", "A4", "-"] },
+      ],
+    },
+    // ── 4. Victory Lap — triumphant fanfare-style loop (C major, regal). ──
+    {
+      id: "victory", name: "Victory Lap", bpm: 120,
+      prog: [
+        { root: "C2", ch: ["C4", "E4", "G4"], mel: ["C5", "E5", "G5", "-", "C6", "-", "G5", "-"] },
+        { root: "G2", ch: ["G3", "B3", "D4"], mel: ["D5", "G5", "B5", "-", "D6", "-", "B5", "-"] },
+        { root: "A2", ch: ["A3", "C4", "E4"], mel: ["A5", "-", "E5", "C5", "-", "A4", "C5", "E5"] },
+        { root: "F2", ch: ["F3", "A3", "C4"], mel: ["F5", "A5", "C6", "-", "A5", "F5", "-", "-"] },
+        { root: "C2", ch: ["C4", "E4", "G4"], mel: ["E5", "G5", "C6", "E6", "-", "C6", "G5", "-"] },
+        { root: "F2", ch: ["F3", "A3", "C4"], mel: ["A5", "-", "C6", "-", "F6", "-", "C6", "A5"] },
+        { root: "G2", ch: ["G3", "B3", "D4"], mel: ["G5", "B5", "D6", "-", "G6", "-", "D6", "B5"] },
+        { root: "C2", ch: ["C4", "E4", "G4"], mel: ["C6", "-", "G5", "E5", "-", "C5", "-", "-"] },
+      ],
+    },
+    // ── 5. Funky Vault — funky syncopated bassline track (E minor, groove). ──
+    {
+      id: "funkyvault", name: "Funky Vault", bpm: 112,
+      prog: [
+        { root: "E2", ch: ["E3", "G3", "B3", "D4"], mel: ["E5", "-", "G5", "-", "E5", "D5", "-", "B4"] },
+        { root: "E2", ch: ["E3", "G3", "B3", "D4"], mel: ["-", "G5", "B5", "-", "A5", "-", "G5", "E5"] },
+        { root: "A2", ch: ["A3", "C4", "E4", "G4"], mel: ["A4", "-", "C5", "E5", "-", "G5", "E5", "-"] },
+        { root: "C3", ch: ["C4", "E4", "G4"], mel: ["C5", "-", "G4", "C5", "E5", "-", "D5", "-"] },
+        { root: "E2", ch: ["E3", "G3", "B3", "D4"], mel: ["B4", "-", "E5", "G5", "-", "B5", "-", "G5"] },
+        { root: "D2", ch: ["D3", "F#3", "A3", "C4"], mel: ["D5", "-", "F#5", "-", "A5", "F#5", "-", "D5"] },
+        { root: "A2", ch: ["A3", "C4", "E4", "G4"], mel: ["E5", "-", "G5", "A5", "-", "G5", "E5", "-"] },
+        { root: "B2", ch: ["B3", "D4", "F#4", "A4"], mel: ["B4", "-", "D5", "F#5", "-", "A5", "-", "B5"] },
+      ],
+    },
+    // ── 6. Crystal Caverns — mysterious, sparse cave track (B minor). ──
+    {
+      id: "caverns", name: "Crystal Caverns", bpm: 104,
+      prog: [
+        { root: "B2", ch: ["B3", "D4", "F#4"], mel: ["F#4", "-", "-", "B4", "-", "D5", "-", "-"] },
+        { root: "G2", ch: ["G3", "B3", "D4"], mel: ["-", "D5", "-", "-", "B4", "-", "G4", "-"] },
+        { root: "A2", ch: ["A3", "C#4", "E4"], mel: ["E5", "-", "-", "C#5", "-", "A4", "-", "E5"] },
+        { root: "F#2", ch: ["F#3", "A3", "C#4"], mel: ["F#5", "-", "-", "-", "C#5", "-", "A4", "-"] },
+        { root: "B2", ch: ["B3", "D4", "F#4"], mel: ["B5", "-", "F#5", "-", "-", "D5", "-", "B4"] },
+        { root: "E2", ch: ["E3", "G3", "B3"], mel: ["-", "B4", "-", "E5", "-", "-", "G5", "-"] },
+        { root: "D2", ch: ["D3", "F#3", "A3"], mel: ["A4", "-", "-", "D5", "-", "F#5", "-", "-"] },
+        { root: "F#2", ch: ["F#3", "A3", "C#4", "E4"], mel: ["C#5", "-", "A4", "-", "F#4", "-", "-", "-"] },
+      ],
+    },
+    // ── 7. Turbo Run — fast, energetic chase track (A minor, driving). ──
+    {
+      id: "turbo", name: "Turbo Run", bpm: 150,
+      prog: [
+        { root: "A2", ch: ["A3", "C4", "E4"], mel: ["A4", "C5", "E5", "A5", "E5", "C5", "A4", "E5"] },
+        { root: "A2", ch: ["A3", "C4", "E4"], mel: ["A4", "B4", "C5", "E5", "-", "C5", "B4", "A4"] },
+        { root: "F2", ch: ["F3", "A3", "C4"], mel: ["C5", "F5", "A5", "F5", "C5", "A4", "F4", "-"] },
+        { root: "G2", ch: ["G3", "B3", "D4"], mel: ["G4", "B4", "D5", "G5", "D5", "B4", "G4", "D5"] },
+        { root: "A2", ch: ["A3", "C4", "E4"], mel: ["E5", "C5", "A4", "E5", "A5", "E5", "C5", "A4"] },
+        { root: "D2", ch: ["D3", "F4", "A4"], mel: ["D5", "F5", "A5", "D6", "A5", "F5", "D5", "A4"] },
+        { root: "E2", ch: ["E3", "G#3", "B3"], mel: ["E5", "G#5", "B5", "E6", "B5", "G#5", "E5", "B4"] },
+        { root: "E2", ch: ["E3", "G#3", "B3"], mel: ["B5", "G#5", "E5", "B4", "-", "G#4", "-", "E4"] },
+      ],
+    },
+    // ── 8. Forest Interlude — slow, wistful swung DKC2 ballad (D minor). ──
+    {
+      id: "forest", name: "Forest Interlude", bpm: 92,
+      prog: [
+        { root: "D2", ch: ["D3", "F3", "A3", "C4"], mel: ["A4", "-", "-", "D5", "-", "F5", "-", "E5"] },
+        { root: "Bb2", ch: ["Bb3", "D4", "F4", "A4"], mel: ["D5", "-", "F5", "-", "A5", "-", "G5", "-"] },
+        { root: "G2", ch: ["G3", "Bb3", "D4", "F4"], mel: ["-", "G5", "-", "D5", "Bb4", "-", "G4", "-"] },
+        { root: "A2", ch: ["A3", "C#4", "E4", "G4"], mel: ["A4", "-", "C#5", "E5", "-", "G5", "-", "E5"] },
+        { root: "D2", ch: ["D3", "F3", "A3", "C4"], mel: ["F5", "-", "A5", "-", "D6", "-", "A5", "F5"] },
+        { root: "Bb2", ch: ["Bb3", "D4", "F4"], mel: ["Bb5", "-", "A5", "-", "F5", "D5", "-", "-"] },
+        { root: "G2", ch: ["G3", "Bb3", "D4", "F4"], mel: ["-", "D5", "F5", "-", "Bb5", "-", "A5", "-"] },
+        { root: "A2", ch: ["A3", "C#4", "E4", "G4"], mel: ["E5", "-", "C#5", "A4", "-", "E5", "-", "-"] },
+      ],
+    },
+    // ── 9. Sunrise Skyway — warm, gentle major bounce (F major, breezy). ──
+    {
+      id: "skyway", name: "Sunrise Skyway", bpm: 126,
+      prog: [
+        { root: "F2", ch: ["F3", "A3", "C4"], mel: ["F4", "-", "A4", "C5", "-", "F5", "C5", "-"] },
+        { root: "Bb2", ch: ["Bb3", "D4", "F4"], mel: ["D5", "-", "F5", "-", "Bb5", "F5", "-", "D5"] },
+        { root: "C3", ch: ["C4", "E4", "G4"], mel: ["E5", "-", "G5", "C6", "-", "G5", "E5", "-"] },
+        { root: "A2", ch: ["A3", "C4", "E4"], mel: ["A4", "C5", "E5", "-", "A5", "-", "E5", "C5"] },
+        { root: "F2", ch: ["F3", "A3", "C4"], mel: ["C5", "F5", "A5", "-", "C6", "-", "A5", "F5"] },
+        { root: "D2", ch: ["D3", "F3", "A3"], mel: ["D5", "-", "F5", "A5", "-", "D5", "F5", "-"] },
+        { root: "Bb2", ch: ["Bb3", "D4", "F4"], mel: ["F5", "-", "Bb5", "-", "D6", "-", "Bb5", "F5"] },
+        { root: "C3", ch: ["C4", "E4", "G4"], mel: ["G5", "E5", "C5", "-", "G4", "-", "C5", "-"] },
+      ],
+    },
   ];
+
+  let curTrack = 0; // active track index; default 0 = Neon Overworld
+
+  // Recompute BEAT/BAR from the active track's bpm. Called by start() and on
+  // every track switch so the drum groove + grid follow the selected tempo.
+  function syncTempo() {
+    const bpm = (TRACKS[curTrack] && TRACKS[curTrack].bpm) || 96;
+    BEAT = 60 / bpm;
+    BAR = 4 * BEAT;
+  }
 
   let ctx = null, master = null, musicGain = null, noiseBuf = null;
   let on = false, barIdx = 0, nextBarTime = 0, schedulerTimer = null;
@@ -161,7 +306,8 @@
   }
 
   function scheduleBar(t) {
-    const bar = PROG[barIdx % PROG.length];
+    const prog = TRACKS[curTrack].prog;
+    const bar = prog[barIdx % prog.length];
     const eighth = BEAT / 2;
     // Soft sustained pad under the groove.
     for (const n of bar.ch) voice(NOTES[n], t, BAR * 0.96, "sine", musicGain, 0.12, 0.04, 0.45);
@@ -219,6 +365,7 @@
       if (customReady && audioEl) { audioEl.currentTime = 0; audioEl.play().catch(() => {}); return true; }
       // Schedule SYNCHRONOUSLY (not in a promise) so the first notes play on the very
       // first tap; the 0.35s head-start covers the context's wake-up time.
+      syncTempo();
       barIdx = 0;
       nextBarTime = ctx.currentTime + 0.35;
       scheduler();
@@ -231,6 +378,43 @@
       if (audioEl) { try { audioEl.pause(); } catch {} }
     },
     toggle() { return on ? (this.stop(), false) : this.start(); },
+
+    // ── Track selection ────────────────────────────────────────────────
+    // List all songs for a UI menu: [{ id, name }].
+    tracks() { return TRACKS.map((t) => ({ id: t.id, name: t.name })); },
+    // The active song: { id, name, index }.
+    current() {
+      const t = TRACKS[curTrack];
+      return { id: t.id, name: t.name, index: curTrack };
+    },
+    // Resolve an id (string) or index (number) to a valid track index, or -1.
+    _trackIndex(idOrIndex) {
+      if (typeof idOrIndex === "number")
+        return idOrIndex >= 0 && idOrIndex < TRACKS.length ? idOrIndex : -1;
+      return TRACKS.findIndex((t) => t.id === idOrIndex);
+    },
+    // Switch to a track. If music is currently playing on the synth, restart the
+    // scheduler cleanly on the new track from bar 0 (no overlapping loops). If
+    // not playing, just remember the selection for the next start(). The custom
+    // music.mp3 override (when present) keeps playing regardless. Returns current().
+    playTrack(idOrIndex) {
+      const idx = this._trackIndex(idOrIndex);
+      if (idx < 0) return this.current();
+      curTrack = idx;
+      syncTempo();
+      // Only the synth needs re-scheduling; a custom mp3 isn't bar-based.
+      if (on && ctx && !(customReady && audioEl)) {
+        if (schedulerTimer) clearTimeout(schedulerTimer); // kill the pending loop
+        schedulerTimer = null;
+        barIdx = 0;
+        nextBarTime = ctx.currentTime + 0.1;
+        scheduler(); // one active loop, on the new track
+      }
+      return this.current();
+    },
+    // Cycle to the next/previous track (wrapping); behaves like playTrack.
+    next() { return this.playTrack((curTrack + 1) % TRACKS.length); },
+    prev() { return this.playTrack((curTrack - 1 + TRACKS.length) % TRACKS.length); },
 
     // Make sure the audio context exists and is running (call on a user gesture).
     wake() { ensureCtx(); try { if (ctx && ctx.state !== "running") ctx.resume(); } catch (e) {} },

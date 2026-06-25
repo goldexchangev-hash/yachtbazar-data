@@ -175,13 +175,49 @@
     /* ---------------- public states ---------------- */
     idle(subtext) {
       this._seq++;
-      this._setStatic(0.5);
       this.scoreboard.classList.add("hidden");
       this._clearConfetti();
       this.setChannel(this._activeChannel || 8); // keep showing the active game's channel
-      if (this._activeChannel === 11) { this._crashIdle(); return; } // rocket waits on the pad
-      if (this._activeChannel === 12) { this._slotsIdle(); return; } // reels wait for a spin
-      if (subtext) $("idle-sub").textContent = subtext;
+      if (!this._connected) return this._staticIdle();          // disconnected → static on every channel
+      if (this._activeChannel === 11) return this._crashIdle();  // rocket room
+      if (this._activeChannel === 12) return this._slotsIdle();  // reels room
+      this._readyRoom(subtext);                                  // flip / 0-100 / dice #2 ready room
+    },
+
+    // Called by app.js on connect/disconnect. Refreshes the resting screen so the
+    // TV shows static when signed out and the game room once a wallet connects.
+    setConnected(c) {
+      c = !!c;
+      if (c === this._connected) return;
+      this._connected = c;
+      const p = this._phase;
+      if (p === "idle" || p === "crash" || p === "slots") this.idle(); // only refresh a resting screen
+    },
+
+    // app.js sets the channel's title here; the TV shows it in the ready room
+    // (and overrides it with SIGNAL LOST whenever no wallet is connected).
+    setChannelTitle(t) {
+      this._channelTitle = t || this._channelTitle || "CRYPTO TV";
+      if (this._connected && this._phase === "idle") { const el = $("idle-title"); if (el) el.textContent = this._channelTitle; }
+    },
+
+    // Disconnected: TV "snow" + a tune-in prompt, identical on every channel.
+    _staticIdle() {
+      this._setStatic(0.55);
+      const title = $("idle-title"); if (title) { title.textContent = "SIGNAL LOST"; title.classList.add("signal-lost"); }
+      const sub = $("idle-sub"); if (sub) sub.textContent = "Connect your wallet to tune in";
+      const L = this.layers.crash, S = this.layers.slots;
+      if (L) L.classList.remove("win", "lose");
+      if (S) S.classList.remove("win", "lose");
+      if (window.CryptoReels) { try { window.CryptoReels.setActive(false); } catch (e) {} } // pause the slot engine
+      this._show("idle");
+    },
+
+    // Connected & a non-canvas game is selected: a clean "ready to play" room.
+    _readyRoom(subtext) {
+      this._setStatic(0.08);
+      const title = $("idle-title"); if (title) { title.textContent = this._channelTitle || "CRYPTO TV"; title.classList.remove("signal-lost"); }
+      const sub = $("idle-sub"); if (sub) sub.textContent = subtext || "Ready to play — place your bet 👇";
       this._show("idle");
     },
 
@@ -197,6 +233,7 @@
     },
     // Show the rocket idling on the pad, multiplier reset to 1.00×.
     _crashIdle() {
+      if (!this._connected) return this._staticIdle(); // signed out → static, no rocket
       const L = this.layers.crash;
       if (L) L.classList.remove("win", "lose");
       const mult = $("crash-mult"), sub = $("crash-sub");
@@ -211,6 +248,7 @@
     // The PixiJS slot engine (slots.js) is lazily injected by app.js; here we
     // just show its layer and wake its ticker. Shows a loading note until ready.
     _slotsIdle() {
+      if (!this._connected) return this._staticIdle(); // signed out → static, no reels
       this._setStatic(0.04);
       this._show("slots");
       const L = this.layers.slots; if (L) L.classList.remove("win", "lose");
@@ -232,9 +270,11 @@
       const badge = $("tv-channel"); if (badge) { badge.classList.remove("changing"); void badge.offsetWidth; badge.classList.add("changing"); }
       await sleep(210); if (seq !== this._seq) return;
       this.setChannel(num); this._activeChannel = num;
-      if (num === 11) this._crashIdle(); else if (num === 12) this._slotsIdle(); else this._show("idle");
+      if (!this._connected) this._staticIdle();
+      else if (num === 11) this._crashIdle();
+      else if (num === 12) this._slotsIdle();
+      else this._readyRoom();
       await sleep(160); if (seq !== this._seq) return;
-      if (num !== 11 && num !== 12) this._setStatic(0.5);
       this.screenEl.classList.remove("ch-switch");
       if (window.Chiptune) window.Chiptune.coin();
     },

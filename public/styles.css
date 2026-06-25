@@ -1545,3 +1545,69 @@ body.chat-open .chat-drawer { transform: translateX(0); }
   body { padding-bottom: 64px; } /* keep content clear of the bar */
   .toast { bottom: 78px; }       /* lift toasts above the bar */
 }
+
+/* ════════ Music dropdown (top bar) ════════ */
+.music-wrap { position: relative; }
+.music-menu {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 80;
+  width: 240px; max-width: calc(100vw - 24px);
+  background: var(--s-panel); border: 1px solid var(--s-border);
+  border-radius: var(--r-md); box-shadow: 0 12px 40px rgba(0,0,0,.5); padding: 10px;
+}
+.music-menu.hidden { display: none; }
+.mm-transport { display: flex; align-items: center; gap: 6px; padding-bottom: 8px; border-bottom: 1px solid var(--s-border); margin-bottom: 8px; }
+.mm-ctrl { background: var(--s-surface); border: 1px solid var(--s-border); color: var(--s-text); border-radius: var(--r-sm); width: 34px; height: 30px; cursor: pointer; font-size: 13px; }
+.mm-ctrl:hover { background: var(--s-border); }
+.mm-play { background: var(--s-green); color: #06231a; border: none; font-weight: 700; }
+.mm-now { flex: 1; min-width: 0; font: 600 12px/1.2 var(--s-font); color: var(--s-green); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mm-tracks { display: flex; flex-direction: column; gap: 2px; max-height: 264px; overflow-y: auto; }
+.mm-track { text-align: left; background: transparent; border: none; color: var(--s-text-2); font: 600 13px/1 var(--s-font); padding: 8px 10px; border-radius: var(--r-sm); cursor: pointer; }
+.mm-track:hover { background: var(--s-surface); color: var(--s-text); }
+.mm-track.active { background: var(--s-surface); color: var(--s-green); box-shadow: inset 3px 0 0 var(--s-green); }
+
+/* ════════ Player profile modal ════════ */
+.profile-card { width: min(94vw, 460px); text-align: left; }
+.profile-head { display: flex; align-items: center; gap: 14px; margin: 4px 0 12px; }
+#profile-avatar { border-radius: 10px; border: 1px solid var(--s-border); image-rendering: pixelated; }
+.profile-head-main { flex: 1; min-width: 0; }
+.profile-name-input { width: 100%; background: var(--s-surface); border: 1px solid var(--s-border); color: var(--s-text); border-radius: var(--r-sm); padding: 8px 10px; font: 700 16px/1 var(--s-font); }
+.profile-addr { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.profile-addr .mono { color: var(--s-text-2); font-size: 12px; }
+#profile-bio { width: 100%; background: var(--s-surface); border: 1px solid var(--s-border); color: var(--s-text); border-radius: var(--r-sm); padding: 8px 10px; font: 400 13px/1.4 var(--s-font); resize: vertical; margin-bottom: 12px; }
+.profile-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 14px; }
+.ps-cell { background: var(--s-surface); border: 1px solid var(--s-border); border-radius: var(--r-sm); padding: 8px 10px; }
+.ps-k { display: block; font-size: 11px; }
+.ps-v { font: 700 15px/1.2 var(--s-font); color: var(--s-text); }
+.profile-h3 { margin: 2px 0 8px; font: 700 13px/1 var(--s-font); color: var(--s-text-2); }
+.profile-history { max-height: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; }
+.ph-row { display: flex; align-items: center; justify-content: space-between; padding: 7px 10px; background: var(--s-surface); border: 1px solid var(--s-border); border-radius: var(--r-sm); border-left-width: 3px; }
+.ph-row.win { border-left-color: var(--s-green); }
+.ph-row.lose { border-left-color: var(--s-red); }
+.ph-game { font: 600 13px/1 var(--s-font); color: var(--s-text-2); }
+.ph-net { font: 700 13px/1 var(--s-mono); }
+.ph-row.win .ph-net { color: var(--s-green); }
+.ph-row.lose .ph-net { color: var(--s-red); }
+.profile-note { font-size: 11px; margin-top: 4px; }
+
+/* chat: reveal-address button next to a display name */
+.chat-reveal { background: none; border: none; cursor: pointer; font-size: 11px; padding: 0 4px; opacity: .55; }
+.chat-reveal:hover { opacity: 1; }
+
+/* SIGNAL LOST — black letters with a beautiful emitting white glow */
+.idle-title.signal-lost {
+  color: #050505;
+  text-shadow:
+    0 0 8px #ffffff,
+    0 0 18px #ffffff,
+    0 0 34px rgba(255,255,255,.92),
+    0 0 60px rgba(255,255,255,.6);
+  animation: signalGlow 2.2s ease-in-out infinite;
+}
+@keyframes signalGlow {
+  50% { text-shadow:
+    0 0 12px #ffffff,
+    0 0 26px #ffffff,
+    0 0 50px rgba(255,255,255,.98),
+    0 0 86px rgba(255,255,255,.72); }
+}
+@media (prefers-reduced-motion: reduce) { .idle-title.signal-lost { animation: none; } }

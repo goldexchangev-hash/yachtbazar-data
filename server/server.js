@@ -106,9 +106,10 @@ wss.on("connection", (ws) => {
       // client-supplied one, and cap the length.
       const from = clients.get(ws)?.address || null;
       const text = String(data.text || "").slice(0, 240);
+      const name = String(data.name || "").slice(0, 24).trim() || null; // chosen display name
       if (from && text.trim()) {
-        const line = { type: "chat", from, text, ts: Date.now() };
-        chatHistory.push({ from, text, ts: line.ts });
+        const line = { type: "chat", from, name, text, ts: Date.now() };
+        chatHistory.push({ from, name, text, ts: line.ts });
         pruneChat();
         broadcast(line);
       }
