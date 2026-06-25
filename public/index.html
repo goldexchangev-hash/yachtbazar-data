@@ -27,7 +27,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=965" />
+    <link rel="stylesheet" href="styles.css?v=966" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -42,7 +42,7 @@
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.65</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.66</span>
       </div>
       <div class="topbar-right">
         <div class="music-wrap">
@@ -325,7 +325,7 @@
 
                 <!-- Promo intro reel — autoplays once (muted) on first load, then fades
                      to black and hands off to the game. Replay button under the TV. -->
-                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=965"></video>
+                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=966"></video>
 
                 <!-- Shown while a bet tx is being signed + mined (esp. slow on mobile) -->
                 <div id="tv-pending" class="tv-pending hidden">⏳ SENDING BET…<br />confirm in your wallet, then hold tight</div>
@@ -362,11 +362,15 @@
           <button id="demo-reset" class="btn btn-ghost demo-reset" title="Top demo credits back up">↻ Reset credits</button>
         </div>
 
-        <!-- Balloon Pop primary action, docked right under the play balance so the
-             TV + HOLD button are visible together (only shows on CH 13). -->
-        <div class="pr-hold-dock" data-game="pressure">
+        <!-- Primary action buttons, docked right under the play balance so the TV
+             + action button are visible together. Only the active game's shows. -->
+        <div class="action-dock" data-game="pressure">
           <button id="pr-hold" class="btn btn-primary btn-block pr-hold">🎈 HOLD TO PUMP</button>
           <div class="muted dice-roll-hint" id="pr-message">HOLD the balloon to pump</div>
+        </div>
+        <div class="action-dock" data-game="crash">
+          <button id="crash-launch" class="btn btn-primary btn-block dice-roll-btn">🚀 LAUNCH · win $<span id="crash-payout-hint">0.00</span></button>
+          <div class="muted dice-roll-hint" id="crash-roll-hint"></div>
         </div>
 
         <!-- Win-animation theme switcher (hidden for now — locked to Scarfblade Films) -->
@@ -595,8 +599,6 @@
             <button type="button" class="qbet" data-mode="max">Max</button>
           </div>
 
-          <button id="crash-launch" class="btn btn-primary btn-block dice-roll-btn">🚀 LAUNCH · win $<span id="crash-payout-hint">0.00</span></button>
-          <div class="muted dice-roll-hint" id="crash-roll-hint"></div>
         </div>
 
         <!-- Crypto Reels (CH 12) — 5x3 slot, bet in real dollars -->
@@ -1089,17 +1091,17 @@
     </aside>
 
     <script defer src="vendor/ethers.umd.min.js"></script>
-    <script defer src="config.js?v=965"></script>
-    <script defer src="contract.js?v=965"></script>
-    <script defer src="chiptune.js?v=965"></script>
-    <script defer src="scenes.js?v=965"></script>
-    <script defer src="tv.js?v=965"></script>
-    <script defer src="poker-engine.js?v=965"></script>
-    <script defer src="poker-bots.js?v=965"></script>
-    <script defer src="poker-ui.js?v=965"></script>
-    <script defer src="crash-engine.js?v=965"></script>
-    <script defer src="crash-render.js?v=965"></script>
-    <script defer src="profile.js?v=965"></script>
-    <script defer src="app.js?v=965"></script>
+    <script defer src="config.js?v=966"></script>
+    <script defer src="contract.js?v=966"></script>
+    <script defer src="chiptune.js?v=966"></script>
+    <script defer src="scenes.js?v=966"></script>
+    <script defer src="tv.js?v=966"></script>
+    <script defer src="poker-engine.js?v=966"></script>
+    <script defer src="poker-bots.js?v=966"></script>
+    <script defer src="poker-ui.js?v=966"></script>
+    <script defer src="crash-engine.js?v=966"></script>
+    <script defer src="crash-render.js?v=966"></script>
+    <script defer src="profile.js?v=966"></script>
+    <script defer src="app.js?v=966"></script>
   </body>
 </html>
