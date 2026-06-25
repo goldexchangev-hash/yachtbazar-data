@@ -259,54 +259,44 @@
       this._show("twodice");
     },
 
-    /* ---------------- promo intro reel ---------------- */
+    /* ---------------- promo intro reel ----------------
+       Plays ONCE on first site load (muted autoplay), then fades to black and
+       hands off to the live game screen so they can bet immediately. The only
+       control is a Replay button under the TV (which plays it back WITH sound,
+       since that's a user gesture). It never replays on channel switches. */
     _initPromo() {
       if (this._promoEl !== undefined) return this._promoEl;
       const v = $("promo-video");
       this._promoEl = v || null;
-      if (this._promoMuted === undefined) this._promoMuted = true; // default muted (browsers block unmuted autoplay)
       if (v) v.addEventListener("ended", () => this._endPromo());
       return this._promoEl;
     },
-    _promoBtn(show) { const b = $("promo-unmute"); if (b) b.classList.toggle("hidden", !show); },
-    // Autoplay the promo over the current channel (muted); on end → normal screen.
-    playPromo(force) {
+    // withSound: false for the on-load autoplay (browsers block unmuted cold
+    // autoplay); true for a Replay tap (a gesture, so sound is allowed).
+    playPromo(withSound) {
       const v = this._initPromo(); if (!v) return;
-      if (this._promoPlaying && !force) return;
       this._promoPlaying = true;
       this._setStatic(0.02);
-      v.classList.remove("hidden");
+      v.classList.remove("hidden", "promo-fade");
       try { v.currentTime = 0; } catch (e) {}
-      v.muted = !!this._promoMuted;
-      this._promoBtn(!!this._promoMuted); // big "tap to unmute" while it plays muted
+      v.muted = !withSound;
       const p = v.play();
-      if (p && p.catch) p.catch(() => { // even muted autoplay refused → just bail to the screen
+      if (p && p.catch) p.catch(() => { // unmuted refused → retry muted, else bail to the game
         v.muted = true; const p2 = v.play(); if (p2 && p2.catch) p2.catch(() => this._endPromo());
       });
     },
-    // User tapped the big center button: unmute + restart so they hear it in full.
-    unmutePromo() {
-      const v = this._initPromo(); if (!v) return;
-      this._promoMuted = false;
-      v.muted = false;
-      this._promoBtn(false);
-      if (!this._promoPlaying) { this.playPromo(true); return; }
-      try { v.currentTime = 0; } catch (e) {}
-      v.play();
-      try { localStorage.setItem("ctf_lenny_heard", "1"); } catch (e) {}
-    },
     _endPromo() {
       const v = this._promoEl;
-      if (v) { try { v.pause(); } catch (e) {} v.classList.add("hidden"); }
-      this._promoBtn(false);
+      if (!v || !this._promoPlaying) { if (v) v.classList.add("hidden"); return; }
       this._promoPlaying = false;
-      this.idle(); // restore the resting screen (static when signed out, game preview when connected)
-    },
-    setPromoMuted(m) {
-      this._promoMuted = !!m;
-      if (this._promoEl) this._promoEl.muted = this._promoMuted;
-      this._promoBtn(this._promoMuted && this._promoPlaying);
-      return this._promoMuted;
+      // fade the reel to black, then reveal the resting game screen underneath
+      try { v.pause(); } catch (e) {}
+      v.classList.add("promo-fade");
+      clearTimeout(this._promoFadeT);
+      this._promoFadeT = setTimeout(() => {
+        v.classList.add("hidden"); v.classList.remove("promo-fade");
+        this.idle(); // game preview (or static when signed out) — ready to bet
+      }, 560);
     },
 
     /* ---------------- crash (CH 11) ---------------- */
@@ -343,7 +333,10 @@
       const msg = $("slots-msg");
       if (window.CryptoReels && window.CryptoReels.isChannel) {
         window.CryptoReels.setActive(true);
-        if (msg) msg.textContent = "PLACE YOUR BET BELOW";
+        // The in-canvas Pixi text owns the bottom message (it counts up wins);
+        // keep the DOM overlay empty so the two never collide.
+        if (window.CryptoReels.setMessage) window.CryptoReels.setMessage("PLACE YOUR BET BELOW");
+        if (msg) msg.textContent = "";
       } else if (msg) {
         msg.textContent = "LOADING REELS…";
       }
@@ -375,7 +368,7 @@
       await sleep(160); if (seq !== this._seq) return;
       this.screenEl.classList.remove("ch-switch");
       if (window.Chiptune) window.Chiptune.coin();
-      this.playPromo(true); // each channel "tunes in" with the promo, then returns to the screen
+      // NB: the promo intro plays only ONCE on first load — never on channel switch.
     },
 
     // Dice roll reveal: marker races 0→roll on a number line, verdict + escalation.
@@ -551,12 +544,12 @@
       const release = () => { try { window.__onTvReveal && window.__onTvReveal(res); } catch (e) {} };
       if (!(window.CryptoReels && window.CryptoReels.isChannel)) { release(); return; }
       window.CryptoReels.setActive(true);
-      if (msg) msg.textContent = "SPINNING…";
+      if (msg) msg.textContent = ""; // Pixi shows GOOD LUCK → YOU WON $X → NO WIN (no DOM overlap)
       const ok = window.CryptoReels.channelSpin(res.grid, res.winUsd, res.betUsd, (r) => {
         if (seq !== this._seq) { release(); return; } // tuned away mid-spin
         L.classList.toggle("win", !!r.won);
         L.classList.toggle("lose", !r.won);
-        if (msg) msg.textContent = r.won ? ("WIN  +$" + (r.winUsd || 0).toFixed(2)) : "NO WIN";
+        if (msg) msg.textContent = ""; // the count-up amount is rendered in-canvas
         release();
         if (!window.__cineActive) {
           if (r.won) this._celebrate(L, r.big ? "mega" : "normal");

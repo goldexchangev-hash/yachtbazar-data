@@ -1701,9 +1701,12 @@ body.connected .wallet-cluster #disconnect-btn { border-radius: var(--r-full); p
 /* ════════ Promo intro video on the TV ════════ */
 .promo-video {
   position: absolute; inset: 0; width: 100%; height: 100%;
-  object-fit: cover; background: #000; z-index: 45; cursor: pointer;
+  object-fit: cover; background: #000; z-index: 45;
+  opacity: 1; transition: opacity .55s ease;
 }
 .promo-video.hidden { display: none; }
+/* fade the intro to black before handing off to the game screen */
+.promo-video.promo-fade { opacity: 0; }
 .tv-controls { flex-wrap: wrap; }
 .tv-promo-controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .tv-promo-btn {
@@ -1712,21 +1715,6 @@ body.connected .wallet-cluster #disconnect-btn { border-radius: var(--r-full); p
   white-space: nowrap;
 }
 .tv-promo-btn:hover { color: var(--s-text); background: var(--s-border); }
-
-/* big center "tap to unmute" button over the promo video */
-.promo-unmute {
-  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-  z-index: 48; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
-  background: rgba(6, 16, 12, .66); border: 2px solid var(--s-green); color: #fff;
-  font: 700 14px/1 var(--s-font); letter-spacing: .5px; padding: 14px 22px;
-  border-radius: var(--r-full); box-shadow: 0 0 0 4px rgba(0,231,1,.16), 0 10px 34px rgba(0,0,0,.5);
-  animation: promoPulse 1.5s ease-in-out infinite;
-}
-.promo-unmute.hidden { display: none; }
-@keyframes promoPulse {
-  50% { box-shadow: 0 0 0 9px rgba(0,231,1,.08), 0 10px 38px rgba(0,0,0,.55); transform: translate(-50%,-50%) scale(1.05); }
-}
-@media (prefers-reduced-motion: reduce) { .promo-unmute { animation: none; } }
 
 /* ════════════════════════════════════════════════════════════════════════
    DEMO MODE — play-money try-before-you-connect. Amber accent so it reads as
@@ -1795,3 +1783,16 @@ body.demo-mode #bankroll { display: none !important; }
 .pr-fair-row code { font-family: ui-monospace, monospace; color: var(--s-green, #00e701); }
 .pr-fair-row input { flex: 1; min-width: 120px; }
 .pr-fair-reveal { font-family: ui-monospace, monospace; font-size: 10.5px; color: var(--s-green, #00e701); word-break: break-all; }
+
+/* Demo balance + reset, docked directly under the TV (moved out of the top bar) */
+.demo-below {
+  display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px 14px;
+  margin: 2px auto 0; max-width: 520px; padding: 8px 14px;
+  background: linear-gradient(180deg, rgba(255, 196, 60, 0.14), rgba(255, 168, 40, 0.08));
+  border: 1px solid rgba(255, 196, 60, 0.45); border-radius: 14px; box-shadow: var(--shadow);
+}
+.demo-below-chip { font-family: var(--display); font-size: 11px; font-weight: 800; letter-spacing: .5px; color: #2a1a00; background: #ffc43c; border-radius: 999px; padding: 3px 9px; box-shadow: 0 0 12px rgba(255,196,60,.5); }
+.demo-below-bal { font-weight: 700; color: #ffe6b0; }
+.demo-below-bal strong { color: #ffd23f; font-family: var(--display); font-size: 16px; margin-left: 6px; }
+.demo-below .demo-reset { border-color: rgba(255, 210, 63, 0.5); color: #ffe6b0; }
+@media (max-width: 640px) { .demo-below { gap: 6px 10px; padding: 7px 10px; } }

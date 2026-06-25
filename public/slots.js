@@ -449,6 +449,10 @@
     winFx = null;
     lineLayer.clear();
     bigWinText.visible = false;
+    // reset the message back to a plain, un-popped state (so losses/idle read clean)
+    messageText.scale.set(1);
+    messageText.style.dropShadowColor = 0x000000;
+    messageText.style.dropShadowBlur = 0;
     for (const reel of reels) for (const t of reel.tiles) t.inner.scale.set(1);
   }
 
@@ -537,12 +541,27 @@
 
     renderReels();
 
-    // win FX + count-up
+    // win FX + count-up — an exciting "money adding up" reveal: the amount pops
+    // in big + gold, races up fast, and ticks a coin sound the whole climb,
+    // then settles to a green pulse. (Losses use the plain muted message.)
     if (winFx) {
       drawWinFx(now);
-      const k = Math.min(1, (now - winFx.start) / 900);
+      const DUR = 760; // count-up duration (ms) — quick + punchy
+      const k = Math.min(1, (now - winFx.start) / DUR);
       winFx.displayed = Math.round(winFx.total * easeOutCubic(k));
-      messageText.text = "WIN  " + (winFx.usd ? "$" : "") + fmt(winFx.displayed);
+      messageText.text = "YOU WON  " + (winFx.usd ? "$" : "") + fmt(winFx.displayed);
+      // overshoot pop on entry, then a lively pulse while the number climbs
+      const pop = easeOutBack(Math.min(1, (now - winFx.start) / 340));
+      const pulse = k < 1 ? (1 + 0.07 * Math.sin(now / 80)) : 1;
+      messageText.scale.set((0.55 + 0.95 * pop) * pulse);
+      messageText.style.fill = k < 1 ? 0xffd23f : 0x45f0a6; // gold while counting → green when banked
+      messageText.style.dropShadowColor = k < 1 ? 0xff8a3d : 0x1e6b46;
+      messageText.style.dropShadowBlur = 10;
+      // coin "cha-ching" ticks racing up with the number
+      if (k < 1 && now - (winFx.lastTick || 0) > 55) {
+        winFx.lastTick = now;
+        try { Chiptune.coin && Chiptune.coin(); } catch (e) {}
+      }
       if (winFx.big) {
         bigWinText.scale.set(Math.min(1, easeOutBack(Math.min(1, (now - winFx.start) / 500))));
         bigWinText.rotation = Math.sin(now / 140) * 0.04;

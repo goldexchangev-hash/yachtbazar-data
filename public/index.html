@@ -27,7 +27,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=960" />
+    <link rel="stylesheet" href="styles.css?v=961" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -42,7 +42,7 @@
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.60</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.61</span>
       </div>
       <div class="topbar-right">
         <div class="music-wrap">
@@ -84,12 +84,11 @@
       🏠 You're connected as the <strong>house wallet</strong> — you're on both sides of every flip, so you can't really win or lose. Switch to a different account in MetaMask to play as a challenger.
     </div>
 
-    <!-- Demo-mode bar: play money, no wallet. Default landing experience. -->
+    <!-- Demo-mode bar: play money, no wallet. Default landing experience.
+         (Balance + reset live below the TV; this top bar keeps the real-money CTA.) -->
     <div id="demo-bar" class="demo-bar hidden" role="status">
       <span class="demo-chip">🎮 DEMO</span>
       <span class="demo-text">You're playing with <strong>free demo credits</strong> — no wallet, no real money. Same games, same odds.</span>
-      <span class="demo-bal">Balance: <strong id="demo-balance">$0</strong></span>
-      <button id="demo-reset" class="btn btn-ghost demo-reset" title="Top demo credits back up">↻ Reset credits</button>
       <button id="demo-connect" class="btn btn-primary demo-cta">Connect wallet to play for real →</button>
     </div>
 
@@ -325,9 +324,9 @@
                 <!-- Full-motion win/loss video reel (Scarfblade Films theme) -->
                 <video id="reveal-video" class="reveal-video" playsinline preload="auto"></video>
 
-                <!-- Promo intro reel — autoplays muted on load; tap the center button for sound -->
-                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4"></video>
-                <button id="promo-unmute" class="promo-unmute hidden" aria-label="Unmute the intro">🔊 TAP TO UNMUTE</button>
+                <!-- Promo intro reel — autoplays once (muted) on first load, then fades
+                     to black and hands off to the game. Replay button under the TV. -->
+                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=961"></video>
 
                 <!-- Shown while a bet tx is being signed + mined (esp. slow on mobile) -->
                 <div id="tv-pending" class="tv-pending hidden">⏳ SENDING BET…<br />confirm in your wallet, then hold tight</div>
@@ -350,12 +349,18 @@
               </div>
               <div class="tv-promo-controls">
                 <button id="promo-replay" class="tv-promo-btn" title="Replay the intro video">🔁&nbsp;Replay intro</button>
-                <button id="promo-mute" class="tv-promo-btn" title="Mute / unmute the intro">🔊</button>
               </div>
               <div class="tv-channel" id="tv-channel">CH&nbsp;<b id="tv-channel-num">03</b></div>
             </div>
           </div>
           <div class="tv-stand" aria-hidden="true"></div>
+        </div>
+
+        <!-- Demo balance + reset, sitting right under the TV (play money) -->
+        <div id="demo-below" class="demo-below hidden">
+          <span class="demo-below-chip">🎮 DEMO</span>
+          <span class="demo-below-bal">Play balance <strong id="demo-balance">$0</strong></span>
+          <button id="demo-reset" class="btn btn-ghost demo-reset" title="Top demo credits back up">↻ Reset credits</button>
         </div>
 
         <!-- Win-animation theme switcher (hidden for now — locked to Scarfblade Films) -->
@@ -1085,17 +1090,17 @@
     </aside>
 
     <script defer src="vendor/ethers.umd.min.js"></script>
-    <script defer src="config.js?v=960"></script>
-    <script defer src="contract.js?v=960"></script>
-    <script defer src="chiptune.js?v=960"></script>
-    <script defer src="scenes.js?v=960"></script>
-    <script defer src="tv.js?v=960"></script>
-    <script defer src="poker-engine.js?v=960"></script>
-    <script defer src="poker-bots.js?v=960"></script>
-    <script defer src="poker-ui.js?v=960"></script>
-    <script defer src="crash-engine.js?v=960"></script>
-    <script defer src="crash-render.js?v=960"></script>
-    <script defer src="profile.js?v=960"></script>
-    <script defer src="app.js?v=960"></script>
+    <script defer src="config.js?v=961"></script>
+    <script defer src="contract.js?v=961"></script>
+    <script defer src="chiptune.js?v=961"></script>
+    <script defer src="scenes.js?v=961"></script>
+    <script defer src="tv.js?v=961"></script>
+    <script defer src="poker-engine.js?v=961"></script>
+    <script defer src="poker-bots.js?v=961"></script>
+    <script defer src="poker-ui.js?v=961"></script>
+    <script defer src="crash-engine.js?v=961"></script>
+    <script defer src="crash-render.js?v=961"></script>
+    <script defer src="profile.js?v=961"></script>
+    <script defer src="app.js?v=961"></script>
   </body>
 </html>

@@ -1869,12 +1869,12 @@
     });
   }
   // PixiJS is shared by Slots and Balloon Pop — load it at most once.
-  function loadPixiOnce() { return window.PIXI ? Promise.resolve() : loadScriptOnce("vendor/pixi.min.js?v=960"); }
+  function loadPixiOnce() { return window.PIXI ? Promise.resolve() : loadScriptOnce("vendor/pixi.min.js?v=961"); }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=960"))
+      .then(() => loadScriptOnce("slots.js?v=961"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -1884,9 +1884,9 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=960"))
-      .then(() => loadScriptOnce("pressure-render.js?v=960"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=960"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=961"))
+      .then(() => loadScriptOnce("pressure-render.js?v=961"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=961"))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -2018,6 +2018,7 @@
     { const pp = $("pressure-panel"); if (pp) pp.hidden = false; }
     { const pc = $("ch-pressure"); if (pc) pc.hidden = false; } // Balloon Pop is play-money → demo only
     { const bar = $("demo-bar"); if (bar) bar.classList.remove("hidden"); }
+    { const below = $("demo-below"); if (below) below.classList.remove("hidden"); }
     { const bdg = $("demo-tv-badge"); if (bdg) bdg.classList.remove("hidden"); }
     if (window.TV && TV.setConnected) TV.setConnected(true); // show game-ready previews, not SIGNAL LOST
     const mh = $("maxbet-hint"); if (mh) mh.textContent = "· demo · $10–$" + HARD_MAX_USD;
@@ -2029,6 +2030,7 @@
     demoOn = false;
     document.body.classList.remove("demo-mode");
     { const bar = $("demo-bar"); if (bar) bar.classList.add("hidden"); }
+    { const below = $("demo-below"); if (below) below.classList.add("hidden"); }
     { const bdg = $("demo-tv-badge"); if (bdg) bdg.classList.add("hidden"); }
     // Balloon Pop is play-money only — once a real wallet connects the whole site
     // is real money, so hide it and bounce off the channel if they're on it.
@@ -3291,20 +3293,10 @@
       if (drawer && !drawer.contains(e.target) && e.target !== toggle) closeChat();
     });
 
-    // ── Promo intro reel: autoplays (muted) on every load; big center button = unmute ──
-    if (window.TV && TV.playPromo) { try { TV.playPromo(); } catch (e) {} }
-    { const u = $("promo-unmute"); if (u) u.onclick = (e) => {
-        e.stopPropagation();
-        if (window.TV && TV.unmutePromo) TV.unmutePromo();
-        const m = $("promo-mute"); if (m) m.textContent = "🔊";
-      }; }
+    // ── Promo intro reel: autoplays (muted) ONCE on load, then fades to the game.
+    //    The only control is the Replay button under the TV (plays back WITH sound). ──
+    if (window.TV && TV.playPromo) { try { TV.playPromo(false); } catch (e) {} }
     { const r = $("promo-replay"); if (r) r.onclick = (e) => { e.stopPropagation(); if (window.TV && TV.playPromo) TV.playPromo(true); }; }
-    { const m = $("promo-mute"); if (m) m.onclick = (e) => {
-        e.stopPropagation();
-        if (!(window.TV && TV.setPromoMuted)) return;
-        const muted = TV.setPromoMuted(!TV._promoMuted);
-        m.textContent = muted ? "🔇" : "🔊";
-      }; }
 
     // ── Mobile bottom tab bar ──
     { const b = $("bn-games"); if (b) b.onclick = (e) => { e.stopPropagation(); closeChat(); document.body.classList.toggle("rail-open"); }; }
