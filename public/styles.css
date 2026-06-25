@@ -1701,9 +1701,9 @@ body.connected .wallet-cluster #disconnect-btn { border-radius: var(--r-full); p
 /* ════════ Promo intro video on the TV ════════ */
 .promo-video {
   position: absolute; inset: 0; width: 100%; height: 100%;
-  /* show the WHOLE frame (head + pointing hand) — nothing cropped. The square
-     clip gets thin black bars on the sides inside the wider TV. */
-  object-fit: contain; object-position: center; background: #000; z-index: 45;
+  /* the promo is now a native 4:3 clip matching the 4:3 TV → fill edge-to-edge
+     with zero black bars and zero crop. */
+  object-fit: cover; object-position: center; background: #000; z-index: 45;
   opacity: 1; transition: opacity .55s ease;
 }
 .promo-video.hidden { display: none; }
