@@ -1888,14 +1888,14 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=970").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=971").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=970"))
+      .then(() => loadScriptOnce("slots.js?v=971"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -1905,9 +1905,9 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=970"))
-      .then(() => loadScriptOnce("pressure-render.js?v=970"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=970"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=971"))
+      .then(() => loadScriptOnce("pressure-render.js?v=971"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=971"))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -3349,13 +3349,11 @@
     // ── Promo intro reel: autoplays (muted) ONCE on load, then fades to the game.
     //    The only control is the Replay button under the TV (plays back WITH sound). ──
     window.__onPromoEnded = startMusicAfterPromo; // random track after the intro's first run
-    // Autoplay the intro only the FIRST time, remembered across refreshes (desktop
-    // + mobile). The Replay button under the TV always plays it again on demand.
-    let promoSeen = false; try { promoSeen = localStorage.getItem("ctf_promo_seen") === "1"; } catch (e) {}
-    if (!promoSeen && window.TV && TV.playPromo) {
-      try { TV.playPromo(); } catch (e) {}
-      try { localStorage.setItem("ctf_promo_seen", "1"); } catch (e) {}
-    }
+    // Play the intro on EVERY page load / refresh (not remembered) — but it never
+    // replays on channel switches within the same load. The Replay button under
+    // the TV plays it again on demand.
+    try { localStorage.removeItem("ctf_promo_seen"); } catch (e) {} // clear any old "seen" flag
+    if (window.TV && TV.playPromo) { try { TV.playPromo(); } catch (e) {} }
     { const r = $("promo-replay"); if (r) r.onclick = (e) => { e.stopPropagation(); if (window.TV && TV.playPromo) TV.playPromo(); }; }
 
     // ── Mobile bottom tab bar ──
