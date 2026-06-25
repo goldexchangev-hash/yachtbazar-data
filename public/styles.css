@@ -948,7 +948,15 @@ body.game-dice [data-game="flip"], body.game-twodice [data-game="flip"] { displa
 
 /* ───────────────── Dice #2 (CH 10) — two physical d6 dice ───────────────── */
 .td-intro { font-size: 12px; margin: 2px 0 10px; }
-.td-scale { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); padding: 0 2px; margin-top: -2px; }
+/* Dice #2 target: full-width slider so the thumb tracks the scale exactly
+   (no value readout stealing width). The 11px side padding on both the slider
+   wrap and the scale = the thumb radius, so tick labels line up with the thumb
+   at every value, and the selected number lights up to remove all doubt. */
+.td-slider-wrap { width: 100%; margin: 8px 0 2px; padding: 0 11px; }
+.td-slider-wrap .slider { width: 100%; flex: none; display: block; }
+.td-scale { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); padding: 0 11px; margin-top: 2px; }
+.td-scale span { width: 14px; text-align: center; transition: color .1s, transform .1s; }
+.td-scale span.on { color: var(--gold); font-weight: 700; transform: scale(1.35); }
 /* TV reveal layer */
 .td-target { font-family: var(--display); font-weight: 700; color: #cfd6ff; letter-spacing: 1px; font-size: 14px; }
 .td-dice { display: flex; gap: 20px; justify-content: center; align-items: center; margin: 14px 0 6px; }

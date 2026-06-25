@@ -1535,6 +1535,8 @@
     const stake = +$("td-stake").value;
     const profit = combos > 0 ? stake * (mult - 1) : 0;
     $("td-target-val").textContent = T;
+    const scale = $("td-scale");
+    if (scale) scale.querySelectorAll("span").forEach((s, i) => s.classList.toggle("on", i === T - 2));
     $("td-chance").textContent = chance.toFixed(2) + "%";
     $("td-mult").textContent = combos > 0 ? mult.toFixed(2) + "×" : "—";
     $("td-profit").textContent = "+$" + profit.toFixed(2);
