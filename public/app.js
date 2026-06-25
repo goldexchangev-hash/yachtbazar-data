@@ -1058,7 +1058,35 @@
       $("wallet-balance").textContent = usdOf(wb);
       walletWei = wb;
       syncDepositSlider();
+      syncWithdrawSlider();
     } catch {}
+  }
+
+  // ── Deposit / withdraw buttons show a live dollar + approx-ETH value ──
+  let withdrawTouched = false; // once the user drags the withdraw slider, stop auto-snapping to "all"
+  function ethApprox(usdVal) { const e = ethUsd > 0 ? usdVal / ethUsd : 0; return e.toFixed(4); }
+  function updateDepositBtn() {
+    const s = $("deposit-input"), b = $("deposit-btn");
+    if (!s || !b || b.dataset.busy) return;
+    const v = Math.round(+s.value || 0);
+    b.textContent = v > 0 ? ("Deposit $" + v + " · ≈ " + ethApprox(v) + " ETH") : "Deposit";
+  }
+  function updateWithdrawBtn() {
+    const s = $("withdraw-input"), b = $("withdraw-btn");
+    if (!s || !b || b.dataset.busy) return;
+    const v = Math.round(+s.value || 0), max = Math.round(+s.max || 0);
+    b.style.opacity = v <= 0 ? "0.55" : "";
+    if (v <= 0) b.textContent = "Withdraw";
+    else if (v >= max) b.textContent = "Withdraw all";
+    else b.textContent = "Withdraw $" + v + " · ≈ " + ethApprox(v) + " ETH";
+  }
+  function syncWithdrawSlider() {
+    const s = $("withdraw-input"); if (!s) return;
+    const balUsd = gameWei > 0n ? Math.floor(weiToUsd(gameWei)) : 0;
+    s.max = String(Math.max(0, balUsd));
+    if (!withdrawTouched || +s.value > +s.max) s.value = s.max; // default to "all" until they drag it
+    setSliderUsd("withdraw-input");
+    updateWithdrawBtn();
   }
 
   // Keep ~0.01 ETH in the wallet so there's gas left for the bets that follow a
@@ -1094,6 +1122,7 @@
       }
     }
     setSliderUsd("deposit-input");
+    updateDepositBtn();
   }
 
   async function refreshStats() {
@@ -1162,6 +1191,8 @@
     let value = (+s.value >= +s.max) ? cap : usdToWei(v);
     if (value > cap) value = cap;
     if (value <= 0n) return toast("Not enough ETH to deposit after leaving gas. Top up your wallet first.", "err");
+    const btn = $("deposit-btn");
+    setBtnBusy(btn, "Depositing Funds…");
     try {
       toast("Confirm the deposit in MetaMask…");
       const tx = await contract.deposit({ value, gasLimit: await estGas("deposit", [], { value }, 130_000n) });
@@ -1169,17 +1200,40 @@
       toast("Deposited " + usd(weiToUsd(value)), "ok");
       refreshBalances();
     } catch (e) { txErr(e); }
+    finally { clearBtnBusy(btn); updateDepositBtn(); }
   }
 
-  async function withdrawAll() {
+  // Mark a button as mid-transaction (locked + spinner text), then restore.
+  function setBtnBusy(btn, text) {
+    if (!btn) return;
+    btn.dataset.busy = "1"; btn.disabled = true; btn.classList.add("is-busy"); btn.textContent = text;
+  }
+  function clearBtnBusy(btn) {
+    if (!btn) return;
+    delete btn.dataset.busy; btn.disabled = false; btn.classList.remove("is-busy");
+  }
+  // Withdraw the slider amount; full slider = withdrawAll (avoids dust).
+  function withdrawClick() {
     if (!ready()) return;
+    const s = $("withdraw-input");
+    const v = s ? +s.value : 0, max = s ? (+s.max || 0) : 0;
+    if (!(v > 0)) return toast("Slide to choose how much to withdraw", "err");
+    doWithdraw(v >= max ? null : usdToWei(v));
+  }
+  async function doWithdraw(weiAmtOrNull) {
+    const btn = $("withdraw-btn");
+    setBtnBusy(btn, "Withdrawing Funds…");
     try {
       toast("Confirm the withdrawal…");
-      const tx = await contract.withdrawAll();
+      const tx = weiAmtOrNull == null
+        ? await contract.withdrawAll()
+        : await contract.withdraw(weiAmtOrNull, { gasLimit: await estGas("withdraw", [weiAmtOrNull], null, 120_000n) });
       await tx.wait();
       toast("Withdrawn to your wallet", "ok");
+      withdrawTouched = false; // snap back to "all" default next time
       refreshBalances();
     } catch (e) { txErr(e); }
+    finally { clearBtnBusy(btn); updateWithdrawBtn(); }
   }
 
   async function createRoom() {
@@ -1794,8 +1848,8 @@
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
-    slotsLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=951")
-      .then(() => loadScriptOnce("slots.js?v=951"))
+    slotsLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=952")
+      .then(() => loadScriptOnce("slots.js?v=952"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -2884,7 +2938,8 @@
       };
     });
     $("deposit-btn").onclick = deposit;
-    $("withdraw-btn").onclick = withdrawAll;
+    $("withdraw-btn").onclick = withdrawClick;
+    { const wi = $("withdraw-input"); if (wi) wi.oninput = () => { withdrawTouched = true; setSliderUsd("withdraw-input"); updateWithdrawBtn(); }; }
     $("create-room-btn").onclick = createRoom;
     $("play-house-btn").onclick = playHouse;
     $("create-host-btn").onclick = createHostTable;
@@ -2898,7 +2953,7 @@
     // House + create-room + host-table stake sliders (USD)
     $("house-bet").oninput = () => setSliderUsd("house-bet");
     $("bet-input").oninput = () => setSliderUsd("bet-input");
-    $("deposit-input").oninput = () => setSliderUsd("deposit-input");
+    $("deposit-input").oninput = () => { setSliderUsd("deposit-input"); updateDepositBtn(); };
     $("host-bank").oninput = () => setSliderUsd("host-bank");
     $("table-bet").oninput = () => setSliderUsd("table-bet");
     wireQuickBet();

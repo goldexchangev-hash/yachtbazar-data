@@ -27,7 +27,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=951" />
+    <link rel="stylesheet" href="styles.css?v=952" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -42,7 +42,7 @@
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.51</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.52</span>
       </div>
       <div class="topbar-right">
         <div class="music-wrap">
@@ -363,15 +363,22 @@
             </div>
           </div>
           <div class="bankroll-actions">
-            <div class="slider-wrap deposit-slider">
-              <input id="deposit-input" class="slider" type="range" min="10" max="500" step="5" value="50" />
-              <div class="slider-val"><strong id="deposit-input-val">$50</strong><span class="eth-sub" id="deposit-input-eth"></span></div>
-              <span class="muted deposit-max-hint" id="deposit-max-hint">Slide all the way to deposit your wallet max</span>
+            <div class="ba-row">
+              <div class="slider-wrap deposit-slider">
+                <input id="deposit-input" class="slider" type="range" min="10" max="500" step="5" value="50" />
+                <div class="slider-val"><strong id="deposit-input-val">$50</strong><span class="eth-sub" id="deposit-input-eth"></span></div>
+              </div>
+              <button id="deposit-btn" class="btn btn-primary ba-btn">Deposit</button>
             </div>
-            <div class="bankroll-btns">
-              <button id="deposit-btn" class="btn btn-primary">Deposit</button>
-              <button id="withdraw-btn" class="btn btn-ghost">Withdraw all</button>
+            <span class="muted deposit-max-hint" id="deposit-max-hint">Slide all the way to deposit your wallet max</span>
+            <div class="ba-row">
+              <div class="slider-wrap withdraw-slider">
+                <input id="withdraw-input" class="slider" type="range" min="0" max="100" step="1" value="100" />
+                <div class="slider-val"><strong id="withdraw-input-val">$0</strong><span class="eth-sub" id="withdraw-input-eth"></span></div>
+              </div>
+              <button id="withdraw-btn" class="btn btn-ghost ba-btn">Withdraw all</button>
             </div>
+            <span class="muted deposit-max-hint">Slide the bottom bar to choose how much to cash out — full = everything</span>
           </div>
         </div>
 
@@ -1001,17 +1008,17 @@
     </aside>
 
     <script defer src="vendor/ethers.umd.min.js"></script>
-    <script defer src="config.js?v=951"></script>
-    <script defer src="contract.js?v=951"></script>
-    <script defer src="chiptune.js?v=951"></script>
-    <script defer src="scenes.js?v=951"></script>
-    <script defer src="tv.js?v=951"></script>
-    <script defer src="poker-engine.js?v=951"></script>
-    <script defer src="poker-bots.js?v=951"></script>
-    <script defer src="poker-ui.js?v=951"></script>
-    <script defer src="crash-engine.js?v=951"></script>
-    <script defer src="crash-render.js?v=951"></script>
-    <script defer src="profile.js?v=951"></script>
-    <script defer src="app.js?v=951"></script>
+    <script defer src="config.js?v=952"></script>
+    <script defer src="contract.js?v=952"></script>
+    <script defer src="chiptune.js?v=952"></script>
+    <script defer src="scenes.js?v=952"></script>
+    <script defer src="tv.js?v=952"></script>
+    <script defer src="poker-engine.js?v=952"></script>
+    <script defer src="poker-bots.js?v=952"></script>
+    <script defer src="poker-ui.js?v=952"></script>
+    <script defer src="crash-engine.js?v=952"></script>
+    <script defer src="crash-render.js?v=952"></script>
+    <script defer src="profile.js?v=952"></script>
+    <script defer src="app.js?v=952"></script>
   </body>
 </html>

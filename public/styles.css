@@ -1611,3 +1611,12 @@ body.chat-open .chat-drawer { transform: translateX(0); }
     0 0 86px rgba(255,255,255,.72); }
 }
 @media (prefers-reduced-motion: reduce) { .idle-title.signal-lost { animation: none; } }
+
+/* ════════ Deposit / withdraw rows (slider + live-value button) ════════ */
+.bankroll-actions { display: flex; flex-direction: column; gap: 10px; }
+.ba-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ba-row .slider-wrap.deposit-slider,
+.ba-row .slider-wrap.withdraw-slider { flex: 1 1 220px; margin: 0; min-width: 0; }
+.ba-btn { flex: 0 0 auto; min-width: 232px; }
+.ba-btn.is-busy { opacity: .8; cursor: progress; }
+@media (max-width: 600px) { .ba-btn { flex: 1 1 100%; min-width: 0; } }
