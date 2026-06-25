@@ -204,7 +204,7 @@
     // Disconnected: TV "snow" + a tune-in prompt, identical on every channel.
     _staticIdle() {
       this._setStatic(0.55);
-      const title = $("idle-title"); if (title) { title.textContent = "SIGNAL LOST"; title.classList.add("signal-lost"); }
+      const title = $("idle-title"); if (title) { title.textContent = "SIGNAL LOST"; title.classList.add("signal-lost"); title.classList.remove("channel-found"); }
       const sub = $("idle-sub"); if (sub) { sub.textContent = "Connect your wallet to tune in"; sub.classList.remove("ready"); }
       const L = this.layers.crash, S = this.layers.slots;
       if (L) L.classList.remove("win", "lose");
@@ -216,8 +216,8 @@
     // Connected & a non-canvas game is selected: a clean "ready to play" room.
     _readyRoom(subtext) {
       this._setStatic(0.08);
-      const title = $("idle-title"); if (title) { title.textContent = this._channelTitle || "CRYPTO TV"; title.classList.remove("signal-lost"); }
-      const sub = $("idle-sub"); if (sub) { sub.textContent = subtext || "● READY · place your bet 👇"; sub.classList.add("ready"); }
+      const title = $("idle-title"); if (title) { title.textContent = "CHANNEL FOUND"; title.classList.remove("signal-lost"); title.classList.add("channel-found"); }
+      const sub = $("idle-sub"); if (sub) { sub.textContent = subtext || "● READY · place your bet"; sub.classList.add("ready"); }
       this._show("idle");
     },
 

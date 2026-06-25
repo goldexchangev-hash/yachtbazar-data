@@ -635,6 +635,7 @@
   }
 
   function renderWallet() {
+    document.body.classList.add("connected");
     $("connect-btn").classList.add("hidden");
     $("connect-btn").classList.remove("cta-pulse");
     $("disconnect-btn").classList.remove("hidden");
@@ -1848,8 +1849,8 @@
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
-    slotsLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=953")
-      .then(() => loadScriptOnce("slots.js?v=953"))
+    slotsLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=954")
+      .then(() => loadScriptOnce("slots.js?v=954"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -3063,7 +3064,16 @@
     { const sb = $("sound-btn"); if (sb) sb.onclick = (e) => {
         e.stopPropagation();
         const menu = $("music-menu");
-        if (menu) { menu.classList.toggle("hidden"); if (!menu.classList.contains("hidden")) renderTrackList(); }
+        if (!menu) return;
+        menu.classList.toggle("hidden");
+        if (!menu.classList.contains("hidden")) {
+          renderTrackList();
+          // On mobile the top bar wraps, so pin the (fixed) menu just below it.
+          if (window.matchMedia("(max-width:640px)").matches) {
+            const tb = document.querySelector(".topbar");
+            menu.style.top = ((tb ? tb.getBoundingClientRect().bottom : 60) + 6) + "px";
+          } else { menu.style.top = ""; }
+        }
       }; }
     { const p = $("music-play"); if (p) p.onclick = (e) => { e.stopPropagation(); if (!window.Chiptune) return; const on = Chiptune.toggle(); userMutedMusic = !on; syncSoundBtn(); }; }
     { const n = $("music-next"); if (n) n.onclick = (e) => { e.stopPropagation(); musicSkip(1); }; }

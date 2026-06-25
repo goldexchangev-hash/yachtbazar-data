@@ -1672,3 +1672,27 @@ a { color: var(--s-green); }
   font: 700 11px/1 "Press Start 2P", var(--display); letter-spacing: 1px;
 }
 .build-tag { color: var(--s-text-2); }
+
+/* ════════ Connected wallet pill + mobile music sheet + CHANNEL FOUND ════════ */
+/* When connected, the chip + Disconnect read as one clean pill */
+body.connected .wallet-cluster {
+  background: var(--s-surface); border: 1px solid var(--s-border);
+  border-radius: var(--r-full); padding: 3px 4px 3px 6px;
+  flex-direction: row; align-items: center; gap: 6px;
+}
+body.connected .wallet-cluster .wallet-chip { background: transparent; border: none; padding: 2px 2px 2px 0; }
+body.connected .wallet-cluster #disconnect-btn { border-radius: var(--r-full); padding: 6px 12px; font-size: 12px; }
+@media (max-width: 640px) {
+  /* keep the wallet pill on one tidy line (was stacking vertically) */
+  .wallet-cluster { flex-direction: row; align-items: center; gap: 6px; }
+  #wallet-addr { max-width: 92px; overflow: hidden; text-overflow: ellipsis; }
+  body.connected .wallet-cluster #disconnect-btn { padding: 6px 10px; }
+  /* music menu → fixed sheet pinned under the (wrapped) top bar (top set in JS) */
+  .music-menu { position: fixed; left: 10px; right: 10px; width: auto; max-width: none; }
+}
+/* connected idle title: positive green bloom (parallels SIGNAL LOST) */
+.idle-title.channel-found {
+  color: #eafff2;
+  text-shadow: 0 0 8px rgba(0,231,1,.9), 0 0 20px rgba(0,231,1,.7), 0 0 40px rgba(0,231,1,.45);
+  animation: none;
+}
