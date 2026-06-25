@@ -1869,12 +1869,12 @@
     });
   }
   // PixiJS is shared by Slots and Balloon Pop — load it at most once.
-  function loadPixiOnce() { return window.PIXI ? Promise.resolve() : loadScriptOnce("vendor/pixi.min.js?v=961"); }
+  function loadPixiOnce() { return window.PIXI ? Promise.resolve() : loadScriptOnce("vendor/pixi.min.js?v=962"); }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=961"))
+      .then(() => loadScriptOnce("slots.js?v=962"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -1884,9 +1884,9 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=961"))
-      .then(() => loadScriptOnce("pressure-render.js?v=961"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=961"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=962"))
+      .then(() => loadScriptOnce("pressure-render.js?v=962"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=962"))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;

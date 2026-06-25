@@ -27,7 +27,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=961" />
+    <link rel="stylesheet" href="styles.css?v=962" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -42,7 +42,7 @@
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.61</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.62</span>
       </div>
       <div class="topbar-right">
         <div class="music-wrap">
@@ -326,7 +326,7 @@
 
                 <!-- Promo intro reel — autoplays once (muted) on first load, then fades
                      to black and hands off to the game. Replay button under the TV. -->
-                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=961"></video>
+                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=962"></video>
 
                 <!-- Shown while a bet tx is being signed + mined (esp. slow on mobile) -->
                 <div id="tv-pending" class="tv-pending hidden">⏳ SENDING BET…<br />confirm in your wallet, then hold tight</div>
@@ -630,7 +630,7 @@
             <span class="ph-bankroll muted">Balance: <strong id="pr-balance">$0</strong></span>
           </div>
 
-          <p class="muted td-intro"><strong>Hold</strong> to pump — the multiplier climbs while you press — then <strong>release</strong> to bank before the balloon hits its hidden burst and pops. Reach <strong>1.20×</strong> to win (earlier = refund). Provably fair, play money.</p>
+          <p class="muted td-intro pr-intro"><strong>Hold</strong> to pump, <strong>release</strong> to bank before it pops. Reach <strong>1.20×</strong> to win · provably fair.</p>
 
           <label class="field-label">Bet <span class="muted">— USD, $10 minimum</span></label>
           <div class="pr-bet-row">
@@ -1090,17 +1090,17 @@
     </aside>
 
     <script defer src="vendor/ethers.umd.min.js"></script>
-    <script defer src="config.js?v=961"></script>
-    <script defer src="contract.js?v=961"></script>
-    <script defer src="chiptune.js?v=961"></script>
-    <script defer src="scenes.js?v=961"></script>
-    <script defer src="tv.js?v=961"></script>
-    <script defer src="poker-engine.js?v=961"></script>
-    <script defer src="poker-bots.js?v=961"></script>
-    <script defer src="poker-ui.js?v=961"></script>
-    <script defer src="crash-engine.js?v=961"></script>
-    <script defer src="crash-render.js?v=961"></script>
-    <script defer src="profile.js?v=961"></script>
-    <script defer src="app.js?v=961"></script>
+    <script defer src="config.js?v=962"></script>
+    <script defer src="contract.js?v=962"></script>
+    <script defer src="chiptune.js?v=962"></script>
+    <script defer src="scenes.js?v=962"></script>
+    <script defer src="tv.js?v=962"></script>
+    <script defer src="poker-engine.js?v=962"></script>
+    <script defer src="poker-bots.js?v=962"></script>
+    <script defer src="poker-ui.js?v=962"></script>
+    <script defer src="crash-engine.js?v=962"></script>
+    <script defer src="crash-render.js?v=962"></script>
+    <script defer src="profile.js?v=962"></script>
+    <script defer src="app.js?v=962"></script>
   </body>
 </html>
