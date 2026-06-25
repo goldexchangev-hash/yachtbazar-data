@@ -61,6 +61,13 @@
   let gameWei = 0n; // cached in-game (deposited) balance, refreshed by refreshBalances
   let walletWei = 0n; // last-seen wallet ETH balance (for the deposit cap)
   let chainOK = false;
+  // ── Demo mode: instant try-before-you-connect with play money ──
+  // No wallet, no chain — outcomes are simulated locally with the SAME odds and
+  // paytables as the real on-chain games, and drive the SAME TV animations.
+  let demoOn = false;
+  const DEMO_START_USD = 1000;
+  let demoUsd = DEMO_START_USD;
+  try { const s = +localStorage.getItem("ctf_demo_usd"); if (s > 0) demoUsd = s; } catch {}
   let activeRoomId = null; // a room I'm a participant in, currently live
   let ws = null;
   let wsPlayers = [];     // presence reported by a live chat server (only if one exists)
@@ -635,6 +642,7 @@
   }
 
   function renderWallet() {
+    exitDemo(); // a real wallet takes over — leave play-money mode
     document.body.classList.add("connected");
     $("connect-btn").classList.add("hidden");
     $("connect-btn").classList.remove("cta-pulse");
@@ -922,7 +930,12 @@
     clearTimeout(revealLockTimer);
     refreshBalances();
   }
-  window.__onTvReveal = unlockReveal;
+  // At the TV reveal climax: release the balance freeze, then (in demo) repaint
+  // the play-money balance and re-sync the affordability guards to the new total.
+  window.__onTvReveal = function (res) {
+    unlockReveal(res);
+    if (demoOn) demoSyncBalance();
+  };
 
   // Outcome handoff to the win-animation engine. For the Magic Cliffs theme the
   // whole reveal (build-up → win/loss) replaces the coin, so it handles BOTH
@@ -1052,6 +1065,7 @@
   function cancelBuildup() { try { window.WinScenes && WinScenes.flipCancel && WinScenes.flipCancel(); } catch (e) {} }
 
   async function refreshBalances() {
+    if (demoOn) { demoPaint(); return; }
     try {
       const [gb, wb] = await Promise.all([read.balances(account), provider.getBalance(account)]);
       gameWei = gb; // cached so "Max" can read the live in-game balance instantly
@@ -1296,6 +1310,7 @@
 
   // Clicking "Flip vs House" opens the bet-confirmation modal (drag-chosen stake).
   async function playHouse() {
+    if (demoOn) return demoFlip();
     if (!ready()) return;
     const v = parseFloat($("house-bet").value); // USD
     if (!(v > 0)) return toast("Drag to pick a stake", "err");
@@ -1351,6 +1366,7 @@
   }
 
   async function refreshHouse() {
+    if (demoOn) return;
     try {
       const b = await read.houseBankroll();
       $("house-bankroll").textContent = usdOf(b);
@@ -1493,6 +1509,7 @@
   let dicePayoutCapBps = 100n;     // per-roll cap (bps of bankroll); read live, 1% fallback for old contracts
 
   async function refreshDiceHouse() {
+    if (demoOn) { demoSyncBalance(); return; }
     try {
       diceHouseWei = await read.houseBankroll();
       const el = $("dice-house-bankroll"); if (el) el.textContent = usdOf(diceHouseWei);
@@ -1539,6 +1556,7 @@
   }
 
   function playDiceClick() {
+    if (demoOn) return demoDice();
     if (!ready()) return;
     const stakeUsd = parseFloat($("dice-stake").value);
     if (!(stakeUsd > 0)) return toast("Drag to pick a stake", "err");
@@ -1654,6 +1672,7 @@
     }
   }
   async function playTwoDiceClick() {
+    if (demoOn) return demoTwoDice();
     if (!ready()) return;
     if ((await ensureTwoDiceSupport()) === false)
       return toast("Dice #2 isn't on this house contract yet — it needs a redeploy. (Coin Flip and 0-100 still work.)", "err");
@@ -1753,6 +1772,7 @@
     }
   }
   async function playCrashClick() {
+    if (demoOn) return demoCrash();
     if (!ready()) return;
     if ((await ensureCrashSupport()) === false)
       return toast("Crash isn't on this house contract yet — it needs a redeploy. (The other channels still work.)", "err");
@@ -1849,8 +1869,8 @@
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
-    slotsLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=957")
-      .then(() => loadScriptOnce("slots.js?v=957"))
+    slotsLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=958")
+      .then(() => loadScriptOnce("slots.js?v=958"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -1866,6 +1886,7 @@
     return grid;
   }
   async function playSlotsClick() {
+    if (demoOn) return demoSlots();
     if (!ready()) return;
     if ((await ensureSlotsSupport()) === false)
       return toast("Crypto Reels isn't on this house contract yet — it needs a redeploy. (The other channels still work.)", "err");
@@ -1900,6 +1921,148 @@
       TV.idle("Pick a game and place a bet");
       txErr(e);
     }
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  //  DEMO MODE — try every game instantly with play money, no wallet required.
+  //  Outcomes are simulated locally with the SAME odds, edge and paytables as
+  //  the on-chain games and drive the SAME TV animations. Nothing touches the
+  //  chain; the demo balance lives only in localStorage.
+  // ════════════════════════════════════════════════════════════════════════
+  function demoSave() { try { localStorage.setItem("ctf_demo_usd", String(Math.round(demoUsd))); } catch {} }
+  function demoPaint() {
+    if (revealLock) return; // frozen mid-reveal so the balance can't spoil the outcome
+    const b = $("game-balance"); if (b) b.textContent = usd(demoUsd);
+    const d = $("demo-balance"); if (d) d.textContent = usd(demoUsd);
+  }
+  // Mirror demo credits into the same guards the live readouts use, so the
+  // per-game affordability hints ("not enough credits") work unchanged.
+  function demoSyncBalance() {
+    try { gameWei = usdToWei(demoUsd); } catch { gameWei = 0n; }
+    try { maxBet = usdToWei(HARD_MAX_USD); } catch {}
+    try { diceHouseWei = usdToWei(1000000); } catch {} // the "house" always covers in demo
+    dicePayoutCapBps = 10000n;
+    demoPaint();
+    try {
+      setupSliders();
+      if (currentGame === "dice") diceReadouts();
+      else if (currentGame === "twodice") twoDiceReadouts();
+      else if (currentGame === "crash") crashReadouts();
+      else if (currentGame === "slots") slotsReadouts();
+    } catch (e) {}
+  }
+  function enterDemo() {
+    if (demoOn || account) return; // never override a live wallet connection
+    demoOn = true;
+    document.body.classList.add("demo-mode");
+    $("play-house").hidden = false;
+    $("dice-panel").hidden = false;
+    { const td = $("twodice-panel"); if (td) td.hidden = false; }
+    { const cp = $("crash-panel"); if (cp) cp.hidden = false; }
+    { const sp = $("slots-panel"); if (sp) sp.hidden = false; }
+    { const bar = $("demo-bar"); if (bar) bar.classList.remove("hidden"); }
+    { const bdg = $("demo-tv-badge"); if (bdg) bdg.classList.remove("hidden"); }
+    if (window.TV && TV.setConnected) TV.setConnected(true); // show game-ready previews, not SIGNAL LOST
+    const mh = $("maxbet-hint"); if (mh) mh.textContent = "· demo · $10–$" + HARD_MAX_USD;
+    demoSyncBalance();
+  }
+  function exitDemo() {
+    if (!demoOn) return;
+    demoOn = false;
+    document.body.classList.remove("demo-mode");
+    { const bar = $("demo-bar"); if (bar) bar.classList.add("hidden"); }
+    { const bdg = $("demo-tv-badge"); if (bdg) bdg.classList.add("hidden"); }
+  }
+  function demoReset() {
+    demoUsd = DEMO_START_USD; demoSave(); demoSyncBalance();
+    toast("Demo credits topped back up to " + usd(DEMO_START_USD) + " 🎮", "ok");
+  }
+  // Read + validate a demo stake from a slider. Returns 0 (and toasts) if invalid.
+  function demoStake(sliderId) {
+    const v = parseFloat($(sliderId).value);
+    if (!(v > 0)) { toast("Drag to pick a stake", "err"); return 0; }
+    if (v > demoUsd) { toast("Not enough demo credits — tap ↻ Reset to top up", "err"); return 0; }
+    return v;
+  }
+  const demoTier = (profitUsd) => (profitUsd >= 500 ? "mega" : profitUsd >= 100 ? "big" : "normal");
+
+  function demoFlip() {
+    const v = demoStake("house-bet"); if (!v) return;
+    const wantsHeads = sideOf("house-side");
+    rememberBet(v);
+    const coinHeads = Math.random() < 0.5;
+    const won = coinHeads === wantsHeads;
+    const side = coinHeads ? "HEADS" : "TAILS";
+    const betWei = usdToWei(v);
+    const rv = flipReveal(betWei, won);
+    demoUsd += (won ? weiToUsd(rv.amountWei) : 0) - v; demoSave();
+    lockReveal();
+    TV.startFlip({ p1: "DEMO", p2: "HOUSE", p1Heads: wantsHeads });
+    const seq = TV._seq;
+    // Reveal after the on-TV countdown (~tuning + 3·2·1 + FLIP), mirroring the
+    // pause the real game has while the tx mines.
+    setTimeout(() => {
+      if (!demoOn || TV._seq !== seq) return;
+      playOutcome({ won, netUsd: weiToUsd(rv.netWei), betUsd: v, side });
+      TV.revealResult({
+        side, youWon: won, role: "participant",
+        amountUsd: won ? weiToUsd(rv.netWei) : rv.amountUsd, tier: rv.tier,
+        sub: won ? "DEMO win — play money (connect a wallet to play for real)" : "DEMO — play money, nothing real lost",
+      });
+    }, 4200);
+  }
+  function demoDice() {
+    const v = demoStake("dice-stake"); if (!v) return;
+    const T = Math.min(9899, Math.max(100, (+$("dice-target").value) | 0));
+    const over = diceMode === "over";
+    const roll = Math.floor(Math.random() * 10000); // 0..9999 (landing on T loses)
+    const won = over ? roll > T : roll < T;
+    const winOutcomes = over ? (9999 - T) : T;
+    const mult = Math.floor(9800 * 10000 / winOutcomes) / 10000;
+    const profitUsd = won ? v * (mult - 1) : 0;
+    rememberBet(v);
+    demoUsd += (won ? profitUsd : -v); demoSave();
+    lockReveal();
+    TV.revealDice({ roll: roll / 100, target: T / 100, mode: over ? "over" : "under", youWon: won, mult, amountUsd: won ? profitUsd : v, tier: demoTier(profitUsd) });
+  }
+  function demoTwoDice() {
+    const v = demoStake("td-stake"); if (!v) return;
+    const T = Math.min(12, Math.max(2, (+$("td-target").value) | 0));
+    const over = tdMode === "over";
+    const combos = tdWinCombos(T, over);
+    if (combos <= 0) return toast("Pick a different target for this bet type", "err");
+    const d1 = 1 + Math.floor(Math.random() * 6), d2 = 1 + Math.floor(Math.random() * 6);
+    const sum = d1 + d2;
+    const won = over ? sum > T : sum < T;
+    const mult = Math.floor(9800 * 36 / combos) / 10000;
+    const profitUsd = won ? v * (mult - 1) : 0;
+    rememberBet(v);
+    demoUsd += (won ? profitUsd : -v); demoSave();
+    lockReveal();
+    TV.revealTwoDice({ d1, d2, target: T, mode: over ? "over" : "under", youWon: won, mult, amountUsd: won ? profitUsd : v, tier: demoTier(profitUsd) });
+  }
+  function demoCrash() {
+    const v = demoStake("crash-stake"); if (!v) return;
+    const targetX = crashTargetVal();
+    const crashX = (window.CrashEngine && CrashEngine.crashFromRandom) ? CrashEngine.crashFromRandom(Math.random, CRASH_EDGE) : 1;
+    const won = crashX >= targetX;
+    const profitUsd = won ? v * (targetX - 1) : 0;
+    rememberBet(v);
+    demoUsd += (won ? profitUsd : -v); demoSave();
+    lockReveal();
+    TV.revealCrash({ crashX, targetX, won, amountUsd: won ? profitUsd : v, mult: targetX, tier: demoTier(profitUsd) });
+  }
+  function demoSlots() {
+    const v = demoStake("slots-stake"); if (!v) return;
+    rememberBet(v);
+    ensureSlotsLoaded().then(() => {
+      if (!window.CryptoReels || !CryptoReels.simulate) return toast("Slots engine still loading — try again", "err");
+      const { grid, winUsd } = CryptoReels.simulate(v);
+      const won = winUsd > 0;
+      demoUsd += (won ? winUsd : 0) - v; demoSave();
+      lockReveal();
+      TV.revealSlots({ grid, winUsd, betUsd: v, won });
+    }).catch(() => toast("Couldn't load the slots engine — check your connection", "err"));
   }
 
   // ── Game switcher ("change the channel") ──
@@ -2923,6 +3086,8 @@
     wireSideToggles();
     $("connect-btn").onclick = connect;
     $("disconnect-btn").onclick = disconnect;
+    { const dr = $("demo-reset"); if (dr) dr.onclick = demoReset; }
+    { const dc = $("demo-connect"); if (dc) dc.onclick = connect; }
     $("raise-max-btn").onclick = raiseMaxBet;
     $("fund-house-btn").onclick = fundHouseTool;
     $("cashout-house-btn").onclick = cashOutHouse;
@@ -3205,14 +3370,17 @@
     setupSliders();
     setupReadOnly();
     renderInvite();
+    // Default landing experience: instant play-money demo so visitors can try
+    // every game before connecting a wallet. A real connection takes over later.
+    enterDemo();
     // Register the PWA service worker (after load, best-effort).
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => { try { navigator.serviceWorker.register("sw.js"); } catch (e) {} });
     }
     // Music NEVER auto-plays — it only starts when the user taps the Music button.
     // Live ETH→USD price: fetch now, refresh labels, and re-poll every 60s.
-    fetchEthUsd().then(() => { setupSliders(); if (read && chainOK) { refreshBalances(); refreshStats(); refreshHouse(); refreshRooms(); } });
-    setInterval(() => { if (document.hidden) return; fetchEthUsd().then(() => { setupSliders(); if (read && chainOK) { refreshBalances(); refreshStats(); refreshHouse(); refreshRooms(); } }); }, 60000);
+    fetchEthUsd().then(() => { setupSliders(); if (demoOn) demoSyncBalance(); if (read && chainOK) { refreshBalances(); refreshStats(); refreshHouse(); refreshRooms(); } });
+    setInterval(() => { if (document.hidden) return; fetchEthUsd().then(() => { setupSliders(); if (demoOn) demoSyncBalance(); if (read && chainOK) { refreshBalances(); refreshStats(); refreshHouse(); refreshRooms(); } }); }, 60000);
     $("connect-btn").classList.add("cta-pulse");
     // On a phone with no injected wallet, nudge users into the MetaMask browser.
     if (/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) && !window.ethereum) {

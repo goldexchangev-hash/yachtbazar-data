@@ -27,7 +27,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=957" />
+    <link rel="stylesheet" href="styles.css?v=958" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -42,7 +42,7 @@
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.57</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.58</span>
       </div>
       <div class="topbar-right">
         <div class="music-wrap">
@@ -82,6 +82,15 @@
     <!-- Shown when the connected wallet IS the house (treasury) -->
     <div id="house-wallet-banner" class="house-banner hidden">
       🏠 You're connected as the <strong>house wallet</strong> — you're on both sides of every flip, so you can't really win or lose. Switch to a different account in MetaMask to play as a challenger.
+    </div>
+
+    <!-- Demo-mode bar: play money, no wallet. Default landing experience. -->
+    <div id="demo-bar" class="demo-bar hidden" role="status">
+      <span class="demo-chip">🎮 DEMO</span>
+      <span class="demo-text">You're playing with <strong>free demo credits</strong> — no wallet, no real money. Same games, same odds.</span>
+      <span class="demo-bal">Balance: <strong id="demo-balance">$0</strong></span>
+      <button id="demo-reset" class="btn btn-ghost demo-reset" title="Top demo credits back up">↻ Reset credits</button>
+      <button id="demo-connect" class="btn btn-primary demo-cta">Connect wallet to play for real →</button>
     </div>
 
     <!-- ───────── Left sidebar (Stake-style): brand + games + essentials ───────── -->
@@ -306,6 +315,9 @@
 
                 <!-- Shown while a bet tx is being signed + mined (esp. slow on mobile) -->
                 <div id="tv-pending" class="tv-pending hidden">⏳ SENDING BET…<br />confirm in your wallet, then hold tight</div>
+
+                <!-- Demo watermark: makes it unmistakable the play money isn't real -->
+                <div id="demo-tv-badge" class="demo-tv-badge hidden" aria-hidden="true">DEMO</div>
 
                 <!-- Reflective-glass overlay: makes the screen read like real CRT glass -->
                 <div class="tv-glass tv-glass--subtle" aria-hidden="true"></div>
@@ -1000,17 +1012,17 @@
     </aside>
 
     <script defer src="vendor/ethers.umd.min.js"></script>
-    <script defer src="config.js?v=957"></script>
-    <script defer src="contract.js?v=957"></script>
-    <script defer src="chiptune.js?v=957"></script>
-    <script defer src="scenes.js?v=957"></script>
-    <script defer src="tv.js?v=957"></script>
-    <script defer src="poker-engine.js?v=957"></script>
-    <script defer src="poker-bots.js?v=957"></script>
-    <script defer src="poker-ui.js?v=957"></script>
-    <script defer src="crash-engine.js?v=957"></script>
-    <script defer src="crash-render.js?v=957"></script>
-    <script defer src="profile.js?v=957"></script>
-    <script defer src="app.js?v=957"></script>
+    <script defer src="config.js?v=958"></script>
+    <script defer src="contract.js?v=958"></script>
+    <script defer src="chiptune.js?v=958"></script>
+    <script defer src="scenes.js?v=958"></script>
+    <script defer src="tv.js?v=958"></script>
+    <script defer src="poker-engine.js?v=958"></script>
+    <script defer src="poker-bots.js?v=958"></script>
+    <script defer src="poker-ui.js?v=958"></script>
+    <script defer src="crash-engine.js?v=958"></script>
+    <script defer src="crash-render.js?v=958"></script>
+    <script defer src="profile.js?v=958"></script>
+    <script defer src="app.js?v=958"></script>
   </body>
 </html>

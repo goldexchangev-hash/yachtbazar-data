@@ -770,6 +770,26 @@
       spin();
       return true;
     },
+    // Demo/play-money outcome: roll 15 independent weighted cells (same as the
+    // on-chain RNG) and score them in DOLLARS against `totalBetUsd`, using the
+    // exact same paytable + 9 paylines as the contract. Returns { grid, winUsd }
+    // ready to hand straight to TV.revealSlots — no chain involved.
+    simulate: (totalBetUsd) => {
+      const pool = weightedPool();
+      const grid = [];
+      for (let i = 0; i < REELS; i++) {
+        const col = [];
+        for (let r = 0; r < ROWS; r++) col.push(pool[(Math.random() * pool.length) | 0]);
+        grid.push(col);
+      }
+      const lineBetUsd = (totalBetUsd || 0) / LINES.length;
+      let total = 0;
+      LINES.forEach((line) => { const w = evalLine(grid, line); if (w) total += w.mult * lineBetUsd; });
+      let sc = 0;
+      for (let i = 0; i < REELS; i++) for (let r = 0; r < ROWS; r++) if (grid[i][r] === SCATTER) sc++;
+      if (sc >= 3) total += SYM[SCATTER].pay[Math.min(5, sc)] * (totalBetUsd || 0);
+      return { grid, winUsd: total };
+    },
     // Pause/resume the Pixi ticker so the slot doesn't burn CPU off-channel.
     setActive: (on) => { try { on ? app.ticker.start() : app.ticker.stop(); } catch (e) {} },
     setMessage: (t) => { try { messageText.text = t; messageText.style.fill = 0xffffff; } catch (e) {} },

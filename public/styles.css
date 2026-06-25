@@ -1726,3 +1726,45 @@ body.connected .wallet-cluster #disconnect-btn { border-radius: var(--r-full); p
   50% { box-shadow: 0 0 0 9px rgba(0,231,1,.08), 0 10px 38px rgba(0,0,0,.55); transform: translate(-50%,-50%) scale(1.05); }
 }
 @media (prefers-reduced-motion: reduce) { .promo-unmute { animation: none; } }
+
+/* ════════════════════════════════════════════════════════════════════════
+   DEMO MODE — play-money try-before-you-connect. Amber accent so it reads as
+   clearly distinct from the real-money (green) flow.
+   ════════════════════════════════════════════════════════════════════════ */
+.demo-bar {
+  position: relative; z-index: 4;
+  margin: 8px auto 0; max-width: min(960px, 94vw);
+  display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px;
+  background: linear-gradient(180deg, rgba(255, 196, 60, 0.16), rgba(255, 168, 40, 0.10));
+  border: 1px solid rgba(255, 196, 60, 0.55);
+  color: #ffe6b0; padding: 10px 16px; border-radius: 14px;
+  font-weight: 600; font-size: 13.5px; box-shadow: var(--shadow);
+}
+.demo-bar .demo-chip {
+  font-family: var(--display); font-size: 12px; font-weight: 800; letter-spacing: .5px;
+  color: #2a1a00; background: #ffc43c; border-radius: 999px; padding: 4px 10px;
+  box-shadow: 0 0 14px rgba(255, 196, 60, 0.5); white-space: nowrap;
+}
+.demo-bar .demo-text { flex: 1 1 240px; min-width: 0; line-height: 1.4; }
+.demo-bar .demo-text strong { color: #fff7e0; }
+.demo-bar .demo-bal { white-space: nowrap; font-family: var(--display); font-size: 12px; color: #fff; }
+.demo-bar .demo-bal strong { color: #ffd23f; font-size: 14px; }
+.demo-bar .demo-reset { white-space: nowrap; border-color: rgba(255, 210, 63, 0.5); color: #ffe6b0; }
+.demo-bar .demo-cta { white-space: nowrap; }
+@media (max-width: 640px) {
+  .demo-bar { font-size: 12.5px; padding: 9px 12px; gap: 8px 10px; }
+  .demo-bar .demo-cta, .demo-bar .demo-reset { flex: 1 1 100%; }
+}
+
+/* Corner watermark on the TV so play money is unmistakable mid-game. */
+.demo-tv-badge {
+  position: absolute; top: 10px; right: 12px; z-index: 46;
+  font-family: var(--display); font-size: 12px; font-weight: 800; letter-spacing: 1.5px;
+  color: #2a1a00; background: rgba(255, 196, 60, 0.92);
+  padding: 3px 9px; border-radius: 6px; pointer-events: none;
+  box-shadow: 0 0 12px rgba(255, 196, 60, 0.6); opacity: .92;
+}
+
+/* In demo we drive plays from the panels but there's no wallet to deposit to —
+   keep the deposit/withdraw bankroll card out of the way. */
+body.demo-mode #bankroll { display: none !important; }
