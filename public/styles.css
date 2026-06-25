@@ -8,7 +8,7 @@
   --panel: rgba(22, 24, 40, 0.72);
   --panel-line: rgba(255, 255, 255, 0.08);
   --ink: #eef1ff;
-  --muted: #9aa3c7;
+  --muted: #b1bad3; /* brighter grey — readable on the Stake navy surfaces */
   --cyan: #39e7ff;
   --magenta: #ff4d9d;
   --gold: #ffd23f;
@@ -545,7 +545,7 @@ kbd { font-family: ui-monospace, monospace; font-size: 11px; background: rgba(25
 .toast.err { border-color: rgba(255, 91, 91, 0.5); }
 .toast.ok { border-color: rgba(69, 240, 166, 0.5); }
 
-.modal { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(4, 5, 12, 0.7); backdrop-filter: blur(6px); }
+.modal { position: fixed; inset: 0; z-index: 120; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(4, 5, 12, 0.7); backdrop-filter: blur(6px); }
 .modal-card { position: relative; max-width: 560px; width: 100%; max-height: 86vh; overflow-y: auto; background: var(--bg-2); border: 1px solid var(--panel-line); border-radius: 20px; padding: 26px; box-shadow: var(--shadow); }
 .modal-card h2 { margin: 0 0 14px; font-family: var(--display); font-size: 22px; }
 .modal-close { position: absolute; top: 14px; right: 14px; background: rgba(255, 255, 255, 0.08); border: none; color: var(--ink); width: 34px; height: 34px; border-radius: 50%; cursor: pointer; font-size: 15px; }
@@ -854,7 +854,9 @@ kbd { font-family: ui-monospace, monospace; font-size: 11px; background: rgba(25
 }
 
 /* ───────────────────── Responsive / mobile ───────────────────── */
-@media (max-width: 920px) {
+/* Collapse the 2-column layout earlier (1100px) so the right column never
+   shares a narrow tablet width with the 240px fixed sidebar. */
+@media (max-width: 1100px) {
   .layout { grid-template-columns: 1fr; }
   .sidebar { order: 2; }
 }
@@ -1418,3 +1420,14 @@ body:not(.game-poker) #poker-view { display:none !important; }
   }
   .rail-toggle { display: inline-flex; }
 }
+
+/* ── Stake shell: neutralize leftover icon-tile gloss/hover from the old grid ── */
+#game-nav .game-card .gc-tile::after { display: none !important; }
+#game-nav .game-card:hover .gc-tile,
+#game-nav .game-card.active .gc-tile,
+#game-nav .game-card:active .gc-tile { transform: none !important; box-shadow: none !important; }
+#game-nav .game-card.flip .gc-tile,
+#game-nav .game-card.dice .gc-tile,
+#game-nav .game-card.twodice .gc-tile,
+#game-nav .game-card.crash .gc-tile,
+#game-nav .game-card.slots .gc-tile { background: none !important; }
