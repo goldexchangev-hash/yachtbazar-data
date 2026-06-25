@@ -1527,7 +1527,7 @@
   }
   function twoDiceReadouts() {
     const tEl = $("td-target"); if (!tEl) return;
-    const T = Math.min(12, Math.max(3, (+tEl.value) | 0));
+    const T = Math.min(12, Math.max(2, (+tEl.value) | 0));
     const over = tdMode === "over";
     const combos = tdWinCombos(T, over);
     const chance = (combos / 36) * 100;
@@ -1539,7 +1539,13 @@
     $("td-mult").textContent = combos > 0 ? mult.toFixed(2) + "×" : "—";
     $("td-profit").textContent = "+$" + profit.toFixed(2);
     $("td-payout-hint").textContent = profit.toFixed(2);
-    $("td-mode-hint").textContent = over ? "— roll over to win" : "— roll under to win";
+    // Spell out the winning totals so it's clear the target itself never wins
+    // (the sum must be strictly under/over T — landing exactly on T loses).
+    const winLo = over ? T + 1 : 2, winHi = over ? 12 : T - 1;
+    const rangeTxt = winLo > winHi ? "—" : (winLo === winHi ? String(winLo) : winLo + "–" + winHi);
+    $("td-mode-hint").textContent = over
+      ? "— win on " + rangeTxt + " · " + T + " & under lose"
+      : "— win on " + rangeTxt + " · " + T + " & over lose";
     // affordability + validity guards (Dice #2 shares the house bankroll + cap)
     let hint = "";
     let stakeWei = 0n; try { stakeWei = usdToWei(stake); } catch {}
