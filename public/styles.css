@@ -860,6 +860,7 @@ body:not(.game-twodice) [data-game="twodice"] { display: none !important; }
 body.game-dice [data-game="flip"], body.game-twodice [data-game="flip"] { display: none !important; }
 /* …but the channel selector tiles are always visible (they're how you switch) */
 #game-nav .game-card { display: flex !important; }
+#game-nav .game-card[hidden] { display: none !important; } /* hidden channels (e.g. poker) stay hidden */
 
 /* ── Crypto TV Channels — Apple home-screen icon selector ── */
 .channels { margin: 4px auto 20px; }
