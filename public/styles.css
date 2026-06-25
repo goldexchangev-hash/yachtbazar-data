@@ -1842,3 +1842,23 @@ body.demo-mode #bankroll { display: none !important; }
 .stage > .demo-bar { width: 100%; max-width: 100%; margin: 0 auto; justify-content: center; }
 /* mobile "use MetaMask browser" hint sits directly above the demo bar, same width */
 .stage > .mobile-hint { width: 100%; max-width: 100%; margin: 0 auto -8px; }
+
+/* "SHARE YOUR WIN" — green + bubbly, pops up under the TV on any win */
+.share-win-btn {
+  display: block; margin: 8px auto 0; width: fit-content; max-width: 92%;
+  background: linear-gradient(180deg, #2bf06e 0%, #00c24f 60%, #00a544 100%);
+  color: #04210f; font-family: var(--display); font-weight: 800;
+  font-size: 15px; letter-spacing: .5px; border: none; border-radius: 999px;
+  padding: 12px 26px; cursor: pointer;
+  box-shadow: 0 10px 26px rgba(0,231,1,.42), inset 0 2px 0 rgba(255,255,255,.5), inset 0 -4px 0 rgba(0,0,0,.18);
+  animation: shareBubble 1.5s ease-in-out infinite;
+  -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none;
+}
+.share-win-btn:hover { filter: brightness(1.07); }
+.share-win-btn:active { transform: translateY(2px) scale(.98); }
+.share-win-btn.hidden { display: none; }
+@keyframes shareBubble {
+  0%, 100% { transform: translateY(0) scale(1); box-shadow: 0 10px 26px rgba(0,231,1,.42), inset 0 2px 0 rgba(255,255,255,.5), inset 0 -4px 0 rgba(0,0,0,.18); }
+  50% { transform: translateY(-3px) scale(1.045); box-shadow: 0 14px 34px rgba(0,231,1,.6), inset 0 2px 0 rgba(255,255,255,.55), inset 0 -4px 0 rgba(0,0,0,.18); }
+}
+@media (prefers-reduced-motion: reduce) { .share-win-btn { animation: none; } }

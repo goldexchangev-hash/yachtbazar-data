@@ -41,6 +41,7 @@
     this.balanceKey = opts.balanceKey || "pressure.balance";
     this.ethUsd = opts.ethUsd > 0 ? opts.ethUsd : ETH_USD;
     this.onBalance = typeof opts.onBalance === "function" ? opts.onBalance : null;
+    this.onWin = typeof opts.onWin === "function" ? opts.onWin : null;
     this._disabled = false;
     this._active = false; // only true while this channel is on-screen (gates global input)
     this.balance = (opts.initialBalance != null && isFinite(opts.initialBalance)) ? opts.initialBalance : this._loadBalance();
@@ -267,6 +268,7 @@
       this.r.showReceipt("you " + (exit === "auto" ? "auto-" : "") + "banked " + releaseMult.toFixed(2) + "x  ·  pop was " + this.burst.toFixed(2) + "x", nearMiss);
       this._msg((exit === "auto" ? "🔔 Auto-banked " : "💰 Banked ") + releaseMult.toFixed(2) + "x  →  " + this._usd(res.payout) + (nearMiss ? "  (so close!)" : ""));
       if (root.Chiptune && Chiptune.win) try { Chiptune.win(); } catch (e) {}
+      if (this.onWin && res.profit > 0) try { this.onWin({ profitUsd: res.profit, mult: releaseMult }); } catch (e) {}
     }
 
     this.state = "result";

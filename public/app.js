@@ -138,52 +138,62 @@
 
   // ---- shareable win/loss card (canvas -> PNG -> Web Share / download) ----
   let lastResult = null;
+  // Active TV channel → friendly game name + emoji for the share card.
+  const SHARE_GAME = { 8: ["Coin Flip", "🪙"], 9: ["0-100", "🎲"], 10: ["Dice #2", "🎲"], 11: ["Crash", "🚀"], 12: ["Crypto Reels", "🎰"], 13: ["Balloon Pop", "🎈"] };
+  function hideShareBtn() { const b = $("share-result-btn"); if (b) b.classList.add("hidden"); }
   function setLastResult(r) {
+    r = r || {};
+    if (!r.game) { const m = SHARE_GAME[(window.TV && TV._activeChannel) || 8]; if (m) { r.game = m[0]; r.emoji = m[1]; } }
+    if (!r.detail && r.side) r.detail = "landed " + r.side;
     lastResult = r;
     const btn = $("share-result-btn");
-    if (btn) btn.classList.remove("hidden");
+    if (btn) btn.classList.toggle("hidden", !r.won); // the share button only appears on a WIN
   }
-  function drawShareCoin(g, cx, cy, rad) {
-    const grad = g.createRadialGradient(cx - rad * 0.3, cy - rad * 0.3, rad * 0.2, cx, cy, rad);
-    grad.addColorStop(0, "#fff3b0"); grad.addColorStop(0.55, "#ffcf3f"); grad.addColorStop(1, "#a9760a");
-    g.beginPath(); g.arc(cx, cy, rad, 0, Math.PI * 2); g.fillStyle = grad; g.fill();
-    g.lineWidth = 10; g.strokeStyle = "#7a5200"; g.stroke();
-    // Ethereum diamond, two stacked facets
-    g.fillStyle = "rgba(74,53,0,0.85)";
-    const s = rad * 0.72;
-    g.beginPath(); g.moveTo(cx, cy - s); g.lineTo(cx - s * 0.55, cy); g.lineTo(cx, cy + s * 0.18); g.lineTo(cx + s * 0.55, cy); g.closePath(); g.fill();
-    g.beginPath(); g.moveTo(cx, cy + s * 0.34); g.lineTo(cx - s * 0.55, cy + s * 0.1); g.lineTo(cx, cy + s); g.lineTo(cx + s * 0.55, cy + s * 0.1); g.closePath(); g.fill();
+  // Every game's reveal funnels through window.__onTvReveal with a result object —
+  // surface the share button + remember the win uniformly, on any game.
+  function maybeShareWin(res) {
+    if (!res || typeof res !== "object") return;
+    const won = res.youWon === true || res.won === true || (typeof res.winUsd === "number" && res.winUsd > 0);
+    if (!won) return; // losses don't get a share button (cleared when the next bet starts)
+    const ch = (window.TV && TV._activeChannel) || 8;
+    const m = SHARE_GAME[ch] || ["Crypto TV", "🎰"];
+    let amountUsd = (res.amountUsd != null) ? res.amountUsd : (typeof res.winUsd === "number" ? res.winUsd : 0);
+    let detail = "";
+    if (ch === 11 && res.crashX != null) detail = "cashed " + Number(res.targetX).toFixed(2) + "× · crashed " + Number(res.crashX).toFixed(2) + "×";
+    else if (res.mult != null && res.mult > 0) detail = Number(res.mult).toFixed(2) + "× payout";
+    else if (res.side) detail = "landed " + res.side;
+    setLastResult({ won: true, game: m[0], emoji: m[1], amountUsd: amountUsd || 0, detail });
   }
+  // Generic, green, "want-to-share" win card (1080² PNG).
   function drawShareCard(cv) {
-    const W = 1080, H = 1080, r = lastResult, won = r.won;
+    const W = 1080, H = 1080, r = lastResult || {};
+    const emoji = r.emoji || "🎰", game = r.game || "Crypto TV";
     cv.width = W; cv.height = H;
     const g = cv.getContext("2d");
     const bg = g.createLinearGradient(0, 0, 0, H);
-    bg.addColorStop(0, "#0c0d16"); bg.addColorStop(1, "#141627");
+    bg.addColorStop(0, "#06210f"); bg.addColorStop(1, "#0c0d16");
     g.fillStyle = bg; g.fillRect(0, 0, W, H);
-    g.strokeStyle = "rgba(57,231,255,0.06)"; g.lineWidth = 2;
+    g.strokeStyle = "rgba(0,231,1,0.08)"; g.lineWidth = 2;
     for (let x = 0; x <= W; x += 60) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke(); }
     for (let y = 0; y <= H; y += 60) { g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
-    const glow = g.createRadialGradient(W / 2, 330, 60, W / 2, 330, 560);
-    glow.addColorStop(0, won ? "rgba(52,227,155,0.25)" : "rgba(255,91,91,0.20)"); glow.addColorStop(1, "transparent");
+    const glow = g.createRadialGradient(W / 2, 380, 60, W / 2, 380, 640);
+    glow.addColorStop(0, "rgba(0,231,1,0.30)"); glow.addColorStop(1, "transparent");
     g.fillStyle = glow; g.fillRect(0, 0, W, H);
     g.textAlign = "center";
-    g.fillStyle = "#39e7ff"; g.font = "700 40px 'Press Start 2P', monospace";
-    g.fillText("📺 CRYPTO TV FLIP", W / 2, 112);
-    drawShareCoin(g, W / 2, 330, 132);
-    g.font = "700 88px 'Press Start 2P', monospace"; g.fillStyle = won ? "#34e39b" : "#ff5b5b";
-    g.fillText(won ? "WINNER" : "BUSTED", W / 2, 612);
-    g.font = "800 120px 'Space Grotesk', system-ui, sans-serif"; g.fillStyle = won ? "#2bff88" : "#ff7a7a";
-    g.fillText((won ? "+" : "−") + usd(r.amountUsd), W / 2, 738);
-    g.font = "500 40px 'Space Grotesk', system-ui, sans-serif"; g.fillStyle = "#b9c2e0";
-    const eth = (+E.formatEther(r.amountWei)).toFixed(4) + " ETH";
-    g.fillText(won ? eth + " · 1.8× payout" : eth + " · " + r.label, W / 2, 802);
-    g.font = "700 30px 'Press Start 2P', monospace"; g.fillStyle = "#ffcf3f";
-    g.fillText("COIN LANDED " + r.side, W / 2, 884);
+    g.fillStyle = "#00e701"; g.font = "700 40px 'Press Start 2P', monospace";
+    g.fillText("📺 CRYPTO TV", W / 2, 112);
+    g.fillStyle = "#b9c2e0"; g.font = "700 28px 'Press Start 2P', monospace";
+    g.fillText(String(game).toUpperCase(), W / 2, 166);
+    g.font = "250px 'Segoe UI Emoji', system-ui, sans-serif"; g.fillText(emoji, W / 2, 470);
+    g.font = "800 108px 'Press Start 2P', monospace"; g.fillStyle = "#2bff88";
+    g.fillText("YOU WON", W / 2, 636);
+    g.font = "900 150px 'Space Grotesk', system-ui, sans-serif"; g.fillStyle = "#7cffb2";
+    g.fillText("+" + usd(r.amountUsd || 0), W / 2, 794);
+    if (r.detail) { g.font = "600 42px 'Space Grotesk', system-ui, sans-serif"; g.fillStyle = "#ffd23f"; g.fillText(r.detail, W / 2, 874); }
     g.font = "500 34px 'Space Grotesk', system-ui, sans-serif"; g.fillStyle = "#7f8bb0";
-    g.fillText("Provably on-chain · Sepolia testnet · play money", W / 2, 980);
-    g.fillStyle = "#39e7ff";
-    g.fillText("tv-crypto-flip.onrender.com", W / 2, 1030);
+    g.fillText("Sepolia testnet · play money", W / 2, 966);
+    g.fillStyle = "#00e701";
+    g.fillText("tv-crypto-flip.onrender.com", W / 2, 1018);
   }
   async function shareResultCard() {
     if (!lastResult) return;
@@ -192,20 +202,17 @@
     drawShareCard(cv);
     const blob = await new Promise((res) => cv.toBlob(res, "image/png"));
     if (!blob) return toast("Couldn't make the card — try again.", "err");
-    const file = new File([blob], "crypto-tv-flip.png", { type: "image/png" });
-    const text = (lastResult.won
-      ? "I just won " + usd(lastResult.amountUsd) + " flipping ETH on Crypto TV Flip! 🪙📺"
-      : "Took an L flipping ETH on Crypto TV Flip 🪙📺 — get me back")
-      + " " + CANONICAL_URL;
+    const file = new File([blob], "crypto-tv-win.png", { type: "image/png" });
+    const text = "I just won " + usd(lastResult.amountUsd || 0) + " on " + (lastResult.game || "Crypto TV") + " 📺🎰 " + CANONICAL_URL;
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       try { await navigator.share({ files: [file], text }); return; }
       catch (e) { if (e && e.name === "AbortError") return; }
     }
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = "crypto-tv-flip.png"; a.click();
+    const a = document.createElement("a"); a.href = url; a.download = "crypto-tv-win.png"; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 5000);
-    try { await navigator.clipboard.writeText(text); toast("Card saved 📸 + caption copied", "ok"); }
-    catch { toast("Card saved 📸", "ok"); }
+    try { await navigator.clipboard.writeText(text); toast("Win card saved 📸 + caption copied", "ok"); }
+    catch { toast("Win card saved 📸", "ok"); }
   }
 
   // Auto-size the gas LIMIT to the actual transaction (eth_estimateGas + 30%),
@@ -950,6 +957,7 @@
   window.__onTvReveal = function (res) {
     unlockReveal(res);
     if (demoOn) demoSyncBalance();
+    try { maybeShareWin(res); } catch (e) {} // green "share your win" button on any win
   };
 
   // Outcome handoff to the win-animation engine. For the Magic Cliffs theme the
@@ -1888,14 +1896,14 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=972").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=973").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=972"))
+      .then(() => loadScriptOnce("slots.js?v=973"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -1905,9 +1913,9 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=972"))
-      .then(() => loadScriptOnce("pressure-render.js?v=972"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=972"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=973"))
+      .then(() => loadScriptOnce("pressure-render.js?v=973"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=973"))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -1924,6 +1932,7 @@
       ethUsd: ethUsd,
       initialBalance: demoUsd,
       onBalance: (b) => { demoUsd = Math.round(b * 100) / 100; demoSave(); demoPaint(); },
+      onWin: (i) => setLastResult({ won: true, game: "Balloon Pop", emoji: "🎈", amountUsd: i.profitUsd, detail: i.mult.toFixed(2) + "× banked" }),
       els: {
         balance: el("pr-balance"),
         betSlider: el("pr-bet-slider"), betVal: el("pr-bet-val"), betEth: el("pr-bet-eth"),
@@ -2180,6 +2189,7 @@
   }
   function switchGame(game) {
     if (game === currentGame || !GAME_CHANNEL[game]) return;
+    hideShareBtn(); // leaving a game clears its win-share button
     currentGame = game;
     paintGameTabs(game);
     try { localStorage.setItem("ctf_game", game); } catch {}
@@ -3359,9 +3369,10 @@
     // bet right away. Capture phase → runs BEFORE the button's own handler (covers
     // clicks AND the Balloon Pop hold-to-pump pointerdown).
     document.addEventListener("pointerdown", (e) => {
-      if (!(window.TV && TV._promoPlaying && TV.skipPromo)) return;
       const t = e.target;
-      if (t && t.closest && t.closest(".action-dock")) TV.skipPromo();
+      if (!(t && t.closest && t.closest(".action-dock"))) return;
+      hideShareBtn(); // a new bet is starting → clear the previous win's share button
+      if (window.TV && TV._promoPlaying && TV.skipPromo) TV.skipPromo();
     }, true);
 
     // ── Mobile bottom tab bar ──
