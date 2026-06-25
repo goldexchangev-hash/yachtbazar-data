@@ -1888,14 +1888,14 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=971").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=972").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=971"))
+      .then(() => loadScriptOnce("slots.js?v=972"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -1905,9 +1905,9 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=971"))
-      .then(() => loadScriptOnce("pressure-render.js?v=971"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=971"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=972"))
+      .then(() => loadScriptOnce("pressure-render.js?v=972"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=972"))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -3355,6 +3355,14 @@
     try { localStorage.removeItem("ctf_promo_seen"); } catch (e) {} // clear any old "seen" flag
     if (window.TV && TV.playPromo) { try { TV.playPromo(); } catch (e) {} }
     { const r = $("promo-replay"); if (r) r.onclick = (e) => { e.stopPropagation(); if (window.TV && TV.playPromo) TV.playPromo(); }; }
+    // Hitting any bet/play button mid-intro skips the promo instantly so you can
+    // bet right away. Capture phase → runs BEFORE the button's own handler (covers
+    // clicks AND the Balloon Pop hold-to-pump pointerdown).
+    document.addEventListener("pointerdown", (e) => {
+      if (!(window.TV && TV._promoPlaying && TV.skipPromo)) return;
+      const t = e.target;
+      if (t && t.closest && t.closest(".action-dock")) TV.skipPromo();
+    }, true);
 
     // ── Mobile bottom tab bar ──
     { const b = $("bn-games"); if (b) b.onclick = (e) => { e.stopPropagation(); closeChat(); document.body.classList.toggle("rail-open"); }; }

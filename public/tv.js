@@ -332,6 +332,16 @@
         this.idle(); // game preview (or static when signed out) — ready to bet
       }, 560);
     },
+    // Instant skip (no fade): when the player hits a bet button mid-intro, kill
+    // the promo right away so the game underneath is live to bet on immediately.
+    skipPromo() {
+      const v = this._promoEl;
+      if (!this._promoPlaying && (!v || v.classList.contains("hidden"))) return;
+      this._disarmUnmute();
+      clearTimeout(this._promoFadeT);
+      this._promoPlaying = false;
+      if (v) { try { v.pause(); } catch (e) {} v.classList.remove("promo-fade"); v.classList.add("hidden"); }
+    },
 
     /* ---------------- crash (CH 11) ---------------- */
     // Lazily attach the rocket renderer to the TV canvas (its rAF loop is then
