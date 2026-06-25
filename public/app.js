@@ -53,6 +53,7 @@
   let connecting = false; // true while connect() runs, to suppress the auto-reload
   let contract = null; // connected to signer
   let twoDiceSupported = null; // null=unknown, true/false — does the active contract have Dice #2?
+  let crashSupported = null;   // null=unknown, true/false — does the active contract have Crash?
   let read = null; // connected to provider
   let maxBet = 0n;
   let gameWei = 0n; // cached in-game (deposited) balance, refreshed by refreshBalances
@@ -416,6 +417,7 @@
       contract = new E.Contract(deployment.address, ABI, signer);
       read = new E.Contract(deployment.address, ABI, provider);
       twoDiceSupported = null; // re-probe Dice #2 support for this contract
+      crashSupported = null;   // re-probe Crash support for this contract
       try {
         maxBet = await read.maxBet();
       } catch (e) {
@@ -619,6 +621,7 @@
     $("play-house").hidden = false;
     $("dice-panel").hidden = false;
     { const td = $("twodice-panel"); if (td) td.hidden = false; }
+    { const cp = $("crash-panel"); if (cp) cp.hidden = false; }
     refreshDiceHouse();
     $("maxbet-hint").textContent = "· $10–$" + betCapUsd().toLocaleString();
     setupHouseSlider();
@@ -691,6 +694,7 @@
       contract = c.connect(signer);
       read = new E.Contract(addr, ABI, provider);
       twoDiceSupported = null; // re-probe Dice #2 support for this contract
+      crashSupported = null;   // re-probe Crash support for this contract
       // Seed a small house bankroll so vs-house works right away (best effort).
       try { await (await contract.fundHouse({ value: usdToWei(1000), gasLimit: 150_000n })).wait(); } catch {}
       maxBet = await read.maxBet();
@@ -1430,6 +1434,7 @@
       diceHouseWei = await read.houseBankroll();
       const el = $("dice-house-bankroll"); if (el) el.textContent = usdOf(diceHouseWei);
       const el2 = $("td-house-bankroll"); if (el2) el2.textContent = usdOf(diceHouseWei); // Dice #2 shares the bankroll
+      const el3 = $("crash-house-bankroll"); if (el3) el3.textContent = usdOf(diceHouseWei); // Crash shares the bankroll too
     } catch {}
     // Newer contracts expose an owner-tunable cap; old ones don't — fall back to 1%.
     try { if (read.maxPayoutBpsOfBankroll) dicePayoutCapBps = BigInt(await read.maxPayoutBpsOfBankroll()); } catch { dicePayoutCapBps = 100n; }
@@ -1632,14 +1637,108 @@
     }
   }
 
+  // ── Crash (CH 11): provably-fair rocket, auto-cash-out at a target multiplier ──
+  const CRASH_EDGE = 0.01; // 1% — mirrors crashEdgeBps on-chain
+  function crashTargetVal() {
+    let t = parseFloat($("crash-target") ? $("crash-target").value : "2");
+    if (!(t >= 1.01)) t = 1.01;
+    if (t > 1000) t = 1000;
+    return t;
+  }
+  function crashReadouts() {
+    const tEl = $("crash-target"); if (!tEl) return;
+    const target = crashTargetVal();
+    const chance = Math.min(100, ((1 - CRASH_EDGE) / target) * 100);
+    const stake = +$("crash-stake").value;
+    const profit = stake * (target - 1);
+    $("crash-target-val").textContent = target.toFixed(2) + "×";
+    $("crash-chance").textContent = chance.toFixed(2) + "%";
+    $("crash-mult-ro").textContent = target.toFixed(2) + "×";
+    $("crash-profit").textContent = "+$" + profit.toFixed(2);
+    $("crash-payout-hint").textContent = profit.toFixed(2);
+    // affordability + validity guards (Crash shares the house bankroll + cap)
+    let hint = "";
+    let stakeWei = 0n; try { stakeWei = usdToWei(stake); } catch {}
+    let profitWei = 0n; try { profitWei = usdToWei(profit); } catch {}
+    if (!(stake > 0)) hint = "Drag to pick a stake";
+    else if (gameWei > 0n && stakeWei > gameWei) hint = "Not enough in-game balance — deposit first 👇";
+    else if (maxBet > 0n && stakeWei > maxBet) hint = "Max bet is " + usdOf(maxBet);
+    else if (diceHouseWei > 0n && profitWei > diceMaxProfitWei()) hint = (dicePayoutCapBps >= 10000n ? "House can't cover that win yet — fund the house or lower the target (max win " + usdOf(diceMaxProfitWei()) + ")" : "Max win per round is " + usdOf(diceMaxProfitWei()));
+    const btn = $("crash-launch");
+    if (btn) { btn.disabled = !!hint; btn.style.opacity = hint ? "0.55" : ""; }
+    $("crash-roll-hint").textContent = hint;
+    if (crashSupported === false) applyCrashSupport(); // don't let the readout re-enable an unsupported channel
+  }
+  // Older deploys predate Crash — probe a crash-only getter once, same pattern as Dice #2.
+  async function ensureCrashSupport() {
+    if (!contract) return null;
+    if (crashSupported === null) {
+      try { await contract.nextCrashGameId.staticCall(); crashSupported = true; }
+      catch (e) {
+        if (e?.code === "CALL_EXCEPTION" || e?.code === "BAD_DATA") crashSupported = false;
+      }
+      applyCrashSupport();
+    }
+    return crashSupported;
+  }
+  function applyCrashSupport() {
+    const btn = $("crash-launch"), hint = $("crash-roll-hint");
+    if (crashSupported === false) {
+      if (btn) { btn.disabled = true; btn.style.opacity = "0.55"; }
+      if (hint) hint.textContent = "⚠️ This house contract predates Crash — it needs to be redeployed/upgraded before you can play it. The other channels still work here.";
+    }
+  }
+  async function playCrashClick() {
+    if (!ready()) return;
+    if ((await ensureCrashSupport()) === false)
+      return toast("Crash isn't on this house contract yet — it needs a redeploy. (The other channels still work.)", "err");
+    const stakeUsd = parseFloat($("crash-stake").value);
+    if (!(stakeUsd > 0)) return toast("Drag to pick a stake", "err");
+    const bet = usdToWei(stakeUsd);
+    if (bet > maxBet) return toast("Max bet is " + usdOf(maxBet), "err");
+    const target = crashTargetVal();
+    const targetX100 = Math.round(target * 100);
+    if (targetX100 < 101 || targetX100 > 100000) return toast("Cash-out target must be between 1.01× and 1000×", "err");
+    rememberBet(stakeUsd);
+    doPlayCrash(bet, targetX100);
+  }
+  async function doPlayCrash(bet, targetX100) {
+    activeRoomId = null; lastRevealed = null;
+    lockReveal();
+    tvPending(true);
+    toast("Launching the rocket… confirm in your wallet", "ok");
+    try {
+      const tx = await contract.playCrash(bet, BigInt(targetX100), { gasLimit: 500000n });
+      const rcpt = await tx.wait();
+      tvPending(false);
+      const ev = rcpt.logs.map((l) => safeParse(l)).find((p) => p && p.name === "CrashRolled");
+      if (!ev) { unlockReveal(); TV.idle(); refreshBalances(); refreshDiceHouse(); toast("Round settled on-chain — check your balance.", "ok"); return; }
+      const a = ev.args;
+      const won = a.won;
+      const targetX = Number(a.targetX100) / 100;
+      const crashX = Number(a.crashX100) / 100;
+      const netWei = won ? (a.payout - bet) : bet;
+      const profitUsd = won ? weiToUsd(a.payout - bet) : 0;
+      const tier = profitUsd >= 500 ? "mega" : profitUsd >= 100 ? "big" : "normal";
+      TV.revealCrash({ crashX, targetX, won, amountUsd: weiToUsd(netWei), mult: targetX, tier });
+      refreshBalances(); refreshDiceHouse(); refreshStats();
+    } catch (e) {
+      tvPending(false);
+      unlockReveal();
+      TV.idle("Pick a game and place a bet");
+      txErr(e);
+    }
+  }
+
   // ── Game switcher ("change the channel") ──
   // Poker is temporarily disabled (hidden from the channel bar) — to be revisited.
-  const GAME_CHANNEL = { flip: 8, dice: 9, twodice: 10 };
-  const GAME_TITLE = { flip: "CRYPTO TV FLIP", dice: "CRYPTO TV 0-100", twodice: "CRYPTO TV DICE #2" };
-  const GAME_ORDER = ["flip", "dice", "twodice"];
+  const GAME_CHANNEL = { flip: 8, dice: 9, twodice: 10, crash: 11 };
+  const GAME_TITLE = { flip: "CRYPTO TV FLIP", dice: "CRYPTO TV 0-100", twodice: "CRYPTO TV DICE #2", crash: "CRYPTO TV CRASH" };
+  const GAME_ORDER = ["flip", "dice", "twodice", "crash"];
   function paintGameTabs(game) {
     document.body.classList.toggle("game-dice", game === "dice");
     document.body.classList.toggle("game-twodice", game === "twodice");
+    document.body.classList.toggle("game-crash", game === "crash");
     document.body.classList.toggle("game-poker", game === "poker"); // CSS hides the TV layout, shows #poker-view
     const bar = $("game-nav"); if (bar) bar.dataset.game = game;
     document.querySelectorAll("#game-nav .game-card").forEach((b) => {
@@ -1658,6 +1757,7 @@
     else { if (window.PokerUI) PokerUI.hide(); if (window.TV && TV.changeChannel) TV.changeChannel(GAME_CHANNEL[game]); }
     if (game === "dice") { refreshDiceHouse(); diceReadouts(); }
     else if (game === "twodice") { refreshDiceHouse(); twoDiceReadouts(); ensureTwoDiceSupport(); }
+    else if (game === "crash") { refreshDiceHouse(); crashReadouts(); ensureCrashSupport(); }
   }
   // Poker chips are a session-local pool seeded from your in-game balance.
   // Phase 1 (vs house bots) plays out client-side; net results are NOT yet
@@ -1702,6 +1802,17 @@
       setSliderUsd("td-stake");
       twoDiceReadouts();
     }
+    // Crash controls (CH 11)
+    if ($("crash-target")) {
+      $("crash-target").oninput = () => crashReadouts();
+      $("crash-stake").oninput = () => { setSliderUsd("crash-stake"); crashReadouts(); };
+      document.querySelectorAll("#crash-target-presets .qbet").forEach((b) => {
+        b.onclick = () => { $("crash-target").value = b.dataset.target; crashReadouts(); };
+      });
+      $("crash-launch").onclick = playCrashClick;
+      setSliderUsd("crash-stake");
+      crashReadouts();
+    }
     document.querySelectorAll("#game-nav .game-card").forEach((b) => { b.onclick = () => switchGame(b.dataset.game); });
     // keyboard: ←/→ to cycle channels through every game
     $("game-nav").addEventListener("keydown", (e) => {
@@ -1719,6 +1830,7 @@
     paintGameTabs(saved);
     if (saved === "poker" && window.PokerUI) PokerUI.show();
     if (window.TV) TV._activeChannel = GAME_CHANNEL[saved] || 8;
+    if (saved === "crash" && window.TV && TV._crashIdle) { try { TV._crashIdle(); } catch (e) {} }
   }
 
   // My open tables: show bank + idle countdown, auto-close (refund) when stale.

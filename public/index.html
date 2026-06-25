@@ -27,7 +27,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=943" />
+    <link rel="stylesheet" href="styles.css?v=944" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -41,7 +41,7 @@
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.43</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.44</span>
       </div>
       <div class="topbar-right">
         <button id="sound-btn" class="btn btn-ghost" title="Play / silence background music">🔇 Music</button>
@@ -117,6 +117,19 @@
             </svg>
           </span>
           <span class="gc-name">Dice #2</span>
+        </button>
+
+        <button type="button" class="game-card crash" id="ch-crash" role="tab" aria-selected="false" data-game="crash">
+          <span class="gc-tile">
+            <svg class="gc-glyph" viewBox="0 0 100 100" aria-hidden="true">
+              <path d="M50 16 c13 9 19 24 19 41 l-9 9 -20 0 -9 -9 c0 -17 6 -32 19 -41 Z" fill="#fff"/>
+              <circle cx="50" cy="45" r="7.5" fill="#16d1ff"/>
+              <path d="M41 66 l-9 12 9 -3 Z" fill="#ff7a1a"/>
+              <path d="M59 66 l9 12 -9 -3 Z" fill="#ff7a1a"/>
+              <path d="M50 70 l-6 16 6 -4 6 4 Z" fill="#ffd23f"/>
+            </svg>
+          </span>
+          <span class="gc-name">Crash</span>
         </button>
 
         <button type="button" class="game-card poker" id="ch-poker" role="tab" aria-selected="false" data-game="poker" hidden>
@@ -231,6 +244,15 @@
                   <div class="td-sum" id="td-tv-sum">SUM —</div>
                   <div class="dice-verdict" id="td-tv-verdict"></div>
                   <div class="dice-payout" id="td-tv-payout"></div>
+                </div>
+
+                <!-- Crash rocket (CH 11): the multiplier climbs live on the TV -->
+                <div class="screen-layer hidden" id="layer-crash">
+                  <canvas id="crash-canvas" class="crash-canvas"></canvas>
+                  <div class="crash-hud">
+                    <div class="crash-mult" id="crash-mult">1.00×</div>
+                    <div class="crash-sub" id="crash-sub">Set a target &amp; launch 🚀</div>
+                  </div>
                 </div>
 
                 <canvas id="confetti-canvas" class="confetti-canvas"></canvas>
@@ -441,6 +463,47 @@
 
           <button id="td-roll-btn" class="btn btn-primary btn-block dice-roll-btn">🎲🎲 ROLL · win $<span id="td-payout-hint">0.00</span></button>
           <div class="muted dice-roll-hint" id="td-roll-hint"></div>
+        </div>
+
+        <!-- Crash game (CH 11) — provably-fair rocket; auto cash out before the bust -->
+        <div class="card dice-panel" id="crash-panel" data-game="crash" hidden>
+          <div class="ph-head">
+            <h2 class="card-title">🚀 Crash <span class="ch-tag">CH 11</span></h2>
+            <span class="ph-bankroll muted">House: <strong id="crash-house-bankroll">—</strong> · edge 1%</span>
+          </div>
+
+          <p class="muted td-intro">The rocket lifts off and the multiplier climbs. It busts at a secret, provably-fair point. You <strong>auto cash out</strong> at your target — win if the rocket gets there before it blows.</p>
+
+          <label class="field-label">Auto cash-out <strong id="crash-target-val">2.00×</strong></label>
+          <div class="slider-wrap">
+            <input id="crash-target" class="slider slider-dice" type="number" min="1.01" max="1000" step="0.01" value="2.00" inputmode="decimal" />
+          </div>
+          <div class="quickbet-row" id="crash-target-presets">
+            <button type="button" class="qbet" data-target="1.5">1.5×</button>
+            <button type="button" class="qbet" data-target="2">2×</button>
+            <button type="button" class="qbet" data-target="5">5×</button>
+            <button type="button" class="qbet" data-target="10">10×</button>
+          </div>
+
+          <div class="dice-readouts">
+            <div class="ro-cell"><span class="ro-k muted">Win Chance</span><strong class="ro-v" id="crash-chance">49.50%</strong></div>
+            <div class="ro-cell ro-mult"><span class="ro-k muted">Payout</span><strong class="ro-v" id="crash-mult-ro">2.00×</strong></div>
+            <div class="ro-cell ro-profit"><span class="ro-k muted">Profit on Win</span><strong class="ro-v" id="crash-profit">+$0.00</strong></div>
+          </div>
+
+          <label class="field-label">Stake</label>
+          <div class="slider-wrap">
+            <input id="crash-stake" class="slider" type="range" min="10" max="500" step="5" value="25" />
+            <div class="slider-val"><strong id="crash-stake-val">$25</strong><span class="eth-sub" id="crash-stake-eth"></span></div>
+          </div>
+          <div class="quickbet-row" data-target="crash-stake">
+            <button type="button" class="qbet" data-mode="half">½ Last</button>
+            <button type="button" class="qbet" data-mode="double">2× Last</button>
+            <button type="button" class="qbet" data-mode="max">Max</button>
+          </div>
+
+          <button id="crash-launch" class="btn btn-primary btn-block dice-roll-btn">🚀 LAUNCH · win $<span id="crash-payout-hint">0.00</span></button>
+          <div class="muted dice-roll-hint" id="crash-roll-hint"></div>
         </div>
 
         <!-- Host tools (owner only): adjust limits, fund house, redeploy -->
@@ -813,14 +876,16 @@
     </div>
 
     <script defer src="vendor/ethers.umd.min.js"></script>
-    <script defer src="config.js?v=943"></script>
-    <script defer src="contract.js?v=943"></script>
-    <script defer src="chiptune.js?v=943"></script>
-    <script defer src="scenes.js?v=943"></script>
-    <script defer src="tv.js?v=943"></script>
-    <script defer src="poker-engine.js?v=943"></script>
-    <script defer src="poker-bots.js?v=943"></script>
-    <script defer src="poker-ui.js?v=943"></script>
-    <script defer src="app.js?v=943"></script>
+    <script defer src="config.js?v=944"></script>
+    <script defer src="contract.js?v=944"></script>
+    <script defer src="chiptune.js?v=944"></script>
+    <script defer src="scenes.js?v=944"></script>
+    <script defer src="tv.js?v=944"></script>
+    <script defer src="poker-engine.js?v=944"></script>
+    <script defer src="poker-bots.js?v=944"></script>
+    <script defer src="poker-ui.js?v=944"></script>
+    <script defer src="crash-engine.js?v=944"></script>
+    <script defer src="crash-render.js?v=944"></script>
+    <script defer src="app.js?v=944"></script>
   </body>
 </html>

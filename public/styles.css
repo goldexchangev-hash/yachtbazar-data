@@ -857,7 +857,8 @@ kbd { font-family: ui-monospace, monospace; font-size: 11px; background: rgba(25
    Default (no class) = flip. Each dice-type panel shows only when its game is on. */
 body:not(.game-dice) [data-game="dice"] { display: none !important; }
 body:not(.game-twodice) [data-game="twodice"] { display: none !important; }
-body.game-dice [data-game="flip"], body.game-twodice [data-game="flip"] { display: none !important; }
+body:not(.game-crash) [data-game="crash"] { display: none !important; }
+body.game-dice [data-game="flip"], body.game-twodice [data-game="flip"], body.game-crash [data-game="flip"] { display: none !important; }
 /* …but the channel selector tiles are always visible (they're how you switch) */
 #game-nav .game-card { display: flex !important; }
 #game-nav .game-card[hidden] { display: none !important; } /* hidden channels (e.g. poker) stay hidden */
@@ -1231,3 +1232,31 @@ body:not(.game-poker) #poker-view { display:none !important; }
   .tv-glass::before { animation: none; }
 }
 
+
+/* ════════════════════ CRASH GAME — rocket on the TV (CH 11) ════════════════════ */
+/* The renderer paints the rocket scene onto this canvas, sized to the screen. */
+#layer-crash { padding: 0; overflow: hidden; }
+.crash-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+/* Live multiplier read-out, overlaid near the top of the screen */
+.crash-hud { position: absolute; left: 0; right: 0; top: 7%; text-align: center; pointer-events: none; z-index: 3; }
+.crash-mult {
+  font-family: "Press Start 2P", var(--display); line-height: 1; font-variant-numeric: tabular-nums;
+  font-size: clamp(26px, 9vw, 60px); color: #eafdff;
+  text-shadow: 4px 4px 0 #0a2a6b, 0 0 26px var(--cyan);
+}
+.crash-mult.win  { color: #eafff5; text-shadow: 4px 4px 0 #0a6b3e, 0 0 30px var(--green); }
+.crash-mult.bust { color: #ffe9e9; text-shadow: 4px 4px 0 #7a1414, 0 0 26px var(--red); animation: nmShake .4s; }
+.crash-sub {
+  margin-top: 8px; font-family: var(--display); font-weight: 700;
+  font-size: clamp(11px, 3vw, 18px); color: #bfe9ff; text-shadow: 0 0 10px rgba(0,234,255,.4);
+}
+#layer-crash.win  .crash-sub { color: var(--green); }
+#layer-crash.lose .crash-sub { color: var(--red); }
+/* Number-input target reuses the slider look but stays legible */
+#crash-target.slider-dice {
+  -webkit-appearance: none; appearance: none; width: 100%; height: 40px;
+  background: #0c1424; border: 1px solid #25395a; border-radius: 10px;
+  color: #ffe34d; font: 700 16px/1 "Space Grotesk", sans-serif; text-align: center; padding: 0 10px;
+}
+#crash-target.slider-dice:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 0 2px rgba(0,234,255,.25); }
+#crash-target-presets .qbet { font-weight: 700; }

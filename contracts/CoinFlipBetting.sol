@@ -88,6 +88,14 @@ contract CoinFlipBetting {
     mapping(uint256 => TwoDiceGame) public twoDiceGames;
     uint256[] private _twoDiceIds;
 
+    // ---- Crash (CH 11): provably-fair multiplier rocket; cash out before the bust ----
+    /// @notice Auto-cash-out target, x100 (e.g. 200 = 2.00x). Min 1.01x, max 1000x.
+    uint256 public constant CRASH_MIN_X100 = 101;
+    uint256 public constant CRASH_MAX_X100 = 100_000;
+    /// @notice Crash house edge in bps (100 = 1%). Owner-tunable via setCrashEdge.
+    uint256 public crashEdgeBps = 100;
+    uint256 public nextCrashGameId = 1;
+
     /// @notice Wallet that receives the 10% fee (the host). Set at deploy.
     address public immutable treasury;
 
@@ -203,6 +211,11 @@ contract CoinFlipBetting {
         uint8 target, bool rollOver, uint8 d1, uint8 d2, bool won, uint256 payout, uint256 multiplierBps
     );
     event TwoDiceEdgeUpdated(uint256 newEdgeBps);
+    event CrashRolled(
+        uint256 indexed gameId, address indexed player, uint256 betAmount,
+        uint256 targetX100, uint256 crashX100, bool won, uint256 payout
+    );
+    event CrashEdgeUpdated(uint256 newEdgeBps);
 
     // --------------------------------------------------------------------- //
     //  Errors
@@ -791,6 +804,71 @@ contract CoinFlipBetting {
         uint256 count = limit > n ? n : limit;
         recent = new TwoDiceGame[](count);
         for (uint256 i; i < count; ++i) recent[i] = twoDiceGames[_twoDiceIds[n - 1 - i]];
+    }
+
+    // --------------------------------------------------------------------- //
+    //  Crash (CH 11): provably-fair multiplier rocket
+    // --------------------------------------------------------------------- //
+
+    /// @dev Draws the bust multiplier (x100) from the same RNG the other games
+    ///      use. Bustabit/Stake inverse-CDF: with a uniform h in [0, 2^52),
+    ///      crash = (1 - edge) / (1 - h/2^52), floored at 1.00x. Cannot be
+    ///      `view` because _random mutates the nonce.
+    function _crashPoint(uint256 gameId) internal returns (uint256) {
+        uint256 h = _random(gameId, msg.sender, treasury) % (2 ** 52);
+        uint256 denom = (2 ** 52) - h;
+        if (denom == 0) return CRASH_MAX_X100;
+        uint256 x100 = (100 * (BPS_DENOMINATOR - crashEdgeBps) * (2 ** 52)) / (BPS_DENOMINATOR * denom);
+        if (x100 < 100) x100 = 100;
+        if (x100 > CRASH_MAX_X100) x100 = CRASH_MAX_X100;
+        return x100;
+    }
+
+    /// @notice Launch the rocket for `betAmount` with an auto-cash-out at
+    ///         `targetX100` (x100, e.g. 200 = 2.00x). You win if the rocket's
+    ///         bust point is >= your target; payout = bet * target. Settles
+    ///         instantly from your in-game balance vs the shared house bankroll.
+    function playCrash(uint256 betAmount, uint256 targetX100)
+        external
+        returns (uint256 gameId, uint256 crashX100, bool won, uint256 payout)
+    {
+        if (betAmount < MIN_BET) revert BetTooSmall();
+        if (betAmount > maxBet) revert BetTooHigh();
+        if (targetX100 < CRASH_MIN_X100 || targetX100 > CRASH_MAX_X100) revert DiceBadTarget();
+        if (balances[msg.sender] < betAmount) revert InsufficientBalance();
+
+        // Cap is decided by the target alone (worst case = a win), so check it
+        // before escrowing or rolling — identical ordering to playTwoDice.
+        payout = (betAmount * targetX100) / 100; // total returned on a win
+        uint256 maxProfit = payout - betAmount;  // the house's max loss
+        if (maxProfit > houseBankroll) revert HouseBankrollLow();
+        if (maxProfit > (houseBankroll * maxPayoutBpsOfBankroll) / BPS_DENOMINATOR) revert HouseBankrollLow();
+
+        balances[msg.sender] -= betAmount; // escrow the stake
+
+        gameId = nextCrashGameId++;
+        crashX100 = _crashPoint(gameId);
+        won = crashX100 >= targetX100;
+
+        if (won) {
+            balances[msg.sender] += payout; // stake back + winnings
+            houseBankroll -= maxProfit;     // house pays the profit
+        } else {
+            houseBankroll += betAmount;     // house keeps the stake
+        }
+
+        totalFeesCollected += (betAmount * crashEdgeBps) / BPS_DENOMINATOR; // expected edge (stats)
+        totalGamesPlayed += 1;
+        totalWagered += betAmount;
+
+        emit CrashRolled(gameId, msg.sender, betAmount, targetX100, crashX100, won, won ? payout : 0);
+        return (gameId, crashX100, won, won ? payout : 0);
+    }
+
+    function setCrashEdge(uint256 newEdgeBps) external onlyOwner {
+        if (newEdgeBps > MAX_DICE_EDGE_BPS) revert DiceEdgeTooHigh();
+        crashEdgeBps = newEdgeBps;
+        emit CrashEdgeUpdated(newEdgeBps);
     }
 
     // --------------------------------------------------------------------- //

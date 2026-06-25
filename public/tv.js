@@ -41,6 +41,7 @@
         result: $("layer-result"),
         dice: $("layer-dice"),
         twodice: $("layer-twodice"),
+        crash: $("layer-crash"),
       };
       this._activeChannel = 8; // 8 = Flip, 9 = Dice — so idle() advertises the active game
       this.scoreboard = $("scoreboard");
@@ -177,8 +178,31 @@
       this.scoreboard.classList.add("hidden");
       this._clearConfetti();
       this.setChannel(this._activeChannel || 8); // keep showing the active game's channel
+      if (this._activeChannel === 11) { this._crashIdle(); return; } // rocket waits on the pad
       if (subtext) $("idle-sub").textContent = subtext;
       this._show("idle");
+    },
+
+    /* ---------------- crash (CH 11) ---------------- */
+    // Lazily attach the rocket renderer to the TV canvas (its rAF loop is then
+    // self-perpetuating). Safe to call repeatedly — only inits once.
+    _ensureCrash() {
+      if (this._crashReady || !window.CrashRender) return this._crashReady || false;
+      const cv = $("crash-canvas");
+      if (!cv) return false;
+      try { window.CrashRender.init(cv); this._crashReady = true; } catch (e) { this._crashReady = false; }
+      return this._crashReady;
+    },
+    // Show the rocket idling on the pad, multiplier reset to 1.00×.
+    _crashIdle() {
+      const L = this.layers.crash;
+      if (L) L.classList.remove("win", "lose");
+      const mult = $("crash-mult"), sub = $("crash-sub");
+      if (mult) { mult.classList.remove("win", "bust"); mult.textContent = "1.00×"; }
+      if (sub) sub.textContent = "Set a target & launch 🚀";
+      this._setStatic(0.06);
+      this._show("crash"); // visible first so the renderer measures a real size
+      if (this._ensureCrash() && window.CrashRender) { window.CrashRender.reset(); }
     },
 
     // Turn the dial between Coin Flip (08) and Dice (09) with a CRT "tune" effect.
@@ -190,9 +214,9 @@
       const badge = $("tv-channel"); if (badge) { badge.classList.remove("changing"); void badge.offsetWidth; badge.classList.add("changing"); }
       await sleep(210); if (seq !== this._seq) return;
       this.setChannel(num); this._activeChannel = num;
-      this._show("idle");
+      if (num === 11) this._crashIdle(); else this._show("idle");
       await sleep(160); if (seq !== this._seq) return;
-      this._setStatic(0.5);
+      if (num !== 11) this._setStatic(0.5);
       this.screenEl.classList.remove("ch-switch");
       if (window.Chiptune) window.Chiptune.coin();
     },
@@ -289,6 +313,67 @@
       if (!window.__cineActive) {
         try { window.__onTvReveal && window.__onTvReveal(res); } catch (e) {}
         if (res.youWon) this._celebrate(L, tier);
+        else if (window.Chiptune) window.Chiptune.lose();
+      }
+    },
+
+    // Crash reveal: the rocket climbs live, auto-cashes-out at the target on a
+    // win, or busts (explodes) at the secret crash point on a loss.
+    // res = { crashX, targetX, won, amountUsd, mult, tier }
+    async revealCrash(res) {
+      const seq = ++this._seq;
+      const L = this.layers.crash;
+      const multEl = $("crash-mult"), subEl = $("crash-sub");
+      L.classList.remove("win", "lose");
+      if (multEl) multEl.classList.remove("win", "bust");
+      this._clearCelebration(); this._clearConfetti();
+      this.setChannel(11); this._activeChannel = 11;
+      this._setStatic(0.05);
+      // show first so the canvas has a real size when the renderer measures it
+      if (multEl) multEl.textContent = "1.00×";
+      if (subEl) subEl.textContent = "🚀 IN FLIGHT…";
+      this._show("crash");
+      this._ensureCrash();
+      const R = window.CrashRender, Eng = window.CrashEngine;
+      const endpoint = Math.max(1.01, res.won ? res.targetX : res.crashX);
+      const lx = Math.log(endpoint);
+      const revealMs = Math.max(1600, Math.min(6000, 1600 + 1200 * lx));
+      const k = lx / revealMs;
+      if (R) { R.reset(); R.setState("flying"); R.setMult(1); }
+      // 1) climb the multiplier to the endpoint over revealMs
+      const start = now();
+      await new Promise((resolve) => {
+        const tick = () => {
+          if (seq !== this._seq) return resolve();
+          const el = now() - start;
+          if (el >= revealMs) { if (multEl) multEl.textContent = endpoint.toFixed(2) + "×"; if (R) R.setMult(endpoint); return resolve(); }
+          const m = Eng ? Eng.multiplierAtMs(el, k) : Math.exp(k * el);
+          const shown = Math.min(endpoint, m);
+          if (multEl) multEl.textContent = shown.toFixed(2) + "×";
+          if (R) R.setMult(shown);
+          if (window.Chiptune && Math.random() < 0.1) window.Chiptune.blip();
+          requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      });
+      if (seq !== this._seq) return;
+      // 2) settle: cash out (win) or bust (loss)
+      const tier = res.won ? (res.tier || "normal") : "normal";
+      if (res.won) {
+        L.classList.add("win");
+        if (multEl) { multEl.classList.add("win"); multEl.textContent = res.targetX.toFixed(2) + "×"; }
+        if (subEl) subEl.textContent = "CASHED OUT  +$" + Math.abs(res.amountUsd).toFixed(2);
+        if (R) { R.cashout(); R.setState("cashed"); }
+      } else {
+        L.classList.add("lose");
+        if (multEl) { multEl.classList.add("bust"); multEl.textContent = res.crashX.toFixed(2) + "× 💥"; }
+        if (subEl) subEl.textContent = "BUSTED  −$" + Math.abs(res.amountUsd).toFixed(2);
+        if (R) { R.explode(); R.setState("crashed"); }
+      }
+      // 3) release balance + escalate, reusing the flip celebration ladder
+      if (!window.__cineActive) {
+        try { window.__onTvReveal && window.__onTvReveal(res); } catch (e) {}
+        if (res.won) this._celebrate(L, tier);
         else if (window.Chiptune) window.Chiptune.lose();
       }
     },
