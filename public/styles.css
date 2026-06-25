@@ -1431,3 +1431,21 @@ body:not(.game-poker) #poker-view { display:none !important; }
 #game-nav .game-card.twodice .gc-tile,
 #game-nav .game-card.crash .gc-tile,
 #game-nav .game-card.slots .gc-tile { background: none !important; }
+
+/* ════════ Mobile gesture lockdown ════════
+   Dragging a slider must move the SLIDER, never pan/swipe the page; and the page
+   must not be horizontally swipeable off-screen by accident. */
+html, body {
+  overflow-x: hidden;
+  overscroll-behavior-x: none;   /* no horizontal rubber-band / swipe-nav */
+}
+/* Every range slider owns its touch gesture, so a drag never scrolls the page. */
+.slider,
+input[type="range"] {
+  touch-action: none;
+  -ms-touch-action: none;
+}
+/* The slider track/thumb shouldn't be text-selectable on a drag either. */
+.slider, .slider-wrap, .td-slider-wrap {
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+}
