@@ -1112,3 +1112,122 @@ body.game-dice [data-game="flip"], body.game-twodice [data-game="flip"] { displa
 body.game-poker .layout { display:none !important; }
 body:not(.game-poker) #poker-view { display:none !important; }
 
+/* ---------------------------------------------------------------------------
+   Reflective-glass overlay — makes #tv-screen read like real curved CRT glass.
+   Sits above every screen layer but never eats pointer events. The base layer
+   does the convex sheen + edge darkening; ::before is the big diagonal glare
+   streak, ::after a fainter secondary streak. mix-blend-mode:screen brightens
+   highlights without washing out the neon content underneath.
+--------------------------------------------------------------------------- */
+.tv-glass {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+  border-radius: inherit;
+  overflow: hidden;
+}
+
+/* Convex glass curvature: a bright top-left hotspot, gloss falloff toward the
+   bottom, plus subtle edge vignetting so the panel looks rounded, not flat. */
+.tv-glass::before,
+.tv-glass::after {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  pointer-events: none;
+}
+
+/* --- Subtle showroom glare (default) --------------------------------------
+   Reads like soft ambient room light catching the glass. Two crossing
+   diagonal streaks, gentle and slightly cyan-tinted to match the theme. */
+.tv-glass--subtle {
+  background:
+    /* convex curvature sheen — hotspot upper-left */
+    radial-gradient(120% 90% at 18% 12%,
+      rgba(255,255,255,0.18) 0%,
+      rgba(255,255,255,0.06) 18%,
+      rgba(255,255,255,0) 42%),
+    /* top gloss band */
+    linear-gradient(165deg,
+      rgba(255,255,255,0.10) 0%,
+      rgba(255,255,255,0.02) 22%,
+      rgba(255,255,255,0) 46%),
+    /* edge darkening for the curved-glass falloff */
+    radial-gradient(135% 120% at 50% 50%,
+      rgba(0,0,0,0) 62%,
+      rgba(0,0,0,0.22) 100%);
+  mix-blend-mode: screen;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.16),
+    inset 0 0 22px rgba(0,0,0,0.34);
+}
+
+/* Primary diagonal glare streak */
+.tv-glass--subtle::before {
+  background: linear-gradient(255deg,
+    rgba(255,255,255,0) 38%,
+    rgba(190,245,255,0.05) 47%,
+    rgba(255,255,255,0.14) 50%,
+    rgba(190,245,255,0.05) 53%,
+    rgba(255,255,255,0) 62%);
+  transform: rotate(-8deg) skewX(-12deg);
+  filter: blur(6px);
+  mix-blend-mode: screen;
+  animation: glassShimmer 16s ease-in-out infinite;
+}
+
+/* Fainter secondary streak, offset and thinner */
+.tv-glass--subtle::after {
+  background: linear-gradient(255deg,
+    rgba(255,255,255,0) 64%,
+    rgba(255,255,255,0.07) 72%,
+    rgba(255,255,255,0) 80%);
+  transform: rotate(-8deg) skewX(-12deg) translateX(8%);
+  filter: blur(8px);
+  mix-blend-mode: screen;
+}
+
+/* --- Glossier variant (swap the class on the div to try it) ---------------- */
+.tv-glass--glossy {
+  background:
+    radial-gradient(120% 90% at 20% 10%,
+      rgba(255,255,255,0.30) 0%,
+      rgba(255,255,255,0.10) 16%,
+      rgba(255,255,255,0) 40%),
+    linear-gradient(160deg,
+      rgba(255,255,255,0.18) 0%,
+      rgba(255,255,255,0.04) 24%,
+      rgba(255,255,255,0) 44%),
+    radial-gradient(140% 120% at 50% 55%,
+      rgba(0,0,0,0) 56%,
+      rgba(0,0,0,0.30) 100%);
+  mix-blend-mode: screen;
+  box-shadow:
+    inset 0 2px 0 rgba(255,255,255,0.22),
+    inset 0 0 30px rgba(0,0,0,0.42);
+}
+.tv-glass--glossy::before {
+  background: linear-gradient(255deg,
+    rgba(255,255,255,0) 34%,
+    rgba(200,248,255,0.10) 46%,
+    rgba(255,255,255,0.26) 50%,
+    rgba(200,248,255,0.10) 54%,
+    rgba(255,255,255,0) 66%);
+  transform: rotate(-8deg) skewX(-12deg);
+  filter: blur(5px);
+  mix-blend-mode: screen;
+  animation: glassShimmer 14s ease-in-out infinite;
+}
+
+/* Slow, barely-there drift so the glare feels alive as you move the device */
+@keyframes glassShimmer {
+  0%   { transform: rotate(-8deg) skewX(-12deg) translateX(-4%); opacity: 0.85; }
+  50%  { transform: rotate(-8deg) skewX(-12deg) translateX(4%);  opacity: 1; }
+  100% { transform: rotate(-8deg) skewX(-12deg) translateX(-4%); opacity: 0.85; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tv-glass::before { animation: none; }
+}
+
