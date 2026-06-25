@@ -166,11 +166,11 @@ kbd { font-family: ui-monospace, monospace; font-size: 11px; background: rgba(25
 /* ───────────────────────── Layout ───────────────────────── */
 .layout {
   position: relative; z-index: 2;
-  display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(300px, 0.95fr);
+  display: grid; grid-template-columns: minmax(0, 1.95fr) minmax(290px, 0.8fr);
   align-items: start;
-  gap: clamp(16px, 2vw, 26px);
-  padding: 44px clamp(14px, 4vw, 40px) 60px; /* top room for the antenna */
-  max-width: 1340px; margin: 0 auto;
+  gap: clamp(16px, 2vw, 28px);
+  padding: 40px clamp(14px, 3vw, 44px) 64px; /* top room for the antenna */
+  max-width: 1500px; margin: 0 auto;
 }
 .stage { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
 .sidebar { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
@@ -193,7 +193,7 @@ kbd { font-family: ui-monospace, monospace; font-size: 11px; background: rgba(25
 .tv-antenna span::after { content: ""; position: absolute; top: -5px; left: -3px; width: 8px; height: 8px; border-radius: 50%; background: #cfd6ff; }
 
 .tv-body {
-  position: relative; width: min(100%, 760px);
+  position: relative; width: min(100%, 920px); margin: 0 auto;
   background: linear-gradient(160deg, var(--tv-red), var(--tv-red-d));
   border-radius: 30px; padding: 22px 22px 16px;
   box-shadow: var(--shadow), inset 0 2px 0 rgba(255, 255, 255, 0.25), inset 0 -8px 22px rgba(0, 0, 0, 0.4);
@@ -1313,7 +1313,7 @@ body:not(.game-poker) #poker-view { display:none !important; }
 /* ── Left sidebar (was the horizontal .channels strip) ── */
 .channels {
   position: fixed; left: 0; top: 0; bottom: 0; width: var(--rail-w);
-  margin: 0; padding: 0; z-index: 60;
+  margin: 0; padding: 0; z-index: 66;
   background: var(--s-panel); border-right: 1px solid var(--s-border);
   display: flex; flex-direction: column; overflow-y: auto; overflow-x: hidden;
 }
@@ -1416,7 +1416,7 @@ body:not(.game-poker) #poker-view { display:none !important; }
   }
   body.rail-open .channels { transform: translateX(0); }
   body.rail-open::after {
-    content: ""; position: fixed; inset: 0; z-index: 55; background: rgba(0,0,0,.5);
+    content: ""; position: fixed; inset: 0; z-index: 65; background: rgba(0,0,0,.5);
   }
   .rail-toggle { display: inline-flex; }
 }
@@ -1458,4 +1458,90 @@ input[type="range"] {
   .wallet-cluster { flex-direction: column; align-items: flex-end; gap: 6px; }
   #disconnect-btn { padding: 7px 12px; }
   #wallet-addr { max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+}
+
+/* ════════ Stake cohesion: unify the remaining neon panels/accents ════════ */
+/* Chat — clean dark panel instead of the matrix-green terminal */
+.chat-card { background: var(--s-panel); border-color: var(--s-border); }
+.chat-card .card-title { color: var(--s-text); }
+.chat-dot { color: var(--s-green); }
+.chat-log {
+  background: var(--s-bg-deep); border: 1px solid var(--s-border);
+  text-shadow: none; color: var(--s-text-2); font-family: var(--s-font);
+}
+.chat-sys { color: var(--s-muted); }
+.chat-line.host .chat-handle { color: var(--s-green); text-shadow: none; }
+.chat-line.host .chat-text { color: #cfe9d6; }
+.chat-line.visitor .chat-handle { color: var(--s-red); text-shadow: none; }
+.chat-line.visitor .chat-text { color: #f0c2c8; }
+.chat-prompt { color: var(--s-green); }
+.chat-input {
+  background: var(--s-surface); border: 1px solid var(--s-border); color: var(--s-text);
+  font-family: var(--s-font);
+}
+.chat-input::placeholder { color: var(--s-muted); }
+.chat-input:focus { border-color: var(--s-green); box-shadow: 0 0 0 3px rgba(0,231,1,.15); }
+.chat-card .btn-mini { background: var(--s-green); color: #06231a; font-weight: 700; }
+
+/* ETH ticker — flat surface, green tag */
+.eth-ticker { background: var(--s-surface); border: 1px solid var(--s-border); box-shadow: none; }
+.eth-ticker-tag { color: var(--s-green); text-shadow: none; }
+.eth-ticker-track { color: var(--s-text-2); text-shadow: none; }
+.eth-ticker-track.down { color: var(--s-red); text-shadow: none; }
+
+/* Accent chips + readouts → single Stake-green accent */
+.pill { background: rgba(0,231,1,.14); color: var(--s-green); }
+.dice-panel .ch-tag, .ch-tag {
+  color: var(--s-green); background: rgba(0,231,1,.1); border: 1px solid rgba(0,231,1,.32);
+}
+.ro-mult .ro-v { color: var(--s-text); }
+.ro-profit .ro-v { color: var(--s-green); }
+
+/* History rows + host-stats cells → Stake surfaces */
+.hist-item, .hs-cell { background: var(--s-surface); border-color: var(--s-border); }
+.hs-big { color: var(--s-green); text-shadow: none; }
+.hs-cell.hs-cash { background: rgba(0,231,1,.07); border-color: rgba(0,231,1,.32); }
+.hs-cell.hs-cash strong { color: var(--s-green); }
+
+/* ════════ Slide-in chat drawer ════════ */
+.chat-drawer {
+  position: fixed; right: 0; top: 0; bottom: 0; z-index: 70;
+  width: min(90vw, 344px); display: flex; flex-direction: column;
+  background: var(--s-panel); border-left: 1px solid var(--s-border);
+  transform: translateX(100%); transition: transform .22s ease;
+  box-shadow: -10px 0 44px rgba(0,0,0,.45);
+}
+body.chat-open .chat-drawer { transform: translateX(0); }
+.chat-drawer-head { display: flex; align-items: center; gap: 8px; padding: 14px 16px; border-bottom: 1px solid var(--s-border); }
+.chat-drawer-title { font: 700 14px/1 var(--s-font); color: var(--s-text); }
+.chat-online { display: flex; align-items: center; gap: 5px; font: 600 11px/1 var(--s-font); color: var(--s-text-2); }
+.chat-online i { width: 7px; height: 7px; border-radius: 50%; background: var(--s-green); box-shadow: 0 0 8px var(--s-green); }
+.chat-drawer-close { margin-left: auto; background: var(--s-surface); border: 1px solid var(--s-border); color: var(--s-text-2); border-radius: var(--r-sm); width: 30px; height: 30px; cursor: pointer; font-size: 14px; line-height: 1; }
+.chat-drawer-close:hover { color: var(--s-text); }
+.chat-drawer .chat-card { flex: 1; display: flex; flex-direction: column; margin: 12px; border: none; background: transparent; padding: 0; box-shadow: none; min-height: 0; }
+.chat-drawer .chat-log { flex: 1; height: auto; min-height: 0; }
+.chat-note { font-size: 11px; margin: 8px 2px 0; }
+/* dim the page behind the drawer on small screens */
+@media (max-width: 900px) {
+  body.chat-open::before { content: ""; position: fixed; inset: 0; z-index: 68; background: rgba(0,0,0,.45); }
+}
+
+/* ════════ Mobile bottom tab bar ════════ */
+.bottom-nav { display: none; }
+@media (max-width: 900px) {
+  .bottom-nav {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 64;
+    background: var(--s-panel); border-top: 1px solid var(--s-border);
+    padding: 6px 4px; padding-bottom: max(6px, env(safe-area-inset-bottom));
+  }
+  .bn-item {
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    background: none; border: none; color: var(--s-text-2);
+    font: 600 10px/1 var(--s-font); padding: 6px 0; cursor: pointer;
+  }
+  .bn-ic { font-size: 18px; line-height: 1; }
+  .bn-item:active, .bn-item.active { color: var(--s-green); }
+  body { padding-bottom: 64px; } /* keep content clear of the bar */
+  .toast { bottom: 78px; }       /* lift toasts above the bar */
 }

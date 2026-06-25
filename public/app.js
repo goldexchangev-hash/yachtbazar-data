@@ -1791,8 +1791,8 @@
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
-    slotsLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=949")
-      .then(() => loadScriptOnce("slots.js?v=949"))
+    slotsLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=950")
+      .then(() => loadScriptOnce("slots.js?v=950"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -2879,6 +2879,22 @@
     { const w = $("rail-wallet"); if (w) w.onclick = () => { closeRail(); const t = $("game-balance") || $("deposit-input"); if (t) t.scrollIntoView({ behavior: "smooth", block: "center" }); }; }
     { const h = $("rail-howto"); if (h) h.onclick = () => { closeRail(); $("help-modal").classList.remove("hidden"); }; }
     { const ht = $("rail-host"); if (ht) ht.onclick = () => { closeRail(); const t = $("host-tools"); if (t) { t.hidden = false; t.scrollIntoView({ behavior: "smooth", block: "center" }); } }; }
+
+    // ── Chat drawer: slide-in panel toggled from the top bar ──
+    const closeChat = () => document.body.classList.remove("chat-open");
+    { const ct = $("chat-toggle"); if (ct) ct.onclick = (e) => { e.stopPropagation(); document.body.classList.toggle("chat-open"); }; }
+    { const cc = $("chat-close"); if (cc) cc.onclick = closeChat; }
+    document.addEventListener("click", (e) => {
+      if (!document.body.classList.contains("chat-open")) return;
+      const drawer = $("chat-drawer"); const toggle = $("chat-toggle");
+      if (drawer && !drawer.contains(e.target) && e.target !== toggle) closeChat();
+    });
+
+    // ── Mobile bottom tab bar ──
+    { const b = $("bn-games"); if (b) b.onclick = (e) => { e.stopPropagation(); closeChat(); document.body.classList.toggle("rail-open"); }; }
+    { const b = $("bn-wallet"); if (b) b.onclick = () => { closeRail(); closeChat(); const t = $("game-balance") || $("deposit-input"); if (t) t.scrollIntoView({ behavior: "smooth", block: "center" }); }; }
+    { const b = $("bn-chat"); if (b) b.onclick = (e) => { e.stopPropagation(); closeRail(); document.body.classList.toggle("chat-open"); }; }
+    { const b = $("bn-help"); if (b) b.onclick = () => { closeRail(); closeChat(); $("help-modal").classList.remove("hidden"); }; }
     $("sound-btn").onclick = () => {
       if (!window.Chiptune) return;
       const on = window.Chiptune.toggle();

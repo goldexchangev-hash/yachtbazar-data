@@ -27,7 +27,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=949" />
+    <link rel="stylesheet" href="styles.css?v=950" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -42,11 +42,12 @@
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.49</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.50</span>
       </div>
       <div class="topbar-right">
         <button id="sound-btn" class="btn btn-ghost" title="Play / silence background music">🔇 Music</button>
         <button id="help-btn" class="btn btn-ghost" title="How to play" aria-label="How to play">?</button>
+        <button id="chat-toggle" class="btn btn-ghost" title="Open chat" aria-label="Open chat">💬</button>
         <div id="net-badge" class="net-badge hidden"><i></i><span id="net-name">—</span></div>
         <button id="connect-btn" class="btn btn-primary">Connect Wallet</button>
         <div class="wallet-cluster">
@@ -666,18 +667,7 @@
           <div class="eth-ticker-win"><div class="eth-ticker-track" id="eth-ticker-track">ETH/USD  LOADING…</div></div>
         </div>
 
-        <!-- Trash-talk chat (Matrix terminal) — kept up near the TV -->
-        <div class="card chat-card">
-          <h2 class="card-title">💬 Trash talk <span class="chat-dot">▮</span></h2>
-          <div id="chat-log" class="chat-log">
-            <div class="chat-sys">// connect a wallet to chat · host is green, visitors red</div>
-          </div>
-          <div class="chat-input-row">
-            <span class="chat-prompt">&gt;</span>
-            <input id="chat-input" class="chat-input" maxlength="240" placeholder="type a message…" autocomplete="off" />
-            <button id="chat-send" class="btn btn-mini">SEND</button>
-          </div>
-        </div>
+        <!-- Trash-talk chat now lives in the slide-in right drawer (#chat-drawer) -->
 
         <!-- Create room (collapsible) -->
         <div class="card">
@@ -947,17 +937,45 @@
       </div>
     </div>
 
+    <!-- Mobile bottom tab bar -->
+    <nav class="bottom-nav" aria-label="Quick navigation">
+      <button type="button" class="bn-item" id="bn-games"><span class="bn-ic">🎮</span><span>Games</span></button>
+      <button type="button" class="bn-item" id="bn-wallet"><span class="bn-ic">💰</span><span>Wallet</span></button>
+      <button type="button" class="bn-item" id="bn-chat"><span class="bn-ic">💬</span><span>Chat</span></button>
+      <button type="button" class="bn-item" id="bn-help"><span class="bn-ic">❓</span><span>Help</span></button>
+    </nav>
+
+    <!-- Slide-in chat drawer (Stake-style, toggled from the top bar) -->
+    <aside id="chat-drawer" class="chat-drawer" aria-label="Chat">
+      <div class="chat-drawer-head">
+        <span class="chat-drawer-title">💬 Trash talk <span class="chat-dot">▮</span></span>
+        <span class="chat-online" id="chat-online"><i></i> live</span>
+        <button id="chat-close" class="chat-drawer-close" aria-label="Close chat">✕</button>
+      </div>
+      <div class="card chat-card">
+        <div id="chat-log" class="chat-log">
+          <div class="chat-sys">// connect a wallet to chat · host is green, visitors red</div>
+        </div>
+        <div class="chat-input-row">
+          <span class="chat-prompt">&gt;</span>
+          <input id="chat-input" class="chat-input" maxlength="240" placeholder="type a message…" autocomplete="off" />
+          <button id="chat-send" class="btn btn-mini">SEND</button>
+        </div>
+        <p class="chat-note muted">Chat is local to your browser for now — a shared backend is coming. Be cool. 😎</p>
+      </div>
+    </aside>
+
     <script defer src="vendor/ethers.umd.min.js"></script>
-    <script defer src="config.js?v=949"></script>
-    <script defer src="contract.js?v=949"></script>
-    <script defer src="chiptune.js?v=949"></script>
-    <script defer src="scenes.js?v=949"></script>
-    <script defer src="tv.js?v=949"></script>
-    <script defer src="poker-engine.js?v=949"></script>
-    <script defer src="poker-bots.js?v=949"></script>
-    <script defer src="poker-ui.js?v=949"></script>
-    <script defer src="crash-engine.js?v=949"></script>
-    <script defer src="crash-render.js?v=949"></script>
-    <script defer src="app.js?v=949"></script>
+    <script defer src="config.js?v=950"></script>
+    <script defer src="contract.js?v=950"></script>
+    <script defer src="chiptune.js?v=950"></script>
+    <script defer src="scenes.js?v=950"></script>
+    <script defer src="tv.js?v=950"></script>
+    <script defer src="poker-engine.js?v=950"></script>
+    <script defer src="poker-bots.js?v=950"></script>
+    <script defer src="poker-ui.js?v=950"></script>
+    <script defer src="crash-engine.js?v=950"></script>
+    <script defer src="crash-render.js?v=950"></script>
+    <script defer src="app.js?v=950"></script>
   </body>
 </html>
