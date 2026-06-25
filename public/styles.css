@@ -535,6 +535,16 @@ kbd { font-family: ui-monospace, monospace; font-size: 11px; background: rgba(25
 .unofficial-banner { position: relative; z-index: 4; margin: 8px auto 0; max-width: min(720px, 94vw); background: rgba(255, 60, 80, 0.16); border: 1px solid rgba(255, 80, 100, 0.6); color: #ffd7dd; padding: 10px 16px; border-radius: 14px; font-weight: 500; font-size: 13px; line-height: 1.5; text-align: center; box-shadow: var(--shadow); }
 .unofficial-banner code { background: rgba(0,0,0,.35); padding: 1px 6px; border-radius: 6px; font-size: 12px; }
 .unofficial-banner a { color: #9fe6ff; font-weight: 700; white-space: nowrap; }
+/* EIP-6963 wallet picker */
+.wallet-modal { position: fixed; inset: 0; background: rgba(4,6,12,.78); display: grid; place-items: center; z-index: 210; padding: 16px; }
+.wallet-sheet { background: #0c1424; border: 1px solid #25395a; border-radius: 16px; padding: 20px; width: min(94vw, 360px); box-shadow: 0 18px 60px rgba(0,0,0,.6); }
+.wallet-sheet h3 { font-family: "Bungee", sans-serif; color: #eaf6ff; margin: 0 0 14px; font-size: 17px; text-align: center; }
+.wallet-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.wallet-opt { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 14px; border-radius: 12px; border: 1px solid #25395a; background: #111c30; color: #eaf6ff; font: 600 14px/1 "Space Grotesk", sans-serif; cursor: pointer; transition: .12s; }
+.wallet-opt:hover { border-color: #00eaff; background: #16243c; box-shadow: 0 0 14px rgba(0,234,255,.25); }
+.wallet-opt img { width: 28px; height: 28px; border-radius: 7px; flex: none; }
+.wallet-opt .wallet-ic { width: 28px; height: 28px; display: grid; place-items: center; font-size: 20px; flex: none; }
+.wallet-cancel { width: 100%; }
 .mobile-hint strong { color: #fff; }
 
 /* Host earnings dashboard (house wallet only) */
