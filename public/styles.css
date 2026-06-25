@@ -112,7 +112,7 @@ kbd { font-family: ui-monospace, monospace; font-size: 11px; background: rgba(25
 :focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; border-radius: 4px; }
 @keyframes blink { 50% { opacity: 0.25; } }
 
-.topbar-right { display: flex; align-items: center; gap: 10px; }
+.topbar-right { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 10px; min-width: 0; }
 .net-badge {
   display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600;
   background: var(--panel); border: 1px solid var(--panel-line); border-radius: 999px; padding: 7px 12px;
@@ -373,9 +373,15 @@ kbd { font-family: ui-monospace, monospace; font-size: 11px; background: rgba(25
 
 /* ───────────────────── Sliders ───────────────────── */
 .slider-wrap { display: flex; align-items: center; gap: 12px; margin: 6px 0 12px; }
-.slider { -webkit-appearance: none; appearance: none; flex: 1; height: 8px; border-radius: 999px; background: linear-gradient(90deg, var(--cyan), var(--magenta)); outline: none; touch-action: none; -webkit-tap-highlight-color: transparent; }
-.slider::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; border-radius: 50%; background: #fff; border: 3px solid var(--cyan); cursor: pointer; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5); }
-.slider::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; background: #fff; border: 3px solid var(--cyan); cursor: pointer; }
+/* Filled track up to the thumb via a JS-set --p (0–100%); faint track after it.
+   touch-action:none keeps a drag on the control instead of scrolling the page. */
+.slider { --p: 50%; -webkit-appearance: none; appearance: none; flex: 1; height: 8px; border-radius: 999px;
+  background: linear-gradient(90deg, var(--cyan) 0%, var(--magenta) var(--p), rgba(255,255,255,.13) var(--p), rgba(255,255,255,.13) 100%);
+  outline: none; touch-action: none; -webkit-tap-highlight-color: transparent; }
+.slider::-webkit-slider-thumb { -webkit-appearance: none; width: 24px; height: 24px; border-radius: 50%; background: #fff; border: 3px solid var(--cyan); cursor: pointer; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5); }
+.slider::-moz-range-thumb { width: 24px; height: 24px; border-radius: 50%; background: #fff; border: 3px solid var(--cyan); cursor: pointer; }
+.slider:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px rgba(57,231,255,.5), 0 2px 8px rgba(0,0,0,.5); }
+.slider:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 4px rgba(57,231,255,.5); }
 .slider-val { font-family: var(--display); font-size: 16px; white-space: nowrap; color: var(--gold); min-width: 110px; text-align: right; }
 .eth-sub { display: block; font-family: var(--font); font-size: 10.5px; color: var(--muted); font-weight: 500; letter-spacing: 0; }
 
@@ -850,6 +856,9 @@ kbd { font-family: ui-monospace, monospace; font-size: 11px; background: rgba(25
   .brand-live { display: none; } /* keep .build-tag visible so the version shows on phones */
   .brand-name { font-size: 18px; }
   .topbar { padding: 12px 14px; flex-wrap: wrap; }
+  /* Give the wallet/disconnect cluster its own full-width row that wraps inside
+     the viewport, so the Disconnect button can't get pushed off the edge. */
+  .topbar-right { width: 100%; gap: 8px; row-gap: 8px; }
   .tv-body { padding: 14px 14px 12px; border-radius: 22px; }
   .tv-antenna { height: 50px; }
   .tv-speaker { display: none; }
@@ -966,9 +975,9 @@ body.game-dice [data-game="flip"], body.game-twodice [data-game="flip"] { displa
    (no value readout stealing width). The 11px side padding on both the slider
    wrap and the scale = the thumb radius, so tick labels line up with the thumb
    at every value, and the selected number lights up to remove all doubt. */
-.td-slider-wrap { width: 100%; margin: 8px 0 2px; padding: 0 11px; }
+.td-slider-wrap { width: 100%; margin: 8px 0 2px; padding: 0 12px; }
 .td-slider-wrap .slider { width: 100%; flex: none; display: block; }
-.td-scale { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); padding: 0 11px; margin-top: 2px; }
+.td-scale { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); padding: 0 12px; margin-top: 2px; }
 .td-scale span { width: 14px; text-align: center; transition: color .1s, transform .1s; }
 .td-scale span.on { color: var(--gold); font-weight: 700; transform: scale(1.35); }
 /* TV reveal layer */

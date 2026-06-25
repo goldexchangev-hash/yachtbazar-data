@@ -277,10 +277,19 @@
       return fallback;
     }
   }
+  // Paint the filled portion of a range slider up to the thumb (sets --p, read by
+  // the .slider gradient). Cheap enough to run on every input tick.
+  function paintFill(id) {
+    const s = (typeof id === "string") ? $(id) : id; if (!s) return;
+    const mn = +s.min || 0, mx = +s.max || 0;
+    const pct = mx > mn ? ((+s.value - mn) / (mx - mn)) * 100 : 50;
+    s.style.setProperty("--p", Math.max(0, Math.min(100, pct)).toFixed(2) + "%");
+  }
   function setSliderUsd(id) {
     const v = +$(id).value;
     const valEl = $(id + "-val"); if (valEl) valEl.textContent = usd(v);
     const ethEl = $(id + "-eth"); if (ethEl) ethEl.textContent = "(approx ETH: " + (v / ethUsd).toFixed(4) + ")";
+    paintFill(id);
     if (id === "bet-input") updateCreateBreakdown();
   }
 
@@ -1552,6 +1561,7 @@
   // Live odds bar + readouts as the player drags. Target T in [100,9899] (1%–99%).
   function diceReadouts() {
     const tEl = $("dice-target"); if (!tEl) return;
+    paintFill(tEl);
     const T = Math.min(9899, Math.max(100, (+tEl.value) | 0));
     const winOutcomes = diceMode === "under" ? T : (9999 - T);
     const chance = winOutcomes / 100;        // %
@@ -1645,6 +1655,7 @@
   }
   function twoDiceReadouts() {
     const tEl = $("td-target"); if (!tEl) return;
+    paintFill(tEl);
     const T = Math.min(12, Math.max(2, (+tEl.value) | 0));
     const over = tdMode === "over";
     const combos = tdWinCombos(T, over);
@@ -2694,7 +2705,10 @@
       const roomUsd = room ? weiToUsd(room.betAmount) : 0;
       const bet = room && u <= roomUsd + 4 ? room.betAmount : usdToWei(u);
       updateBetModalAmount(bet);
+      paintFill(e.target);
     };
+    // Initial fill paint for every slider (covers any not routed via setSliderUsd).
+    document.querySelectorAll(".slider").forEach((s) => paintFill(s));
     // Bet confirmation modal
     $("bet-accept").onclick = acceptBet;
     $("bet-close").onclick = closeBetModal;
