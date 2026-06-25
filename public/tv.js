@@ -356,7 +356,9 @@
         };
         requestAnimationFrame(tick);
       });
-      if (seq !== this._seq) return;
+      // If the player tuned away mid-flight, abandon the reveal but still release
+      // the frozen balance now instead of waiting on the 20s safety timer.
+      if (seq !== this._seq) { try { window.__onTvReveal && window.__onTvReveal(res); } catch (e) {} return; }
       // 2) settle: cash out (win) or bust (loss)
       const tier = res.won ? (res.tier || "normal") : "normal";
       if (res.won) {
