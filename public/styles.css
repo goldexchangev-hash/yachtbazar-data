@@ -373,7 +373,7 @@ kbd { font-family: ui-monospace, monospace; font-size: 11px; background: rgba(25
 
 /* ───────────────────── Sliders ───────────────────── */
 .slider-wrap { display: flex; align-items: center; gap: 12px; margin: 6px 0 12px; }
-.slider { -webkit-appearance: none; appearance: none; flex: 1; height: 8px; border-radius: 999px; background: linear-gradient(90deg, var(--cyan), var(--magenta)); outline: none; }
+.slider { -webkit-appearance: none; appearance: none; flex: 1; height: 8px; border-radius: 999px; background: linear-gradient(90deg, var(--cyan), var(--magenta)); outline: none; touch-action: none; -webkit-tap-highlight-color: transparent; }
 .slider::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; border-radius: 50%; background: #fff; border: 3px solid var(--cyan); cursor: pointer; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5); }
 .slider::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; background: #fff; border: 3px solid var(--cyan); cursor: pointer; }
 .slider-val { font-family: var(--display); font-size: 16px; white-space: nowrap; color: var(--gold); min-width: 110px; text-align: right; }
