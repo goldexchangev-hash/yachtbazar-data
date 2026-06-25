@@ -205,7 +205,7 @@
     _staticIdle() {
       this._setStatic(0.55);
       const title = $("idle-title"); if (title) { title.textContent = "SIGNAL LOST"; title.classList.add("signal-lost"); }
-      const sub = $("idle-sub"); if (sub) sub.textContent = "Connect your wallet to tune in";
+      const sub = $("idle-sub"); if (sub) { sub.textContent = "Connect your wallet to tune in"; sub.classList.remove("ready"); }
       const L = this.layers.crash, S = this.layers.slots;
       if (L) L.classList.remove("win", "lose");
       if (S) S.classList.remove("win", "lose");
@@ -217,7 +217,7 @@
     _readyRoom(subtext) {
       this._setStatic(0.08);
       const title = $("idle-title"); if (title) { title.textContent = this._channelTitle || "CRYPTO TV"; title.classList.remove("signal-lost"); }
-      const sub = $("idle-sub"); if (sub) sub.textContent = subtext || "Ready to play — place your bet 👇";
+      const sub = $("idle-sub"); if (sub) { sub.textContent = subtext || "● READY · place your bet 👇"; sub.classList.add("ready"); }
       this._show("idle");
     },
 

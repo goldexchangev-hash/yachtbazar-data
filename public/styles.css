@@ -1620,3 +1620,55 @@ body.chat-open .chat-drawer { transform: translateX(0); }
 .ba-btn { flex: 0 0 auto; min-width: 232px; }
 .ba-btn.is-busy { opacity: .8; cursor: progress; }
 @media (max-width: 600px) { .ba-btn { flex: 1 1 100%; min-width: 0; } }
+
+/* ════════════════════════════════════════════════════════════════════
+   Stake cohesion pass 2 — sweep remaining neon out of the SHELL.
+   (The TV screen #layer-* / coin / dice reveal / SIGNAL LOST keep neon.)
+   ════════════════════════════════════════════════════════════════════ */
+.slider { background: var(--s-surface); }
+.slider::-webkit-slider-thumb { border-color: var(--s-green); box-shadow: none; }
+.slider::-moz-range-thumb { border-color: var(--s-green); box-shadow: none; }
+.slider-dice::-webkit-slider-thumb { border-color: var(--s-green); }
+.slider-dice::-moz-range-thumb { border-color: var(--s-green); }
+.slider-val { background: transparent; border: none; color: var(--s-text); }
+.slider-val .eth-sub { color: var(--s-muted); }
+.side-toggle, .theme-toggle { background: var(--s-bg-deep); border-color: var(--s-border); }
+.side-btn.active, .theme-btn.active { background: var(--s-green); color: #06231a; box-shadow: none; }
+@keyframes ctaPulse {
+  0%,100% { box-shadow: 0 0 0 0 rgba(0,231,1,0); }
+  50%     { box-shadow: 0 0 0 6px rgba(0,231,1,.18), 0 8px 26px rgba(0,231,1,.42); }
+}
+.qbet { border-color: var(--s-border); background: var(--s-surface); color: var(--s-text-2); }
+.qbet:hover { color: var(--s-text); background: var(--s-border); box-shadow: none; }
+.qbet[data-mode="max"] { color: var(--s-green); border-color: rgba(0,231,1,.32); }
+.qbet[data-mode="max"]:hover { background: rgba(0,231,1,.12); box-shadow: none; }
+.player-item, .room-item { background: var(--s-surface); border-color: var(--s-border); }
+.lb-item.me { background: rgba(0,231,1,.10); border-color: rgba(0,231,1,.30); }
+.room-item .rbet { color: var(--s-green); }
+.share-box { background: rgba(0,231,1,.07); border: 1px dashed rgba(0,231,1,.32); }
+.play-house { border-color: rgba(0,231,1,.30); }
+#play-house { animation: none; }
+.btn { border-radius: var(--r-md); }
+.input, .share-box, .bet-breakdown { border-radius: var(--r-md); }
+.modal-card { border-radius: 12px; }
+.toast { border-radius: var(--r-md); }
+.input:focus { border-color: var(--s-green); box-shadow: 0 0 0 3px rgba(0,231,1,.15); }
+:focus-visible { outline-color: var(--s-green); }
+a { color: var(--s-green); }
+.help-steps b { color: var(--s-text); }
+.bd-row.total strong { color: var(--s-text); }
+.bd-row.fee strong { color: var(--s-text-2); }
+.host-stats { background: var(--s-panel); border-color: var(--s-border); }
+.hs-tab.active, .hs-gtab.active { background: var(--s-green); color: #06231a; box-shadow: none; }
+.hs-private { color: var(--s-green); }
+.bet-side, .nego-text b, .ph-bankroll strong, .create-breakdown strong { color: var(--s-green); }
+.ob-win { background: var(--s-green); box-shadow: inset 0 0 16px rgba(0,231,1,.4); }
+.ob-lose { background: var(--s-surface); }
+.ob-target, .ob-flag { background: var(--s-text); color: var(--s-bg); box-shadow: none; }
+.idle-sub.ready {
+  display: inline-block; padding: 5px 14px; border-radius: var(--r-full);
+  background: rgba(0,231,1,.12); border: 1px solid var(--s-green);
+  color: var(--s-green-glow); text-shadow: 0 0 8px rgba(0,231,1,.55);
+  font: 700 11px/1 "Press Start 2P", var(--display); letter-spacing: 1px;
+}
+.build-tag { color: var(--s-text-2); }
