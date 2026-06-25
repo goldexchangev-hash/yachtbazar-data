@@ -1696,3 +1696,18 @@ body.connected .wallet-cluster #disconnect-btn { border-radius: var(--r-full); p
   text-shadow: 0 0 8px rgba(0,231,1,.9), 0 0 20px rgba(0,231,1,.7), 0 0 40px rgba(0,231,1,.45);
   animation: none;
 }
+
+/* ════════ Promo intro video on the TV ════════ */
+.promo-video {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: contain; background: #000; z-index: 45; cursor: pointer;
+}
+.promo-video.hidden { display: none; }
+.tv-controls { flex-wrap: wrap; }
+.tv-promo-controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.tv-promo-btn {
+  background: var(--s-surface); border: 1px solid var(--s-border); color: var(--s-text-2);
+  border-radius: var(--r-sm); font: 600 11px/1 var(--s-font); padding: 6px 9px; cursor: pointer;
+  white-space: nowrap;
+}
+.tv-promo-btn:hover { color: var(--s-text); background: var(--s-border); }

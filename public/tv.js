@@ -257,6 +257,41 @@
       this._show("twodice");
     },
 
+    /* ---------------- promo intro reel ---------------- */
+    _initPromo() {
+      if (this._promoEl !== undefined) return this._promoEl;
+      const v = $("promo-video");
+      this._promoEl = v || null;
+      if (v) {
+        v.addEventListener("ended", () => this._endPromo());
+        v.addEventListener("click", () => this._endPromo()); // tap to skip
+      }
+      return this._promoEl;
+    },
+    // Play the promo over the current channel; on end → back to the normal screen.
+    playPromo(force) {
+      const v = this._initPromo(); if (!v) return;
+      if (this._promoPlaying && !force) return;
+      this._promoPlaying = true;
+      this._setStatic(0.02);
+      v.classList.remove("hidden");
+      try { v.currentTime = 0; } catch (e) {}
+      v.muted = !!this._promoMuted;
+      const p = v.play();
+      if (p && p.catch) p.catch(() => this._endPromo()); // gesture not ready → bail to normal screen
+    },
+    _endPromo() {
+      const v = this._promoEl;
+      if (v) { try { v.pause(); } catch (e) {} v.classList.add("hidden"); }
+      this._promoPlaying = false;
+      this.idle(); // restore the resting screen (static when signed out, game preview when connected)
+    },
+    setPromoMuted(m) {
+      this._promoMuted = !!m;
+      if (this._promoEl) this._promoEl.muted = this._promoMuted;
+      return this._promoMuted;
+    },
+
     /* ---------------- crash (CH 11) ---------------- */
     // Lazily attach the rocket renderer to the TV canvas (its rAF loop is then
     // self-perpetuating). Safe to call repeatedly — only inits once.
@@ -313,6 +348,7 @@
       await sleep(160); if (seq !== this._seq) return;
       this.screenEl.classList.remove("ch-switch");
       if (window.Chiptune) window.Chiptune.coin();
+      this.playPromo(true); // each channel "tunes in" with the promo, then returns to the screen
     },
 
     // Dice roll reveal: marker races 0→roll on a number line, verdict + escalation.

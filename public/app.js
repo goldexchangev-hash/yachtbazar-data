@@ -1849,8 +1849,8 @@
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
-    slotsLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=955")
-      .then(() => loadScriptOnce("slots.js?v=955"))
+    slotsLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=956")
+      .then(() => loadScriptOnce("slots.js?v=956"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -3054,6 +3054,21 @@
       const drawer = $("chat-drawer"); const toggle = $("chat-toggle");
       if (drawer && !drawer.contains(e.target) && e.target !== toggle) closeChat();
     });
+
+    // ── Promo intro reel: plays on the first interaction; replay/mute under the TV ──
+    {
+      let promoStarted = false;
+      const startPromo = () => { if (promoStarted) return; promoStarted = true; if (window.TV && TV.playPromo) TV.playPromo(); };
+      document.addEventListener("click", startPromo, { once: true });
+      document.addEventListener("touchend", startPromo, { once: true });
+    }
+    { const r = $("promo-replay"); if (r) r.onclick = (e) => { e.stopPropagation(); if (window.TV && TV.playPromo) TV.playPromo(true); }; }
+    { const m = $("promo-mute"); if (m) m.onclick = (e) => {
+        e.stopPropagation();
+        if (!(window.TV && TV.setPromoMuted)) return;
+        const muted = TV.setPromoMuted(!TV._promoMuted);
+        m.textContent = muted ? "🔇" : "🔊";
+      }; }
 
     // ── Mobile bottom tab bar ──
     { const b = $("bn-games"); if (b) b.onclick = (e) => { e.stopPropagation(); closeChat(); document.body.classList.toggle("rail-open"); }; }
