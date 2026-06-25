@@ -27,7 +27,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=963" />
+    <link rel="stylesheet" href="styles.css?v=964" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -42,7 +42,7 @@
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.63</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.64</span>
       </div>
       <div class="topbar-right">
         <div class="music-wrap">
@@ -82,14 +82,6 @@
     <!-- Shown when the connected wallet IS the house (treasury) -->
     <div id="house-wallet-banner" class="house-banner hidden">
       🏠 You're connected as the <strong>house wallet</strong> — you're on both sides of every flip, so you can't really win or lose. Switch to a different account in MetaMask to play as a challenger.
-    </div>
-
-    <!-- Demo-mode bar: play money, no wallet. Default landing experience.
-         (Balance + reset live below the TV; this top bar keeps the real-money CTA.) -->
-    <div id="demo-bar" class="demo-bar hidden" role="status">
-      <span class="demo-chip">🎮 DEMO</span>
-      <span class="demo-text">You're playing with <strong>free demo credits</strong> — no wallet, no real money. Same games, same odds.</span>
-      <button id="demo-connect" class="btn btn-primary demo-cta">Connect wallet to play for real →</button>
     </div>
 
     <!-- ───────── Left sidebar (Stake-style): brand + games + essentials ───────── -->
@@ -200,6 +192,13 @@
     <main class="layout">
       <!-- ───────────────────── Left: the TV ───────────────────── -->
       <section class="stage">
+        <!-- Demo-mode bar: centered directly above the TV. Keeps the real-money CTA. -->
+        <div id="demo-bar" class="demo-bar hidden" role="status">
+          <span class="demo-chip">🎮 DEMO</span>
+          <span class="demo-text">You're playing with <strong>free demo credits</strong> — no wallet, no real money. Same games, same odds.</span>
+          <button id="demo-connect" class="btn btn-primary demo-cta">Connect wallet to play for real →</button>
+        </div>
+
         <!-- Retro TV, redesigned to fit the neon theme -->
         <div class="tv">
           <div class="tv-antenna" aria-hidden="true"><span></span><span></span></div>
@@ -326,7 +325,7 @@
 
                 <!-- Promo intro reel — autoplays once (muted) on first load, then fades
                      to black and hands off to the game. Replay button under the TV. -->
-                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=963"></video>
+                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=964"></video>
 
                 <!-- Shown while a bet tx is being signed + mined (esp. slow on mobile) -->
                 <div id="tv-pending" class="tv-pending hidden">⏳ SENDING BET…<br />confirm in your wallet, then hold tight</div>
@@ -361,6 +360,13 @@
           <span class="demo-below-chip">🎮 DEMO</span>
           <span class="demo-below-bal">Play balance <strong id="demo-balance">$0</strong></span>
           <button id="demo-reset" class="btn btn-ghost demo-reset" title="Top demo credits back up">↻ Reset credits</button>
+        </div>
+
+        <!-- Balloon Pop primary action, docked right under the play balance so the
+             TV + HOLD button are visible together (only shows on CH 13). -->
+        <div class="pr-hold-dock" data-game="pressure">
+          <button id="pr-hold" class="btn btn-primary btn-block pr-hold">🎈 HOLD TO PUMP</button>
+          <div class="muted dice-roll-hint" id="pr-message">HOLD the balloon to pump</div>
         </div>
 
         <!-- Win-animation theme switcher (hidden for now — locked to Scarfblade Films) -->
@@ -658,9 +664,6 @@
           <div class="slider-wrap">
             <input id="pr-auto-slider" class="slider" type="range" min="1.2" max="20" step="0.05" value="2.0" />
           </div>
-
-          <button id="pr-hold" class="btn btn-primary btn-block pr-hold">🎈 HOLD TO PUMP</button>
-          <div class="muted dice-roll-hint" id="pr-message">HOLD the balloon to pump</div>
 
           <details class="dropdown pr-fair">
             <summary class="card-title dd-summary"><span>🔒 Provably fair</span><span class="dd-arrow" aria-hidden="true">▾</span></summary>
@@ -1086,17 +1089,17 @@
     </aside>
 
     <script defer src="vendor/ethers.umd.min.js"></script>
-    <script defer src="config.js?v=963"></script>
-    <script defer src="contract.js?v=963"></script>
-    <script defer src="chiptune.js?v=963"></script>
-    <script defer src="scenes.js?v=963"></script>
-    <script defer src="tv.js?v=963"></script>
-    <script defer src="poker-engine.js?v=963"></script>
-    <script defer src="poker-bots.js?v=963"></script>
-    <script defer src="poker-ui.js?v=963"></script>
-    <script defer src="crash-engine.js?v=963"></script>
-    <script defer src="crash-render.js?v=963"></script>
-    <script defer src="profile.js?v=963"></script>
-    <script defer src="app.js?v=963"></script>
+    <script defer src="config.js?v=964"></script>
+    <script defer src="contract.js?v=964"></script>
+    <script defer src="chiptune.js?v=964"></script>
+    <script defer src="scenes.js?v=964"></script>
+    <script defer src="tv.js?v=964"></script>
+    <script defer src="poker-engine.js?v=964"></script>
+    <script defer src="poker-bots.js?v=964"></script>
+    <script defer src="poker-ui.js?v=964"></script>
+    <script defer src="crash-engine.js?v=964"></script>
+    <script defer src="crash-render.js?v=964"></script>
+    <script defer src="profile.js?v=964"></script>
+    <script defer src="app.js?v=964"></script>
   </body>
 </html>

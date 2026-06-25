@@ -1874,14 +1874,14 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=963").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=964").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=963"))
+      .then(() => loadScriptOnce("slots.js?v=964"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -1891,9 +1891,9 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=963"))
-      .then(() => loadScriptOnce("pressure-render.js?v=963"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=963"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=964"))
+      .then(() => loadScriptOnce("pressure-render.js?v=964"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=964"))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -3106,6 +3106,34 @@
   }
 
   // ---------------------------------------------------------- sound + help
+  // After the promo intro's first run, kick off a RANDOM background track. Audio
+  // needs a user gesture, so if none has happened yet we start on the first one.
+  let musicAfterPromoDone = false;
+  function startRandomTrack() {
+    try {
+      if (!window.Chiptune) return;
+      if (Chiptune.isOn && Chiptune.isOn()) return; // already playing — don't override the user
+      const list = Chiptune.tracks ? Chiptune.tracks() : [];
+      const n = list && list.length ? list.length : 1;
+      const idx = Math.floor(Math.random() * n);
+      if (Chiptune.wake) Chiptune.wake();
+      if (Chiptune.playTrack) Chiptune.playTrack(idx);
+      if (!Chiptune.isOn()) Chiptune.start();
+      syncSoundBtn();
+    } catch (e) {}
+  }
+  function startMusicAfterPromo() {
+    if (musicAfterPromoDone) return;
+    musicAfterPromoDone = true;
+    if (window.Chiptune && Chiptune.isOn && Chiptune.isOn()) return; // user already started music
+    if (audioUnlocked) { startRandomTrack(); return; }              // gesture already happened
+    const go = () => {
+      ["pointerdown", "touchstart", "touchend", "click", "keydown"].forEach((e) => window.removeEventListener(e, go, true));
+      startRandomTrack();
+    };
+    ["pointerdown", "touchstart", "touchend", "click", "keydown"].forEach((e) => window.addEventListener(e, go, true));
+  }
+
   function syncSoundBtn() {
     const on = !!(window.Chiptune && window.Chiptune.isOn());
     const btn = $("sound-btn");
@@ -3306,6 +3334,7 @@
 
     // ── Promo intro reel: autoplays (muted) ONCE on load, then fades to the game.
     //    The only control is the Replay button under the TV (plays back WITH sound). ──
+    window.__onPromoEnded = startMusicAfterPromo; // random track after the intro's first run
     if (window.TV && TV.playPromo) { try { TV.playPromo(); } catch (e) {} }
     { const r = $("promo-replay"); if (r) r.onclick = (e) => { e.stopPropagation(); if (window.TV && TV.playPromo) TV.playPromo(); }; }
 

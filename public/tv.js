@@ -282,18 +282,20 @@
       v.classList.remove("hidden", "promo-fade");
       try { v.currentTime = 0; } catch (e) {}
       v.muted = false; v.volume = 1;
+      // Arm the unmute up-front: on mobile the muted-autoplay path may not reject,
+      // so this guarantees the first tap brings sound regardless.
+      this._armUnmute();
       const p = v.play();
-      if (p && p.catch) p.catch(() => { // unmuted refused → play muted + unmute on first tap
+      if (p && p.catch) p.catch(() => { // unmuted refused → play muted (unmute waits for a tap)
         v.muted = true;
         const p2 = v.play(); if (p2 && p2.catch) p2.catch(() => this._endPromo());
-        this._armUnmute();
       });
     },
     // One-shot: the first real user gesture unmutes the still-playing promo.
     _armUnmute() {
       if (this._unmuteArmed) return;
       this._unmuteArmed = true;
-      const evs = ["pointerdown", "touchstart", "keydown"];
+      const evs = ["pointerdown", "touchstart", "touchend", "click", "keydown"];
       const un = () => {
         this._unmuteArmed = false;
         evs.forEach((e) => window.removeEventListener(e, un, true));
@@ -306,13 +308,15 @@
     _disarmUnmute() {
       if (!this._unmuteArmed) return;
       this._unmuteArmed = false;
-      ["pointerdown", "touchstart", "keydown"].forEach((e) => window.removeEventListener(e, this._unmuteFn, true));
+      ["pointerdown", "touchstart", "touchend", "click", "keydown"].forEach((e) => window.removeEventListener(e, this._unmuteFn, true));
     },
     _endPromo() {
       const v = this._promoEl;
       this._disarmUnmute();
       if (!v || !this._promoPlaying) { if (v) v.classList.add("hidden"); return; }
       this._promoPlaying = false;
+      // first run is over → let the app kick off a random background track
+      try { window.__onPromoEnded && window.__onPromoEnded(); } catch (e) {}
       // fade the reel to black, then reveal the resting game screen underneath
       try { v.pause(); } catch (e) {}
       v.classList.add("promo-fade");

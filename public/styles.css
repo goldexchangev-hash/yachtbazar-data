@@ -1814,3 +1814,10 @@ body.demo-mode #bankroll { display: none !important; }
 .demo-below-bal strong { color: #ffd23f; font-family: var(--display); font-size: 16px; margin-left: 6px; }
 .demo-below .demo-reset { border-color: rgba(255, 210, 63, 0.5); color: #ffe6b0; }
 @media (max-width: 640px) { .demo-below { gap: 6px 10px; padding: 7px 10px; } }
+
+/* Balloon Pop: HOLD button docked under the play balance (above the bet controls) */
+.pr-hold-dock { margin-top: 2px; }
+.pr-hold-dock .pr-hold { margin: 0; }
+.pr-hold-dock #pr-message { margin-top: 6px; text-align: center; }
+/* demo bar now lives inside the TV column → center it perfectly over the TV */
+.stage > .demo-bar { width: 100%; max-width: 100%; margin: 0 auto; justify-content: center; }
