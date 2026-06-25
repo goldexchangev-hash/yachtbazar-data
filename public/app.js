@@ -1442,7 +1442,7 @@
     const T = Math.min(9899, Math.max(100, (+tEl.value) | 0));
     const winOutcomes = diceMode === "under" ? T : (9999 - T);
     const chance = winOutcomes / 100;        // %
-    const mult = 9800 / winOutcomes;          // 2% edge
+    const mult = Math.floor(9800 * 10000 / winOutcomes) / 10000; // 2% edge; floor to match on-chain bps
     const stake = +$("dice-stake").value;
     const profit = stake * (mult - 1);
     const pct = T / 100;
@@ -1491,7 +1491,7 @@
       const rcpt = await tx.wait();
       tvPending(false);
       const ev = rcpt.logs.map((l) => safeParse(l)).find((p) => p && p.name === "DiceRolled");
-      if (!ev) { unlockReveal(); TV.idle(); return; }
+      if (!ev) { unlockReveal(); TV.idle(); refreshBalances(); refreshDiceHouse(); toast("Roll settled on-chain — check your balance.", "ok"); return; }
       const a = ev.args;
       const won = a.won;
       const netWei = won ? (a.payout - bet) : bet;          // profit on win / stake on loss
@@ -1531,7 +1531,7 @@
     const over = tdMode === "over";
     const combos = tdWinCombos(T, over);
     const chance = (combos / 36) * 100;
-    const mult = combos > 0 ? (9800 * 36 / combos) / 10000 : 0; // 2% edge
+    const mult = combos > 0 ? Math.floor(9800 * 36 / combos) / 10000 : 0; // 2% edge; floor to match on-chain bps
     const stake = +$("td-stake").value;
     const profit = combos > 0 ? stake * (mult - 1) : 0;
     $("td-target-val").textContent = T;
@@ -1568,7 +1568,11 @@
     if (!contract) return null;
     if (twoDiceSupported === null) {
       try { await contract.nextTwoDiceGameId.staticCall(); twoDiceSupported = true; }
-      catch { twoDiceSupported = false; }
+      catch (e) {
+        // Only a real revert/decode failure means the contract lacks Dice #2.
+        // A flaky-RPC network error must NOT latch it off — leave null to retry.
+        if (e?.code === "CALL_EXCEPTION" || e?.code === "BAD_DATA") twoDiceSupported = false;
+      }
       applyTwoDiceSupport();
     }
     return twoDiceSupported;
@@ -1604,7 +1608,7 @@
       const rcpt = await tx.wait();
       tvPending(false);
       const ev = rcpt.logs.map((l) => safeParse(l)).find((p) => p && p.name === "TwoDiceRolled");
-      if (!ev) { unlockReveal(); TV.idle(); return; }
+      if (!ev) { unlockReveal(); TV.idle(); refreshBalances(); refreshDiceHouse(); toast("Roll settled on-chain — check your balance.", "ok"); return; }
       const a = ev.args;
       const won = a.won;
       const netWei = won ? (a.payout - bet) : bet;
@@ -2038,9 +2042,17 @@
     CannotPlayOwnTable: "You can't play against your own table.",
     BankTooLow: "The table's bank can't cover that bet right now — another player may have just taken some. Try a smaller stake.",
     HostRoomStillActive: "That table is still active — only the host can close it before it's been idle 5 minutes.",
+    BetTooSmall: "That bet is below the minimum allowed.",
+    DiceBadTarget: "Pick a different target for this bet type.",
+    DiceEdgeTooHigh: "That target isn't offered (it would pay below your stake) — pick another.",
+    TooManyOpen: "You have too many open rooms — finish or cancel one first.",
+    TransferFailed: "The ETH transfer failed — please try again.",
   };
   function txErr(e) {
     console.error(e);
+    // Prefer an exact custom-error name from the decoded revert before any
+    // fuzzy substring matching (which can mismap unrelated messages).
+    if (e?.revert?.name && FRIENDLY_ERR[e.revert.name]) return toast(FRIENDLY_ERR[e.revert.name], "err");
     const blob = [e?.revert?.name, e?.shortMessage, e?.reason, e?.info?.error?.message, e?.message]
       .filter(Boolean)
       .join(" ");

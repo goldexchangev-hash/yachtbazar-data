@@ -236,6 +236,9 @@
   function startTurnTimer() {
     clearTurnTimer(); turnStart = Date.now();
     turnTimer = setInterval(() => {
+      // Bail if the hand ended or it's no longer the hero's turn — the timer
+      // could otherwise fire on a null/stale hand and throw or mis-fold.
+      if (!hand || hand.done || hand.state(HERO).toActId !== HERO) { clearTurnTimer(); return; }
       const left = TURN_MS - (Date.now() - turnStart);
       const frac = Math.max(0, left / TURN_MS);
       const seatEl = document.querySelector('.pseat[data-seat="0"] .pseat__av');
