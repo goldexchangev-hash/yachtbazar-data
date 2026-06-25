@@ -27,7 +27,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=973" />
+    <link rel="stylesheet" href="styles.css?v=974" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -42,7 +42,7 @@
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.73</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.74</span>
       </div>
       <div class="topbar-right">
         <div class="music-wrap">
@@ -326,7 +326,7 @@
 
                 <!-- Promo intro reel — autoplays once (muted) on first load, then fades
                      to black and hands off to the game. Replay button under the TV. -->
-                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=973"></video>
+                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=974"></video>
 
                 <!-- Shown while a bet tx is being signed + mined (esp. slow on mobile) -->
                 <div id="tv-pending" class="tv-pending hidden">⏳ SENDING BET…<br />confirm in your wallet, then hold tight</div>
@@ -336,6 +336,9 @@
 
                 <!-- Reflective-glass overlay: makes the screen read like real CRT glass -->
                 <div class="tv-glass tv-glass--subtle" aria-hidden="true"></div>
+
+                <!-- Pops up in the lower part of the TV screen on ANY win -->
+                <button id="share-result-btn" class="share-win-btn hidden" title="Share your win">📸 Share win</button>
               </div>
             </div>
             <!-- Speaker + channel dials (nod to the original red CRT) -->
@@ -358,8 +361,6 @@
 
         <!-- Pops up under the TV on ANY game win — green + bubbly, taps to share a
              win screenshot card. -->
-        <button id="share-result-btn" class="share-win-btn hidden" title="Share your win">📸 SHARE YOUR WIN!</button>
-
         <!-- Demo balance + reset, sitting right under the TV (play money) -->
         <div id="demo-below" class="demo-below hidden">
           <span class="demo-below-chip">🎮 DEMO</span>
@@ -1104,17 +1105,17 @@
     </aside>
 
     <script defer src="vendor/ethers.umd.min.js"></script>
-    <script defer src="config.js?v=973"></script>
-    <script defer src="contract.js?v=973"></script>
-    <script defer src="chiptune.js?v=973"></script>
-    <script defer src="scenes.js?v=973"></script>
-    <script defer src="tv.js?v=973"></script>
-    <script defer src="poker-engine.js?v=973"></script>
-    <script defer src="poker-bots.js?v=973"></script>
-    <script defer src="poker-ui.js?v=973"></script>
-    <script defer src="crash-engine.js?v=973"></script>
-    <script defer src="crash-render.js?v=973"></script>
-    <script defer src="profile.js?v=973"></script>
-    <script defer src="app.js?v=973"></script>
+    <script defer src="config.js?v=974"></script>
+    <script defer src="contract.js?v=974"></script>
+    <script defer src="chiptune.js?v=974"></script>
+    <script defer src="scenes.js?v=974"></script>
+    <script defer src="tv.js?v=974"></script>
+    <script defer src="poker-engine.js?v=974"></script>
+    <script defer src="poker-bots.js?v=974"></script>
+    <script defer src="poker-ui.js?v=974"></script>
+    <script defer src="crash-engine.js?v=974"></script>
+    <script defer src="crash-render.js?v=974"></script>
+    <script defer src="profile.js?v=974"></script>
+    <script defer src="app.js?v=974"></script>
   </body>
 </html>
