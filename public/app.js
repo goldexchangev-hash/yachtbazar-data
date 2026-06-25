@@ -1849,8 +1849,8 @@
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
-    slotsLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=954")
-      .then(() => loadScriptOnce("slots.js?v=954"))
+    slotsLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=955")
+      .then(() => loadScriptOnce("slots.js?v=955"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;

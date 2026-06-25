@@ -213,12 +213,48 @@
       this._show("idle");
     },
 
-    // Connected & a non-canvas game is selected: a clean "ready to play" room.
-    _readyRoom(subtext) {
-      this._setStatic(0.08);
-      const title = $("idle-title"); if (title) { title.textContent = "CHANNEL FOUND"; title.classList.remove("signal-lost"); title.classList.add("channel-found"); }
-      const sub = $("idle-sub"); if (sub) { sub.textContent = subtext || "● READY · place your bet"; sub.classList.add("ready"); }
-      this._show("idle");
+    // Connected & a non-canvas game is selected: show that game's pieces sitting
+    // ready (coin / number-line / two dice), all saying "place your bet below" —
+    // so flip / 0-100 / dice #2 look like real game screens, not a fuzzy idle.
+    _readyRoom() {
+      const ch = this._activeChannel;
+      if (ch === 9) return this._dicePreview();
+      if (ch === 10) return this._twodicePreview();
+      return this._flipPreview(); // ch 8 (default)
+    },
+    _flipPreview() {
+      const L = this.layers.flip;
+      if (L) L.classList.remove("win", "lose", "tier-big", "tier-mega");
+      if (this.coin) { this.coin.classList.remove("spin", "show-tails"); this.coin.classList.add("show-heads"); }
+      const cap = L && L.querySelector(".flip-caption"); if (cap) cap.textContent = "PLACE YOUR BET BELOW";
+      if (this.scoreboard) this.scoreboard.classList.add("hidden");
+      this._setStatic(0.05);
+      this._show("flip");
+    },
+    _dicePreview() {
+      const L = this.layers.dice;
+      if (L) L.classList.remove("win", "lose", "tier-big", "tier-mega", "nearmiss");
+      const set = (id, t) => { const e = $(id); if (e) e.textContent = t; };
+      set("dice-tv-target", "PLACE YOUR BET BELOW");
+      set("dice-tv-num", "00.00"); set("dice-tv-verdict", ""); set("dice-tv-payout", "");
+      const win = $("dl-win"), lose = $("dl-lose"), mark = $("dl-targetmark"), marker = $("dl-marker");
+      if (win) win.style.cssText = "left:0;width:50%";
+      if (lose) lose.style.cssText = "left:50%;width:50%";
+      if (mark) mark.style.left = "50%";
+      if (marker) marker.style.left = "0%";
+      this._setStatic(0.05);
+      this._show("dice");
+    },
+    _twodicePreview() {
+      const L = this.layers.twodice;
+      if (L) L.classList.remove("win", "lose", "tier-big", "tier-mega");
+      this._setDieFace($("td-die1"), 5);
+      this._setDieFace($("td-die2"), 2);
+      const set = (id, t) => { const e = $(id); if (e) e.textContent = t; };
+      set("td-tv-target", "PLACE YOUR BET BELOW");
+      set("td-tv-sum", ""); set("td-tv-verdict", ""); set("td-tv-payout", "");
+      this._setStatic(0.05);
+      this._show("twodice");
     },
 
     /* ---------------- crash (CH 11) ---------------- */
@@ -238,7 +274,7 @@
       if (L) L.classList.remove("win", "lose");
       const mult = $("crash-mult"), sub = $("crash-sub");
       if (mult) { mult.classList.remove("win", "bust"); mult.textContent = "1.00×"; }
-      if (sub) sub.textContent = "Set a target & launch 🚀";
+      if (sub) sub.textContent = "PLACE YOUR BET BELOW";
       this._setStatic(0.06);
       this._show("crash"); // visible first so the renderer measures a real size
       if (this._ensureCrash() && window.CrashRender) { window.CrashRender.reset(); }
@@ -255,7 +291,7 @@
       const msg = $("slots-msg");
       if (window.CryptoReels && window.CryptoReels.isChannel) {
         window.CryptoReels.setActive(true);
-        if (msg) msg.textContent = "PRESS SPIN";
+        if (msg) msg.textContent = "PLACE YOUR BET BELOW";
       } else if (msg) {
         msg.textContent = "LOADING REELS…";
       }
