@@ -39,72 +39,6 @@
 
   // ---- state ----
   let provider = null; // ethers BrowserProvider
-  // ───────── EIP-6963: discover ALL injected wallets, let the user pick ─────────
-  // Modern wallets announce themselves via EIP-6963 instead of fighting over
-  // window.ethereum, so we can show a proper "choose your wallet" list instead of
-  // connecting to whichever extension grabbed the global first.
-  const wallets6963 = new Map(); // key -> { info:{name,icon,rdns}, provider }
-  window.addEventListener("eip6963:announceProvider", (e) => {
-    const d = e && e.detail; if (!d || !d.info || !d.provider) return;
-    wallets6963.set(d.info.rdns || d.info.uuid || d.info.name, d);
-  });
-  try { window.dispatchEvent(new Event("eip6963:requestProvider")); } catch {}
-  let injected = null;           // the EIP-1193 provider the user chose to connect with
-  let walletListenersAttached = false;
-  function discoveredWallets() {
-    const list = Array.from(wallets6963.values());
-    if (list.length) return list;
-    // Legacy fallback for wallets that don't announce via EIP-6963 yet.
-    const eth = window.ethereum; if (!eth) return [];
-    const provs = (eth.providers && eth.providers.length) ? eth.providers : [eth];
-    return provs.map((p, i) => ({
-      info: { name: p.isMetaMask ? "MetaMask" : p.isCoinbaseWallet ? "Coinbase Wallet" : p.isRabby ? "Rabby" : "Browser Wallet", icon: "", rdns: "legacy-" + i },
-      provider: p,
-    }));
-  }
-  function anyWallet() { return wallets6963.size > 0 || !!window.ethereum; }
-  // Resolve to the chosen EIP-1193 provider (or null if none / cancelled). Shows a
-  // picker only when more than one wallet is available.
-  async function pickWallet() {
-    const list = discoveredWallets();
-    if (list.length === 0) return null;
-    if (list.length === 1) return list[0].provider;
-    return new Promise((resolve) => {
-      const ov = document.createElement("div");
-      ov.className = "wallet-modal";
-      const sheet = document.createElement("div");
-      sheet.className = "wallet-sheet";
-      sheet.innerHTML = "<h3>Choose a wallet</h3>";
-      const ul = document.createElement("div"); ul.className = "wallet-list";
-      list.forEach((w) => {
-        const b = document.createElement("button");
-        b.className = "wallet-opt"; b.type = "button";
-        const ic = w.info.icon ? '<img src="' + w.info.icon + '" alt="" />' : '<span class="wallet-ic">👛</span>';
-        b.innerHTML = ic + "<span>" + escapeHtml(w.info.name || "Wallet") + "</span>";
-        b.onclick = () => { done(); resolve(w.provider); };
-        ul.appendChild(b);
-      });
-      const cancel = document.createElement("button");
-      cancel.className = "btn btn-ghost wallet-cancel"; cancel.type = "button"; cancel.textContent = "Cancel";
-      cancel.onclick = () => { done(); resolve(null); };
-      sheet.appendChild(ul); sheet.appendChild(cancel); ov.appendChild(sheet);
-      ov.addEventListener("click", (e) => { if (e.target === ov) { done(); resolve(null); } });
-      function done() { try { document.body.removeChild(ov); } catch {} }
-      document.body.appendChild(ov);
-    });
-  }
-  // Attach account/network change listeners to the chosen wallet (once).
-  function attachWalletListeners(prov) {
-    if (walletListenersAttached || !prov || !prov.on) return;
-    walletListenersAttached = true;
-    prov.on("accountsChanged", (accs) => {
-      if (connecting) return;
-      const next = (accs && accs[0]) || null;
-      if (account && next && eq(next, account)) return; // same account → ignore
-      location.reload();
-    });
-    prov.on("chainChanged", () => { if (!connecting) location.reload(); });
-  }
   let signer = null;
   let account = null;
   let myBestNetUsd = 0; // biggest single net win (for achievements)
@@ -439,15 +373,6 @@
   function tvPending(on) {
     const el = $("tv-pending"); if (el) el.classList.toggle("hidden", !on);
   }
-  // Mobile fallback: a real tappable link to open the dapp in MetaMask's browser
-  // (the most reliable way to trigger an iOS universal link).
-  function showMobileOpenLink(dl) {
-    const el = $("mobile-hint"); if (!el) return;
-    el.innerHTML = '📱 To bet on a phone, open this site in the <strong>MetaMask app</strong>: ' +
-      '<a href="' + dl + '" rel="noopener" style="color:#9fe6ff;font-weight:700;text-decoration:underline;">Open in MetaMask →</a>' +
-      '<br><span style="opacity:.8">No MetaMask app? Install it, then tap this again.</span>';
-    el.classList.remove("hidden");
-  }
   // Persistent warning when a ?contract= link isn't the registry's official game.
   function showUnofficialWarning() {
     const el = $("unofficial-banner"); if (!el) return;
@@ -470,44 +395,22 @@
 
   // ---------------------------------------------------------- connect
   async function connect() {
-    if (!anyWallet()) {
+    if (!window.ethereum) {
       const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
       if (isMobile) {
-        // Mobile Safari/Chrome inject no wallet. Open THIS page inside MetaMask's
-        // own in-app browser via its universal link (where window.ethereum exists).
-        // iOS honors universal links from a real anchor tap far more reliably than
-        // a JS location.href redirect, so click a synthesized <a> and also show a
-        // tappable fallback link in case the OS still swallows it.
+        // Mobile Safari/Chrome inject no wallet. Bounce into MetaMask's own
+        // in-app browser via its universal link — it reopens THIS page (with the
+        // contract params) inside MetaMask, where window.ethereum exists. If MM
+        // isn't installed, the link lands on MetaMask's install page.
         const target = location.host + location.pathname + location.search;
-        const dl = "https://metamask.app.link/dapp/" + target;
-        toast("Opening MetaMask… if nothing happens, tap the banner link.", "ok");
-        try {
-          const a = document.createElement("a");
-          a.href = dl; a.target = "_self"; a.rel = "noopener";
-          document.body.appendChild(a); a.click(); a.remove();
-        } catch (e) {}
-        setTimeout(() => { try { location.href = dl; } catch (e) {} }, 60);
-        showMobileOpenLink(dl);
+        toast("Opening in the MetaMask app…", "ok");
+        location.href = "https://metamask.app.link/dapp/" + target;
         return;
       }
       toast("MetaMask not found — install it to play.", "err");
       window.open("https://metamask.io/download/", "_blank");
       return;
     }
-    // Pick the wallet. On mobile you're inside ONE wallet's in-app browser, so
-    // connect to it directly (a desktop-style picker there is fragile and can
-    // silently no-op). On desktop, offer the EIP-6963 multi-wallet picker.
-    const isMobileUA = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
-    let chosen;
-    if (isMobileUA) {
-      const list = discoveredWallets();
-      chosen = window.ethereum || (list[0] && list[0].provider) || null;
-    } else {
-      chosen = await pickWallet();
-    }
-    if (!chosen) return; // no wallet, or the user dismissed the picker
-    injected = chosen;
-    attachWalletListeners(injected);
     if (window.Chiptune) window.Chiptune.start(), syncSoundBtn();
     // Mark the whole connect as in-progress so the accountsChanged/chainChanged
     // listeners don't reload the page on the *initial* grant or network switch
@@ -518,7 +421,7 @@
     try { if (read) read.removeAllListeners(); } catch {}
     try { if (provider && provider.destroy) provider.destroy(); } catch {}
     try {
-      provider = new E.BrowserProvider(injected, "any");
+      provider = new E.BrowserProvider(window.ethereum, "any");
       provider.pollingInterval = 2000; // tighter polling for events on injected providers
       await provider.send("eth_requestAccounts", []);
       await ensureNetwork();
@@ -571,15 +474,15 @@
     const target = NETWORKS[want];
     if (!target) { chainOK = false; return; }
     try {
-      await (injected || window.ethereum).request({ method: "wallet_switchEthereumChain", params: [{ chainId: target.chainId }] });
+      await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: target.chainId }] });
     } catch (e) {
       if (e.code === 4902 || (e.data && e.data.originalError && e.data.originalError.code === 4902)) {
-        await (injected || window.ethereum).request({ method: "wallet_addEthereumChain", params: [target] });
+        await window.ethereum.request({ method: "wallet_addEthereumChain", params: [target] });
       } else {
         throw e;
       }
     }
-    provider = new E.BrowserProvider(injected, "any");
+    provider = new E.BrowserProvider(window.ethereum, "any");
     provider.pollingInterval = 2000;
     const net2 = await provider.getNetwork();
     chainOK = Number(net2.chainId) === want;
@@ -778,13 +681,13 @@
         // Never deploy on mainnet — move them to the Sepolia test network.
         toast("Switching MetaMask to Sepolia…");
         try {
-          await (injected || window.ethereum).request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0xaa36a7" }] });
+          await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0xaa36a7" }] });
         } catch (e) {
           if (e.code === 4902) {
-            await (injected || window.ethereum).request({ method: "wallet_addEthereumChain", params: [NETWORKS[11155111]] });
+            await window.ethereum.request({ method: "wallet_addEthereumChain", params: [NETWORKS[11155111]] });
           } else { btn.disabled = false; return txErr(e); }
         }
-        provider = new E.BrowserProvider(injected, "any");
+        provider = new E.BrowserProvider(window.ethereum, "any");
         provider.pollingInterval = 2000;
         signer = await provider.getSigner();
         net = await provider.getNetwork();
@@ -1007,7 +910,7 @@
     // MetaMask has no true "log out" from the dApp side; revoke the permission
     // (newer MetaMask) and reload so the page returns to the Connect state.
     try {
-      await (injected || window.ethereum)?.request?.({ method: "wallet_revokePermissions", params: [{ eth_accounts: {} }] });
+      await window.ethereum?.request?.({ method: "wallet_revokePermissions", params: [{ eth_accounts: {} }] });
     } catch {}
     try { ws && ws.close(); } catch {}
     location.reload();
@@ -2841,9 +2744,17 @@
       syncSoundBtn();
     };
 
-    // Account/network change listeners are attached to the wallet the user picks
-    // (EIP-6963) inside connect() via attachWalletListeners — not to window.ethereum
-    // here, since the chosen wallet may not be the one that grabbed the global.
+    if (window.ethereum) {
+      // Don't reload during the initial connect (that caused the "click twice"
+      // bug). Only reload on a *real* account/network change after connecting.
+      window.ethereum.on?.("accountsChanged", (accs) => {
+        if (connecting) return;
+        const next = (accs && accs[0]) || null;
+        if (account && next && eq(next, account)) return; // same account → ignore
+        location.reload();
+      });
+      window.ethereum.on?.("chainChanged", () => { if (!connecting) location.reload(); });
+    }
     // learn our public share host (if the server was started with PUBLIC_HOST)
     fetch("/api/info").then((r) => r.json()).then((d) => { if (d.publicHost) window.__PUBLIC_HOST = d.publicHost; }).catch(() => {});
 
@@ -2971,11 +2882,9 @@
     fetchEthUsd().then(() => { setupSliders(); if (read && chainOK) { refreshBalances(); refreshStats(); refreshHouse(); refreshRooms(); } });
     setInterval(() => { if (document.hidden) return; fetchEthUsd().then(() => { setupSliders(); if (read && chainOK) { refreshBalances(); refreshStats(); refreshHouse(); refreshRooms(); } }); }, 60000);
     $("connect-btn").classList.add("cta-pulse");
-    // On a phone with no injected wallet, show a real tappable link to open this
-    // site in the MetaMask app right away (a JS redirect is unreliable on iOS).
+    // On a phone with no injected wallet, nudge users into the MetaMask browser.
     if (/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) && !window.ethereum) {
-      const target = location.host + location.pathname + location.search;
-      showMobileOpenLink("https://metamask.app.link/dapp/" + target);
+      $("mobile-hint").classList.remove("hidden");
     }
     const remoteHost = location.hostname && !/^(localhost|127\.|0\.0\.0\.0|\[?::1\]?)/.test(location.hostname);
     if (deployment.address && deployment.chainId === 31337 && remoteHost) {
