@@ -271,22 +271,46 @@
       if (v) v.addEventListener("ended", () => this._endPromo());
       return this._promoEl;
     },
-    // withSound: false for the on-load autoplay (browsers block unmuted cold
-    // autoplay); true for a Replay tap (a gesture, so sound is allowed).
-    playPromo(withSound) {
+    // Always TRY to play with sound. A Replay tap is a gesture so it just works;
+    // on cold load browsers block unmuted autoplay, so we fall back to muted
+    // playback and unmute the moment the user first touches the page.
+    playPromo() {
       const v = this._initPromo(); if (!v) return;
+      clearTimeout(this._promoFadeT); // don't let a pending fade re-hide a fresh play
       this._promoPlaying = true;
       this._setStatic(0.02);
       v.classList.remove("hidden", "promo-fade");
       try { v.currentTime = 0; } catch (e) {}
-      v.muted = !withSound;
+      v.muted = false; v.volume = 1;
       const p = v.play();
-      if (p && p.catch) p.catch(() => { // unmuted refused → retry muted, else bail to the game
-        v.muted = true; const p2 = v.play(); if (p2 && p2.catch) p2.catch(() => this._endPromo());
+      if (p && p.catch) p.catch(() => { // unmuted refused → play muted + unmute on first tap
+        v.muted = true;
+        const p2 = v.play(); if (p2 && p2.catch) p2.catch(() => this._endPromo());
+        this._armUnmute();
       });
+    },
+    // One-shot: the first real user gesture unmutes the still-playing promo.
+    _armUnmute() {
+      if (this._unmuteArmed) return;
+      this._unmuteArmed = true;
+      const evs = ["pointerdown", "touchstart", "keydown"];
+      const un = () => {
+        this._unmuteArmed = false;
+        evs.forEach((e) => window.removeEventListener(e, un, true));
+        const v = this._promoEl;
+        if (v && this._promoPlaying) { v.muted = false; v.volume = 1; const p = v.play(); if (p && p.catch) p.catch(() => {}); }
+      };
+      this._unmuteFn = un;
+      evs.forEach((e) => window.addEventListener(e, un, true));
+    },
+    _disarmUnmute() {
+      if (!this._unmuteArmed) return;
+      this._unmuteArmed = false;
+      ["pointerdown", "touchstart", "keydown"].forEach((e) => window.removeEventListener(e, this._unmuteFn, true));
     },
     _endPromo() {
       const v = this._promoEl;
+      this._disarmUnmute();
       if (!v || !this._promoPlaying) { if (v) v.classList.add("hidden"); return; }
       this._promoPlaying = false;
       // fade the reel to black, then reveal the resting game screen underneath

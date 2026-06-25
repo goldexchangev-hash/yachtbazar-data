@@ -86,6 +86,12 @@
     if (this.els.balance) this.els.balance.textContent = this._usd(this.balance);
     if (this.els.balanceEth) this.els.balanceEth.textContent = "≈ " + this._eth(this.balance);
     if (this.els.bet) this.els.bet.value = this.bet;
+    // Bet slider: span $10 → the whole balance, so MAX = all-in.
+    if (this.els.betSlider) {
+      this.els.betSlider.max = String(Math.max(MIN_BET, Math.round(this.balance) || MIN_BET));
+      this.els.betSlider.value = String(Math.min(this.bet, +this.els.betSlider.max));
+    }
+    if (this.els.betVal) this.els.betVal.textContent = this._usd(this.bet);
     if (this.els.betEth) this.els.betEth.textContent = "≈ " + this._eth(this.bet);
     if (this.els.pfHash) this.els.pfHash.textContent = this.commitHash.slice(0, 16) + "…";
     if (this.els.pfNonce) this.els.pfNonce.textContent = String(this.nonce);
@@ -128,6 +134,7 @@
     if (els.betDouble) els.betDouble.addEventListener("click", () => setBet(this.bet * 2));
     if (els.betMax) els.betMax.addEventListener("click", () => setBet(this.balance));
     if (els.bet) els.bet.addEventListener("change", () => setBet(parseFloat(els.bet.value) || MIN_BET));
+    if (els.betSlider) els.betSlider.addEventListener("input", () => setBet(parseFloat(els.betSlider.value) || MIN_BET));
     if (els.addCredits) els.addCredits.addEventListener("click", () => { this.balance += 1000; this._saveBalance(); this._renderHud(); this._msg("+$1,000.00 added"); });
 
     // risk / auto

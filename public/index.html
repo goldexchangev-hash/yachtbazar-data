@@ -27,7 +27,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=962" />
+    <link rel="stylesheet" href="styles.css?v=963" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -42,7 +42,7 @@
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.62</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.63</span>
       </div>
       <div class="topbar-right">
         <div class="music-wrap">
@@ -326,7 +326,7 @@
 
                 <!-- Promo intro reel — autoplays once (muted) on first load, then fades
                      to black and hands off to the game. Replay button under the TV. -->
-                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=962"></video>
+                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=963"></video>
 
                 <!-- Shown while a bet tx is being signed + mined (esp. slow on mobile) -->
                 <div id="tv-pending" class="tv-pending hidden">⏳ SENDING BET…<br />confirm in your wallet, then hold tight</div>
@@ -632,16 +632,12 @@
 
           <p class="muted td-intro pr-intro"><strong>Hold</strong> to pump, <strong>release</strong> to bank before it pops. Reach <strong>1.20×</strong> to win · provably fair.</p>
 
-          <label class="field-label">Bet <span class="muted">— USD, $10 minimum</span></label>
-          <div class="pr-bet-row">
-            <div class="pr-stepper">
-              <button type="button" id="pr-bet-down" aria-label="Lower bet">−</button>
-              <input id="pr-bet" type="number" min="10" step="10" value="10" inputmode="numeric" />
-              <button type="button" id="pr-bet-up" aria-label="Raise bet">+</button>
-            </div>
-            <span class="eth-sub" id="pr-bet-eth"></span>
+          <label class="field-label">Bet <span class="muted">— USD, $10 min</span></label>
+          <div class="slider-wrap">
+            <input id="pr-bet-slider" class="slider" type="range" min="10" max="500" step="5" value="10" />
+            <div class="slider-val"><strong id="pr-bet-val">$10</strong><span class="eth-sub" id="pr-bet-eth"></span></div>
           </div>
-          <div class="quickbet-row">
+          <div class="quickbet-row pr-quickbet">
             <button type="button" class="qbet" id="pr-bet-half">½</button>
             <button type="button" class="qbet" id="pr-bet-double">2×</button>
             <button type="button" class="qbet" id="pr-bet-max">Max</button>
@@ -1090,17 +1086,17 @@
     </aside>
 
     <script defer src="vendor/ethers.umd.min.js"></script>
-    <script defer src="config.js?v=962"></script>
-    <script defer src="contract.js?v=962"></script>
-    <script defer src="chiptune.js?v=962"></script>
-    <script defer src="scenes.js?v=962"></script>
-    <script defer src="tv.js?v=962"></script>
-    <script defer src="poker-engine.js?v=962"></script>
-    <script defer src="poker-bots.js?v=962"></script>
-    <script defer src="poker-ui.js?v=962"></script>
-    <script defer src="crash-engine.js?v=962"></script>
-    <script defer src="crash-render.js?v=962"></script>
-    <script defer src="profile.js?v=962"></script>
-    <script defer src="app.js?v=962"></script>
+    <script defer src="config.js?v=963"></script>
+    <script defer src="contract.js?v=963"></script>
+    <script defer src="chiptune.js?v=963"></script>
+    <script defer src="scenes.js?v=963"></script>
+    <script defer src="tv.js?v=963"></script>
+    <script defer src="poker-engine.js?v=963"></script>
+    <script defer src="poker-bots.js?v=963"></script>
+    <script defer src="poker-ui.js?v=963"></script>
+    <script defer src="crash-engine.js?v=963"></script>
+    <script defer src="crash-render.js?v=963"></script>
+    <script defer src="profile.js?v=963"></script>
+    <script defer src="app.js?v=963"></script>
   </body>
 </html>

@@ -1868,13 +1868,20 @@
       document.body.appendChild(s);
     });
   }
-  // PixiJS is shared by Slots and Balloon Pop — load it at most once.
-  function loadPixiOnce() { return window.PIXI ? Promise.resolve() : loadScriptOnce("vendor/pixi.min.js?v=962"); }
+  // PixiJS is shared by Slots and Balloon Pop — load it at most once, even if
+  // both channels request it before the script's onload fires (in-flight guard).
+  let pixiLoadPromise = null;
+  function loadPixiOnce() {
+    if (window.PIXI) return Promise.resolve();
+    if (pixiLoadPromise) return pixiLoadPromise;
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=963").catch((e) => { pixiLoadPromise = null; throw e; });
+    return pixiLoadPromise;
+  }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=962"))
+      .then(() => loadScriptOnce("slots.js?v=963"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -1884,9 +1891,9 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=962"))
-      .then(() => loadScriptOnce("pressure-render.js?v=962"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=962"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=963"))
+      .then(() => loadScriptOnce("pressure-render.js?v=963"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=963"))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -1905,8 +1912,7 @@
       onBalance: (b) => { demoUsd = Math.round(b * 100) / 100; demoSave(); demoPaint(); },
       els: {
         balance: el("pr-balance"),
-        bet: el("pr-bet"), betEth: el("pr-bet-eth"),
-        betUp: el("pr-bet-up"), betDown: el("pr-bet-down"),
+        betSlider: el("pr-bet-slider"), betVal: el("pr-bet-val"), betEth: el("pr-bet-eth"),
         betHalf: el("pr-bet-half"), betDouble: el("pr-bet-double"), betMax: el("pr-bet-max"),
         risk: el("pr-risk"),
         autoSlider: el("pr-auto-slider"), autoVal: el("pr-auto-val"), autoToggle: el("pr-auto-toggle"),
@@ -2035,7 +2041,9 @@
     // Balloon Pop is play-money only — once a real wallet connects the whole site
     // is real money, so hide it and bounce off the channel if they're on it.
     { const pc = $("ch-pressure"); if (pc) pc.hidden = true; }
-    if (pressureGame) { pressureGame.setEnabled(false); pressureGame.setActive(false); }
+    // setActive(false) first so any held round is released/refunded before
+    // setEnabled(false) locks the game (which zeroes `pressing`).
+    if (pressureGame) { pressureGame.setActive(false); pressureGame.setEnabled(false); }
     if (currentGame === "pressure") switchGame("flip");
   }
   function demoReset() {
@@ -2253,6 +2261,9 @@
     if (window.TV) TV._activeChannel = GAME_CHANNEL[saved] || 8;
     if (saved === "crash" && window.TV && TV._crashIdle) { try { TV._crashIdle(); } catch (e) {} }
     if (saved === "slots") { ensureSlotsLoaded().then(() => { if (window.TV && TV._slotsIdle) TV._slotsIdle(); }).catch(() => {}); }
+    // Balloon Pop needs its engine built + activated on reload too (enterDemo,
+    // which runs just after, flips it to enabled once it exists).
+    if (saved === "pressure") ensurePressureReady();
   }
 
   // My open tables: show bank + idle countdown, auto-close (refund) when stale.
@@ -3295,8 +3306,8 @@
 
     // ── Promo intro reel: autoplays (muted) ONCE on load, then fades to the game.
     //    The only control is the Replay button under the TV (plays back WITH sound). ──
-    if (window.TV && TV.playPromo) { try { TV.playPromo(false); } catch (e) {} }
-    { const r = $("promo-replay"); if (r) r.onclick = (e) => { e.stopPropagation(); if (window.TV && TV.playPromo) TV.playPromo(true); }; }
+    if (window.TV && TV.playPromo) { try { TV.playPromo(); } catch (e) {} }
+    { const r = $("promo-replay"); if (r) r.onclick = (e) => { e.stopPropagation(); if (window.TV && TV.playPromo) TV.playPromo(); }; }
 
     // ── Mobile bottom tab bar ──
     { const b = $("bn-games"); if (b) b.onclick = (e) => { e.stopPropagation(); closeChat(); document.body.classList.toggle("rail-open"); }; }

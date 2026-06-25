@@ -1701,7 +1701,9 @@ body.connected .wallet-cluster #disconnect-btn { border-radius: var(--r-full); p
 /* ════════ Promo intro video on the TV ════════ */
 .promo-video {
   position: absolute; inset: 0; width: 100%; height: 100%;
-  object-fit: cover; background: #000; z-index: 45;
+  /* fill the screen but keep her HEAD: anchor the top so any overflow crops the
+     floor at the bottom, never the top of the frame. */
+  object-fit: cover; object-position: center top; background: #000; z-index: 45;
   opacity: 1; transition: opacity .55s ease;
 }
 .promo-video.hidden { display: none; }
@@ -1766,12 +1768,9 @@ body.demo-mode #bankroll { display: none !important; }
 .pressure-stage canvas { width: 100% !important; height: 100% !important; display: block; }
 
 /* Bet panel controls */
-.pressure-panel .pr-bet-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.pr-stepper { display: inline-flex; align-items: stretch; background: var(--s-surface, #213743); border: 1px solid var(--s-border, #2f4553); border-radius: var(--r-md, 8px); overflow: hidden; }
-.pr-stepper button { font-family: var(--display); font-size: 16px; color: #fff; background: rgba(255,255,255,.06); border: none; width: 40px; cursor: pointer; }
-.pr-stepper button:hover { background: rgba(255,255,255,.12); }
-.pr-stepper input { width: 84px; text-align: center; border: none; background: transparent; color: var(--s-green, #00e701); font-family: var(--display); font-size: 14px; -moz-appearance: textfield; }
-.pr-stepper input::-webkit-outer-spin-button, .pr-stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+/* Compact ½ / 2× / Max quick-bet chips (smaller + easier than the old buttons) */
+.pr-quickbet { gap: 6px; }
+.pr-quickbet .qbet { padding: 7px 6px; font-size: 12px; font-weight: 700; border-radius: var(--r-sm, 4px); }
 .pr-select { background: var(--s-surface, #213743); border: 1px solid var(--s-border, #2f4553); border-radius: var(--r-md, 8px); color: var(--s-text, #fff); font-family: var(--font); font-size: 14px; padding: 8px 10px; outline: none; }
 .pressure-panel .pr-auto-toggle { margin-left: auto; }
 .pressure-panel .pr-auto-toggle.active { background: linear-gradient(135deg, rgba(0,231,1,.22), rgba(0,231,1,.10)); border-color: var(--s-green, #00e701); color: #fff; }
