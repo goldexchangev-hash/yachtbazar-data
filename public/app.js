@@ -53,9 +53,6 @@
   let connecting = false; // true while connect() runs, to suppress the auto-reload
   let contract = null; // connected to signer
   let twoDiceSupported = null; // null=unknown, true/false — does the active contract have Dice #2?
-  // Off-registry (unofficial) contract detection — set when a ?contract= link
-  // points somewhere other than the registry's official activeGame().
-  let offRegistryContract = false, unofficialConfirmed = false, officialAddress = null;
   let read = null; // connected to provider
   let maxBet = 0n;
   let gameWei = 0n; // cached in-game (deposited) balance, refreshed by refreshBalances
@@ -211,19 +208,10 @@
       return fallback;
     }
   }
-  // Paint the filled portion of a range slider up to the thumb (sets --p, read by
-  // the .slider gradient). Cheap enough to run on every input tick.
-  function paintFill(id) {
-    const s = (typeof id === "string") ? $(id) : id; if (!s) return;
-    const mn = +s.min || 0, mx = +s.max || 0;
-    const pct = mx > mn ? ((+s.value - mn) / (mx - mn)) * 100 : 50;
-    s.style.setProperty("--p", Math.max(0, Math.min(100, pct)).toFixed(2) + "%");
-  }
   function setSliderUsd(id) {
     const v = +$(id).value;
     const valEl = $(id + "-val"); if (valEl) valEl.textContent = usd(v);
     const ethEl = $(id + "-eth"); if (ethEl) ethEl.textContent = "(approx ETH: " + (v / ethUsd).toFixed(4) + ")";
-    paintFill(id);
     if (id === "bet-input") updateCreateBreakdown();
   }
 
@@ -372,30 +360,6 @@
   function tvPending(on) {
     const el = $("tv-pending"); if (el) el.classList.toggle("hidden", !on);
   }
-  // Mobile: a REAL tappable link opens this site in MetaMask's in-app browser.
-  // (iOS only honors universal links from a genuine anchor tap, not a JS redirect.)
-  function showMobileOpenLink(dl) {
-    const el = $("mobile-hint"); if (!el) return;
-    el.innerHTML =
-      '📱 To bet on a phone, open this site in the <strong>MetaMask app</strong>:' +
-      '<a href="' + dl + '" rel="noopener" ' +
-      'style="display:block;margin:10px auto 4px;max-width:280px;padding:14px;border-radius:12px;' +
-      'background:linear-gradient(90deg,#f6851b,#e2761b);color:#fff;font-weight:700;font-size:15px;' +
-      'text-decoration:none;box-shadow:0 0 18px rgba(246,133,27,.5);">🦊 Open in MetaMask →</a>' +
-      '<span style="font-size:11px;opacity:.75">No MetaMask app yet? Install it, then tap again.</span>';
-    el.classList.remove("hidden");
-    try { el.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) {}
-  }
-  // Persistent warning when a ?contract= link isn't the registry's official game.
-  function showUnofficialWarning() {
-    const el = $("unofficial-banner"); if (!el) return;
-    const officialUrl = location.origin + location.pathname; // strips ?contract=
-    el.innerHTML = "⚠️ <strong>Unverified contract.</strong> This link points at <code>" + short(deployment.address) +
-      "</code>, which is <strong>not</strong> the official game" + (officialAddress ? " (<code>" + short(officialAddress) + "</code>)" : "") +
-      ". A malicious contract can take any funds you deposit or bet — only continue if you trust whoever sent this link. " +
-      "<a href=\"" + officialUrl + "\">Go to the official site →</a>";
-    el.classList.remove("hidden");
-  }
 
   const NETWORKS = {
     31337: { chainId: "0x7a69", chainName: "Hardhat Local", rpcUrls: ["http://127.0.0.1:8545"], nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 } },
@@ -411,18 +375,20 @@
     if (!window.ethereum) {
       const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
       if (isMobile) {
-        // Mobile Safari/Chrome inject no wallet, and iOS ignores a JS redirect to
-        // MetaMask's universal link — it only opens the app from a REAL link tap.
-        // So surface a tappable "Open in MetaMask" button and let the user tap it.
+        // Mobile Safari/Chrome inject no wallet. Bounce into MetaMask's own
+        // in-app browser via its universal link — it reopens THIS page (with the
+        // contract params) inside MetaMask, where window.ethereum exists. If MM
+        // isn't installed, the link lands on MetaMask's install page.
         const target = location.host + location.pathname + location.search;
-        showMobileOpenLink("https://metamask.app.link/dapp/" + target);
-        toast("Tap “🦊 Open in MetaMask” to continue.", "ok");
+        toast("Opening in the MetaMask app…", "ok");
+        location.href = "https://metamask.app.link/dapp/" + target;
         return;
       }
       toast("MetaMask not found — install it to play.", "err");
       window.open("https://metamask.io/download/", "_blank");
       return;
     }
+    // (music only starts when the user taps the Music button — never on connect)
     // Mark the whole connect as in-progress so the accountsChanged/chainChanged
     // listeners don't reload the page on the *initial* grant or network switch
     // (that reload is what made people click Connect twice).
@@ -434,9 +400,6 @@
     try {
       provider = new E.BrowserProvider(window.ethereum, "any");
       provider.pollingInterval = 2000; // tighter polling for events on injected providers
-      // Request accounts FIRST, while the tap's user-gesture is fresh — starting
-      // audio (or anything else) before this can swallow the gesture on iOS and
-      // stop the wallet prompt from surfacing.
       await provider.send("eth_requestAccounts", []);
       await ensureNetwork();
       signer = await provider.getSigner();
@@ -819,17 +782,11 @@
   async function raiseMaxBet() {
     try {
       toast("Raising the max bet… confirm in MetaMask");
-      // Cover the $500 UI cap with ~10% headroom for ETH-price drift, but never
-      // below 1 ETH. Then report the ACTUAL resulting USD cap (not a fixed "$500").
-      let newMax = usdToWei(HARD_MAX_USD) * 11n / 10n;
-      const oneEth = E.parseEther("1");
-      if (newMax < oneEth) newMax = oneEth;
-      const tx = await contract.setMaxBet(newMax, { gasLimit: 80000 });
+      const tx = await contract.setMaxBet(E.parseEther("1"), { gasLimit: 80000 });
       await tx.wait();
       maxBet = await read.maxBet();
       setupSliders(); refreshHouse();
-      const capNow = Math.min(HARD_MAX_USD, Math.floor(weiToUsd(maxBet)));
-      toast("Done — bets up to $" + capNow + " are allowed now.", "ok");
+      toast("Done — bets up to $500 are allowed now.", "ok");
     } catch (e) { txErr(e); }
   }
   async function fundHouseTool() {
@@ -1179,15 +1136,6 @@
       return false;
     }
     if (!chainOK) { toast("Wrong network — switch to " + netName(deployment.chainId) + " and try again.", "err"); return false; }
-    // Hard stop before the first signing action on an unofficial (off-registry)
-    // contract from a share link — phishing protection.
-    if (offRegistryContract && !unofficialConfirmed) {
-      const ok = confirm("⚠️ UNVERIFIED CONTRACT\n\nThis link points at " + short(deployment.address) +
-        ", which is NOT the official game contract" + (officialAddress ? " (" + short(officialAddress) + ")" : "") +
-        ".\n\nA malicious contract can take any funds you deposit or bet. Only continue if you fully trust whoever sent you this link.\n\nContinue anyway?");
-      if (!ok) { toast("Cancelled — you're on an unofficial contract.", "err"); return false; }
-      unofficialConfirmed = true;
-    }
     return true;
   }
 
@@ -1319,7 +1267,6 @@
       activeRoomId = predicted.toString();
       // Fixed gas skips the eth_estimateGas round-trip — one less slow hop to the
       // wallet popup on mobile (700k is plenty for playHouse).
-      bet = await clampBetToOnChain(bet);
       const tx = await contract.playHouse(bet, wantsHeads, { gasLimit: 700000n });
       const rcpt = await tx.wait();
       tvPending(false);
@@ -1444,7 +1391,6 @@
       let predicted;
       try { predicted = await contract.playHostRoom.staticCall(id, bet, wantsHeads); }
       catch (e) { tvPending(false); unlockReveal(); cancelBuildup(); TV.idle("Deposit ETH, then create or join a room"); return txErr(e); }
-      bet = await clampBetToOnChain(bet);
       const tx = await contract.playHostRoom(id, bet, wantsHeads, { gasLimit: 500000n });
       const rcpt = await tx.wait();
       tvPending(false);
@@ -1489,23 +1435,10 @@
     try { if (read.maxPayoutBpsOfBankroll) dicePayoutCapBps = BigInt(await read.maxPayoutBpsOfBankroll()); } catch { dicePayoutCapBps = 100n; }
   }
   function diceMaxProfitWei() { return diceHouseWei > 0n ? (diceHouseWei * dicePayoutCapBps) / 10000n : 0n; }
-  // Re-read the on-chain balance + maxBet right before sending a bet and clamp to
-  // them, so a stake computed from a cached value or a USD→wei rounding crumb
-  // can't revert (esp. the "Max" button). Silent on tiny clamps; the contract
-  // still rejects a genuinely-zero balance with a friendly message.
-  async function clampBetToOnChain(bet) {
-    try {
-      const [bal, mb] = await Promise.all([read.balances(account), read.maxBet()]);
-      if (mb > 0n && bet > mb) bet = mb;
-      if (bet > bal) bet = bal;
-    } catch {}
-    return bet;
-  }
 
   // Live odds bar + readouts as the player drags. Target T in [100,9899] (1%–99%).
   function diceReadouts() {
     const tEl = $("dice-target"); if (!tEl) return;
-    paintFill(tEl);
     const T = Math.min(9899, Math.max(100, (+tEl.value) | 0));
     const winOutcomes = diceMode === "under" ? T : (9999 - T);
     const chance = winOutcomes / 100;        // %
@@ -1524,13 +1457,11 @@
     if (diceMode === "under") { $("ob-win").style.cssText = "left:0;width:" + pct + "%"; $("ob-lose").style.cssText = "left:" + pct + "%;width:" + (100 - pct) + "%"; }
     else { $("ob-lose").style.cssText = "left:0;width:" + pct + "%"; $("ob-win").style.cssText = "left:" + pct + "%;width:" + (100 - pct) + "%"; }
     $("dice-oddsbar").dataset.mode = diceMode;
-    // affordability + odds-range guards (contract allows win chance 1%–97%)
+    // affordability guards
     let hint = "";
     let stakeWei = 0n; try { stakeWei = usdToWei(stake); } catch {}
     let profitWei = 0n; try { profitWei = usdToWei(profit); } catch {}
-    if (winOutcomes > 9700) hint = "That's above the 97% max win chance — pick longer odds (lower payout bets aren't offered).";
-    else if (winOutcomes < 100) hint = "That's below the 1% min win chance — pick a safer target.";
-    else if (gameWei > 0n && stakeWei > gameWei) hint = "Not enough in-game balance — deposit first 👇";
+    if (gameWei > 0n && stakeWei > gameWei) hint = "Not enough in-game balance — deposit first 👇";
     else if (maxBet > 0n && stakeWei > maxBet) hint = "Max bet is " + usdOf(maxBet);
     else if (diceHouseWei > 0n && profitWei > diceMaxProfitWei()) hint = (dicePayoutCapBps >= 10000n ? "House can't cover that win yet — fund the house or lower the stake (max win " + usdOf(diceMaxProfitWei()) + ")" : "Max win per roll is " + usdOf(diceMaxProfitWei()) + " (" + (Number(dicePayoutCapBps) / 100) + "% of the house bankroll) — lower the stake or multiplier");
     const btn = $("dice-roll-btn");
@@ -1546,8 +1477,6 @@
     if (bet > maxBet) return toast("Max bet is " + usdOf(maxBet), "err");
     const target = (+$("dice-target").value) | 0;
     const rollOver = diceMode === "over";
-    const winOutcomes = rollOver ? (9999 - target) : target;
-    if (winOutcomes > 9700 || winOutcomes < 100) return toast("Pick a win chance between 1% and 97%.", "err");
     rememberBet(stakeUsd);
     doPlayDice(bet, target, rollOver);
   }
@@ -1558,7 +1487,6 @@
     tvPending(true);
     toast("Sending your roll… confirm in your wallet", "ok");
     try {
-      bet = await clampBetToOnChain(bet);
       const tx = await contract.playDice(bet, target, rollOver, { gasLimit: 700000n });
       const rcpt = await tx.wait();
       tvPending(false);
@@ -1599,7 +1527,6 @@
   }
   function twoDiceReadouts() {
     const tEl = $("td-target"); if (!tEl) return;
-    paintFill(tEl);
     const T = Math.min(12, Math.max(2, (+tEl.value) | 0));
     const over = tdMode === "over";
     const combos = tdWinCombos(T, over);
@@ -1677,7 +1604,6 @@
     tvPending(true);
     toast("Throwing the dice… confirm in your wallet", "ok");
     try {
-      bet = await clampBetToOnChain(bet);
       const tx = await contract.playTwoDice(bet, target, over, { gasLimit: 700000n });
       const rcpt = await tx.wait();
       tvPending(false);
@@ -2649,10 +2575,7 @@
       const roomUsd = room ? weiToUsd(room.betAmount) : 0;
       const bet = room && u <= roomUsd + 4 ? room.betAmount : usdToWei(u);
       updateBetModalAmount(bet);
-      paintFill(e.target);
     };
-    // Initial fill paint for every slider (covers any not routed via setSliderUsd).
-    document.querySelectorAll(".slider").forEach((s) => paintFill(s));
     // Bet confirmation modal
     $("bet-accept").onclick = acceptBet;
     $("bet-close").onclick = closeBetModal;
@@ -2778,22 +2701,10 @@
     if (registryResolved) return;
     registryResolved = true;
     try {
-      if (!cfg.registry || !E.isAddress(cfg.registry)) return;
+      if (!cfg.registry || !E.isAddress(cfg.registry) || params.get("contract")) return;
       const reg = new E.Contract(cfg.registry, ["function activeGame() view returns (address)"], prov);
       const live = await reg.activeGame();
-      if (live && E.isAddress(live) && !/^0x0+$/i.test(live)) {
-        officialAddress = live;
-        if (params.get("contract")) {
-          // A share link is overriding the registry — flag it if it's NOT the
-          // official contract so the user gets a phishing warning before signing.
-          if (deployment.address && live.toLowerCase() !== deployment.address.toLowerCase()) {
-            offRegistryContract = true;
-            showUnofficialWarning();
-          }
-        } else {
-          deployment.address = live; // no override → follow the registry
-        }
-      }
+      if (live && E.isAddress(live) && !/^0x0+$/i.test(live)) deployment.address = live;
     } catch (e) { /* keep config.address fallback */ }
   }
 
@@ -2836,11 +2747,9 @@
     fetchEthUsd().then(() => { setupSliders(); if (read && chainOK) { refreshBalances(); refreshStats(); refreshHouse(); refreshRooms(); } });
     setInterval(() => { if (document.hidden) return; fetchEthUsd().then(() => { setupSliders(); if (read && chainOK) { refreshBalances(); refreshStats(); refreshHouse(); refreshRooms(); } }); }, 60000);
     $("connect-btn").classList.add("cta-pulse");
-    // On a phone with no injected wallet, surface a real tappable "Open in
-    // MetaMask" link up front (a JS redirect is ignored by iOS Safari).
+    // On a phone with no injected wallet, nudge users into the MetaMask browser.
     if (/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) && !window.ethereum) {
-      const target = location.host + location.pathname + location.search;
-      showMobileOpenLink("https://metamask.app.link/dapp/" + target);
+      $("mobile-hint").classList.remove("hidden");
     }
     const remoteHost = location.hostname && !/^(localhost|127\.|0\.0\.0\.0|\[?::1\]?)/.test(location.hostname);
     if (deployment.address && deployment.chainId === 31337 && remoteHost) {

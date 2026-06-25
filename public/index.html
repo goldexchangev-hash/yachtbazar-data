@@ -27,7 +27,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=939" />
+    <link rel="stylesheet" href="styles.css?v=940" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -41,7 +41,7 @@
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.39</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.40</span>
       </div>
       <div class="topbar-right">
         <button id="sound-btn" class="btn btn-ghost" title="Play / silence background music">🔇 Music</button>
@@ -63,9 +63,6 @@
     <div id="mobile-hint" class="mobile-hint hidden">
       📱 On a phone? Betting only works inside the <strong>MetaMask app's browser</strong>. Tap <strong>Connect Wallet</strong> to open it there — or in MetaMask, use 🌐 Browser and visit this site.
     </div>
-
-    <!-- Shown when a ?contract= link points at a non-official (unverified) contract -->
-    <div id="unofficial-banner" class="unofficial-banner hidden"></div>
 
     <!-- Shown when the connected wallet IS the house (treasury) -->
     <div id="house-wallet-banner" class="house-banner hidden">
@@ -133,7 +130,6 @@
           </span>
           <span class="gc-name">Poker</span>
         </button>
-
 
       </div>
     </section>
@@ -288,7 +284,7 @@
           </div>
           <div class="bankroll-actions">
             <div class="slider-wrap deposit-slider">
-              <input id="deposit-input" class="slider" type="range" min="10" max="500" step="5" value="50"  aria-label="Deposit amount (USD)"/>
+              <input id="deposit-input" class="slider" type="range" min="10" max="500" step="5" value="50" />
               <div class="slider-val"><strong id="deposit-input-val">$50</strong><span class="eth-sub" id="deposit-input-eth"></span></div>
               <span class="muted deposit-max-hint" id="deposit-max-hint">Slide all the way to deposit your wallet max</span>
             </div>
@@ -307,7 +303,7 @@
           </div>
           <p class="muted ph-note">Drag to choose your stake. You're HEADS. 10% house fee.</p>
           <div class="slider-wrap">
-            <input id="house-bet" class="slider" type="range" min="10" max="500" step="5" value="25"  aria-label="Bet stake (USD)"/>
+            <input id="house-bet" class="slider" type="range" min="10" max="500" step="5" value="25" />
             <div class="slider-val"><strong id="house-bet-val">$25</strong><span class="eth-sub" id="house-bet-eth"></span></div>
           </div>
           <div class="quickbet-row" data-target="house-bet">
@@ -333,7 +329,7 @@
           </div>
           <p class="muted ph-note" id="pt-sub">Flip against this table — you're HEADS. The host keeps 10%.</p>
           <div class="slider-wrap">
-            <input id="table-bet" class="slider" type="range" min="10" max="500" step="5" value="25"  aria-label="Bet stake (USD)"/>
+            <input id="table-bet" class="slider" type="range" min="10" max="500" step="5" value="25" />
             <div class="slider-val"><strong id="table-bet-val">$25</strong><span class="eth-sub" id="table-bet-eth"></span></div>
           </div>
           <div class="quickbet-row" data-target="table-bet">
@@ -367,7 +363,7 @@
 
           <label class="field-label">Target <span class="muted" id="dice-mode-hint">— roll under to win</span></label>
           <div class="slider-wrap">
-            <input id="dice-target" class="slider slider-dice" type="range" min="100" max="9899" step="1" value="5000"  aria-label="Target number"/>
+            <input id="dice-target" class="slider slider-dice" type="range" min="100" max="9899" step="1" value="5000" />
             <div class="slider-val"><strong id="dice-target-val">50.00</strong></div>
           </div>
 
@@ -387,7 +383,7 @@
 
           <label class="field-label">Stake</label>
           <div class="slider-wrap">
-            <input id="dice-stake" class="slider" type="range" min="10" max="500" step="5" value="25"  aria-label="Bet stake (USD)"/>
+            <input id="dice-stake" class="slider" type="range" min="10" max="500" step="5" value="25" />
             <div class="slider-val"><strong id="dice-stake-val">$25</strong><span class="eth-sub" id="dice-stake-eth"></span></div>
           </div>
           <div class="quickbet-row" data-target="dice-stake">
@@ -411,7 +407,7 @@
 
           <label class="field-label">Target total <strong id="td-target-val">7</strong> <span class="muted" id="td-mode-hint">— roll under to win</span></label>
           <div class="td-slider-wrap">
-            <input id="td-target" class="slider slider-dice" type="range" min="2" max="12" step="1" value="7"  aria-label="Target total"/>
+            <input id="td-target" class="slider slider-dice" type="range" min="2" max="12" step="1" value="7" />
           </div>
           <div class="td-scale" id="td-scale" aria-hidden="true"><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span>12</span></div>
 
@@ -431,7 +427,7 @@
 
           <label class="field-label">Stake</label>
           <div class="slider-wrap">
-            <input id="td-stake" class="slider" type="range" min="10" max="500" step="5" value="25"  aria-label="Bet stake (USD)"/>
+            <input id="td-stake" class="slider" type="range" min="10" max="500" step="5" value="25" />
             <div class="slider-val"><strong id="td-stake-val">$25</strong><span class="eth-sub" id="td-stake-eth"></span></div>
           </div>
           <div class="quickbet-row" data-target="td-stake">
@@ -554,7 +550,7 @@
             <input id="room-name" class="input" type="text" maxlength="24" placeholder="High Rollers" />
             <label class="field-label">Stake each player puts in <span class="muted" id="maxbet-hint">· $10–$500</span></label>
             <div class="slider-wrap">
-              <input id="bet-input" class="slider" type="range" min="10" max="500" step="5" value="25"  aria-label="Bet amount (USD)"/>
+              <input id="bet-input" class="slider" type="range" min="10" max="500" step="5" value="25" />
               <div class="slider-val"><strong id="bet-input-val">$25</strong><span class="eth-sub" id="bet-input-eth"></span></div>
             </div>
             <p class="muted create-breakdown" id="create-breakdown"></p>
@@ -585,7 +581,7 @@
             <input id="host-table-name" class="input" type="text" maxlength="24" placeholder="My Casino" />
             <label class="field-label">Bank you put up <span class="muted">· $10–$500</span></label>
             <div class="slider-wrap">
-              <input id="host-bank" class="slider" type="range" min="10" max="500" step="5" value="100"  aria-label="House bank (USD)"/>
+              <input id="host-bank" class="slider" type="range" min="10" max="500" step="5" value="100" />
               <div class="slider-val"><strong id="host-bank-val">$100</strong><span class="eth-sub" id="host-bank-eth"></span></div>
             </div>
             <button id="create-host-btn" class="btn btn-primary btn-block">Create host game link</button>
@@ -735,6 +731,8 @@
       </div>
     </section>
 
+    <!-- Toast -->
+    <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
     <!-- ─────────────────── Help / how-to-play modal ─────────────────── -->
     <div id="help-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="How to play">
@@ -781,7 +779,7 @@
         <div id="bet-raise" class="bet-raise hidden">
           <label class="field-label">Your bet (drag to raise — the host must approve a higher amount)</label>
           <div class="slider-wrap">
-            <input id="join-bet" class="slider" type="range" min="10" max="500" step="5" value="10"  aria-label="Your bet (USD)"/>
+            <input id="join-bet" class="slider" type="range" min="10" max="500" step="5" value="10" />
             <div class="slider-val"><strong id="join-bet-val">$10</strong></div>
           </div>
         </div>
@@ -812,14 +810,14 @@
     </div>
 
     <script defer src="vendor/ethers.umd.min.js"></script>
-    <script defer src="config.js?v=939"></script>
-    <script defer src="contract.js?v=939"></script>
-    <script defer src="chiptune.js?v=939"></script>
-    <script defer src="scenes.js?v=939"></script>
-    <script defer src="tv.js?v=939"></script>
-    <script defer src="poker-engine.js?v=939"></script>
-    <script defer src="poker-bots.js?v=939"></script>
-    <script defer src="poker-ui.js?v=939"></script>
-    <script defer src="app.js?v=939"></script>
+    <script defer src="config.js?v=940"></script>
+    <script defer src="contract.js?v=940"></script>
+    <script defer src="chiptune.js?v=940"></script>
+    <script defer src="scenes.js?v=940"></script>
+    <script defer src="tv.js?v=940"></script>
+    <script defer src="poker-engine.js?v=940"></script>
+    <script defer src="poker-bots.js?v=940"></script>
+    <script defer src="poker-ui.js?v=940"></script>
+    <script defer src="app.js?v=940"></script>
   </body>
 </html>
