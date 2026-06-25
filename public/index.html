@@ -27,7 +27,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=966" />
+    <link rel="stylesheet" href="styles.css?v=967" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -42,7 +42,7 @@
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.66</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.67</span>
       </div>
       <div class="topbar-right">
         <div class="music-wrap">
@@ -74,10 +74,6 @@
     <!-- Wrong-network / not-deployed / hint banner (in normal flow) -->
     <div id="setup-banner" class="setup-banner hidden"></div>
 
-    <!-- Mobile-only: nudge users into the MetaMask in-app browser to bet -->
-    <div id="mobile-hint" class="mobile-hint hidden">
-      📱 On a phone? Betting only works inside the <strong>MetaMask app's browser</strong>. Tap <strong>Connect Wallet</strong> to open it there — or in MetaMask, use 🌐 Browser and visit this site.
-    </div>
 
     <!-- Shown when the connected wallet IS the house (treasury) -->
     <div id="house-wallet-banner" class="house-banner hidden">
@@ -192,6 +188,12 @@
     <main class="layout">
       <!-- ───────────────────── Left: the TV ───────────────────── -->
       <section class="stage">
+        <!-- Mobile-only: nudge into the MetaMask browser. Sits directly above the
+             demo bar, aligned to the TV column. -->
+        <div id="mobile-hint" class="mobile-hint hidden">
+          📱 On a phone? Betting only works inside the <strong>MetaMask app's browser</strong>. Tap <strong>Connect Wallet</strong> to open it there — or in MetaMask, use 🌐 Browser and visit this site.
+        </div>
+
         <!-- Demo-mode bar: centered directly above the TV. Keeps the real-money CTA. -->
         <div id="demo-bar" class="demo-bar hidden" role="status">
           <span class="demo-chip">🎮 DEMO</span>
@@ -325,7 +327,7 @@
 
                 <!-- Promo intro reel — autoplays once (muted) on first load, then fades
                      to black and hands off to the game. Replay button under the TV. -->
-                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=966"></video>
+                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=967"></video>
 
                 <!-- Shown while a bet tx is being signed + mined (esp. slow on mobile) -->
                 <div id="tv-pending" class="tv-pending hidden">⏳ SENDING BET…<br />confirm in your wallet, then hold tight</div>
@@ -371,6 +373,21 @@
         <div class="action-dock" data-game="crash">
           <button id="crash-launch" class="btn btn-primary btn-block dice-roll-btn">🚀 LAUNCH · win $<span id="crash-payout-hint">0.00</span></button>
           <div class="muted dice-roll-hint" id="crash-roll-hint"></div>
+        </div>
+        <div class="action-dock" data-game="flip">
+          <button id="play-house-btn" class="btn btn-primary btn-block">🪙 Flip vs House</button>
+        </div>
+        <div class="action-dock" data-game="dice">
+          <button id="dice-roll-btn" class="btn btn-primary btn-block dice-roll-btn">🎲 ROLL · win $<span id="dice-payout-hint">24.00</span></button>
+          <div class="muted dice-roll-hint" id="dice-roll-hint"></div>
+        </div>
+        <div class="action-dock" data-game="twodice">
+          <button id="td-roll-btn" class="btn btn-primary btn-block dice-roll-btn">🎲🎲 ROLL · win $<span id="td-payout-hint">0.00</span></button>
+          <div class="muted dice-roll-hint" id="td-roll-hint"></div>
+        </div>
+        <div class="action-dock" data-game="slots">
+          <button id="slots-spin" class="btn btn-primary btn-block dice-roll-btn">🎰 SPIN · bet $<span id="slots-bet-hint">25</span></button>
+          <div class="muted dice-roll-hint" id="slots-roll-hint"></div>
         </div>
 
         <!-- Win-animation theme switcher (hidden for now — locked to Scarfblade Films) -->
@@ -440,7 +457,6 @@
               <button type="button" class="side-btn" data-heads="0">★&nbsp;Tails</button>
             </div>
           </div>
-          <button id="play-house-btn" class="btn btn-primary btn-block">🪙 Flip vs House</button>
         </div>
 
         <!-- Play against a specific host table (shown when you open a table link) -->
@@ -514,8 +530,6 @@
             <button type="button" class="qbet" data-mode="max">Max</button>
           </div>
 
-          <button id="dice-roll-btn" class="btn btn-primary btn-block dice-roll-btn">🎲 ROLL · win $<span id="dice-payout-hint">24.00</span></button>
-          <div class="muted dice-roll-hint" id="dice-roll-hint"></div>
         </div>
 
         <!-- Dice #2 game (CH 10) — two d6 dice, bet the total -->
@@ -558,8 +572,6 @@
             <button type="button" class="qbet" data-mode="max">Max</button>
           </div>
 
-          <button id="td-roll-btn" class="btn btn-primary btn-block dice-roll-btn">🎲🎲 ROLL · win $<span id="td-payout-hint">0.00</span></button>
-          <div class="muted dice-roll-hint" id="td-roll-hint"></div>
         </div>
 
         <!-- Crash game (CH 11) — provably-fair rocket; auto cash out before the bust -->
@@ -627,8 +639,6 @@
             <div class="ro-cell ro-profit"><span class="ro-k muted">Max win</span><strong class="ro-v" id="slots-maxwin">$0</strong></div>
           </div>
 
-          <button id="slots-spin" class="btn btn-primary btn-block dice-roll-btn">🎰 SPIN · bet $<span id="slots-bet-hint">25</span></button>
-          <div class="muted dice-roll-hint" id="slots-roll-hint"></div>
         </div>
 
         <!-- Balloon Pop (CH 13): hold-to-pump play-money channel -->
@@ -1091,17 +1101,17 @@
     </aside>
 
     <script defer src="vendor/ethers.umd.min.js"></script>
-    <script defer src="config.js?v=966"></script>
-    <script defer src="contract.js?v=966"></script>
-    <script defer src="chiptune.js?v=966"></script>
-    <script defer src="scenes.js?v=966"></script>
-    <script defer src="tv.js?v=966"></script>
-    <script defer src="poker-engine.js?v=966"></script>
-    <script defer src="poker-bots.js?v=966"></script>
-    <script defer src="poker-ui.js?v=966"></script>
-    <script defer src="crash-engine.js?v=966"></script>
-    <script defer src="crash-render.js?v=966"></script>
-    <script defer src="profile.js?v=966"></script>
-    <script defer src="app.js?v=966"></script>
+    <script defer src="config.js?v=967"></script>
+    <script defer src="contract.js?v=967"></script>
+    <script defer src="chiptune.js?v=967"></script>
+    <script defer src="scenes.js?v=967"></script>
+    <script defer src="tv.js?v=967"></script>
+    <script defer src="poker-engine.js?v=967"></script>
+    <script defer src="poker-bots.js?v=967"></script>
+    <script defer src="poker-ui.js?v=967"></script>
+    <script defer src="crash-engine.js?v=967"></script>
+    <script defer src="crash-render.js?v=967"></script>
+    <script defer src="profile.js?v=967"></script>
+    <script defer src="app.js?v=967"></script>
   </body>
 </html>

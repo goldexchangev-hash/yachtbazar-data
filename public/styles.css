@@ -1817,7 +1817,15 @@ body.demo-mode #bankroll { display: none !important; }
 
 /* Primary action button docked under the play balance (above the bet controls) */
 .action-dock { margin-top: 2px; }
-.action-dock .btn { margin: 0; }
+.action-dock .btn {
+  margin: 0;
+  /* RULE: every play-activation button has its label "burned in" — a tap/long
+     press can never select or blue-highlight the text on mobile. */
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
 .action-dock .dice-roll-hint { margin-top: 6px; text-align: center; }
 /* demo bar now lives inside the TV column → center it perfectly over the TV */
 .stage > .demo-bar { width: 100%; max-width: 100%; margin: 0 auto; justify-content: center; }
+/* mobile "use MetaMask browser" hint sits directly above the demo bar, same width */
+.stage > .mobile-hint { width: 100%; max-width: 100%; margin: 0 auto -8px; }
