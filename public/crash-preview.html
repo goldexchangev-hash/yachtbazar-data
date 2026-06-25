@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+    <meta name="theme-color" content="#05060f" />
+    <title>🚀 Crash — preview</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Press+Start+2P&family=Space+Grotesk:wght@400;600;700&display=swap" rel="stylesheet" />
+    <style>
+      :root { --cyan:#00eaff; --magenta:#ff3c78; --gold:#ffe34d; --green:#39ff9e; }
+      * { box-sizing: border-box; }
+      html, body { margin:0; height:100%; background:#05060f; overflow:hidden; font-family:"Space Grotesk",sans-serif; color:#eaf6ff; }
+      #crash-stage { position:fixed; inset:0; }
+      #crash-canvas { display:block; width:100vw; height:100vh; image-rendering:pixelated; image-rendering:crisp-edges; }
+      /* HUD multiplier */
+      #crash-hud { position:fixed; left:50%; top:20%; transform:translate(-50%,-50%); text-align:center; pointer-events:none; user-select:none; }
+      #crash-mult { font-family:"Press Start 2P",monospace; font-size:clamp(34px,11vw,84px); color:var(--cyan); text-shadow:0 0 16px var(--cyan), 0 0 3px #fff; letter-spacing:2px; }
+      #crash-mult.win { color:var(--green); text-shadow:0 0 18px var(--green),0 0 3px #fff; }
+      #crash-mult.bust { color:var(--magenta); text-shadow:0 0 18px var(--magenta),0 0 3px #fff; }
+      #crash-sub { font-family:"Press Start 2P",monospace; font-size:clamp(9px,2.6vw,13px); margin-top:12px; color:#cfe6ff; min-height:14px; }
+      /* history bar */
+      #crash-history { position:fixed; top:10px; left:50%; transform:translateX(-50%); display:flex; gap:6px; flex-wrap:wrap; justify-content:center; max-width:96vw; pointer-events:none; }
+      .ch-pill { font-family:"Press Start 2P",monospace; font-size:10px; padding:5px 7px; border-radius:7px; background:rgba(10,16,30,.7); border:1px solid #223550; }
+      .ch-pill.lo { color:#9fb3cc; } .ch-pill.mid { color:var(--cyan); border-color:#1d5e72; } .ch-pill.hi { color:var(--gold); border-color:#6a5a1a; } .ch-pill.mega { color:var(--magenta); border-color:#7a2348; }
+      /* bet panel */
+      #crash-panel { position:fixed; left:50%; bottom:0; transform:translateX(-50%); width:min(560px,96vw); background:rgba(8,12,22,.92); -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px); border:1px solid #223550; border-bottom:none; border-radius:16px 16px 0 0; padding:14px 16px calc(14px + env(safe-area-inset-bottom)); box-shadow:0 -12px 40px rgba(0,0,0,.55); }
+      .cp-row { display:flex; gap:10px; align-items:center; margin:8px 0; }
+      .cp-field { flex:1; }
+      .cp-field label { display:block; font-size:11px; color:#8fa6c4; margin-bottom:4px; }
+      .cp-input { width:100%; background:#0c1424; border:1px solid #25395a; border-radius:9px; color:#eaf6ff; font:700 16px/1 "Space Grotesk",sans-serif; padding:11px 12px; }
+      .cp-chips { display:flex; gap:6px; margin-top:6px; }
+      .cp-chip { flex:1; font:9px/1 "Press Start 2P",monospace; color:#9fb3cc; background:#0c1424; border:1px solid #25395a; border-radius:7px; padding:8px 4px; cursor:pointer; }
+      .cp-chip:hover { color:var(--cyan); border-color:var(--cyan); }
+      #crash-launch { width:100%; font:14px/1 "Press Start 2P",monospace; color:#06121a; background:linear-gradient(90deg,var(--cyan),var(--green)); border:none; border-radius:12px; padding:17px; cursor:pointer; margin-top:8px; box-shadow:0 0 22px rgba(0,234,255,.4); letter-spacing:.03em; }
+      #crash-launch:disabled { opacity:.5; cursor:not-allowed; box-shadow:none; }
+      #crash-bal { text-align:center; font:11px/1.4 "Press Start 2P",monospace; color:var(--gold); margin-bottom:4px; }
+      .cp-tag { position:fixed; top:10px; left:10px; font:9px/1 "Press Start 2P",monospace; color:#5a6a86; }
+    </style>
+  </head>
+  <body>
+    <div id="crash-stage"><canvas id="crash-canvas"></canvas></div>
+    <div class="cp-tag">PREVIEW · play money</div>
+    <div id="crash-history"></div>
+    <div id="crash-hud"><div id="crash-mult">1.00x</div><div id="crash-sub">Set a cash-out target and launch 🚀</div></div>
+
+    <div id="crash-panel">
+      <div id="crash-bal">BALANCE $500</div>
+      <div class="cp-row">
+        <div class="cp-field">
+          <label>Stake ($)</label>
+          <input id="cp-stake" class="cp-input" type="number" min="1" step="1" value="10" inputmode="decimal" />
+          <div class="cp-chips"><button class="cp-chip" data-stake="half">½</button><button class="cp-chip" data-stake="double">2×</button><button class="cp-chip" data-stake="max">MAX</button></div>
+        </div>
+        <div class="cp-field">
+          <label>Auto cash-out (×)</label>
+          <input id="cp-target" class="cp-input" type="number" min="1.01" step="0.1" value="2.00" inputmode="decimal" />
+          <div class="cp-chips"><button class="cp-chip" data-target="1.5">1.5×</button><button class="cp-chip" data-target="2">2×</button><button class="cp-chip" data-target="5">5×</button></div>
+        </div>
+      </div>
+      <button id="crash-launch">🚀 LAUNCH · win $20.00</button>
+    </div>
+
+    <script src="crash-engine.js?v=928"></script>
+    <script src="crash-render.js?v=928"></script>
+    <script>
+      (function () {
+        const $ = (id) => document.getElementById(id);
+        const EDGE = 0.01, K = CrashEngine.DEFAULT_K;
+        let balance = 500, round = null;
+        const histEl = $("crash-history");
+        const multEl = $("crash-mult"), subEl = $("crash-sub"), balEl = $("crash-bal");
+
+        CrashRender.init($("crash-canvas"));
+
+        function fmt(n) { return "$" + (Math.round(n * 100) / 100).toLocaleString(undefined, { maximumFractionDigits: 2 }); }
+        function stakeVal() { return Math.max(0, +$("cp-stake").value || 0); }
+        function targetVal() { return Math.max(1.01, +$("cp-target").value || 1.01); }
+        function refreshBtn() {
+          balEl.textContent = "BALANCE " + fmt(balance);
+          const profit = stakeVal() * (targetVal() - 1);
+          $("crash-launch").textContent = (round && !round.done) ? "🚀 IN FLIGHT…" : "🚀 LAUNCH · win " + fmt(profit);
+          $("crash-launch").disabled = !!(round && !round.done) || stakeVal() <= 0 || stakeVal() > balance;
+        }
+        function pillClass(x) { return x < 2 ? "lo" : x < 5 ? "mid" : x < 20 ? "hi" : "mega"; }
+        function addHistory(x) {
+          const p = document.createElement("div");
+          p.className = "ch-pill " + pillClass(x);
+          p.textContent = x.toFixed(2) + "x";
+          histEl.insertBefore(p, histEl.firstChild);
+          while (histEl.children.length > 16) histEl.removeChild(histEl.lastChild);
+        }
+
+        CrashRender.onFrame(() => {
+          if (!round || round.done) return;
+          const ms = performance.now() - round.t0;
+          let mult = CrashEngine.multiplierAtMs(ms, K);
+          if (mult >= round.crashX) {
+            CrashRender.setMult(round.crashX);
+            CrashRender.setState("crashed");
+            CrashRender.explode();
+            endRound();
+            return;
+          }
+          if (!round.cashed && mult >= round.targetX) {
+            round.cashed = true;
+            balance += stakeVal0(round) * round.targetX; // pay stake*target (stake was escrowed at launch)
+            CrashRender.cashout();
+            multEl.className = "win";
+            subEl.textContent = "CASHED " + round.targetX.toFixed(2) + "x · +" + fmt(round.stake * (round.targetX - 1));
+            refreshBtn();
+          }
+          CrashRender.setMult(mult);
+          if (!round.cashed) { multEl.className = ""; }
+          multEl.textContent = mult.toFixed(2) + "x";
+        });
+        function stakeVal0(r) { return r.stake; }
+
+        function endRound() {
+          round.done = true;
+          addHistory(round.crashX);
+          if (round.cashed) {
+            multEl.className = "win";
+            multEl.textContent = round.targetX.toFixed(2) + "x";
+          } else {
+            multEl.className = "bust";
+            multEl.textContent = "CRASH " + round.crashX.toFixed(2) + "x";
+            subEl.textContent = "Busted — −" + fmt(round.stake);
+          }
+          refreshBtn();
+          setTimeout(() => {
+            CrashRender.reset();
+            multEl.className = ""; multEl.textContent = "1.00x";
+            subEl.textContent = "Set a cash-out target and launch 🚀";
+            refreshBtn();
+          }, 2600);
+        }
+
+        function launch() {
+          if (round && !round.done) return;
+          const stake = stakeVal();
+          if (!(stake > 0)) return;
+          if (stake > balance) return;
+          balance -= stake; // escrow
+          round = { crashX: CrashEngine.crashFromRandom(Math.random, EDGE), targetX: targetVal(), stake, t0: performance.now(), cashed: false, done: false };
+          CrashRender.reset();
+          CrashRender.setState("flying");
+          CrashRender.setMult(1);
+          multEl.className = ""; multEl.textContent = "1.00x"; subEl.textContent = "🚀 to the moon…";
+          refreshBtn();
+        }
+
+        $("crash-launch").onclick = launch;
+        $("cp-stake").oninput = refreshBtn;
+        $("cp-target").oninput = refreshBtn;
+        document.querySelectorAll("[data-target]").forEach((b) => b.onclick = () => { $("cp-target").value = b.dataset.target; refreshBtn(); });
+        document.querySelectorAll("[data-stake]").forEach((b) => b.onclick = () => {
+          const s = stakeVal();
+          $("cp-stake").value = b.dataset.stake === "half" ? Math.max(1, Math.floor(s / 2)) : b.dataset.stake === "double" ? Math.min(balance, s * 2) : Math.floor(balance);
+          refreshBtn();
+        });
+        refreshBtn();
+      })();
+    </script>
+  </body>
+</html>
