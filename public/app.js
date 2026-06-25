@@ -1633,9 +1633,10 @@
   }
 
   // ── Game switcher ("change the channel") ──
-  const GAME_CHANNEL = { flip: 8, dice: 9, twodice: 10, poker: 11 };
-  const GAME_TITLE = { flip: "CRYPTO TV FLIP", dice: "CRYPTO TV 0-100", twodice: "CRYPTO TV DICE #2", poker: "CRYPTO TV POKER" };
-  const GAME_ORDER = ["flip", "dice", "twodice", "poker"];
+  // Poker is temporarily disabled (hidden from the channel bar) — to be revisited.
+  const GAME_CHANNEL = { flip: 8, dice: 9, twodice: 10 };
+  const GAME_TITLE = { flip: "CRYPTO TV FLIP", dice: "CRYPTO TV 0-100", twodice: "CRYPTO TV DICE #2" };
+  const GAME_ORDER = ["flip", "dice", "twodice"];
   function paintGameTabs(game) {
     document.body.classList.toggle("game-dice", game === "dice");
     document.body.classList.toggle("game-twodice", game === "twodice");
