@@ -27,7 +27,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=959" />
+    <link rel="stylesheet" href="styles.css?v=960" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -42,7 +42,7 @@
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.59</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.60</span>
       </div>
       <div class="topbar-right">
         <div class="music-wrap">
@@ -157,6 +157,17 @@
             </svg>
           </span>
           <span class="gc-name">Slots</span>
+        </button>
+
+        <button type="button" class="game-card pressure" id="ch-pressure" role="tab" aria-selected="false" data-game="pressure">
+          <span class="gc-tile">
+            <svg class="gc-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <ellipse cx="12" cy="9.5" rx="6" ry="7"/>
+              <path d="M12 16.5v2.2M10.8 18.7h2.4"/>
+              <path d="M9.6 7.2a3 3 0 0 1 2.4-1.6"/>
+            </svg>
+          </span>
+          <span class="gc-name">Balloon Pop</span>
         </button>
 
         <button type="button" class="game-card poker" id="ch-poker" role="tab" aria-selected="false" data-game="poker" hidden>
@@ -301,6 +312,11 @@
                   <div class="slots-hud">
                     <div class="slots-msg" id="slots-msg">PRESS SPIN</div>
                   </div>
+                </div>
+
+                <!-- Pressure (CH 13): the hold-to-pump balloon plays on the TV -->
+                <div class="screen-layer hidden" id="layer-pressure">
+                  <div id="pressure-stage" class="pressure-stage"></div>
                 </div>
 
                 <canvas id="confetti-canvas" class="confetti-canvas"></canvas>
@@ -600,6 +616,63 @@
 
           <button id="slots-spin" class="btn btn-primary btn-block dice-roll-btn">🎰 SPIN · bet $<span id="slots-bet-hint">25</span></button>
           <div class="muted dice-roll-hint" id="slots-roll-hint"></div>
+        </div>
+
+        <!-- Balloon Pop (CH 13): hold-to-pump play-money channel -->
+        <div class="card dice-panel pressure-panel" id="pressure-panel" data-game="pressure" hidden>
+          <div class="ph-head">
+            <h2 class="card-title">🎈 Balloon Pop <span class="ch-tag">CH 13</span></h2>
+            <span class="ph-bankroll muted">Balance: <strong id="pr-balance">$0</strong></span>
+          </div>
+
+          <p class="muted td-intro"><strong>Hold</strong> to pump — the multiplier climbs while you press — then <strong>release</strong> to bank before the balloon hits its hidden burst and pops. Reach <strong>1.20×</strong> to win (earlier = refund). Provably fair, play money.</p>
+
+          <label class="field-label">Bet <span class="muted">— USD, $10 minimum</span></label>
+          <div class="pr-bet-row">
+            <div class="pr-stepper">
+              <button type="button" id="pr-bet-down" aria-label="Lower bet">−</button>
+              <input id="pr-bet" type="number" min="10" step="10" value="10" inputmode="numeric" />
+              <button type="button" id="pr-bet-up" aria-label="Raise bet">+</button>
+            </div>
+            <span class="eth-sub" id="pr-bet-eth"></span>
+          </div>
+          <div class="quickbet-row">
+            <button type="button" class="qbet" id="pr-bet-half">½</button>
+            <button type="button" class="qbet" id="pr-bet-double">2×</button>
+            <button type="button" class="qbet" id="pr-bet-max">Max</button>
+          </div>
+
+          <div class="side-row">
+            <span class="side-label">Speed / risk</span>
+            <select id="pr-risk" class="pr-select">
+              <option value="calm">Calm</option>
+              <option value="normal" selected>Normal</option>
+              <option value="frantic">Frantic</option>
+            </select>
+          </div>
+
+          <label class="field-label">Auto cash-out @ <strong id="pr-auto-val">2.00x</strong>
+            <button type="button" class="qbet pr-auto-toggle active" id="pr-auto-toggle">AUTO ON</button>
+          </label>
+          <div class="slider-wrap">
+            <input id="pr-auto-slider" class="slider" type="range" min="1.2" max="20" step="0.05" value="2.0" />
+          </div>
+
+          <button id="pr-hold" class="btn btn-primary btn-block pr-hold">🎈 HOLD TO PUMP</button>
+          <div class="muted dice-roll-hint" id="pr-message">HOLD the balloon to pump</div>
+
+          <details class="dropdown pr-fair">
+            <summary class="card-title dd-summary"><span>🔒 Provably fair</span><span class="dd-arrow" aria-hidden="true">▾</span></summary>
+            <div class="ht-body pr-fair-body">
+              <div class="pr-fair-row muted">server hash <code id="pr-pf-hash">—</code> · nonce <code id="pr-pf-nonce">0</code></div>
+              <div class="pr-fair-row">
+                <input id="pr-pf-client" class="input" type="text" placeholder="client seed (auto)" />
+                <button id="pr-pf-verify" class="btn btn-ghost">Verify last round</button>
+              </div>
+              <div class="pr-fair-reveal" id="pr-pf-reveal"></div>
+              <div class="muted" id="pr-pf-last"></div>
+            </div>
+          </details>
         </div>
 
         <!-- Host tools (owner only): adjust limits, fund house, redeploy -->
@@ -1012,17 +1085,17 @@
     </aside>
 
     <script defer src="vendor/ethers.umd.min.js"></script>
-    <script defer src="config.js?v=959"></script>
-    <script defer src="contract.js?v=959"></script>
-    <script defer src="chiptune.js?v=959"></script>
-    <script defer src="scenes.js?v=959"></script>
-    <script defer src="tv.js?v=959"></script>
-    <script defer src="poker-engine.js?v=959"></script>
-    <script defer src="poker-bots.js?v=959"></script>
-    <script defer src="poker-ui.js?v=959"></script>
-    <script defer src="crash-engine.js?v=959"></script>
-    <script defer src="crash-render.js?v=959"></script>
-    <script defer src="profile.js?v=959"></script>
-    <script defer src="app.js?v=959"></script>
+    <script defer src="config.js?v=960"></script>
+    <script defer src="contract.js?v=960"></script>
+    <script defer src="chiptune.js?v=960"></script>
+    <script defer src="scenes.js?v=960"></script>
+    <script defer src="tv.js?v=960"></script>
+    <script defer src="poker-engine.js?v=960"></script>
+    <script defer src="poker-bots.js?v=960"></script>
+    <script defer src="poker-ui.js?v=960"></script>
+    <script defer src="crash-engine.js?v=960"></script>
+    <script defer src="crash-render.js?v=960"></script>
+    <script defer src="profile.js?v=960"></script>
+    <script defer src="app.js?v=960"></script>
   </body>
 </html>

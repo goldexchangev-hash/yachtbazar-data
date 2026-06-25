@@ -886,7 +886,8 @@ body:not(.game-dice) [data-game="dice"] { display: none !important; }
 body:not(.game-twodice) [data-game="twodice"] { display: none !important; }
 body:not(.game-crash) [data-game="crash"] { display: none !important; }
 body:not(.game-slots) [data-game="slots"] { display: none !important; }
-body.game-dice [data-game="flip"], body.game-twodice [data-game="flip"], body.game-crash [data-game="flip"], body.game-slots [data-game="flip"] { display: none !important; }
+body:not(.game-pressure) [data-game="pressure"] { display: none !important; }
+body.game-dice [data-game="flip"], body.game-twodice [data-game="flip"], body.game-crash [data-game="flip"], body.game-slots [data-game="flip"], body.game-pressure [data-game="flip"] { display: none !important; }
 /* …but the channel selector tiles are always visible (they're how you switch) */
 #game-nav .game-card { display: flex !important; }
 #game-nav .game-card[hidden] { display: none !important; } /* hidden channels (e.g. poker) stay hidden */
@@ -1768,3 +1769,29 @@ body.connected .wallet-cluster #disconnect-btn { border-radius: var(--r-full); p
 /* In demo we drive plays from the panels but there's no wallet to deposit to —
    keep the deposit/withdraw bankroll card out of the way. */
 body.demo-mode #bankroll { display: none !important; }
+
+/* ════════════════════ BALLOON POP (CH 13) ════════════════════ */
+/* TV layer hosts the PixiJS balloon canvas — fill the screen, no distortion
+   (the renderer is sized to the screen on build). */
+#layer-pressure { position: absolute; inset: 0; }
+.pressure-stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.pressure-stage canvas { width: 100% !important; height: 100% !important; display: block; }
+
+/* Bet panel controls */
+.pressure-panel .pr-bet-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pr-stepper { display: inline-flex; align-items: stretch; background: var(--s-surface, #213743); border: 1px solid var(--s-border, #2f4553); border-radius: var(--r-md, 8px); overflow: hidden; }
+.pr-stepper button { font-family: var(--display); font-size: 16px; color: #fff; background: rgba(255,255,255,.06); border: none; width: 40px; cursor: pointer; }
+.pr-stepper button:hover { background: rgba(255,255,255,.12); }
+.pr-stepper input { width: 84px; text-align: center; border: none; background: transparent; color: var(--s-green, #00e701); font-family: var(--display); font-size: 14px; -moz-appearance: textfield; }
+.pr-stepper input::-webkit-outer-spin-button, .pr-stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.pr-select { background: var(--s-surface, #213743); border: 1px solid var(--s-border, #2f4553); border-radius: var(--r-md, 8px); color: var(--s-text, #fff); font-family: var(--font); font-size: 14px; padding: 8px 10px; outline: none; }
+.pressure-panel .pr-auto-toggle { margin-left: auto; }
+.pressure-panel .pr-auto-toggle.active { background: linear-gradient(135deg, rgba(0,231,1,.22), rgba(0,231,1,.10)); border-color: var(--s-green, #00e701); color: #fff; }
+.pr-hold { background: linear-gradient(135deg, #ffd23f, #ff8a3d 55%, #ff4d9d); color: #2a0a12; user-select: none; touch-action: none; font-weight: 800; }
+.pr-hold:active { transform: translateY(2px); }
+.pr-fair { margin-top: 12px; }
+.pr-fair-body { font-size: 12px; }
+.pr-fair-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.pr-fair-row code { font-family: ui-monospace, monospace; color: var(--s-green, #00e701); }
+.pr-fair-row input { flex: 1; min-width: 120px; }
+.pr-fair-reveal { font-family: ui-monospace, monospace; font-size: 10.5px; color: var(--s-green, #00e701); word-break: break-all; }

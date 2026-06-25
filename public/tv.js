@@ -43,6 +43,7 @@
         twodice: $("layer-twodice"),
         crash: $("layer-crash"),
         slots: $("layer-slots"),
+        pressure: $("layer-pressure"),
       };
       this._activeChannel = 8; // 8 = Flip, 9 = Dice — so idle() advertises the active game
       this.scoreboard = $("scoreboard");
@@ -181,6 +182,7 @@
       if (!this._connected) return this._staticIdle();          // disconnected → static on every channel
       if (this._activeChannel === 11) return this._crashIdle();  // rocket room
       if (this._activeChannel === 12) return this._slotsIdle();  // reels room
+      if (this._activeChannel === 13) return this._pressureIdle(); // balloon room
       this._readyRoom(subtext);                                  // flip / 0-100 / dice #2 ready room
     },
 
@@ -191,7 +193,7 @@
       if (c === this._connected) return;
       this._connected = c;
       const p = this._phase;
-      if (p === "idle" || p === "crash" || p === "slots") this.idle(); // only refresh a resting screen
+      if (p === "idle" || p === "crash" || p === "slots" || p === "pressure") this.idle(); // only refresh a resting screen
     },
 
     // app.js sets the channel's title here; the TV shows it in the ready room
@@ -347,6 +349,15 @@
       }
     },
 
+    /* ---------------- Balloon Pop (CH 13) ---------------- */
+    // The hold-to-pump engine (pressure-*.js) renders itself; app.js lazy-builds
+    // it and drives activation. Here we just reveal its layer.
+    _pressureIdle() {
+      if (!this._connected) return this._staticIdle(); // signed out → static, no balloon
+      this._setStatic(0.03);
+      this._show("pressure");
+    },
+
     // Turn the dial between Coin Flip (08) and Dice (09) with a CRT "tune" effect.
     async changeChannel(num) {
       const seq = ++this._seq;
@@ -359,6 +370,7 @@
       if (!this._connected) this._staticIdle();
       else if (num === 11) this._crashIdle();
       else if (num === 12) this._slotsIdle();
+      else if (num === 13) this._pressureIdle();
       else this._readyRoom();
       await sleep(160); if (seq !== this._seq) return;
       this.screenEl.classList.remove("ch-switch");
