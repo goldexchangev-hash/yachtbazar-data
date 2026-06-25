@@ -53,6 +53,9 @@
   let connecting = false; // true while connect() runs, to suppress the auto-reload
   let contract = null; // connected to signer
   let twoDiceSupported = null; // null=unknown, true/false — does the active contract have Dice #2?
+  // Off-registry (unofficial) contract detection — set when a ?contract= link
+  // points somewhere other than the registry's official activeGame().
+  let offRegistryContract = false, unofficialConfirmed = false, officialAddress = null;
   let read = null; // connected to provider
   let maxBet = 0n;
   let gameWei = 0n; // cached in-game (deposited) balance, refreshed by refreshBalances
@@ -359,6 +362,16 @@
   // "Sending bet… confirm in your wallet" banner on the TV while a tx signs/mines.
   function tvPending(on) {
     const el = $("tv-pending"); if (el) el.classList.toggle("hidden", !on);
+  }
+  // Persistent warning when a ?contract= link isn't the registry's official game.
+  function showUnofficialWarning() {
+    const el = $("unofficial-banner"); if (!el) return;
+    const officialUrl = location.origin + location.pathname; // strips ?contract=
+    el.innerHTML = "⚠️ <strong>Unverified contract.</strong> This link points at <code>" + short(deployment.address) +
+      "</code>, which is <strong>not</strong> the official game" + (officialAddress ? " (<code>" + short(officialAddress) + "</code>)" : "") +
+      ". A malicious contract can take any funds you deposit or bet — only continue if you trust whoever sent this link. " +
+      "<a href=\"" + officialUrl + "\">Go to the official site →</a>";
+    el.classList.remove("hidden");
   }
 
   const NETWORKS = {
@@ -782,11 +795,17 @@
   async function raiseMaxBet() {
     try {
       toast("Raising the max bet… confirm in MetaMask");
-      const tx = await contract.setMaxBet(E.parseEther("1"), { gasLimit: 80000 });
+      // Cover the $500 UI cap with ~10% headroom for ETH-price drift, but never
+      // below 1 ETH. Then report the ACTUAL resulting USD cap (not a fixed "$500").
+      let newMax = usdToWei(HARD_MAX_USD) * 11n / 10n;
+      const oneEth = E.parseEther("1");
+      if (newMax < oneEth) newMax = oneEth;
+      const tx = await contract.setMaxBet(newMax, { gasLimit: 80000 });
       await tx.wait();
       maxBet = await read.maxBet();
       setupSliders(); refreshHouse();
-      toast("Done — bets up to $500 are allowed now.", "ok");
+      const capNow = Math.min(HARD_MAX_USD, Math.floor(weiToUsd(maxBet)));
+      toast("Done — bets up to $" + capNow + " are allowed now.", "ok");
     } catch (e) { txErr(e); }
   }
   async function fundHouseTool() {
@@ -1136,6 +1155,15 @@
       return false;
     }
     if (!chainOK) { toast("Wrong network — switch to " + netName(deployment.chainId) + " and try again.", "err"); return false; }
+    // Hard stop before the first signing action on an unofficial (off-registry)
+    // contract from a share link — phishing protection.
+    if (offRegistryContract && !unofficialConfirmed) {
+      const ok = confirm("⚠️ UNVERIFIED CONTRACT\n\nThis link points at " + short(deployment.address) +
+        ", which is NOT the official game contract" + (officialAddress ? " (" + short(officialAddress) + ")" : "") +
+        ".\n\nA malicious contract can take any funds you deposit or bet. Only continue if you fully trust whoever sent you this link.\n\nContinue anyway?");
+      if (!ok) { toast("Cancelled — you're on an unofficial contract.", "err"); return false; }
+      unofficialConfirmed = true;
+    }
     return true;
   }
 
@@ -1267,6 +1295,7 @@
       activeRoomId = predicted.toString();
       // Fixed gas skips the eth_estimateGas round-trip — one less slow hop to the
       // wallet popup on mobile (700k is plenty for playHouse).
+      bet = await clampBetToOnChain(bet);
       const tx = await contract.playHouse(bet, wantsHeads, { gasLimit: 700000n });
       const rcpt = await tx.wait();
       tvPending(false);
@@ -1391,6 +1420,7 @@
       let predicted;
       try { predicted = await contract.playHostRoom.staticCall(id, bet, wantsHeads); }
       catch (e) { tvPending(false); unlockReveal(); cancelBuildup(); TV.idle("Deposit ETH, then create or join a room"); return txErr(e); }
+      bet = await clampBetToOnChain(bet);
       const tx = await contract.playHostRoom(id, bet, wantsHeads, { gasLimit: 500000n });
       const rcpt = await tx.wait();
       tvPending(false);
@@ -1435,6 +1465,18 @@
     try { if (read.maxPayoutBpsOfBankroll) dicePayoutCapBps = BigInt(await read.maxPayoutBpsOfBankroll()); } catch { dicePayoutCapBps = 100n; }
   }
   function diceMaxProfitWei() { return diceHouseWei > 0n ? (diceHouseWei * dicePayoutCapBps) / 10000n : 0n; }
+  // Re-read the on-chain balance + maxBet right before sending a bet and clamp to
+  // them, so a stake computed from a cached value or a USD→wei rounding crumb
+  // can't revert (esp. the "Max" button). Silent on tiny clamps; the contract
+  // still rejects a genuinely-zero balance with a friendly message.
+  async function clampBetToOnChain(bet) {
+    try {
+      const [bal, mb] = await Promise.all([read.balances(account), read.maxBet()]);
+      if (mb > 0n && bet > mb) bet = mb;
+      if (bet > bal) bet = bal;
+    } catch {}
+    return bet;
+  }
 
   // Live odds bar + readouts as the player drags. Target T in [100,9899] (1%–99%).
   function diceReadouts() {
@@ -1457,11 +1499,13 @@
     if (diceMode === "under") { $("ob-win").style.cssText = "left:0;width:" + pct + "%"; $("ob-lose").style.cssText = "left:" + pct + "%;width:" + (100 - pct) + "%"; }
     else { $("ob-lose").style.cssText = "left:0;width:" + pct + "%"; $("ob-win").style.cssText = "left:" + pct + "%;width:" + (100 - pct) + "%"; }
     $("dice-oddsbar").dataset.mode = diceMode;
-    // affordability guards
+    // affordability + odds-range guards (contract allows win chance 1%–97%)
     let hint = "";
     let stakeWei = 0n; try { stakeWei = usdToWei(stake); } catch {}
     let profitWei = 0n; try { profitWei = usdToWei(profit); } catch {}
-    if (gameWei > 0n && stakeWei > gameWei) hint = "Not enough in-game balance — deposit first 👇";
+    if (winOutcomes > 9700) hint = "That's above the 97% max win chance — pick longer odds (lower payout bets aren't offered).";
+    else if (winOutcomes < 100) hint = "That's below the 1% min win chance — pick a safer target.";
+    else if (gameWei > 0n && stakeWei > gameWei) hint = "Not enough in-game balance — deposit first 👇";
     else if (maxBet > 0n && stakeWei > maxBet) hint = "Max bet is " + usdOf(maxBet);
     else if (diceHouseWei > 0n && profitWei > diceMaxProfitWei()) hint = (dicePayoutCapBps >= 10000n ? "House can't cover that win yet — fund the house or lower the stake (max win " + usdOf(diceMaxProfitWei()) + ")" : "Max win per roll is " + usdOf(diceMaxProfitWei()) + " (" + (Number(dicePayoutCapBps) / 100) + "% of the house bankroll) — lower the stake or multiplier");
     const btn = $("dice-roll-btn");
@@ -1477,6 +1521,8 @@
     if (bet > maxBet) return toast("Max bet is " + usdOf(maxBet), "err");
     const target = (+$("dice-target").value) | 0;
     const rollOver = diceMode === "over";
+    const winOutcomes = rollOver ? (9999 - target) : target;
+    if (winOutcomes > 9700 || winOutcomes < 100) return toast("Pick a win chance between 1% and 97%.", "err");
     rememberBet(stakeUsd);
     doPlayDice(bet, target, rollOver);
   }
@@ -1487,6 +1533,7 @@
     tvPending(true);
     toast("Sending your roll… confirm in your wallet", "ok");
     try {
+      bet = await clampBetToOnChain(bet);
       const tx = await contract.playDice(bet, target, rollOver, { gasLimit: 700000n });
       const rcpt = await tx.wait();
       tvPending(false);
@@ -1604,6 +1651,7 @@
     tvPending(true);
     toast("Throwing the dice… confirm in your wallet", "ok");
     try {
+      bet = await clampBetToOnChain(bet);
       const tx = await contract.playTwoDice(bet, target, over, { gasLimit: 700000n });
       const rcpt = await tx.wait();
       tvPending(false);
@@ -2701,10 +2749,22 @@
     if (registryResolved) return;
     registryResolved = true;
     try {
-      if (!cfg.registry || !E.isAddress(cfg.registry) || params.get("contract")) return;
+      if (!cfg.registry || !E.isAddress(cfg.registry)) return;
       const reg = new E.Contract(cfg.registry, ["function activeGame() view returns (address)"], prov);
       const live = await reg.activeGame();
-      if (live && E.isAddress(live) && !/^0x0+$/i.test(live)) deployment.address = live;
+      if (live && E.isAddress(live) && !/^0x0+$/i.test(live)) {
+        officialAddress = live;
+        if (params.get("contract")) {
+          // A share link is overriding the registry — flag it if it's NOT the
+          // official contract so the user gets a phishing warning before signing.
+          if (deployment.address && live.toLowerCase() !== deployment.address.toLowerCase()) {
+            offRegistryContract = true;
+            showUnofficialWarning();
+          }
+        } else {
+          deployment.address = live; // no override → follow the registry
+        }
+      }
     } catch (e) { /* keep config.address fallback */ }
   }
 

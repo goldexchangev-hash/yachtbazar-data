@@ -41,15 +41,16 @@ contract CoinFlipBetting {
     // ---- Dice game (CH 09): roll 0..9999 (shown 0.00–99.99), roll under/over ----
     uint256 public constant DICE_OUTCOMES = 10_000;       // roll space [0,9999]
     uint256 public constant MIN_WIN_OUTCOMES = 100;       // >=1.00% chance (<=98x)
-    uint256 public constant MAX_WIN_OUTCOMES = 9_900;     // <=99.00% chance (>~1x)
+    uint256 public constant MAX_WIN_OUTCOMES = 9_700;     // <=97.00% chance, keeps payout > stake at the default edge
     uint256 public constant MAX_DICE_EDGE_BPS = 1_000;    // owner can't set edge above 10%
     /// @notice Dice house edge in bps (200 = 2%). Owner-tunable via setDiceEdge.
     uint256 public diceEdgeBps = 200;
     uint256 public nextDiceGameId = 1;
     /// @notice Single bet's max payout-above-stake is capped to this share of the
-    ///         bankroll. Owner-tunable via setMaxPayoutCap. Default 10000 bps =
-    ///         100%, i.e. a single win is limited only by the real bankroll.
-    uint256 public maxPayoutBpsOfBankroll = 10_000;
+    ///         bankroll. Owner-tunable via setMaxPayoutCap. Default 1000 bps = 10%,
+    ///         so one lucky win can never drain more than a tenth of the house in a
+    ///         single roll (protects liquidity / other players).
+    uint256 public maxPayoutBpsOfBankroll = 1_000;
 
     struct DiceGame {
         uint256 id;
@@ -636,10 +637,13 @@ contract CoinFlipBetting {
         if (balances[msg.sender] < betAmount) revert InsufficientBalance();
 
         uint256 multiplierBps = _diceMultiplierBps(winOutcomes);
+        // A win must actually pay more than the stake; otherwise (very high win
+        // chance + edge) the subtraction below would underflow-revert opaquely.
+        if (multiplierBps <= BPS_DENOMINATOR) revert DiceEdgeTooHigh();
         payout = (betAmount * multiplierBps) / BPS_DENOMINATOR; // total returned on a win
         uint256 maxProfit = payout - betAmount;                 // the house's max loss
         if (maxProfit > houseBankroll) revert HouseBankrollLow();
-        // a single win can't drain more than 1% of the bankroll
+        // a single win can't drain more than maxPayoutBpsOfBankroll of the bankroll
         if (maxProfit > (houseBankroll * maxPayoutBpsOfBankroll) / BPS_DENOMINATOR) revert HouseBankrollLow();
 
         balances[msg.sender] -= betAmount; // escrow the stake
@@ -743,6 +747,7 @@ contract CoinFlipBetting {
         if (balances[msg.sender] < betAmount) revert InsufficientBalance();
 
         uint256 multiplierBps = _twoDiceMultiplierBps(winCombos);
+        if (multiplierBps <= BPS_DENOMINATOR) revert DiceEdgeTooHigh(); // win must pay over the stake
         payout = (betAmount * multiplierBps) / BPS_DENOMINATOR; // total returned on a win
         uint256 maxProfit = payout - betAmount;                 // the house's max loss
         if (maxProfit > houseBankroll) revert HouseBankrollLow();
