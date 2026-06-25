@@ -439,6 +439,15 @@
   function tvPending(on) {
     const el = $("tv-pending"); if (el) el.classList.toggle("hidden", !on);
   }
+  // Mobile fallback: a real tappable link to open the dapp in MetaMask's browser
+  // (the most reliable way to trigger an iOS universal link).
+  function showMobileOpenLink(dl) {
+    const el = $("mobile-hint"); if (!el) return;
+    el.innerHTML = '📱 To bet on a phone, open this site in the <strong>MetaMask app</strong>: ' +
+      '<a href="' + dl + '" rel="noopener" style="color:#9fe6ff;font-weight:700;text-decoration:underline;">Open in MetaMask →</a>' +
+      '<br><span style="opacity:.8">No MetaMask app? Install it, then tap this again.</span>';
+    el.classList.remove("hidden");
+  }
   // Persistent warning when a ?contract= link isn't the registry's official game.
   function showUnofficialWarning() {
     const el = $("unofficial-banner"); if (!el) return;
@@ -464,13 +473,21 @@
     if (!anyWallet()) {
       const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
       if (isMobile) {
-        // Mobile Safari/Chrome inject no wallet. Bounce into MetaMask's own
-        // in-app browser via its universal link — it reopens THIS page (with the
-        // contract params) inside MetaMask, where window.ethereum exists. If MM
-        // isn't installed, the link lands on MetaMask's install page.
+        // Mobile Safari/Chrome inject no wallet. Open THIS page inside MetaMask's
+        // own in-app browser via its universal link (where window.ethereum exists).
+        // iOS honors universal links from a real anchor tap far more reliably than
+        // a JS location.href redirect, so click a synthesized <a> and also show a
+        // tappable fallback link in case the OS still swallows it.
         const target = location.host + location.pathname + location.search;
-        toast("Opening in the MetaMask app…", "ok");
-        location.href = "https://metamask.app.link/dapp/" + target;
+        const dl = "https://metamask.app.link/dapp/" + target;
+        toast("Opening MetaMask… if nothing happens, tap the banner link.", "ok");
+        try {
+          const a = document.createElement("a");
+          a.href = dl; a.target = "_self"; a.rel = "noopener";
+          document.body.appendChild(a); a.click(); a.remove();
+        } catch (e) {}
+        setTimeout(() => { try { location.href = dl; } catch (e) {} }, 60);
+        showMobileOpenLink(dl);
         return;
       }
       toast("MetaMask not found — install it to play.", "err");
@@ -2954,9 +2971,11 @@
     fetchEthUsd().then(() => { setupSliders(); if (read && chainOK) { refreshBalances(); refreshStats(); refreshHouse(); refreshRooms(); } });
     setInterval(() => { if (document.hidden) return; fetchEthUsd().then(() => { setupSliders(); if (read && chainOK) { refreshBalances(); refreshStats(); refreshHouse(); refreshRooms(); } }); }, 60000);
     $("connect-btn").classList.add("cta-pulse");
-    // On a phone with no injected wallet, nudge users into the MetaMask browser.
-    if (/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) && !anyWallet()) {
-      $("mobile-hint").classList.remove("hidden");
+    // On a phone with no injected wallet, show a real tappable link to open this
+    // site in the MetaMask app right away (a JS redirect is unreliable on iOS).
+    if (/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) && !window.ethereum) {
+      const target = location.host + location.pathname + location.search;
+      showMobileOpenLink("https://metamask.app.link/dapp/" + target);
     }
     const remoteHost = location.hostname && !/^(localhost|127\.|0\.0\.0\.0|\[?::1\]?)/.test(location.hostname);
     if (deployment.address && deployment.chainId === 31337 && remoteHost) {
