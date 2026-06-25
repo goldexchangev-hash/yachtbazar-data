@@ -27,7 +27,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=956" />
+    <link rel="stylesheet" href="styles.css?v=957" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -42,7 +42,7 @@
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.56</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.57</span>
       </div>
       <div class="topbar-right">
         <div class="music-wrap">
@@ -300,8 +300,9 @@
                 <!-- Full-motion win/loss video reel (Scarfblade Films theme) -->
                 <video id="reveal-video" class="reveal-video" playsinline preload="auto"></video>
 
-                <!-- Promo intro reel — plays on first click, then the screen returns to static -->
-                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" src="promo.mp4"></video>
+                <!-- Promo intro reel — autoplays muted on load; tap the center button for sound -->
+                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4"></video>
+                <button id="promo-unmute" class="promo-unmute hidden" aria-label="Unmute the intro">🔊 TAP TO UNMUTE</button>
 
                 <!-- Shown while a bet tx is being signed + mined (esp. slow on mobile) -->
                 <div id="tv-pending" class="tv-pending hidden">⏳ SENDING BET…<br />confirm in your wallet, then hold tight</div>
@@ -999,17 +1000,17 @@
     </aside>
 
     <script defer src="vendor/ethers.umd.min.js"></script>
-    <script defer src="config.js?v=956"></script>
-    <script defer src="contract.js?v=956"></script>
-    <script defer src="chiptune.js?v=956"></script>
-    <script defer src="scenes.js?v=956"></script>
-    <script defer src="tv.js?v=956"></script>
-    <script defer src="poker-engine.js?v=956"></script>
-    <script defer src="poker-bots.js?v=956"></script>
-    <script defer src="poker-ui.js?v=956"></script>
-    <script defer src="crash-engine.js?v=956"></script>
-    <script defer src="crash-render.js?v=956"></script>
-    <script defer src="profile.js?v=956"></script>
-    <script defer src="app.js?v=956"></script>
+    <script defer src="config.js?v=957"></script>
+    <script defer src="contract.js?v=957"></script>
+    <script defer src="chiptune.js?v=957"></script>
+    <script defer src="scenes.js?v=957"></script>
+    <script defer src="tv.js?v=957"></script>
+    <script defer src="poker-engine.js?v=957"></script>
+    <script defer src="poker-bots.js?v=957"></script>
+    <script defer src="poker-ui.js?v=957"></script>
+    <script defer src="crash-engine.js?v=957"></script>
+    <script defer src="crash-render.js?v=957"></script>
+    <script defer src="profile.js?v=957"></script>
+    <script defer src="app.js?v=957"></script>
   </body>
 </html>

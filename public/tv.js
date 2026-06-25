@@ -262,13 +262,12 @@
       if (this._promoEl !== undefined) return this._promoEl;
       const v = $("promo-video");
       this._promoEl = v || null;
-      if (v) {
-        v.addEventListener("ended", () => this._endPromo());
-        v.addEventListener("click", () => this._endPromo()); // tap to skip
-      }
+      if (this._promoMuted === undefined) this._promoMuted = true; // default muted (browsers block unmuted autoplay)
+      if (v) v.addEventListener("ended", () => this._endPromo());
       return this._promoEl;
     },
-    // Play the promo over the current channel; on end → back to the normal screen.
+    _promoBtn(show) { const b = $("promo-unmute"); if (b) b.classList.toggle("hidden", !show); },
+    // Autoplay the promo over the current channel (muted); on end → normal screen.
     playPromo(force) {
       const v = this._initPromo(); if (!v) return;
       if (this._promoPlaying && !force) return;
@@ -277,18 +276,34 @@
       v.classList.remove("hidden");
       try { v.currentTime = 0; } catch (e) {}
       v.muted = !!this._promoMuted;
+      this._promoBtn(!!this._promoMuted); // big "tap to unmute" while it plays muted
       const p = v.play();
-      if (p && p.catch) p.catch(() => this._endPromo()); // gesture not ready → bail to normal screen
+      if (p && p.catch) p.catch(() => { // even muted autoplay refused → just bail to the screen
+        v.muted = true; const p2 = v.play(); if (p2 && p2.catch) p2.catch(() => this._endPromo());
+      });
+    },
+    // User tapped the big center button: unmute + restart so they hear it in full.
+    unmutePromo() {
+      const v = this._initPromo(); if (!v) return;
+      this._promoMuted = false;
+      v.muted = false;
+      this._promoBtn(false);
+      if (!this._promoPlaying) { this.playPromo(true); return; }
+      try { v.currentTime = 0; } catch (e) {}
+      v.play();
+      try { localStorage.setItem("ctf_lenny_heard", "1"); } catch (e) {}
     },
     _endPromo() {
       const v = this._promoEl;
       if (v) { try { v.pause(); } catch (e) {} v.classList.add("hidden"); }
+      this._promoBtn(false);
       this._promoPlaying = false;
       this.idle(); // restore the resting screen (static when signed out, game preview when connected)
     },
     setPromoMuted(m) {
       this._promoMuted = !!m;
       if (this._promoEl) this._promoEl.muted = this._promoMuted;
+      this._promoBtn(this._promoMuted && this._promoPlaying);
       return this._promoMuted;
     },
 

@@ -1849,8 +1849,8 @@
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
-    slotsLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=956")
-      .then(() => loadScriptOnce("slots.js?v=956"))
+    slotsLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=957")
+      .then(() => loadScriptOnce("slots.js?v=957"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -3055,13 +3055,13 @@
       if (drawer && !drawer.contains(e.target) && e.target !== toggle) closeChat();
     });
 
-    // ── Promo intro reel: plays on the first interaction; replay/mute under the TV ──
-    {
-      let promoStarted = false;
-      const startPromo = () => { if (promoStarted) return; promoStarted = true; if (window.TV && TV.playPromo) TV.playPromo(); };
-      document.addEventListener("click", startPromo, { once: true });
-      document.addEventListener("touchend", startPromo, { once: true });
-    }
+    // ── Promo intro reel: autoplays (muted) on every load; big center button = unmute ──
+    if (window.TV && TV.playPromo) { try { TV.playPromo(); } catch (e) {} }
+    { const u = $("promo-unmute"); if (u) u.onclick = (e) => {
+        e.stopPropagation();
+        if (window.TV && TV.unmutePromo) TV.unmutePromo();
+        const m = $("promo-mute"); if (m) m.textContent = "🔊";
+      }; }
     { const r = $("promo-replay"); if (r) r.onclick = (e) => { e.stopPropagation(); if (window.TV && TV.playPromo) TV.playPromo(true); }; }
     { const m = $("promo-mute"); if (m) m.onclick = (e) => {
         e.stopPropagation();

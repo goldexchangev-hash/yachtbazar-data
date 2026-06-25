@@ -1700,7 +1700,7 @@ body.connected .wallet-cluster #disconnect-btn { border-radius: var(--r-full); p
 /* ════════ Promo intro video on the TV ════════ */
 .promo-video {
   position: absolute; inset: 0; width: 100%; height: 100%;
-  object-fit: contain; background: #000; z-index: 45; cursor: pointer;
+  object-fit: cover; background: #000; z-index: 45; cursor: pointer;
 }
 .promo-video.hidden { display: none; }
 .tv-controls { flex-wrap: wrap; }
@@ -1711,3 +1711,18 @@ body.connected .wallet-cluster #disconnect-btn { border-radius: var(--r-full); p
   white-space: nowrap;
 }
 .tv-promo-btn:hover { color: var(--s-text); background: var(--s-border); }
+
+/* big center "tap to unmute" button over the promo video */
+.promo-unmute {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  z-index: 48; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(6, 16, 12, .66); border: 2px solid var(--s-green); color: #fff;
+  font: 700 14px/1 var(--s-font); letter-spacing: .5px; padding: 14px 22px;
+  border-radius: var(--r-full); box-shadow: 0 0 0 4px rgba(0,231,1,.16), 0 10px 34px rgba(0,0,0,.5);
+  animation: promoPulse 1.5s ease-in-out infinite;
+}
+.promo-unmute.hidden { display: none; }
+@keyframes promoPulse {
+  50% { box-shadow: 0 0 0 9px rgba(0,231,1,.08), 0 10px 38px rgba(0,0,0,.55); transform: translate(-50%,-50%) scale(1.05); }
+}
+@media (prefers-reduced-motion: reduce) { .promo-unmute { animation: none; } }
