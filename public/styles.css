@@ -1449,3 +1449,13 @@ input[type="range"] {
 .slider, .slider-wrap, .td-slider-wrap {
   -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
 }
+
+/* ── Wallet cluster: keep the disconnect button on-screen on mobile ── */
+.wallet-cluster { display: flex; align-items: center; gap: 10px; }
+@media (max-width: 640px) {
+  .topbar-right { flex-wrap: wrap; justify-content: flex-end; gap: 8px; min-width: 0; }
+  /* stack the disconnect button neatly UNDER the wallet address */
+  .wallet-cluster { flex-direction: column; align-items: flex-end; gap: 6px; }
+  #disconnect-btn { padding: 7px 12px; }
+  #wallet-addr { max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+}
