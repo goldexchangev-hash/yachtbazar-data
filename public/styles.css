@@ -1845,23 +1845,25 @@ body.demo-mode #bankroll { display: none !important; }
 /* mobile "use MetaMask browser" hint sits directly above the demo bar, same width */
 .stage > .mobile-hint { width: 100%; max-width: 100%; margin: 0 auto -8px; }
 
-/* "SHARE YOUR WIN" — green + bubbly, overlaid in the lower part of the TV screen */
+/* Right cluster in the TV control strip: share-win pill sits just left of CH badge */
+.tv-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.tv-right .tv-channel { margin-left: 0; }
+
+/* "Share win" — small green bubbly pill (only on a win) */
 .share-win-btn {
-  position: absolute; left: 50%; bottom: 6%; transform: translate(-50%, 0); z-index: 47;
-  width: fit-content; max-width: 88%; white-space: nowrap;
   background: linear-gradient(180deg, #2bf06e 0%, #00c24f 60%, #00a544 100%);
   color: #04210f; font-family: var(--font); font-weight: 800;
-  font-size: 12px; letter-spacing: .2px; border: none; border-radius: 999px;
-  padding: 7px 15px; cursor: pointer;
-  box-shadow: 0 8px 24px rgba(0,231,1,.5), inset 0 2px 0 rgba(255,255,255,.5), inset 0 -4px 0 rgba(0,0,0,.18);
+  font-size: 11px; letter-spacing: .2px; border: none; border-radius: 999px;
+  padding: 6px 12px; cursor: pointer; white-space: nowrap;
+  box-shadow: 0 4px 14px rgba(0,231,1,.5), inset 0 1px 0 rgba(255,255,255,.5), inset 0 -2px 0 rgba(0,0,0,.2);
   animation: shareBubble 1.5s ease-in-out infinite;
   -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none;
 }
 .share-win-btn:hover { filter: brightness(1.07); }
-.share-win-btn:active { animation: none; transform: translate(-50%, 2px) scale(.96); }
+.share-win-btn:active { animation: none; transform: translateY(1px) scale(.96); }
 .share-win-btn.hidden { display: none; }
 @keyframes shareBubble {
-  0%, 100% { transform: translate(-50%, 0) scale(1); box-shadow: 0 8px 24px rgba(0,231,1,.5), inset 0 2px 0 rgba(255,255,255,.5), inset 0 -4px 0 rgba(0,0,0,.18); }
-  50% { transform: translate(-50%, -3px) scale(1.05); box-shadow: 0 12px 32px rgba(0,231,1,.62), inset 0 2px 0 rgba(255,255,255,.55), inset 0 -4px 0 rgba(0,0,0,.18); }
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-2px) scale(1.05); }
 }
-@media (prefers-reduced-motion: reduce) { .share-win-btn { animation: none; transform: translate(-50%, 0); } }
+@media (prefers-reduced-motion: reduce) { .share-win-btn { animation: none; } }
