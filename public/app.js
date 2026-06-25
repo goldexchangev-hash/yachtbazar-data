@@ -688,9 +688,9 @@
       const houseWallet = ART.defaultTreasury || account;
       // Explicit gasLimit skips eth_estimateGas — flaky public Sepolia RPCs make
       // ethers throw "could not coalesce error" there even with funds available.
-      // 6M covers the now-larger contract (flip + host tables + dice); Sepolia
-      // blocks are 30M so there's ample headroom (a too-low limit = failed deploy).
-      const c = await factory.deploy(houseWallet, { gasLimit: 6_000_000n });
+      // The contract is now ~24KB (flip + host tables + dice + crash + slots), so
+      // code deposit alone is ~4.8M gas; 8M leaves margin. Sepolia blocks are 30M.
+      const c = await factory.deploy(houseWallet, { gasLimit: 8_000_000n });
       await c.waitForDeployment();
       const addr = await c.getAddress();
       deployment = { address: addr, chainId: Number(net.chainId) };
