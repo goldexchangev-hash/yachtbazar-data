@@ -45,13 +45,28 @@
     while (hist.children.length > 16) hist.removeChild(hist.lastChild);
   }
 
-  // The reveal animation: rise to the on-chain crash point at a snappy, value-
-  // scaled pace, cashing out at the target on the way if we got there.
+  // The reveal animation: rise to the on-chain crash point at a snappy, bounded
+  // pace. On a win, cash out at the target and finish quickly (fly off) instead
+  // of dragging all the way up to a possibly-huge crash point.
   function tick() {
     if (!round || round.done) return;
     const e = E();
-    const ms = performance.now() - round.t0;
-    let mult = CrashEngine.multiplierAtMs(ms, round.k);
+    const now = performance.now();
+    if (round.cashed) {
+      // brief fly-off after cashing out, then finish
+      CrashRender.setMult(Math.min(round.crashX, CrashEngine.multiplierAtMs(now - round.t0, round.k)));
+      if (now - round.cashAt >= 1000) endRound();
+      return;
+    }
+    const mult = CrashEngine.multiplierAtMs(now - round.t0, round.k);
+    if (round.won && mult >= round.targetX) {
+      round.cashed = true; round.cashAt = now;
+      CrashRender.cashout();
+      CrashRender.setMult(round.targetX);
+      e.mult.className = "win"; e.mult.textContent = round.targetX.toFixed(2) + "x";
+      e.sub.textContent = "CASHED " + round.targetX.toFixed(2) + "x · +" + cfg.usd(round.payoutUsd - round.betUsd);
+      return;
+    }
     if (mult >= round.crashX) {
       CrashRender.setMult(round.crashX);
       CrashRender.setState("crashed");
@@ -59,15 +74,8 @@
       endRound();
       return;
     }
-    if (!round.cashed && mult >= round.targetX) {
-      round.cashed = true;
-      CrashRender.cashout();
-      e.mult.className = "win";
-      e.sub.textContent = "CASHED " + round.targetX.toFixed(2) + "x · +" + cfg.usd(round.payoutUsd - round.betUsd);
-    }
     CrashRender.setMult(mult);
-    if (!round.cashed) e.mult.className = "";
-    e.mult.textContent = mult.toFixed(2) + "x";
+    e.mult.className = ""; e.mult.textContent = mult.toFixed(2) + "x";
   }
 
   function endRound() {
@@ -89,14 +97,16 @@
         e.sub.textContent = "Set a cash-out target and launch 🚀";
         refresh();
       }
-    }, 2800);
+    }, 2600);
   }
 
   function reveal(res) {
-    // pace the climb: ~1.8s base + grows mildly with the multiplier, capped ~9s
-    const revealMs = Math.max(1800, Math.min(9000, 1800 + 1400 * Math.log(Math.max(1.01, res.crashX))));
-    const k = Math.log(Math.max(1.01, res.crashX)) / revealMs;
-    round = { crashX: res.crashX, targetX: res.targetX, won: res.won, betUsd: res.betUsd, payoutUsd: res.payoutUsd, t0: performance.now(), k, cashed: false, done: false };
+    // bounded climb: ~1.6s base + grows mildly with the crash point, capped ~6s,
+    // so even a 100x crash resolves quickly instead of rising forever.
+    const lx = Math.log(Math.max(1.01, res.crashX));
+    const revealMs = Math.max(1600, Math.min(6000, 1600 + 1200 * lx));
+    const k = lx / revealMs;
+    round = { crashX: res.crashX, targetX: res.targetX, won: res.won, betUsd: res.betUsd, payoutUsd: res.payoutUsd, t0: performance.now(), cashAt: 0, k, cashed: false, done: false };
     const e = E();
     CrashRender.reset(); CrashRender.setState("flying"); CrashRender.setMult(1);
     e.mult.className = ""; e.mult.textContent = "1.00x"; e.sub.textContent = "🚀 to the moon…";

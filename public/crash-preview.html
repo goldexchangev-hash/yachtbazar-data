@@ -62,8 +62,8 @@
       <button id="crash-launch">🚀 LAUNCH · win $20.00</button>
     </div>
 
-    <script src="crash-engine.js?v=930"></script>
-    <script src="crash-render.js?v=930"></script>
+    <script src="crash-engine.js?v=931"></script>
+    <script src="crash-render.js?v=931"></script>
     <script>
       (function () {
         const $ = (id) => document.getElementById(id);
@@ -94,8 +94,24 @@
 
         CrashRender.onFrame(() => {
           if (!round || round.done) return;
-          const ms = performance.now() - round.t0;
-          let mult = CrashEngine.multiplierAtMs(ms, K);
+          const now = performance.now();
+          if (round.cashed) {
+            CrashRender.setMult(Math.min(round.crashX, CrashEngine.multiplierAtMs(now - round.t0, round.k)));
+            if (now - round.cashAt >= 1000) endRound();
+            return;
+          }
+          const mult = CrashEngine.multiplierAtMs(now - round.t0, round.k);
+          if (round.won && mult >= round.targetX) {
+            round.cashed = true; round.cashAt = now;
+            balance += round.stake * round.targetX; // pay stake*target (stake escrowed at launch)
+            CrashRender.cashout();
+            CrashRender.setMult(round.targetX);
+            multEl.className = "win";
+            multEl.textContent = round.targetX.toFixed(2) + "x";
+            subEl.textContent = "CASHED " + round.targetX.toFixed(2) + "x · +" + fmt(round.stake * (round.targetX - 1));
+            refreshBtn();
+            return;
+          }
           if (mult >= round.crashX) {
             CrashRender.setMult(round.crashX);
             CrashRender.setState("crashed");
@@ -103,19 +119,9 @@
             endRound();
             return;
           }
-          if (!round.cashed && mult >= round.targetX) {
-            round.cashed = true;
-            balance += stakeVal0(round) * round.targetX; // pay stake*target (stake was escrowed at launch)
-            CrashRender.cashout();
-            multEl.className = "win";
-            subEl.textContent = "CASHED " + round.targetX.toFixed(2) + "x · +" + fmt(round.stake * (round.targetX - 1));
-            refreshBtn();
-          }
           CrashRender.setMult(mult);
-          if (!round.cashed) { multEl.className = ""; }
-          multEl.textContent = mult.toFixed(2) + "x";
+          multEl.className = ""; multEl.textContent = mult.toFixed(2) + "x";
         });
-        function stakeVal0(r) { return r.stake; }
 
         function endRound() {
           round.done = true;
@@ -143,7 +149,10 @@
           if (!(stake > 0)) return;
           if (stake > balance) return;
           balance -= stake; // escrow
-          round = { crashX: CrashEngine.crashFromRandom(Math.random, EDGE), targetX: targetVal(), stake, t0: performance.now(), cashed: false, done: false };
+          const crashX = CrashEngine.crashFromRandom(Math.random, EDGE), targetX = targetVal();
+          const lx = Math.log(Math.max(1.01, crashX));
+          const revealMs = Math.max(1600, Math.min(6000, 1600 + 1200 * lx));
+          round = { crashX, targetX, won: crashX >= targetX, stake, t0: performance.now(), cashAt: 0, k: lx / revealMs, cashed: false, done: false };
           CrashRender.reset();
           CrashRender.setState("flying");
           CrashRender.setMult(1);
