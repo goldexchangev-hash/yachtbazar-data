@@ -52,6 +52,7 @@
   })();
   let connecting = false; // true while connect() runs, to suppress the auto-reload
   let contract = null; // connected to signer
+  let twoDiceSupported = null; // null=unknown, true/false — does the active contract have Dice #2?
   let read = null; // connected to provider
   let maxBet = 0n;
   let gameWei = 0n; // cached in-game (deposited) balance, refreshed by refreshBalances
@@ -414,6 +415,7 @@
       }
       contract = new E.Contract(deployment.address, ABI, signer);
       read = new E.Contract(deployment.address, ABI, provider);
+      twoDiceSupported = null; // re-probe Dice #2 support for this contract
       try {
         maxBet = await read.maxBet();
       } catch (e) {
@@ -688,6 +690,7 @@
       saveStored(deployment);
       contract = c.connect(signer);
       read = new E.Contract(addr, ABI, provider);
+      twoDiceSupported = null; // re-probe Dice #2 support for this contract
       // Seed a small house bankroll so vs-house works right away (best effort).
       try { await (await contract.fundHouse({ value: usdToWei(1000), gasLimit: 150_000n })).wait(); } catch {}
       maxBet = await read.maxBet();
@@ -1547,8 +1550,30 @@
     if (btn) { btn.disabled = !!hint; btn.style.opacity = hint ? "0.55" : ""; }
     $("td-roll-hint").textContent = hint;
   }
-  function playTwoDiceClick() {
+  // Not every deployed house contract has Dice #2 — older deploys predate it.
+  // Probe a Dice #2 view function once; if it reverts, the contract lacks the
+  // feature, so we disable the channel with an honest message instead of letting
+  // a bet fail with a misleading "over the limit" error.
+  async function ensureTwoDiceSupport() {
+    if (!contract) return null;
+    if (twoDiceSupported === null) {
+      try { await contract.nextTwoDiceGameId.staticCall(); twoDiceSupported = true; }
+      catch { twoDiceSupported = false; }
+      applyTwoDiceSupport();
+    }
+    return twoDiceSupported;
+  }
+  function applyTwoDiceSupport() {
+    const btn = $("td-roll-btn"), hint = $("td-roll-hint");
+    if (twoDiceSupported === false) {
+      if (btn) { btn.disabled = true; btn.style.opacity = "0.55"; }
+      if (hint) hint.textContent = "⚠️ This house contract predates Dice #2 — it needs to be redeployed/upgraded before you can play it. Coin Flip and 0-100 still work here.";
+    }
+  }
+  async function playTwoDiceClick() {
     if (!ready()) return;
+    if ((await ensureTwoDiceSupport()) === false)
+      return toast("Dice #2 isn't on this house contract yet — it needs a redeploy. (Coin Flip and 0-100 still work.)", "err");
     const stakeUsd = parseFloat($("td-stake").value);
     if (!(stakeUsd > 0)) return toast("Drag to pick a stake", "err");
     const bet = usdToWei(stakeUsd);
@@ -1617,7 +1642,7 @@
     if (game === "poker") { if (window.PokerUI) PokerUI.show(); }
     else { if (window.PokerUI) PokerUI.hide(); if (window.TV && TV.changeChannel) TV.changeChannel(GAME_CHANNEL[game]); }
     if (game === "dice") { refreshDiceHouse(); diceReadouts(); }
-    else if (game === "twodice") { refreshDiceHouse(); twoDiceReadouts(); }
+    else if (game === "twodice") { refreshDiceHouse(); twoDiceReadouts(); ensureTwoDiceSupport(); }
   }
   // Poker chips are a session-local pool seeded from your in-game balance.
   // Phase 1 (vs house bots) plays out client-side; net results are NOT yet
