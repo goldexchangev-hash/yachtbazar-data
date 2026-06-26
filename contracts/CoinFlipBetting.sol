@@ -151,6 +151,21 @@ contract CoinFlipBetting {
     uint256 public houseBankroll;
 
     // --------------------------------------------------------------------- //
+    //  Blackjack: server-authoritative multiplayer, house-signed settlement.
+    //  Players LOCK a buy-in from their balance to sit at a real-money table
+    //  (so they can't withdraw mid-hand). The trusted house signer (the game
+    //  server) signs each session's NET result; settleBlackjack verifies the
+    //  signature and reconciles the locked funds against the house bankroll.
+    //  A player can never lose more than they locked.
+    // --------------------------------------------------------------------- //
+    /// @notice Address whose signature authorizes blackjack settlements (the server).
+    address public blackjackSigner;
+    /// @notice ETH locked at a blackjack table per player (escrowed buy-in).
+    mapping(address => uint256) public bjLocked;
+    /// @notice Spent settlement nonces (replay protection).
+    mapping(uint256 => bool) public bjNonceUsed;
+
+    // --------------------------------------------------------------------- //
     //  Host tables (be-your-own-house links)
     // --------------------------------------------------------------------- //
 
@@ -226,6 +241,9 @@ contract CoinFlipBetting {
     event CrashEdgeUpdated(uint256 newEdgeBps);
     /// @param gridPacked 15 symbols (cell = reel*3+row), 4 bits each, LSB-first.
     event SlotsRolled(uint256 indexed gameId, address indexed player, uint256 betAmount, uint256 gridPacked, uint256 payout);
+    event BlackjackSignerUpdated(address indexed signer);
+    event BlackjackBuyIn(address indexed player, uint256 amount, uint256 locked);
+    event BlackjackSettled(address indexed player, int256 net, uint256 returned, uint256 nonce);
 
     // --------------------------------------------------------------------- //
     //  Errors
@@ -394,6 +412,78 @@ contract CoinFlipBetting {
         (bool ok, ) = payable(msg.sender).call{value: amount}("");
         if (!ok) revert TransferFailed();
         emit HouseWithdrawn(amount, houseBankroll);
+    }
+
+    // --------------------------------------------------------------------- //
+    //  Blackjack: house-signed settlement
+    // --------------------------------------------------------------------- //
+
+    /// @notice Set the trusted signer (the game server) that authorizes blackjack
+    ///         settlements. The server holds the matching private key.
+    function setBlackjackSigner(address signer) external onlyOwner {
+        blackjackSigner = signer;
+        emit BlackjackSignerUpdated(signer);
+    }
+
+    /// @notice Lock a buy-in from your withdrawable balance to sit at a real-money
+    ///         blackjack table. Locked funds can't be withdrawn until the session
+    ///         is settled — this is what makes server-authoritative play safe.
+    function blackjackBuyIn(uint256 amount) external {
+        uint256 bal = balances[msg.sender];
+        if (amount == 0 || amount > bal) revert InsufficientBalance();
+        balances[msg.sender] = bal - amount;
+        bjLocked[msg.sender] += amount;
+        emit BlackjackBuyIn(msg.sender, amount, bjLocked[msg.sender]);
+    }
+
+    /// @notice Settle a player's blackjack session. `net` is their signed net P&L
+    ///         (positive = they won, negative = they lost). Reconciles the locked
+    ///         buy-in against the house bankroll and returns the remainder to the
+    ///         player's withdrawable balance. Requires a signature from
+    ///         `blackjackSigner` over (player, net, nonce, chainId, contract).
+    ///         A player can never lose more than they locked.
+    function settleBlackjack(address player, int256 net, uint256 nonce, bytes calldata signature) external {
+        if (blackjackSigner == address(0)) revert NotOwner();
+        if (bjNonceUsed[nonce]) revert InsufficientBalance();
+
+        bytes32 h = keccak256(abi.encodePacked(player, net, nonce, block.chainid, address(this)));
+        bytes32 ethHash = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", h));
+        if (_recover(ethHash, signature) != blackjackSigner) revert NotOwner();
+
+        bjNonceUsed[nonce] = true;
+        uint256 locked = bjLocked[player];
+        bjLocked[player] = 0;
+
+        uint256 returned;
+        if (net >= 0) {
+            uint256 win = uint256(net);
+            if (win > houseBankroll) revert HouseBankrollLow();
+            houseBankroll -= win;
+            returned = locked + win;
+        } else {
+            uint256 loss = uint256(-net);
+            if (loss > locked) revert InsufficientBalance(); // can't lose more than locked
+            houseBankroll += loss;
+            returned = locked - loss;
+        }
+        balances[player] += returned;
+        emit BlackjackSettled(player, net, returned, nonce);
+    }
+
+    /// @dev Minimal ECDSA recover (no external deps).
+    function _recover(bytes32 hash, bytes calldata sig) internal pure returns (address) {
+        if (sig.length != 65) return address(0);
+        bytes32 r;
+        bytes32 s;
+        uint8 v;
+        assembly {
+            r := calldataload(sig.offset)
+            s := calldataload(add(sig.offset, 32))
+            v := byte(0, calldataload(add(sig.offset, 64)))
+        }
+        if (v < 27) v += 27;
+        if (v != 27 && v != 28) return address(0);
+        return ecrecover(hash, v, r, s);
     }
 
     /// @notice One-tap coin flip against the house. Your bet is matched from the
