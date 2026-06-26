@@ -209,6 +209,16 @@
   };
   CoinFlip3D.prototype.land = function (side, tier) {
     this._landSide = side === TAILS ? TAILS : HEADS; this._landTier = tier || "normal";
+    // If the render loop isn't running (tabbed away / channel race), the drop animation
+    // would never advance and the coin would freeze mid-spin showing a slim edge. Snap
+    // straight to a clean, DEAD-FLAT resting face instead so it always reads clearly.
+    if (!this._active) {
+      const want = this._landSide === TAILS ? Math.PI : 0;
+      this._spin = this._spinEnd = want; this.phase = "landed"; this._landT = 999;
+      this.coin.rotation.set(want, 0, 0); this.coin.scale.set(1.12, 1.12, 1.12); this.coin.position.set(0, 0.4, 0);
+      try { this.renderer.render(this.scene, this.cam); } catch (e) {}
+      return;
+    }
     if (this.phase === "anticip" || this.phase === "launch") { this._pendingLand = true; return; } // still rising → drop when it hangs
     this._startDrop();
   };
@@ -258,7 +268,7 @@
       c.scale.set(1, 1, 1);
       if (k >= 1) {
         this.phase = "landed"; this._spin = this._spinEnd; this._landT = 0;
-        c.rotation.set(this._spin - 0.14, 0, 0); // tip ~8° back so the winning face catches light, not edge-on
+        c.rotation.set(this._spin, 0, 0); // land DEAD FLAT facing the camera — fully readable, never slim
         this._punch(0.05);
         // bright specular pop on the resting face the instant it lands
         if (this._face) { this._face.intensity = 0.95; clearTimeout(this._faceT); this._faceT = setTimeout(function (f) { return function () { f.intensity = 0.5; }; }(this._face), 450); }
@@ -270,7 +280,7 @@
       this._landT = (this._landT || 0) + dt;
       const e = 1 - Math.pow(1 - Math.min(1, this._landT / 0.45), 3);
       const sc = 1 + 0.12 * e; c.scale.set(sc, sc, sc);
-      c.rotation.set(this._spinEnd - 0.14, 0, 0); // pin it flat to the camera (no drift / edge-on)
+      c.rotation.set(this._spinEnd, 0, 0); // pin DEAD FLAT to the camera (never drifts edge-on / slim)
     }
     // free spin (anticip/launch/hang) about the X axis
     if (P === "anticip" || P === "launch" || P === "hang") { this._spin += this._spinVel * dt; c.rotation.x = this._spin; c.rotation.y = this._spin * 0.08; }

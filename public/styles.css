@@ -1598,8 +1598,13 @@ body:not(.game-poker) #poker-view { display:none !important; }
 .notice-dismissed { display: none !important; }
 
 @media (max-width: 900px) { .btn-icon { min-width: 40px; min-height: 40px; } .notice-x { width: 30px; height: 30px; } }
+/* mobile version pill sitting just right of the ☰ menu (the brand build-tag is hidden on phones) */
+.build-tag-m { display: none; }
 @media (max-width: 480px) {
   .testnet-chip, .build-tag { display: none; }
+  .build-tag-m { display: inline-flex; align-items: center; flex: 0 0 auto; margin-right: auto;
+    font-family: var(--display); font-size: 10px; font-weight: 700; letter-spacing: .3px; color: var(--cyan);
+    border: 1px solid rgba(57,231,255,.35); background: rgba(57,231,255,.08); border-radius: 999px; padding: 3px 7px; }
   .tb-tools { gap: 4px; padding: 2px; }
   .btn-icon { width: 36px; height: 36px; }
   #connect-btn { padding: 9px 12px; font-size: 13px; }
