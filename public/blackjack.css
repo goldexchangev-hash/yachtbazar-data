@@ -85,7 +85,7 @@ body {
 #bjGL.on { opacity: 1; }
 /* LAYER 2 — the readable felt (premium neon-rimmed teal slab) */
 .felt {
-  position: relative; z-index: 1; border-radius: 180px / 120px; min-height: 420px; padding: 24px 18px 16px; overflow: hidden;
+  position: relative; z-index: 1; border-radius: 110px / 56px; min-height: 470px; padding: 24px 28px 30px; overflow: hidden;
   background:
     radial-gradient(120% 92% at 50% 6%, rgba(57, 231, 255, .10), transparent 38%),
     radial-gradient(140% 130% at 50% 120%, #0a4d3b 0%, #073a2e 52%, #04241c 100%);
