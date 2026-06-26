@@ -232,18 +232,17 @@
   // wait is < one rotation (the coin is already spinning), so there is no visible snap.
   CoinFlip3D.prototype._tryAlignedDrop = function () {
     const want = this._landSide === TAILS ? Math.PI : 0;
-    // Land in LESS than a half-turn, starting just past the edge on the RESULT side, so the
-    // drop rotates edge → result and NEVER shows the opposite face flat. (The big tumbling
-    // happened during the airborne hang; this is the decisive final settle.)
-    const ARC = Math.PI - 1.0; // ≈ 2.14 rad: starts ~1 rad off the opposite face = edge, not a readable face
+    // Align so the coin starts the drop EDGE-ON — exactly a quarter-turn before the result
+    // face. It then falls on its edge (you genuinely can't tell the side = suspense) and
+    // only flops the final quarter-turn flat to REVEAL heads/tails at the last second.
+    const base = want - Math.PI / 2;
     if (this._dropTarget == null) {
-      const base = want - ARC;
       const m = Math.ceil((this._spin - base) / (2 * Math.PI));
-      this._dropTarget = { start: m * 2 * Math.PI + base, end: m * 2 * Math.PI + want };
+      this._dropTarget = { edge: m * 2 * Math.PI + base, end: m * 2 * Math.PI + want };
     }
-    if (this._spin >= this._dropTarget.start) {
-      this._spinStart = this._dropTarget.start; this._spinEnd = this._dropTarget.end;
-      this._spin = this._spinStart; // exact (≤ one frame's catch-up, imperceptible)
+    if (this._spin >= this._dropTarget.edge) {
+      this._edgeAngle = this._dropTarget.edge; this._spinEnd = this._dropTarget.end;
+      this._spin = this._edgeAngle; // exact (≤ one frame's catch-up, imperceptible)
       this.phase = "drop"; this._pt = 0; this._dropY0 = this.coin.position.y;
       this._wantDrop = false; this._dropTarget = null;
       if (this._gold) this._gold.color.set(this._landSide === TAILS ? 0x49d8ff : 0xffd23f);
@@ -272,31 +271,35 @@
       c.position.y += Math.sin(this._t * 2) * 0.004; // gentle hover
       if (this._wantDrop) this._tryAlignedDrop(); // start the drop once cleanly aligned
     } else if (P === "drop") {
-      this._pt += dt; const dur = 0.92, k = Math.min(1, this._pt / dur);
-      // fall with two decaying bounces
-      const fall = this._dropY0 + (0.4 - this._dropY0) * (1 - Math.pow(1 - k, 2));
-      const bounce = 0.5 * Math.exp(-5 * k) * Math.abs(Math.cos(k * 16));
+      this._pt += dt; const dur = 1.05, k = Math.min(1, this._pt / dur);
+      const REVEAL = 0.74; // EDGE-ON until here, then flop flat to reveal the side
+      // Fall finishes before the reveal so the coin lands on its edge, then flops flat.
+      const kf = Math.min(1, k / 0.6);
+      const fall = this._dropY0 + (0.4 - this._dropY0) * (1 - Math.pow(1 - kf, 2));
+      const bounce = 0.42 * Math.exp(-5 * kf) * Math.abs(Math.cos(kf * 16));
       c.position.y = fall + bounce; c.position.z = Math.max(0, c.position.z - dt * 2.2);
-      // Land WITHOUT a last-second fake-out. A plain ease-out decelerates straight through
-      // the opposite face right before the result face, so you clearly see (e.g.) heads
-      // then watch it roll over to tails — feels like a bait-and-switch. Instead overshoot
-      // slightly PAST the result face during the fast blur, then settle BACK onto it: the
-      // opposite-face crossing happens at speed early, and the slow, readable settle is
-      // always on the winning side.
-      const OVER = 0.45; // overshoot in radians — stays within the result-face hemisphere
-      const peak = this._spinEnd + (this._spinEnd >= this._spinStart ? OVER : -OVER);
-      const kp = 0.6;
-      if (k < kp) { const kk = k / kp, e = 1 - Math.pow(1 - kk, 2); this._spin = this._spinStart + (peak - this._spinStart) * e; }
-      else { const kk = (k - kp) / (1 - kp), e = 1 - Math.pow(1 - kk, 2); this._spin = peak + (this._spinEnd - peak) * e; }
-      c.rotation.x = this._spin;
-      // settle wobble on Z
-      c.rotation.z = (k > 0.5 ? 1 : 0) * 0.13 * Math.exp(-6 * (k - 0.5)) * Math.cos(22 * (k - 0.5));
+      if (k < REVEAL) {
+        // EDGE-ON descent — the coin falls on its side, spinning, so you can't tell the
+        // side yet. Pure suspense, identical for heads and tails.
+        this._spin = this._edgeAngle;
+        c.rotation.x = this._edgeAngle;
+        c.rotation.y = this._t * 7;           // spin the edge so it reads as a falling coin
+        c.rotation.z = Math.sin(this._t * 9) * 0.06;
+        this._revealY = c.rotation.y;          // remember where the spin is when the reveal starts
+      } else {
+        // LAST-SECOND REVEAL — flop the final quarter-turn flat to show heads/tails.
+        const kk = (k - REVEAL) / (1 - REVEAL), e = 1 - Math.pow(1 - kk, 3);
+        this._spin = this._edgeAngle + (this._spinEnd - this._edgeAngle) * e;
+        c.rotation.x = this._spin;
+        c.rotation.y = (this._revealY || 0) * (1 - e); // unwind the edge-spin as it flattens
+        c.rotation.z = Math.sin(this._t * 9) * 0.06 * (1 - e);
+      }
       c.scale.set(1, 1, 1);
       if (k >= 1) {
         this.phase = "landed"; this._spin = this._spinEnd; this._landT = 0;
-        c.rotation.set(this._spin, 0, 0); // land DEAD FLAT facing the camera — fully readable, never slim
-        this._punch(0.05);
-        // bright specular pop on the resting face the instant it lands
+        c.rotation.set(this._spin, 0, 0); // land DEAD FLAT facing the camera — fully readable
+        this._punch(0.06);
+        // bright specular pop on the resting face the instant it reveals
         if (this._face) { this._face.intensity = 0.95; clearTimeout(this._faceT); this._faceT = setTimeout(function (f) { return function () { f.intensity = 0.5; }; }(this._face), 450); }
       }
       this._spinVel = 0;
