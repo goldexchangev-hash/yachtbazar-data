@@ -153,25 +153,30 @@
     lastResult = r;
     const btn = $("share-result-btn");
     if (btn) btn.classList.toggle("hidden", !r.won); // the share button only appears on a WIN
-    // Persistent on-screen win badge: every game's win lands here, so show the
-    // amount won over the TV and keep it up until the next bet starts (cleared by
-    // the action-dock pointer listener). Covers flip/dice/crash/slots AND the
-    // canvas games (Balloon Pop / Plane / Gem Vault 3D) that bank via onWin.
-    if (r.won && (+r.amountUsd || 0) > 0) showTvWin(r.amountUsd, r.tier);
   }
-  // ── Persistent "WON +$X" badge pinned over the TV, for every game. ──
-  function showTvWin(amt, tier) {
-    const el = $("tv-win-badge"); if (!el) return;
-    const v = Math.max(0, +amt || 0);
-    if (v <= 0) return clearTvWin();
-    const t = tier || (v >= 300 ? "mega" : v >= 100 ? "big" : "");
-    el.className = "tv-win-badge" + (t ? " " + t : "");
-    el.textContent = "WON +$" + v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    void el.offsetWidth; // restart the pop animation if it's already showing
-    el.classList.remove("hidden");
+  // Clear the on-screen WIN/LOSE result overlay — called when the next bet starts
+  // (the action-dock pointer listener) and when switching games, so a result never
+  // lingers into the next round or follows you to another game.
+  function clearTvWin() { if (window.TV && TV.clearOutcome) try { TV.clearOutcome(); } catch (e) {} }
+  // The universal coin-flip-style WIN/LOSE result screen for the non-flip betting
+  // games. Coin Flip (CH 8) has its own native result screen; the rapid slot
+  // machines keep their in-canvas per-spin feedback. Shows over a dimmed game and
+  // stays until the next bet. Canvas wins (Balloon Pop / Plane) call it via onWin.
+  function showGameOutcome(won, amountUsd, tier, sub) {
+    if (!window.TV || !TV.showOutcome) return;
+    const amt = Math.abs(+amountUsd || 0);
+    const t = won ? (tier || (amt >= 300 ? "mega" : amt >= 100 ? "big" : "normal")) : "normal";
+    try { TV.showOutcome({ won: !!won, amountUsd: amt, tier: t, sub: sub || "" }); } catch (e) {}
   }
-  function clearTvWin() { const el = $("tv-win-badge"); if (el) el.classList.add("hidden"); }
-  window.__showTvWin = showTvWin; window.__clearTvWin = clearTvWin;
+  function outcomeFromReveal(res) {
+    if (!res || typeof res !== "object") return;
+    const ch = (window.TV && TV._activeChannel) || 8;
+    if (ch !== 9 && ch !== 10 && ch !== 11) return; // 0-100, Dice #2, Crash (one bet → one result)
+    if (res.youWon === undefined && res.won === undefined) return; // bare lock-release call → ignore
+    const won = res.youWon === true || res.won === true;
+    const detail = (res.mult != null && res.mult > 0) ? Number(res.mult).toFixed(2) + "× payout" : "";
+    showGameOutcome(won, res.amountUsd, res.tier, detail);
+  }
   // Every game's reveal funnels through window.__onTvReveal with a result object —
   // surface the share button + remember the win uniformly, on any game.
   function maybeShareWin(res) {
@@ -995,6 +1000,7 @@
     unlockReveal(res);
     if (demoOn) demoSyncBalance();
     try { maybeShareWin(res); } catch (e) {} // green "share your win" button on any win
+    try { outcomeFromReveal(res); } catch (e) {} // universal WIN/LOSE result screen
   };
 
   // Outcome handoff to the win-animation engine. For the Magic Cliffs theme the
@@ -1934,14 +1940,14 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=999").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1000").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=999"))
+      .then(() => loadScriptOnce("slots.js?v=1000"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -1951,9 +1957,9 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=999"))
-      .then(() => loadScriptOnce("pressure-render.js?v=999"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=999"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=1000"))
+      .then(() => loadScriptOnce("pressure-render.js?v=1000"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=1000"))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -1971,7 +1977,7 @@
       ethUsd: ethUsd,
       initialBalance: demoUsd,
       onBalance: (b) => { demoUsd = Math.round(b * 100) / 100; demoSave(); demoPaint(); },
-      onWin: (i) => setLastResult({ won: true, game: "Balloon Pop", emoji: "🎈", amountUsd: i.profitUsd, detail: i.mult.toFixed(2) + "× banked" }),
+      onWin: (i) => { setLastResult({ won: true, game: "Balloon Pop", emoji: "🎈", amountUsd: i.profitUsd, detail: i.mult.toFixed(2) + "× banked" }); showGameOutcome(true, i.profitUsd, null, i.mult.toFixed(2) + "× banked"); },
       els: {
         balance: el("pr-balance"),
         betSlider: el("pr-bet-slider"), betVal: el("pr-bet-val"), betEth: el("pr-bet-eth"),
@@ -2006,10 +2012,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=999"))
-      .then(() => loadScriptOnce("plane-render.js?v=999"))
-      .then(() => loadScriptOnce("plane-feed.js?v=999"))
-      .then(() => loadScriptOnce("plane-ui.js?v=999"))
+      .then(() => loadScriptOnce("plane-engine.js?v=1000"))
+      .then(() => loadScriptOnce("plane-render.js?v=1000"))
+      .then(() => loadScriptOnce("plane-feed.js?v=1000"))
+      .then(() => loadScriptOnce("plane-ui.js?v=1000"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2032,7 +2038,7 @@
       mode: demoOn ? "demo" : "real",
       initialBalance: demoOn ? demoUsd : weiToUsd(gameWei),
       onBalance: (b) => { demoUsd = Math.round(b * 100) / 100; demoSave(); demoPaint(); }, // demo only
-      onWin: (i) => setLastResult({ won: true, game: "Plane", emoji: "✈️", amountUsd: i.profitUsd, detail: i.mult.toFixed(2) + "× cashed" }),
+      onWin: (i) => { setLastResult({ won: true, game: "Plane", emoji: "✈️", amountUsd: i.profitUsd, detail: i.mult.toFixed(2) + "× cashed" }); showGameOutcome(true, i.profitUsd, null, i.mult.toFixed(2) + "× cashed"); },
       onRealBet: (betUsd, targetX100) => doPlanePlay(betUsd, targetX100),       // single on-chain round
       onRealDone: () => { unlockReveal(); refreshBalances().then(() => { if (planeGame) planeGame.setBalance(weiToUsd(gameWei)); }); refreshDiceHouse(); try { refreshStats(); } catch (e) {} },
       els: {
@@ -2087,15 +2093,15 @@
   function loadThreeOnce() {
     if (window.THREE) return Promise.resolve();
     if (threeLoadPromise) return threeLoadPromise;
-    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=999").catch((e) => { threeLoadPromise = null; throw e; });
+    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1000").catch((e) => { threeLoadPromise = null; throw e; });
     return threeLoadPromise;
   }
   function ensureSlots3dLoaded() {
     if (window.Slots3D) return Promise.resolve(true);
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("slots3d-engine.js?v=999"))
-      .then(() => loadScriptOnce("slots3d.js?v=999"))
+      .then(() => loadScriptOnce("slots3d-engine.js?v=1000"))
+      .then(() => loadScriptOnce("slots3d.js?v=1000"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2134,7 +2140,7 @@
   function buildSlots3dHelp() {
     const E = window.Slots3DEngine, body = $("s3d-help-body");
     if (!E || !body || s3dHelpBuilt) return;
-    const EMO = ["🍒", "🔔", "⭐", "7️⃣", "🟫", "💎", "🃏", "🔒"];
+    const EMO = ["🍒", "🔔", "⭐", "7️⃣", "🥇", "💎", "🃏", "🔒"];
     const NAME = ["Cherry", "Bell", "Star", "Lucky 7", "Gold Bar", "Diamond", "WILD line", "Vault"];
     // paytable: payout per matching LINE, as a multiple of the per-line bet (3/4/5)
     let payRows = "";

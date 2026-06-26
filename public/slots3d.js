@@ -57,7 +57,22 @@
     else if (kind === "bar") { x.shadowBlur = 18; rr(x, -R * 0.95, -R * 0.5, R * 1.9, R, R * 0.22); x.fill(); x.stroke(); x.shadowBlur = 0; x.fillStyle = "rgba(0,0,0,.55)"; x.font = "900 " + (R * 0.7) + "px 'Bungee',Arial"; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText("BAR", 0, R * 0.04); }
     else if (kind === "bell") { x.beginPath(); x.moveTo(0, -R); x.bezierCurveTo(R * 0.7, -R * 0.9, R * 0.8, R * 0.4, R * 0.95, R * 0.55); x.lineTo(-R * 0.95, R * 0.55); x.bezierCurveTo(-R * 0.8, R * 0.4, -R * 0.7, -R * 0.9, 0, -R); x.fill(); x.stroke(); x.beginPath(); x.arc(0, R * 0.78, R * 0.18, 0, 7); x.fill(); }
     else if (kind === "cherry") { for (const dx of [-R * 0.42, R * 0.42]) { x.beginPath(); x.arc(dx, R * 0.45, R * 0.5, 0, 7); x.fill(); x.stroke(); } x.strokeStyle = "#3fae3f"; x.lineWidth = R * 0.14; x.beginPath(); x.moveTo(-R * 0.42, R * 0.0); x.quadraticCurveTo(0, -R * 0.7, R * 0.1, -R); x.moveTo(R * 0.42, R * 0.0); x.quadraticCurveTo(R * 0.2, -R * 0.6, R * 0.1, -R); x.stroke(); }
-    else if (kind === "vault") { x.shadowBlur = 22; x.beginPath(); x.arc(0, 0, R, 0, 7); x.fill(); x.stroke(); x.shadowBlur = 0; x.strokeStyle = "rgba(255,255,255,.6)"; x.lineWidth = R * 0.1; x.beginPath(); x.arc(0, 0, R * 0.6, 0, 7); x.stroke(); for (let i = 0; i < 8; i++) { const a = i / 8 * 6.283; x.beginPath(); x.moveTo(Math.cos(a) * R * 0.6, Math.sin(a) * R * 0.6); x.lineTo(Math.cos(a) * R * 0.95, Math.sin(a) * R * 0.95); x.stroke(); } }
+    else if (kind === "vault") {
+      // PADLOCK — the bonus/scatter symbol. Drawn to read like the 🔒 in the
+      // "how it pays" guide so players recognize it scrolling by. Extra glow so
+      // it stands out from the regular symbols.
+      x.shadowBlur = 26; x.shadowColor = c;
+      // shackle (the U-loop on top)
+      x.lineWidth = R * 0.2; x.strokeStyle = lighten(c);
+      x.beginPath(); x.arc(0, -R * 0.34, R * 0.42, Math.PI * 1.02, -0.02, false); x.stroke();
+      // body (rounded block)
+      x.shadowBlur = 18;
+      rr(x, -R * 0.62, -R * 0.06, R * 1.24, R * 0.96, R * 0.2); x.fill(); x.stroke();
+      // keyhole
+      x.shadowBlur = 0; x.fillStyle = "rgba(0,0,0,.55)";
+      x.beginPath(); x.arc(0, R * 0.3, R * 0.17, 0, 7); x.fill();
+      x.beginPath(); x.moveTo(-R * 0.07, R * 0.32); x.lineTo(R * 0.07, R * 0.32); x.lineTo(R * 0.12, R * 0.66); x.lineTo(-R * 0.12, R * 0.66); x.closePath(); x.fill();
+    }
   }
   function star(x, cx, cy, n, R, r) { x.beginPath(); for (let i = 0; i < n * 2; i++) { const rad = i % 2 ? r : R, a = (i / (n * 2)) * 6.283 - Math.PI / 2; x[i ? "lineTo" : "moveTo"](cx + Math.cos(a) * rad, cy + Math.sin(a) * rad); } x.closePath(); }
   function lighten(hex) { const n = parseInt(hex.slice(1), 16); const r = Math.min(255, (n >> 16 & 255) + 70), g = Math.min(255, (n >> 8 & 255) + 70), b = Math.min(255, (n & 255) + 70); return "rgb(" + r + "," + g + "," + b + ")"; }

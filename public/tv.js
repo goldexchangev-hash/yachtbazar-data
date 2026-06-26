@@ -879,6 +879,44 @@
       requestAnimationFrame(tick);
     },
 
+    // ── Universal WIN/LOSE result screen for the non-flip betting games ──
+    // Reuses the rich coin-flip result layer as a DIMMING OVERLAY on top of the
+    // live game (the game shows faintly behind), and KEEPS it up until the next
+    // bet clears it (clearOutcome). o = { won, amountUsd, tier, sub }.
+    showOutcome(o) {
+      o = o || {};
+      const layer = this.layers.result; if (!layer) return;
+      this._clearConfetti(); this._clearCelebration();
+      layer.classList.remove("win", "lose", "tier-big", "tier-mega");
+      const tier = o.won ? (o.tier === "mega" ? "mega" : o.tier === "big" ? "big" : "normal") : "normal";
+      if (o.won) {
+        layer.classList.add("win");
+        this.resultEmoji.textContent = tier === "mega" ? "🤑" : tier === "big" ? "🥳" : "😄";
+        this.resultHeadline.textContent = tier === "mega" ? "JACKPOT!" : tier === "big" ? "BIG WIN!" : "YOU WIN!";
+        this.resultSub.textContent = o.sub || "";
+      } else {
+        layer.classList.add("lose");
+        this.resultEmoji.textContent = "😢";
+        this.resultHeadline.textContent = "YOU LOSE";
+        this.resultSub.textContent = o.sub || "Better luck next bet";
+      }
+      this.resultCoin.textContent = "";
+      this._animateMoney({ youWon: !!o.won, amountUsd: Math.abs(+o.amountUsd || 0) });
+      layer.classList.add("as-overlay"); // overlay + dim, WITHOUT hiding the game
+      layer.classList.remove("hidden");
+      this._outcomeShown = true;
+      if (o.won) this._celebrate(layer, tier);
+      else if (window.Chiptune) window.Chiptune.lose();
+    },
+    clearOutcome() {
+      if (!this._outcomeShown) return;
+      this._outcomeShown = false;
+      const layer = this.layers.result; if (!layer) return;
+      layer.classList.remove("as-overlay", "win", "lose", "tier-big", "tier-mega");
+      this._clearCelebration(); this._clearConfetti();
+      if (this._phase !== "result") layer.classList.add("hidden"); // flip owns the layer natively
+    },
+
     reset() {
       this._seq++;
       this._pendingReveal = null;
