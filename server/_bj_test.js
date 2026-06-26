@@ -162,5 +162,23 @@ console.log("\n== DISCONNECT / LEAVE / ESCROW (audit fixes) ==");
   chk(seats === 1, "socket holds exactly one seat");
 }
 
+console.log("\n== DEALER PACING ==");
+{ // with dealerPace>0 the dealer draws ONE card per timer tick (suspense), then settles
+  const reg = new Map(); let tid = 0;
+  const st = (fn) => { const id = ++tid; reg.set(id, fn); return id; };
+  const ct = (id) => reg.delete(id);
+  const fire = (id) => { const f = reg.get(id); if (f) { reg.delete(id); f(); } };
+  const eng = BJ.attachBlackjack({ bank: BJ.makeBank(1000), setTimeout: st, clearTimeout: ct, timers: { betting: 1e9, turn: 1e9, insurance: 1e9, idle: 1e9, between: 1e9, dealerReveal: 600, dealerPace: 800 }, makeShoe: () => P("10S 6H 10D 6C 4D 5S") });
+  const p = sock("p"); eng.handle(p, { type: "bj:room:join", wallet: "p" });
+  const room = [...eng._mgr.rooms.values()][0];
+  eng.handle(p, { type: "bj:bet:place", amountUsd: 100 });
+  eng.handle(p, { type: "bj:action", action: "stand" }); // player 20 stands; dealer 12
+  chk(room.phase === "dealer" && room.dealer.length === 2, "paced: after stand, dealer revealed (2 cards) but PAUSED, not settled");
+  fire(room.timers.dealer); chk(room.dealer.length === 3 && room.phase === "dealer", "tick 1: dealer drew its 3rd card (12->16), still pausing");
+  fire(room.timers.dealer); chk(room.dealer.length === 4 && room.phase === "dealer", "tick 2: dealer drew its 4th card (16->21), still pausing");
+  fire(room.timers.dealer); chk(room.phase === "settle", "tick 3: dealer stands on 21 -> settle");
+  chk(seat0(p.last("bj:settle")).hands[0].outcome === "lose", "player 20 loses to dealer 21 (math intact under pacing)");
+}
+
 console.log(pass ? "\nALL ACTION TESTS PASSED" : "\n*** SOME TESTS FAILED ***");
 if (!pass) process.exitCode = 1;

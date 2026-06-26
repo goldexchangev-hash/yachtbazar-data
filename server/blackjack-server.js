@@ -29,7 +29,7 @@
   function attachBlackjack(opts) {
     opts = opts || {};
     const config = Object.assign({}, Rules.DEFAULT_CONFIG, opts.config || {});
-    const T = Object.assign({ betting: 15000, turn: 20000, insurance: 12000, idle: 300000, between: 3500 }, opts.timers || {});
+    const T = Object.assign({ betting: 15000, turn: 20000, insurance: 12000, idle: 300000, between: 3500, dealerReveal: 0, dealerPace: 0 }, opts.timers || {});
     const bank = opts.bank || makeBank(opts.startBalance);
     const MAX_ROOMS = opts.maxRooms || 50;
     const setT = opts.setTimeout || ((f, ms) => setTimeout(f, ms));
@@ -255,8 +255,16 @@
       r.phase = "dealer"; broadcastState(r); // reveal hole
       // dealer only draws if at least one non-surrendered, non-busted hand is live
       const live = r.seats.some((s) => inRound(s) && s.hands.some((h) => !h.surrendered && !Rules.handValue(h.cards).bust));
-      if (live) while (Rules.dealerShouldHit(r.dealer, config)) r.dealer.push(draw(r));
+      if (!live) return settle(r);
+      if (T.dealerPace > 0) { r.timers.dealer = setT(() => dealerStep(r), T.dealerReveal || T.dealerPace); return; } // paced: one card at a time, with suspense
+      while (Rules.dealerShouldHit(r.dealer, config)) r.dealer.push(draw(r)); // synchronous (pacing off / tests)
       settle(r);
+    }
+    // one paced dealer draw, then schedule the next — gives the table its suspense
+    function dealerStep(r) {
+      if (r.phase !== "dealer") return;
+      if (Rules.dealerShouldHit(r.dealer, config)) { r.dealer.push(draw(r)); broadcastState(r); r.timers.dealer = setT(() => dealerStep(r), T.dealerPace); }
+      else settle(r);
     }
     function settle(r) {
       r.phase = "settle"; const perSeat = [];

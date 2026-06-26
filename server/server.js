@@ -42,7 +42,7 @@ const wss = new WebSocketServer({ server, maxPayload: 64 * 1024 });
 // Multiplayer blackjack room engine. Server-authoritative: it owns the shoe,
 // deals, validates every intent, runs the timers, and is the only writer of
 // (demo) balances. It speaks a `bj:`-namespaced sub-protocol over the same ws.
-const blackjack = attachBlackjack({ startBalance: 5000 });
+const blackjack = attachBlackjack({ startBalance: 5000, timers: { dealerReveal: 650, dealerPace: 800 } });
 
 /** ws -> { address } */
 const clients = new Map();
