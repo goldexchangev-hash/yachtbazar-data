@@ -1983,6 +1983,34 @@ body.demo-mode #bankroll { display: none !important; }
 .s3d-msg.lose { color: #ff6b86; }
 .s3d-winval { color: #ffd23f; font-family: var(--display); }
 
+/* ── FREE SPINS bonus overlay (rendered over the slot canvas) ── */
+.s3d-bonus {
+  position: absolute; inset: 0; z-index: 6; pointer-events: none;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; gap: 6px; padding: 12px;
+  font-family: "Press Start 2P", var(--display, monospace);
+}
+.s3d-bonus.hidden { display: none; }
+.s3d-bonus-title { color: #ff8ad0; font-size: clamp(11px, 2.6vw, 18px); letter-spacing: 1px; text-shadow: 0 2px 0 #000, 0 0 16px rgba(255,77,157,.8); }
+.s3d-bonus-big   { color: #fff; font-size: clamp(22px, 6vw, 46px); letter-spacing: 1px; text-shadow: 0 3px 0 #000, 0 0 26px rgba(255,210,63,.9); }
+.s3d-bonus-sub   { color: #ffd23f; font-size: clamp(8px, 2vw, 12px); letter-spacing: .5px; text-shadow: 0 2px 0 #000; }
+/* Intro + finale take over the whole screen with a darkening scrim. */
+.s3d-bonus.intro, .s3d-bonus.end { background: radial-gradient(ellipse at center, rgba(40,6,30,.55), rgba(4,5,15,.82) 75%); }
+.s3d-bonus.intro .s3d-bonus-big { color: #ffd23f; }
+.s3d-bonus.end   .s3d-bonus-big { color: #6dffb0; }
+/* While the free spins run, shrink to a compact top banner so the reels show. */
+.s3d-bonus.spin {
+  inset: auto 0 auto 0; top: 8px; justify-content: flex-start; gap: 2px;
+  background: linear-gradient(180deg, rgba(40,6,30,.62), rgba(40,6,30,0));
+  padding: 8px 10px 16px;
+}
+.s3d-bonus.spin .s3d-bonus-title { color: #ffd23f; font-size: clamp(8px, 2vw, 12px); }
+.s3d-bonus.spin .s3d-bonus-big   { font-size: clamp(15px, 3.6vw, 26px); color: #fff; }
+.s3d-bonus.spin .s3d-bonus-sub   { color: #6dffb0; }
+.s3d-bonus.pop { animation: s3dBonusPop .45s cubic-bezier(.18,1.5,.4,1); }
+@keyframes s3dBonusPop { 0% { transform: scale(.6); opacity: 0; } 60% { transform: scale(1.08); } 100% { transform: scale(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .s3d-bonus.pop { animation: none; } }
+
 /* ════════════════════ PLANE (CH 14) ════════════════════ */
 /* TV layer hosts the PixiJS plane canvas — fill the 4:3 screen, no distortion. */
 #layer-plane { position: absolute; inset: 0; }

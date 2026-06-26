@@ -177,6 +177,28 @@
     return { winUsd: Math.round(win * 100) / 100, lines: wins, scatter: sc >= 3 ? { count: sc, payUsd: scatterUsd, cells: scCells } : null };
   }
 
+  /* ---------------- free-spins bonus ---------------- */
+  // 3+ Vault (SCATTER) symbols lock in a FREE SPINS round. The number of spins
+  // scales with how many vaults landed; every free-spin win is multiplied. The
+  // whole round is DETERMINISTIC from the same commit (each free spin derives
+  // from nonce + ":free:" + i), so the grand total is fixed at reveal time —
+  // the renderer just animates a result that's already provably settled.
+  const FREE_SPINS = { 3: 8, 4: 12, 5: 20 };
+  const FREE_MULT = 2;
+  function freeSpinsFor(scatterCount) { return FREE_SPINS[Math.min(5, scatterCount | 0)] || 0; }
+  function deriveBonus(serverSeed, clientSeed, nonce, totalBetUsd, scatterCount) {
+    const spins = freeSpinsFor(scatterCount);
+    const results = []; let total = 0;
+    for (let i = 0; i < spins; i++) {
+      const grid = deriveGrid(serverSeed, clientSeed, String(nonce) + ":free:" + i);
+      const r = evaluate(grid, totalBetUsd);
+      const winUsd = Math.round(r.winUsd * FREE_MULT * 100) / 100;
+      total += winUsd;
+      results.push({ grid: grid, lines: r.lines, scatter: r.scatter, baseUsd: r.winUsd, winUsd: winUsd });
+    }
+    return { spins: spins, mult: FREE_MULT, results: results, totalUsd: Math.round(total * 100) / 100 };
+  }
+
   function randomSeed(len) {
     len = len || 16; const b = new Uint8Array(len);
     if (root.crypto && root.crypto.getRandomValues) root.crypto.getRandomValues(b);
@@ -191,8 +213,9 @@
   }
 
   const API = {
-    SYMBOLS, WILD, SCATTER, PAY, SCATTER_PAY, LINES, STRIPS,
+    SYMBOLS, WILD, SCATTER, PAY, SCATTER_PAY, LINES, STRIPS, FREE_SPINS, FREE_MULT,
     sha256Hex, commit: sha256Hex, deriveGrid, gridFromBytes, evaluate, verify, randomSeed,
+    freeSpinsFor, deriveBonus,
     // exposed for Monte-Carlo RTP testing
     _hmacBytes: hmac,
     DEFAULTS: { minBetUsd: 10, edgePctApprox: 5 },

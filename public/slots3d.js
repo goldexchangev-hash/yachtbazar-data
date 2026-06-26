@@ -80,6 +80,7 @@
     this.balance = opts.initialBalance != null ? opts.initialBalance : 5000;
     this.bet = MIN_BET;
     this._active = false; this._enabled = true; this._spinning = false; this._raf = 0;
+    this._bonus = null; this._bonusT = 0; // free-spins round state + timer
     this.state = "idle"; // idle | spinning | win
     this.serverSeed = E.randomSeed(24); this.commitHash = E.commit(this.serverSeed);
     this.clientSeed = (this.els.pfClient && this.els.pfClient.value) || E.randomSeed(8);
@@ -90,6 +91,7 @@
     this._coins = []; this._pulses = []; this._t = 0; this._winFx = null;
 
     this._initScene();
+    this._buildOverlay();
     this._wire();
     this._syncBet(); this._renderHud();
     this._loop = this._loop.bind(this);
@@ -195,7 +197,7 @@
 
   /* ---------- spin ---------- */
   Slots3D.prototype._spin = function () {
-    if (!this._active || this._spinning) return;
+    if (!this._active || this._spinning || this._bonus) return; // no manual spins during a free-spins round
     if (!this._enabled) { this._msg("Connect a wallet to play for real", ""); return; }
     if (this.balance < this.bet) { this._msg("Not enough balance — add funds 👇", "lose"); return; }
     const bet = this.bet;
@@ -208,10 +210,15 @@
     this.state = "spinning"; this._spinning = true;
     this._msg("Spinning…", "");
     if (root.Chiptune && root.Chiptune.blip) try { root.Chiptune.blip(); } catch (e) {}
-    // each reel: ease pos to a land index whose 3 cells = result, staggered stop
+    this._launchReels(grid, false);
+    this._renderSpinBtn();
+  };
+  // Start the eased reel-stop animation so each reel lands on the given grid.
+  // `fast` shortens the spin (used for the auto-played free spins).
+  Slots3D.prototype._launchReels = function (grid, fast) {
     for (let r = 0; r < REELS; r++) {
       const reel = this.reels[r], L = reel.strip.length;
-      const turns = 14 + r * 3 + ((Math.random() * 3) | 0);
+      const turns = (fast ? 8 : 14) + r * (fast ? 2 : 3) + ((Math.random() * 3) | 0);
       const land = Math.floor(reel.pos) + turns;
       // write the result into the strip at the landing window
       reel.strip[((land % L) + L) % L] = grid[r][0];
@@ -220,9 +227,8 @@
       // also scramble the cells just before landing so the approach looks random
       for (let k = 1; k <= 3; k++) reel.strip[((((land - k) % L) + L) % L)] = (Math.random() * 8) | 0;
       reel.spinning = true; reel.t = 0; reel.start = reel.pos; reel.land = land;
-      reel.dur = 1.15 + r * 0.32;
+      reel.dur = (fast ? 0.6 : 1.15) + r * (fast ? 0.14 : 0.32);
     }
-    this._renderSpinBtn();
   };
 
   Slots3D.prototype._settle = function () {
@@ -230,28 +236,118 @@
     const res = this._result, bet = this._betThisSpin;
     if (res.winUsd > 0) {
       this.balance = Math.round((this.balance + res.winUsd) * 100) / 100; this._save();
-      // pulse winning cells
-      const mark = {};
-      res.lines.forEach((ln) => ln.rows.forEach((row, r) => { mark[r + ":" + row] = 1; }));
-      if (res.scatter) res.scatter.cells.forEach((c) => { mark[c[0] + ":" + c[1]] = 1; });
-      this._pulseCells(mark);
-      const profit = res.winUsd - bet;
-      const big = res.winUsd >= bet * 10, mega = res.winUsd >= bet * 40;
-      this.flash.material.opacity = mega ? 0.5 : big ? 0.34 : 0.2; this.flash.material.color.set(mega ? 0xffd23f : 0x45f0a6);
-      this._winFx = { t: 0, total: res.winUsd, shown: 0, dur: mega ? 1.9 : big ? 1.5 : 1.0, big: big, mega: mega, lastCoin: -1 };
-      const n = mega ? 46 : big ? 28 : 14; for (let i = 0; i < n; i++) this._spawnCoin();
-      this._msg("💰 WIN  " + this._usd(res.winUsd) + (res.scatter ? "  · VAULT BONUS" : ""), "win");
-      const C = root.Chiptune; if (C) try { if (mega && C.jackpot) C.jackpot(); else if (big && C.bigwin) C.bigwin(); else if (C.win) C.win(); } catch (e) {}
-      if (this.onWin && profit > 0) try { this.onWin({ profitUsd: profit, mult: res.winUsd / bet }); } catch (e) {}
-    } else {
+      this._showWinFx(res, bet);
+    } else if (!this._bonus) {
       this._msg("No win — spin again", "");
       const C = root.Chiptune; if (C && C.lose) try { C.lose(); } catch (e) {}
     }
     this.lastRound = { nonce: this.nonce, win: res.winUsd };
     this._updatePf(); this._renderHud();
-    clearTimeout(this._idleT); this._idleT = setTimeout(() => { if (!this._spinning) { this.state = "idle"; this._msg("Tap SPIN", ""); this._renderSpinBtn(); } }, 1600);
+
+    // During a free-spins round each settle accumulates toward the grand total.
+    if (this._bonus) { this._afterBonusSpin(res); return; }
+
+    // Normal spin: bank the profit, then check whether 3+ Vaults lit the bonus.
+    if (res.winUsd > 0 && this.onWin) { const profit = res.winUsd - bet; if (profit > 0) try { this.onWin({ profitUsd: profit, mult: res.winUsd / bet }); } catch (e) {} }
+    if (res.scatter && res.scatter.count >= 3 && E.freeSpinsFor(res.scatter.count) > 0) { this._beginBonus(res.scatter.count); return; }
+    clearTimeout(this._idleT); this._idleT = setTimeout(() => { if (!this._spinning && !this._bonus) { this.state = "idle"; this._msg("Tap SPIN", ""); this._renderSpinBtn(); } }, 1600);
     this._renderSpinBtn();
   };
+
+  // Shared win presentation (pulses, coin storm, flash, count-up, fanfare) for a
+  // settled result — used by both normal spins and free spins.
+  Slots3D.prototype._showWinFx = function (res, bet) {
+    const mark = {};
+    res.lines.forEach((ln) => ln.rows.forEach((row, r) => { mark[r + ":" + row] = 1; }));
+    if (res.scatter) res.scatter.cells.forEach((c) => { mark[c[0] + ":" + c[1]] = 1; });
+    this._pulseCells(mark);
+    const big = res.winUsd >= bet * 10, mega = res.winUsd >= bet * 40;
+    this.flash.material.opacity = mega ? 0.5 : big ? 0.34 : 0.2; this.flash.material.color.set(mega ? 0xffd23f : (this._bonus ? 0xff4d9d : 0x45f0a6));
+    this._winFx = { t: 0, total: res.winUsd, shown: 0, dur: this._bonus ? 0.7 : (mega ? 1.9 : big ? 1.5 : 1.0), big: big, mega: mega, lastCoin: -1 };
+    const n = mega ? 46 : big ? 28 : 14; for (let i = 0; i < n; i++) this._spawnCoin();
+    if (!this._bonus) this._msg("💰 WIN  " + this._usd(res.winUsd) + (res.scatter ? "  · VAULT BONUS" : ""), "win");
+    const C = root.Chiptune; if (C) try { if (mega && C.jackpot) C.jackpot(); else if (big && C.bigwin) C.bigwin(); else if (C.win) C.win(); } catch (e) {}
+  };
+
+  /* ---------- FREE SPINS bonus round ---------- */
+  // 3+ Vaults → a deterministic free-spins round (provably-fair: every spin
+  // derives from this commit). Each spin auto-plays, wins are ×-multiplied and
+  // banked toward a running grand total that stays on screen.
+  Slots3D.prototype._beginBonus = function (scatterCount) {
+    const plan = E.deriveBonus(this.serverSeed, this.clientSeed, this.nonce, this._betThisSpin, scatterCount);
+    if (!plan.spins) { clearTimeout(this._idleT); this._idleT = setTimeout(() => { this.state = "idle"; this._msg("Tap SPIN", ""); this._renderSpinBtn(); }, 1600); return; }
+    this._bonus = { plan: plan, i: 0, total: 0, count: scatterCount };
+    this._renderSpinBtn();
+    this._showOverlay("🔓 VAULT BONUS!", plan.spins + " FREE SPINS", "every win pays ×" + plan.mult, "intro");
+    const C = root.Chiptune; if (C && C.jackpot) try { C.jackpot(); } catch (e) {}
+    clearTimeout(this._bonusT); this._bonusT = setTimeout(() => this._bonusSpin(), 2100);
+  };
+  Slots3D.prototype._bonusSpin = function () {
+    const b = this._bonus; if (!b) return;
+    const spin = b.plan.results[b.i];
+    this._clearWinFx();
+    this._result = { winUsd: spin.winUsd, lines: spin.lines, scatter: spin.scatter };
+    this.state = "spinning"; this._spinning = true;
+    this._updateOverlay("FREE SPIN " + (b.i + 1) + " / " + b.plan.spins, "BONUS  " + this._usd(b.total), "×" + b.plan.mult);
+    if (root.Chiptune && root.Chiptune.blip) try { root.Chiptune.blip(); } catch (e) {}
+    this._launchReels(spin.grid, true);
+    this._renderSpinBtn();
+  };
+  Slots3D.prototype._afterBonusSpin = function (res) {
+    const b = this._bonus; if (!b) return;
+    b.total = Math.round((b.total + res.winUsd) * 100) / 100;
+    this._updateOverlay("FREE SPIN " + (b.i + 1) + " / " + b.plan.spins, "BONUS  " + this._usd(b.total), res.winUsd > 0 ? "+" + this._usd(res.winUsd) : "— no win");
+    b.i += 1;
+    clearTimeout(this._bonusT);
+    if (b.i < b.plan.spins) this._bonusT = setTimeout(() => this._bonusSpin(), res.winUsd > 0 ? 1050 : 650);
+    else this._bonusT = setTimeout(() => this._endBonus(), 1100);
+  };
+  Slots3D.prototype._endBonus = function () {
+    const b = this._bonus; if (!b) return;
+    const total = b.total, spins = b.plan.spins, mult = b.plan.mult;
+    this._bonus = null; this._spinning = false;
+    this._showOverlay("🏆 BONUS COMPLETE", "+" + this._usd(total), spins + " free spins · ×" + mult, "end");
+    const C = root.Chiptune; if (C && C.jackpot) try { C.jackpot(); } catch (e) {}
+    if (this.onWin && total > 0) try { this.onWin({ profitUsd: total, mult: mult, bonus: true }); } catch (e) {}
+    this._renderHud(); this._renderSpinBtn();
+    clearTimeout(this._bonusT); this._bonusT = setTimeout(() => { this._hideOverlay(); this.state = "idle"; this._msg("Tap SPIN", ""); this._renderSpinBtn(); }, 2900);
+  };
+  // Abort (e.g. leaving the channel): honor the predetermined total by banking any
+  // free spins not yet animated, then close out cleanly.
+  Slots3D.prototype._finishBonusNow = function () {
+    const b = this._bonus; if (!b) return;
+    clearTimeout(this._bonusT); this._bonusT = 0;
+    for (let i = b.i; i < b.plan.results.length; i++) {
+      const w = b.plan.results[i].winUsd;
+      if (w > 0) { this.balance = Math.round((this.balance + w) * 100) / 100; b.total = Math.round((b.total + w) * 100) / 100; }
+    }
+    this._save();
+    if (this.onWin && b.total > 0) try { this.onWin({ profitUsd: b.total, mult: b.plan.mult, bonus: true }); } catch (e) {}
+    this._bonus = null; this._spinning = false; this.state = "idle";
+    this._hideOverlay(); this._renderHud(); this._renderSpinBtn();
+  };
+
+  /* ---------- bonus overlay (DOM over the canvas) ---------- */
+  Slots3D.prototype._buildOverlay = function () {
+    if (this._ov || !this.mount) return;
+    const ov = document.createElement("div"); ov.className = "s3d-bonus hidden";
+    ov.innerHTML = '<div class="s3d-bonus-title"></div><div class="s3d-bonus-big"></div><div class="s3d-bonus-sub"></div>';
+    this.mount.appendChild(ov);
+    this._ov = ov;
+    this._ovEls = { title: ov.querySelector(".s3d-bonus-title"), big: ov.querySelector(".s3d-bonus-big"), sub: ov.querySelector(".s3d-bonus-sub") };
+  };
+  Slots3D.prototype._showOverlay = function (title, big, sub, mode) {
+    this._buildOverlay(); if (!this._ov) return;
+    this._ovEls.title.textContent = title || ""; this._ovEls.big.textContent = big || ""; this._ovEls.sub.textContent = sub || "";
+    this._ov.className = "s3d-bonus " + (mode || "spin");
+    void this._ov.offsetWidth; this._ov.classList.add("pop");
+  };
+  Slots3D.prototype._updateOverlay = function (title, big, sub) {
+    this._buildOverlay(); if (!this._ov) return;
+    this._ovEls.title.textContent = title || ""; this._ovEls.big.textContent = big || ""; this._ovEls.sub.textContent = sub || "";
+    if (this._ov.classList.contains("hidden") || !this._ov.classList.contains("spin")) this._ov.className = "s3d-bonus spin";
+  };
+  Slots3D.prototype._hideOverlay = function () { if (this._ov) this._ov.className = "s3d-bonus hidden"; };
 
   Slots3D.prototype._pulseCells = function (mark) {
     this._pulses = [];
@@ -338,7 +434,8 @@
   };
   Slots3D.prototype._renderSpinBtn = function () {
     const b = this.els.spinBtn; if (!b) return;
-    if (this._spinning) { b.textContent = "SPINNING…"; b.dataset.kind = "wait"; b.disabled = true; }
+    if (this._bonus) { b.textContent = "🎁 FREE SPINS…"; b.dataset.kind = "wait"; b.disabled = true; }
+    else if (this._spinning) { b.textContent = "SPINNING…"; b.dataset.kind = "wait"; b.disabled = true; }
     else if (!this._enabled) { b.textContent = "CONNECT TO PLAY"; b.dataset.kind = "wait"; b.disabled = true; }
     else { b.textContent = "🎰 SPIN  " + this._usd(this.bet); b.dataset.kind = "spin"; b.disabled = this.balance < this.bet; }
   };
@@ -380,7 +477,10 @@
   Slots3D.prototype.setActive = function (on) {
     on = !!on; if (on === this._active) return; this._active = on;
     if (on) { this._last = performance.now(); this._raf = requestAnimationFrame(this._loop); }
-    else { if (this._raf) cancelAnimationFrame(this._raf); this._raf = 0; }
+    else {
+      if (this._raf) cancelAnimationFrame(this._raf); this._raf = 0;
+      if (this._bonus) this._finishBonusNow(); // leaving mid-bonus → bank the rest, don't strand it
+    }
   };
   Slots3D.prototype.setEnabled = function (on) { this._enabled = !!on; this._renderSpinBtn(); };
   Slots3D.prototype.setBalance = function (usd) { this.balance = Math.max(0, Math.round((+usd || 0) * 100) / 100); this._renderHud(); this._renderSpinBtn(); };
