@@ -1740,12 +1740,43 @@ input[type="range"] {
 /* ════════ Slide-in chat drawer ════════ */
 .chat-drawer {
   position: fixed; right: 0; top: 0; bottom: 0; z-index: 70;
-  width: min(90vw, 344px); display: flex; flex-direction: column;
+  width: min(86vw, 380px); display: flex; flex-direction: column;
   background: var(--s-panel); border-left: 1px solid var(--s-border);
-  transform: translateX(100%); transition: transform .22s ease;
-  box-shadow: -10px 0 44px rgba(0,0,0,.45);
+  transform: translateX(100%);
+  transition: transform .34s cubic-bezier(.32,.72,0,1); /* iOS-like slide-over */
+  box-shadow: -10px 0 44px rgba(0,0,0,.5);
+  padding-top: env(safe-area-inset-top); padding-right: env(safe-area-inset-right); padding-bottom: env(safe-area-inset-bottom);
+  will-change: transform;
 }
 body.chat-open .chat-drawer { transform: translateX(0); }
+
+/* ── Right-edge pull tab: peeks from the edge, opens the chat (iOS slide-over style) ── */
+.chat-tab {
+  position: fixed; z-index: 69; right: 0; top: 50%; transform: translateY(-50%);
+  width: 34px; height: 64px; display: flex; align-items: center; justify-content: center;
+  background: rgba(26,44,56,.82); border: 1px solid var(--s-border); border-right: none;
+  border-radius: var(--r-md) 0 0 var(--r-md); color: var(--s-green);
+  box-shadow: -4px 0 18px rgba(0,0,0,.4), inset 0 0 12px rgba(0,231,1,.08);
+  cursor: pointer; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  transition: transform .34s cubic-bezier(.32,.72,0,1), opacity .2s ease; padding: 0;
+}
+.chat-tab-glyph { font-size: 17px; line-height: 1; pointer-events: none; }
+.chat-tab:active { background: var(--s-surface); }
+body.chat-open .chat-tab { transform: translate(120%, -50%); opacity: 0; pointer-events: none; }
+@media (min-width: 901px) { .chat-tab { display: none; } } /* desktop uses the top-bar 💬 */
+@media (max-width: 900px) { .chat-tab::before { content: ""; position: absolute; right: 0; top: 50%; transform: translateY(-50%); width: 44px; height: 72px; } }
+
+/* shared red unread pill (tab, top-bar 💬, bottom-nav Chat) */
+.chat-badge { position: absolute; top: -5px; right: -5px; min-width: 17px; height: 17px; padding: 0 4px;
+  border-radius: var(--r-full); background: var(--s-red, #e9113c); color: #fff; font: 700 10px/17px var(--s-font);
+  text-align: center; box-shadow: 0 0 0 2px var(--s-panel), 0 0 10px rgba(233,17,60,.6); pointer-events: none; }
+.chat-badge.hidden { display: none; }
+.btn-icon.has-badge { position: relative; }
+.bn-ic { position: relative; }
+@keyframes chatTabPulse { 0%,100% { box-shadow: -4px 0 18px rgba(0,0,0,.4), inset 0 0 12px rgba(0,231,1,.08); } 50% { box-shadow: -4px 0 22px rgba(0,231,1,.55), inset 0 0 18px rgba(0,231,1,.30); } }
+.chat-tab.pulsing { animation: chatTabPulse 1.1s ease-in-out 4; }
+.chat-tab.pulsing .chat-tab-glyph { animation: chatNudge .9s ease-in-out 4; }
+@keyframes chatNudge { 0%,100%{transform:translateX(0)} 50%{transform:translateX(-2px)} }
 .chat-drawer-head { display: flex; align-items: center; gap: 8px; padding: 14px 16px; border-bottom: 1px solid var(--s-border); }
 .chat-drawer-title { font: 700 14px/1 var(--s-font); color: var(--s-text); }
 .chat-online { display: flex; align-items: center; gap: 5px; font: 600 11px/1 var(--s-font); color: var(--s-text-2); }
@@ -1755,9 +1786,14 @@ body.chat-open .chat-drawer { transform: translateX(0); }
 .chat-drawer .chat-card { flex: 1; display: flex; flex-direction: column; margin: 12px; border: none; background: transparent; padding: 0; box-shadow: none; min-height: 0; }
 .chat-drawer .chat-log { flex: 1; height: auto; min-height: 0; }
 .chat-note { font-size: 11px; margin: 8px 2px 0; }
-/* dim the page behind the drawer on small screens */
-@media (max-width: 900px) {
-  body.chat-open::before { content: ""; position: fixed; inset: 0; z-index: 68; background: rgba(0,0,0,.45); }
+/* dim + tappable scrim behind the drawer on small screens (tap to close) */
+.chat-scrim { position: fixed; inset: 0; z-index: 67; background: rgba(0,0,0,.5); opacity: 0; pointer-events: none; transition: opacity .34s ease; }
+@media (max-width: 900px) { body.chat-open .chat-scrim { opacity: 1; pointer-events: auto; } }
+@media (prefers-reduced-motion: reduce) {
+  .chat-drawer { transition: none; }
+  .chat-tab { transition: opacity .15s linear; }
+  .chat-scrim { transition: opacity .15s linear; }
+  .chat-tab.pulsing, .chat-tab.pulsing .chat-tab-glyph { animation: none; }
 }
 
 /* ════════ Mobile bottom tab bar ════════ */

@@ -2587,7 +2587,7 @@
   function ensureBlackjackReady() {
     const f = $("bj-frame");
     if (f && !f.src) {
-      let src = "blackjack.html?tv=1&v=1117&guest=" + encodeURIComponent(bjGuestId());
+      let src = "blackjack.html?tv=1&v=1118&guest=" + encodeURIComponent(bjGuestId());
       if (bjPendingTable) { src += "&table=" + encodeURIComponent(bjPendingTable); bjPendingTable = null; }
       f.src = src; // loads the felt + scripts inside the TV
     }
@@ -3091,10 +3091,27 @@
     const inp = $("chat-input");
     const text = inp.value.trim();
     if (!text) return;
-    if (!account) return toast("Connect a wallet to chat", "err");
-    const myName = (window.Profile && account) ? Profile.name(account) : "";
+    // Real wallets chat as their profile name; demo players chat as a guest.
+    const myName = account ? ((window.Profile) ? Profile.name(account) : "") : ("Guest " + bjGuestId().slice(6, 10));
     wsSend({ type: "chat", text: text, name: myName || undefined });
     inp.value = "";
+  }
+  // ---- chat unread badges (tab + top-bar 💬 + bottom-nav) and the blackjack pulse ----
+  let chatUnread = 0;
+  function renderChatBadges() {
+    const show = chatUnread > 0, label = chatUnread > 99 ? "99+" : String(chatUnread);
+    ["chat-tab-badge", "chat-toggle-badge", "bn-chat-badge"].forEach((id) => { const b = $(id); if (b) { b.textContent = label; b.classList.toggle("hidden", !show); } });
+  }
+  function clearChatUnread() { chatUnread = 0; renderChatBadges(); const tab = $("chat-tab"); if (tab) tab.classList.remove("pulsing"); }
+  function bumpChatUnread() {
+    if (document.body.classList.contains("chat-open")) return; // drawer open ⇒ already reading
+    chatUnread++; renderChatBadges();
+    if (currentGame === "blackjack") { const tab = $("chat-tab"); if (tab) { tab.classList.remove("pulsing"); void tab.offsetWidth; tab.classList.add("pulsing"); } }
+  }
+  function openChat() {
+    document.body.classList.add("chat-open"); clearChatUnread();
+    const ta = $("chat-tab"); if (ta) ta.setAttribute("aria-expanded", "true");
+    const inp = $("chat-input"); if (inp) setTimeout(() => inp.focus(), 350);
   }
 
   // ---------------------------------------------------------- player profile
@@ -3336,15 +3353,20 @@
   // ---------------------------------------------------------- websocket (active players)
   let wsTries = 0;
   function connectWS() {
+    // Already connecting/open? Just re-identify (e.g. a wallet connected after the
+    // guest session started) instead of opening a second socket.
+    if (ws && (ws.readyState === 0 || ws.readyState === 1)) { wsSend({ type: "hello", address: account || bjGuestId() }); return; }
     try {
       const proto = location.protocol === "https:" ? "wss" : "ws";
       ws = new WebSocket(`${proto}://${location.host}`);
-      ws.onopen = () => { wsTries = 0; wsSend({ type: "hello", address: account }); };
+      // Identify with the real wallet, or a persistent guest id so demo players can
+      // still chat at a shared blackjack table.
+      ws.onopen = () => { wsTries = 0; wsSend({ type: "hello", address: account || bjGuestId() }); };
       ws.onmessage = (ev) => {
         let d; try { d = JSON.parse(ev.data); } catch { return; }
         if (d.type === "players") { wsPlayers = d.players || []; renderRoster(); }
         else if (d.type === "rooms-updated" || d.type === "flip") { refreshRooms(); refreshPlayers(); reconcile(); }
-        else if (d.type === "chat") renderChatLine(d.from, d.text, undefined, d.name);
+        else if (d.type === "chat") { renderChatLine(d.from, d.text, undefined, d.name); const me = String(account || bjGuestId()).toLowerCase(); if (d.from && String(d.from).toLowerCase() !== me) bumpChatUnread(); }
         else if (d.type === "chat-history") renderChatHistory(d.messages);
         else if (d.type === "bet-proposal") handleProposal(d);
         else if (d.type === "bet-response") handleProposalResponse(d);
@@ -3882,13 +3904,16 @@
       }; }
 
     // ── Chat drawer: slide-in panel toggled from the top bar ──
-    const closeChat = () => document.body.classList.remove("chat-open");
-    { const ct = $("chat-toggle"); if (ct) ct.onclick = (e) => { e.stopPropagation(); document.body.classList.toggle("chat-open"); }; }
+    const closeChat = () => { document.body.classList.remove("chat-open"); const ta = $("chat-tab"); if (ta) ta.setAttribute("aria-expanded", "false"); };
+    const toggleChat = () => { if (document.body.classList.contains("chat-open")) closeChat(); else openChat(); };
+    { const ct = $("chat-toggle"); if (ct) ct.onclick = (e) => { e.stopPropagation(); toggleChat(); }; }
+    { const tab = $("chat-tab"); if (tab) tab.onclick = (e) => { e.stopPropagation(); openChat(); }; }
+    { const sc = $("chat-scrim"); if (sc) sc.onclick = closeChat; }
     { const cc = $("chat-close"); if (cc) cc.onclick = closeChat; }
     document.addEventListener("click", (e) => {
       if (!document.body.classList.contains("chat-open")) return;
-      const drawer = $("chat-drawer"); const toggle = $("chat-toggle");
-      if (drawer && !drawer.contains(e.target) && e.target !== toggle) closeChat();
+      const drawer = $("chat-drawer"); const toggle = $("chat-toggle"); const tab = $("chat-tab");
+      if (drawer && !drawer.contains(e.target) && e.target !== toggle && e.target !== tab && (!tab || !tab.contains(e.target))) closeChat();
     });
 
     // ── Promo intro reel: autoplays (muted) ONCE on load, then fades to the game.
@@ -3922,7 +3947,7 @@
     // ── Mobile bottom tab bar ──
     { const b = $("bn-games"); if (b) b.onclick = (e) => { e.stopPropagation(); closeChat(); document.body.classList.toggle("rail-open"); }; }
     { const b = $("bn-wallet"); if (b) b.onclick = () => { closeRail(); closeChat(); const t = $("game-balance") || $("deposit-input"); if (t) t.scrollIntoView({ behavior: "smooth", block: "center" }); }; }
-    { const b = $("bn-chat"); if (b) b.onclick = (e) => { e.stopPropagation(); closeRail(); document.body.classList.toggle("chat-open"); }; }
+    { const b = $("bn-chat"); if (b) b.onclick = (e) => { e.stopPropagation(); closeRail(); toggleChat(); }; }
     { const b = $("bn-help"); if (b) b.onclick = () => { closeRail(); closeChat(); $("help-modal").classList.remove("hidden"); }; }
     // ── Music dropdown: open the track menu, play/pause, prev/next, pick a track ──
     { const sb = $("sound-btn"); if (sb) sb.onclick = (e) => {
@@ -4088,6 +4113,7 @@
     // every game before connecting a wallet. A real connection takes over later.
     enterDemo();
     initNoticeDismiss(); // wire the ✕ close buttons on the demo / phone notices
+    connectWS(); // connect the live socket for everyone (guest chat + presence + blackjack), not just connected wallets
     // Register the PWA service worker (after load, best-effort).
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => { try { navigator.serviceWorker.register("sw.js"); } catch (e) {} });

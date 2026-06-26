@@ -27,7 +27,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=1117" />
+    <link rel="stylesheet" href="styles.css?v=1118" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -42,7 +42,7 @@
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v11.17</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v11.18</span>
       </div>
       <div class="topbar-right">
         <div class="tb-tools">
@@ -59,7 +59,7 @@
           </div>
         </div>
         <button id="help-btn" class="btn btn-icon" title="How to play" aria-label="How to play">?</button>
-        <button id="chat-toggle" class="btn btn-icon" title="Open chat" aria-label="Open chat">💬</button>
+        <button id="chat-toggle" class="btn btn-icon has-badge" title="Open chat" aria-label="Open chat">💬<span id="chat-toggle-badge" class="chat-badge hidden" aria-hidden="true">0</span></button>
         </div>
         <div id="net-badge" class="net-badge hidden"><i></i><span id="net-name">—</span></div>
         <button id="connect-btn" class="btn btn-primary">Connect Wallet</button>
@@ -399,7 +399,7 @@
 
                 <!-- Promo intro reel — autoplays once (muted) on first load, then fades
                      to black and hands off to the game. Replay button under the TV. -->
-                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=1117"></video>
+                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=1118"></video>
 
                 <!-- Shown while a bet tx is being signed + mined (esp. slow on mobile) -->
                 <div id="tv-pending" class="tv-pending hidden">⏳ SENDING BET…<br />confirm in your wallet, then hold tight</div>
@@ -1307,10 +1307,16 @@
     <nav class="bottom-nav" aria-label="Quick navigation">
       <button type="button" class="bn-item" id="bn-games"><span class="bn-ic">🎮</span><span>Games</span></button>
       <button type="button" class="bn-item" id="bn-wallet"><span class="bn-ic">💰</span><span>Wallet</span></button>
-      <button type="button" class="bn-item" id="bn-chat"><span class="bn-ic">💬</span><span>Chat</span></button>
+      <button type="button" class="bn-item" id="bn-chat"><span class="bn-ic">💬<span id="bn-chat-badge" class="chat-badge hidden" aria-hidden="true">0</span></span><span>Chat</span></button>
       <button type="button" class="bn-item" id="bn-help"><span class="bn-ic">❓</span><span>Help</span></button>
     </nav>
 
+    <!-- Tappable scrim + right-edge pull tab for the slide-out chat -->
+    <div id="chat-scrim" class="chat-scrim" aria-hidden="true"></div>
+    <button id="chat-tab" class="chat-tab" aria-label="Open chat" aria-controls="chat-drawer" aria-expanded="false">
+      <span class="chat-tab-glyph">💬</span>
+      <span id="chat-tab-badge" class="chat-badge hidden" aria-hidden="true">0</span>
+    </button>
     <!-- Slide-in chat drawer (Stake-style, toggled from the top bar) -->
     <aside id="chat-drawer" class="chat-drawer" aria-label="Chat">
       <div class="chat-drawer-head">
@@ -1320,7 +1326,7 @@
       </div>
       <div class="card chat-card">
         <div id="chat-log" class="chat-log">
-          <div class="chat-sys">// connect a wallet to chat · host is green, visitors red</div>
+          <div class="chat-sys">// say hi — demo guests &amp; wallets can chat · host is green, visitors red</div>
         </div>
         <div class="chat-input-row">
           <span class="chat-prompt">&gt;</span>
@@ -1332,17 +1338,17 @@
     </aside>
 
     <script defer src="vendor/ethers.umd.min.js"></script>
-    <script defer src="config.js?v=1117"></script>
-    <script defer src="contract.js?v=1117"></script>
-    <script defer src="chiptune.js?v=1117"></script>
-    <script defer src="scenes.js?v=1117"></script>
-    <script defer src="tv.js?v=1117"></script>
-    <script defer src="poker-engine.js?v=1117"></script>
-    <script defer src="poker-bots.js?v=1117"></script>
-    <script defer src="poker-ui.js?v=1117"></script>
-    <script defer src="crash-engine.js?v=1117"></script>
-    <script defer src="crash-render.js?v=1117"></script>
-    <script defer src="profile.js?v=1117"></script>
-    <script defer src="app.js?v=1117"></script>
+    <script defer src="config.js?v=1118"></script>
+    <script defer src="contract.js?v=1118"></script>
+    <script defer src="chiptune.js?v=1118"></script>
+    <script defer src="scenes.js?v=1118"></script>
+    <script defer src="tv.js?v=1118"></script>
+    <script defer src="poker-engine.js?v=1118"></script>
+    <script defer src="poker-bots.js?v=1118"></script>
+    <script defer src="poker-ui.js?v=1118"></script>
+    <script defer src="crash-engine.js?v=1118"></script>
+    <script defer src="crash-render.js?v=1118"></script>
+    <script defer src="profile.js?v=1118"></script>
+    <script defer src="app.js?v=1118"></script>
   </body>
 </html>

@@ -42,7 +42,7 @@ const wss = new WebSocketServer({ server, maxPayload: 64 * 1024 });
 // Multiplayer Blackjack (TV channel) — server-authoritative engine attached to the
 // SAME ws server. Players are identified by their connection's stamped wallet.
 const blackjack = attachBlackjack({
-  startBalance: 5000,
+  startBalance: 1000, // match the site's default play-money demo balance ($1,000)
   timers: { dealReveal: 450, dealPace: 430, dealerReveal: 800, dealerPace: 900 },
 });
 
