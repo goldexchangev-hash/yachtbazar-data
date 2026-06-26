@@ -2176,7 +2176,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1124"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1125"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -2592,7 +2592,7 @@
     const f = $("bj-frame");
     if (f && !f.src) {
       // No &bal= seed — the table starts from its own server default ($1,000), NOT the demo balance.
-      let src = "blackjack.html?tv=1&v=1124&guest=" + encodeURIComponent(bjGuestId());
+      let src = "blackjack.html?tv=1&v=1125&guest=" + encodeURIComponent(bjGuestId());
       if (bjPendingTable) { src += "&table=" + encodeURIComponent(bjPendingTable); bjPendingTable = null; }
       f.src = src; // loads the felt + scripts inside the TV
     }
@@ -2734,6 +2734,25 @@
   function initDice() {
     const t = $("dice-target"); if (!t) return;
     t.oninput = () => diceReadouts();
+    // Drag the odds bar itself to set the target (the bar IS the slider now).
+    const ob = $("dice-oddsbar");
+    if (ob) {
+      const lo = +t.min, hi = +t.max;
+      const setFromX = (clientX) => {
+        const r = ob.getBoundingClientRect(); if (!r.width) return;
+        let f = (clientX - r.left) / r.width; f = f < 0 ? 0 : f > 1 ? 1 : f;
+        t.value = Math.round(lo + f * (hi - lo)); diceReadouts();
+      };
+      let dragging = false;
+      ob.addEventListener("pointerdown", (e) => { dragging = true; try { ob.setPointerCapture(e.pointerId); } catch (_) {} setFromX(e.clientX); e.preventDefault(); });
+      ob.addEventListener("pointermove", (e) => { if (dragging) setFromX(e.clientX); });
+      const stop = () => { dragging = false; };
+      ob.addEventListener("pointerup", stop); ob.addEventListener("pointercancel", stop);
+      ob.addEventListener("keydown", (e) => { // arrow-key nudges for accessibility
+        const d = e.key === "ArrowLeft" ? -100 : e.key === "ArrowRight" ? 100 : 0; if (!d) return;
+        t.value = Math.max(lo, Math.min(hi, (+t.value) + d)); diceReadouts(); e.preventDefault();
+      });
+    }
     $("dice-stake").oninput = () => { setSliderUsd("dice-stake"); diceReadouts(); };
     document.querySelectorAll("#dice-mode .side-btn").forEach((b) => {
       b.onclick = () => {

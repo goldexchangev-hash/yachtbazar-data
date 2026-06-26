@@ -709,7 +709,7 @@
       if (this.coinToss) { this.coinToss.classList.remove("land"); void this.coinToss.offsetWidth; this.coinToss.classList.add("up"); }
       if (this.layerFlip) this.layerFlip.classList.add("airborne", "betting"); // shrink the ground shadow + hide the bet prompt
       this.coin.classList.remove("show-heads", "show-tails");
-      this.coin.classList.add("spin");
+      if (!this._coin3d) this.coin.classList.add("spin"); // only spin the 2D coin when it's the visible fallback
       if (this._coin3d) try { this._coin3d.toss(); } catch (e) {} // 3D coin: anticipation → launch → air hang
       if (window.Chiptune) window.Chiptune.coin(); // the "toss" chime
       if (window.Chiptune && window.Chiptune.swoosh) window.Chiptune.swoosh(2300); // airborne whoosh for the spin
@@ -742,10 +742,19 @@
       // coin decelerates its flip-spin onto show-heads/show-tails simultaneously.
       if (this.layerFlip) this.layerFlip.classList.remove("airborne"); // shadow grows back
       if (this.coinToss) { this.coinToss.classList.remove("up"); void this.coinToss.offsetWidth; this.coinToss.classList.add("land"); }
-      this.coin.classList.remove("spin");
-      void this.coin.offsetWidth; // force reflow to commit the base rotation
-      this.coin.classList.add(res.side === "HEADS" ? "show-heads" : "show-tails");
-      if (this._coin3d) { const t3 = res.youWon ? (res.tier === "mega" ? "mega" : res.tier === "big" ? "big" : "normal") : "normal"; try { this._coin3d.land(res.side, t3); if (res.youWon === true) this._coin3d.celebrate(t3); else if (res.youWon === false) this._coin3d.lose(); } catch (e) {} } // 3D coin drops + lands + reacts
+      if (this._coin3d) {
+        // 3D coin is the source of truth — drop + land + react. The 2D coin stays hidden.
+        const t3 = res.youWon ? (res.tier === "mega" ? "mega" : res.tier === "big" ? "big" : "normal") : "normal";
+        try { this._coin3d.land(res.side, t3); if (res.youWon === true) this._coin3d.celebrate(t3); else if (res.youWon === false) this._coin3d.lose(); } catch (e) {}
+      } else {
+        // 2D fallback only: SNAP straight to the result face (transition off) so it never
+        // glides through the opposite side / edge-on — the side is unambiguous.
+        this.coin.classList.remove("spin");
+        const prev = this.coin.style.transition; this.coin.style.transition = "none";
+        void this.coin.offsetWidth;
+        this.coin.classList.add(res.side === "HEADS" ? "show-heads" : "show-tails");
+        void this.coin.offsetWidth; this.coin.style.transition = prev || "";
+      }
       if (window.Chiptune) window.Chiptune.coin(); // the "catch" clink as it lands
       await sleep(900); // matches the coinDrop arc
       if (seq !== this._seq) { try { window.__onTvReveal && window.__onTvReveal(res); } catch (e) {} return; }

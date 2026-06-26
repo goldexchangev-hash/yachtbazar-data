@@ -200,7 +200,9 @@
     this._spin = (this._side === TAILS ? Math.PI : 0);
     this.coin.position.set(0, 0.4, 0); this.coin.scale.set(1, 1, 1);
     this.coin.rotation.set(this._spin, 0, 0);
-    this._gold.intensity = 0;
+    this._spinEnd = null; this._gold.intensity = 0;
+    // repaint immediately so a coin that was frozen edge-on (loop stopped mid-drop) shows flat at once
+    if (!this._active) try { this.renderer.render(this.scene, this.cam); } catch (e) {}
   };
   CoinFlip3D.prototype.toss = function () {
     this.phase = "anticip"; this._pt = 0; this._y0 = this.coin.position.y;
@@ -341,7 +343,19 @@
   CoinFlip3D.prototype.setActive = function (on) {
     on = !!on; if (on === this._active) return; this._active = on;
     if (on) { this._last = performance.now(); this._raf = requestAnimationFrame(this._loop); }
-    else { if (this._raf) cancelAnimationFrame(this._raf); this._raf = 0; }
+    else {
+      if (this._raf) cancelAnimationFrame(this._raf); this._raf = 0;
+      // Never freeze the coin mid-spin/edge-on when the channel is left. Snap to a clean
+      // FLAT face — the in-flight result face if a drop was happening, else the rest face —
+      // and paint one final frame so it's unmistakable when the player returns.
+      try {
+        const inDrop = (this.phase === "drop" || this.phase === "landed") && this._spinEnd != null;
+        const rest = inDrop ? this._spinEnd : (this._side === TAILS ? Math.PI : 0);
+        this._spin = rest; this.phase = "landed"; this._landT = 999;
+        this.coin.rotation.set(rest, 0, 0); this.coin.scale.set(1, 1, 1); this.coin.position.set(0, 0.4, 0);
+        this.renderer.render(this.scene, this.cam);
+      } catch (e) {}
+    }
   };
   CoinFlip3D.prototype.resize = function (w, h) { this.W = w; this.H = h; this.cam.aspect = w / h; this.cam.updateProjectionMatrix(); this.renderer.setSize(w, h, false); };
 
