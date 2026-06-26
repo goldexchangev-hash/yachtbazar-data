@@ -148,6 +148,20 @@ body {
 .hand { display: flex; justify-content: center; min-height: 96px; }
 .hand .stack { display: flex; }
 .hand .stack .card:not(:first-child) { margin-left: -34px; }
+
+/* per-seat hands (1..4 after splits) */
+.hands { display: flex; gap: 6px; justify-content: center; align-items: flex-end; width: 100%; }
+.hand-box { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 5px 4px 4px; border-radius: 10px; border: 1px solid transparent; transition: box-shadow .2s, border-color .2s; }
+.hand-box .stack { display: flex; }
+.hand-box .stack .card:not(:first-child) { margin-left: -24px; }
+.hands.multi .card { width: 38px; height: 54px; }
+.hands.multi .stack .card:not(:first-child) { margin-left: -20px; }
+.hands.multi .card .pip { font-size: 19px; } .hands.multi .card .corner .r { font-size: 9px; } .hands.multi .card .corner .s { font-size: 8px; }
+.hand-box.active { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold), 0 0 18px rgba(255, 210, 63, .4); }
+.hand-box.won .card { box-shadow: 0 0 0 2px var(--green), 0 4px 10px rgba(0, 0, 0, .45); }
+.hand-bet { font-family: var(--pixel); font-size: 8px; color: var(--gold); opacity: .9; }
+.ins-tag { font-family: var(--pixel); font-size: 7px; color: var(--cyan); border: 1px solid rgba(57, 231, 255, .4); border-radius: 5px; padding: 2px 4px; margin-left: 4px; }
+.btn.split { background: linear-gradient(135deg, #b06bff, #7a3df0); color: #fff; }
 .total-pill { font-family: var(--pixel); font-size: 9px; padding: 4px 8px; border-radius: 999px; background: rgba(0, 0, 0, .55);
   color: var(--ink); border: 1px solid rgba(255, 255, 255, .14); }
 .total-pill.soft { color: var(--cyan); } .total-pill.bust { color: var(--red); border-color: rgba(255, 91, 115, .5); }
