@@ -1896,14 +1896,14 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=976").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=977").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=976"))
+      .then(() => loadScriptOnce("slots.js?v=977"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -1913,9 +1913,9 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=976"))
-      .then(() => loadScriptOnce("pressure-render.js?v=976"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=976"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=977"))
+      .then(() => loadScriptOnce("pressure-render.js?v=977"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=977"))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -3509,6 +3509,7 @@
   // listeners close the gaps (esp. iOS, which ignores user-scalable=no).
   function lockZoom() {
     const stop = (e) => { try { e.preventDefault(); } catch (_) {} };
+    const inField = (t) => !!(t && t.closest && t.closest("input, textarea, select, [contenteditable=\"true\"], .selectable"));
     ["gesturestart", "gesturechange", "gestureend"].forEach((ev) => document.addEventListener(ev, stop, { passive: false }));
     document.addEventListener("touchmove", (e) => { if (e.touches && e.touches.length > 1) stop(e); }, { passive: false });
     let lastEnd = 0;
@@ -3518,6 +3519,10 @@
       lastEnd = now;
     }, { passive: false });
     document.addEventListener("dblclick", stop, { passive: false });
+    // Stop the iOS long-press magnifier loupe at its source (selection start),
+    // except inside real form fields. Also block the long-press context menu.
+    document.addEventListener("selectstart", (e) => { if (!inField(e.target)) stop(e); }, { passive: false });
+    document.addEventListener("contextmenu", (e) => { if (!inField(e.target)) stop(e); }, { passive: false });
   }
 
   window.addEventListener("DOMContentLoaded", () => {
