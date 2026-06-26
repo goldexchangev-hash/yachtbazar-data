@@ -162,6 +162,23 @@ console.log("\n== DISCONNECT / LEAVE / ESCROW (audit fixes) ==");
   chk(seats === 1, "socket holds exactly one seat");
 }
 
+console.log("\n== DEAL PACING ==");
+{ // paced initial deal: one card per tick, in classic order
+  const reg = new Map(); let tid = 0;
+  const st = (fn) => { const id = ++tid; reg.set(id, fn); return id; }; const ct = (id) => reg.delete(id); const fire = (id) => { const f = reg.get(id); if (f) { reg.delete(id); f(); } };
+  const eng = BJ.attachBlackjack({ bank: BJ.makeBank(1000), setTimeout: st, clearTimeout: ct, timers: { betting: 1e9, turn: 1e9, insurance: 1e9, idle: 1e9, between: 1e9, dealReveal: 400, dealPace: 400 }, makeShoe: () => P("10S 6H 9D 7C 5H") });
+  const p = sock("p"); eng.handle(p, { type: "bj:room:join", wallet: "p" }); const room = [...eng._mgr.rooms.values()][0];
+  eng.handle(p, { type: "bj:bet:place", amountUsd: 50 });
+  const cards = () => (room.seats[0].hands[0] ? room.seats[0].hands[0].cards.length : 0) + room.dealer.length;
+  chk(room.phase === "dealing" && cards() === 0, "paced deal: dealing, no cards until first tick");
+  fire(room.timers.deal); chk(cards() === 1, "tick 1: 1 card out (player)");
+  fire(room.timers.deal); chk(cards() === 2, "tick 2: 2 (dealer up)");
+  fire(room.timers.deal); chk(cards() === 3, "tick 3: 3 (player 2nd)");
+  fire(room.timers.deal); chk(room.phase === "turns" && cards() === 4, "tick 4: 4 dealt -> turns");
+  let g = 0; while (room.phase === "turns" && g++ < 10) eng.handle(room.seats[room.turnIdx].sock, { type: "bj:action", action: "stand" });
+  chk(room.phase === "settle" && seat0(p.last("bj:settle")).hands[0].outcome === "win", "paced deal still settles correctly (19 beats 18)");
+}
+
 console.log("\n== DEALER PACING ==");
 { // with dealerPace>0 the dealer draws ONE card per timer tick (suspense), then settles
   const reg = new Map(); let tid = 0;

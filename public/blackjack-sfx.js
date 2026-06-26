@@ -48,6 +48,32 @@
     o.start(t0 + 0.02); o.stop(t0 + 0.12);
   };
 
+  function blip(ctx, f, t, dur, vol, type) {
+    var o = ctx.createOscillator(); o.type = type || "triangle"; o.frequency.setValueAtTime(f, t);
+    var g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.012); g.gain.exponentialRampToValueAtTime(0.0007, t + dur);
+    o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t + dur + 0.02);
+  }
+  function sparkle(ctx, t) {
+    var o = ctx.createOscillator(); o.type = "sine"; var f = 1600 + Math.random() * 1400;
+    o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * 1.5, t + 0.05);
+    var g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.07, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0006, t + 0.12);
+    o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t + 0.14);
+  }
+  function boom(ctx, t) {
+    var o = ctx.createOscillator(); o.type = "sine"; o.frequency.setValueAtTime(170, t); o.frequency.exponentialRampToValueAtTime(58, t + 0.42);
+    var g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.3, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0008, t + 0.5);
+    o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t + 0.55);
+  }
+  // tiered win fanfare: "win" (modest chime) → "big" (bright arpeggio + coins) → "blackjack" (triumphant)
+  SFX.win = function (tier) {
+    if (this.muted) return; var ctx = this._ensure(); if (!ctx) return; var t0 = ctx.currentTime;
+    var notes = tier === "blackjack" ? [523, 659, 784, 1047, 1319, 1568] : tier === "big" ? [523, 659, 784, 1047, 1319] : [523, 659, 784, 1047];
+    var step = tier === "win" ? 0.075 : 0.06;
+    for (var i = 0; i < notes.length; i++) blip(ctx, notes[i], t0 + i * step, 0.2, tier === "win" ? 0.13 : 0.17);
+    if (tier !== "win") { var n = tier === "blackjack" ? 12 : 7; for (var k = 0; k < n; k++) sparkle(ctx, t0 + 0.18 + k * 0.05); }
+    if (tier === "blackjack") boom(ctx, t0);
+  };
+
   // unlock audio on the first pointer/key interaction anywhere
   if (root.addEventListener) {
     var unlock = function () { SFX.unlock(); root.removeEventListener("pointerdown", unlock); root.removeEventListener("keydown", unlock); };

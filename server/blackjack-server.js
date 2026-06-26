@@ -29,7 +29,7 @@
   function attachBlackjack(opts) {
     opts = opts || {};
     const config = Object.assign({}, Rules.DEFAULT_CONFIG, opts.config || {});
-    const T = Object.assign({ betting: 15000, turn: 20000, insurance: 12000, idle: 300000, between: 3500, dealerReveal: 0, dealerPace: 0 }, opts.timers || {});
+    const T = Object.assign({ betting: 15000, turn: 20000, insurance: 12000, idle: 300000, between: 3500, dealReveal: 0, dealPace: 0, dealerReveal: 0, dealerPace: 0 }, opts.timers || {});
     const bank = opts.bank || makeBank(opts.startBalance);
     const MAX_ROOMS = opts.maxRooms || 50;
     const setT = opts.setTimeout || ((f, ms) => setTimeout(f, ms));
@@ -135,10 +135,26 @@
       r.shoe = makeShoe(r.serverSeed, Shuffle.joinClientSeeds(seatSeeds), r.shoeId, config.decks); r.pos = 0;
       const act = []; for (let i = 0; i < 4; i++) if (inRound(r.seats[i])) act.push(i);
       for (const i of act) { r.seats[i].hands = [newHand(r.seats[i].baseBet)]; r.seats[i].active = 0; }
-      for (const i of act) r.seats[i].hands[0].cards.push(draw(r)); // first card each
-      r.dealer = [draw(r)];                                          // dealer upcard
-      for (const i of act) r.seats[i].hands[0].cards.push(draw(r));  // second card each
-      r.dealer.push(draw(r));                                        // dealer hole
+      r.dealer = [];
+      // classic deal order, one card at a time: each seat 1st card, dealer up, each seat 2nd, dealer hole
+      const queue = [];
+      for (const i of act) queue.push({ seat: i });
+      queue.push({ dealer: 1 });
+      for (const i of act) queue.push({ seat: i });
+      queue.push({ dealer: 1 });
+      r._dealQ = queue;
+      if (T.dealPace > 0) { r.timers.deal = setT(() => dealStep(r), T.dealReveal || T.dealPace); } // suspenseful, card by card
+      else { while (r._dealQ.length) dealOne(r); finishDeal(r); }                                   // synchronous (tests / off)
+    }
+    function dealOne(r) { const t = r._dealQ.shift(); if (t.dealer) r.dealer.push(draw(r)); else r.seats[t.seat].hands[0].cards.push(draw(r)); }
+    function dealStep(r) {
+      if (r.phase !== "dealing") return;
+      dealOne(r); broadcastState(r);
+      if (r._dealQ.length) r.timers.deal = setT(() => dealStep(r), T.dealPace);
+      else finishDeal(r);
+    }
+    function finishDeal(r) {
+      const act = []; for (let i = 0; i < 4; i++) if (inRound(r.seats[i])) act.push(i);
       for (const i of act) { if (Rules.handValue(r.seats[i].hands[0].cards).blackjack) r.seats[i].hands[0].done = true; } // naturals stand
       broadcast(r, { type: "bj:event", kind: "deal", roomId: r.id });
       // insurance first (dealer Ace, peek on), then dealer-BJ resolution, then play
