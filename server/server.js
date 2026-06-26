@@ -16,6 +16,7 @@ const http = require("http");
 const os = require("os");
 const express = require("express");
 const { WebSocketServer } = require("ws");
+const { attachBlackjack } = require("./blackjack-server.js");
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const HOST = process.env.HOST || "0.0.0.0";
@@ -38,8 +39,14 @@ app.get("*", (req, res) => {
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, maxPayload: 64 * 1024 });
 
+// Multiplayer blackjack room engine. Server-authoritative: it owns the shoe,
+// deals, validates every intent, runs the timers, and is the only writer of
+// (demo) balances. It speaks a `bj:`-namespaced sub-protocol over the same ws.
+const blackjack = attachBlackjack({ startBalance: 5000 });
+
 /** ws -> { address } */
 const clients = new Map();
+let guestSeq = 0; // stable per-connection identity for players with no wallet
 
 // Short-term chat history kept in memory so newcomers (and a host who steps away)
 // always load the recent conversation. Bounded by age AND count; not durable —
@@ -79,6 +86,7 @@ function broadcastPlayers() {
 
 wss.on("connection", (ws) => {
   clients.set(ws, { address: null });
+  ws.bjWallet = "guest:" + (++guestSeq); // engine identity until a wallet says hello
   ws.on("error", () => {}); // ignore abrupt drops instead of crashing
   broadcastPlayers();
 
@@ -87,6 +95,14 @@ wss.on("connection", (ws) => {
     try {
       data = JSON.parse(raw.toString());
     } catch {
+      return;
+    }
+    // Blackjack sub-protocol: route every bj:* intent to the room engine, using
+    // the connection's trusted identity (wallet if known, else stable guest id).
+    if (typeof data.type === "string" && data.type.startsWith("bj:")) {
+      ws.wallet = clients.get(ws)?.address || ws.bjWallet;
+      data.wallet = ws.wallet; // never trust a client-supplied wallet
+      blackjack.handle(ws, data);
       return;
     }
     if (data.type === "hello" && typeof data.address === "string") {
