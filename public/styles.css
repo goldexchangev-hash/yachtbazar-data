@@ -2185,8 +2185,10 @@ body.demo-mode #bankroll { display: none !important; }
 .bj-share:disabled { opacity: .5; cursor: default; }
 /* top row: live balance (left) + countdown (right) */
 .bj-toprow { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 20px; margin-bottom: 6px; }
-.bj-bal { font-family: var(--display); font-size: 15px; color: var(--s-gold); }
-.bj-bal:empty { display: none; }
+.bj-reload { font-family: var(--display); font-size: 13px; color: var(--s-text-2); background: var(--s-surface);
+  border: 1px solid var(--s-border); border-radius: 999px; padding: 4px 12px; cursor: pointer; transition: color .15s, border-color .15s, background .15s; }
+.bj-reload:hover { color: var(--s-gold); border-color: var(--s-gold); background: rgba(255,210,63,.08); }
+.bj-reload:active { transform: scale(.96); }
 .bj-toprow .bj-count { position: static; }
 /* bet-locked-in confirmation + remove button */
 .bj-placed { display: flex; flex-direction: column; gap: 8px; align-items: center; }
