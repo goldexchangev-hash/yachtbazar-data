@@ -2584,19 +2584,29 @@
   let bjPendingTable = null; // a specific table id arrived via a share link (?bjtable=…)
   try { bjPendingTable = new URLSearchParams(location.search).get("bjtable"); } catch (e) {}
   let bjRoomId = null; // latest table id the felt reports (for the Share button)
+  let bjSeededDemo = null; // the demo value the table currently knows; guards against re-seeding over an off-channel settle
   function ensureBlackjackReady() {
     const f = $("bj-frame");
     if (f && !f.src) {
-      let src = "blackjack.html?tv=1&v=1119&guest=" + encodeURIComponent(bjGuestId());
+      let src = "blackjack.html?tv=1&v=1120&guest=" + encodeURIComponent(bjGuestId());
       if (demoOn) src += "&bal=" + encodeURIComponent(Math.max(0, Math.round((demoUsd || 0) * 100) / 100)); // seed the table from the demo balance
       if (bjPendingTable) { src += "&table=" + encodeURIComponent(bjPendingTable); bjPendingTable = null; }
       f.src = src; // loads the felt + scripts inside the TV
     }
     setTimeout(() => { bjFramePost(true); bjSeed(); }, 50);
   }
-  // Keep the blackjack table balance in lock-step with the site demo balance: re-seed
-  // the table from the demo balance whenever we (re)enter the channel.
-  function bjSeed() { if (!demoOn) return; const f = $("bj-frame"); if (f && f.contentWindow) try { f.contentWindow.postMessage({ type: "bj:seed", balance: Math.max(0, Math.round((demoUsd || 0) * 100) / 100) }, "*"); } catch (e) {} }
+  // Keep the blackjack table balance in lock-step with the site demo balance. Re-seed the
+  // table from the demo balance on (re)entry — but ONLY when the demo balance actually moved
+  // since the table last knew it (e.g. another game changed it). If it's unchanged, the table
+  // may have advanced off-channel (a hand settled while we were on another channel); re-seeding
+  // then would wipe that result, so we leave the server balance authoritative and let the next
+  // dock update sync it back into demoUsd.
+  function bjSeed() {
+    if (!demoOn) return;
+    const target = Math.max(0, Math.round((demoUsd || 0) * 100) / 100);
+    if (bjSeededDemo !== null && Math.abs(target - bjSeededDemo) < 0.001) return; // table already authoritative
+    const f = $("bj-frame"); if (f && f.contentWindow) try { f.contentWindow.postMessage({ type: "bj:seed", balance: target }, "*"); bjSeededDemo = target; } catch (e) {}
+  }
   window.BJ_MUTE = (mute) => bjFramePost(!mute); // hush the iframe's audio when off-channel
   function bjShareLink() { return location.origin + location.pathname + "?game=blackjack" + (bjRoomId ? "&bjtable=" + encodeURIComponent(bjRoomId) : ""); }
   function bjShareTable() {
@@ -2704,7 +2714,7 @@
     if (d.roomId) { bjRoomId = d.roomId; const sb = $("bj-share"); if (sb) sb.disabled = false; } // enable the Share button once we're at a table
     // unify the balances: the blackjack table balance IS the demo balance (only while
     // on the channel, so playing another game off-channel can't get clobbered).
-    if (d.balance != null && demoOn && currentGame === "blackjack") { const v = Math.round(d.balance * 100) / 100; if (Math.abs(v - demoUsd) > 0.001) { demoUsd = v; demoSave(); demoPaint(); } }
+    if (d.balance != null && demoOn && currentGame === "blackjack") { const v = Math.round(d.balance * 100) / 100; if (Math.abs(v - demoUsd) > 0.001) { demoUsd = v; demoSave(); demoPaint(); } bjSeededDemo = v; } // server table is authoritative on-channel; remember it so re-entry won't clobber it
     if (currentGame === "blackjack") renderBjDock(d);
   });
   // Poker chips are a session-local pool seeded from your in-game balance.
