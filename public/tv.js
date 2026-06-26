@@ -249,6 +249,7 @@
       if (L) { L.classList.remove("win", "lose", "tier-big", "tier-mega"); L.classList.remove("airborne", "betting"); }
       if (this.coinToss) this.coinToss.classList.remove("up", "land"); // coin resting on the table
       if (this.coin) { this.coin.classList.remove("spin", "show-tails"); this.coin.classList.add("show-heads"); }
+      if (this._coin3d) try { this._coin3d.reset("HEADS"); } catch (e) {} // 3D coin rests heads-up
       const cap = L && L.querySelector(".flip-caption"); if (cap) cap.textContent = "PLACE YOUR BET BELOW";
       if (this.scoreboard) this.scoreboard.classList.add("hidden");
       this._setStatic(0.05);
@@ -700,6 +701,7 @@
       if (this.layerFlip) this.layerFlip.classList.add("airborne", "betting"); // shrink the ground shadow + hide the bet prompt
       this.coin.classList.remove("show-heads", "show-tails");
       this.coin.classList.add("spin");
+      if (this._coin3d) try { this._coin3d.toss(); } catch (e) {} // 3D coin: anticipation → launch → air hang
       if (window.Chiptune) window.Chiptune.coin(); // the "toss" chime
       if (window.Chiptune && window.Chiptune.swoosh) window.Chiptune.swoosh(2300); // airborne whoosh for the spin
       this._spinReadyAt = now() + 2300; // a satisfying airborne spin before it lands
@@ -734,6 +736,7 @@
       this.coin.classList.remove("spin");
       void this.coin.offsetWidth; // force reflow to commit the base rotation
       this.coin.classList.add(res.side === "HEADS" ? "show-heads" : "show-tails");
+      if (this._coin3d) { const t3 = res.youWon ? (res.tier === "mega" ? "mega" : res.tier === "big" ? "big" : "normal") : "normal"; try { this._coin3d.land(res.side, t3); if (res.youWon === true) this._coin3d.celebrate(t3); else if (res.youWon === false) this._coin3d.lose(); } catch (e) {} } // 3D coin drops + lands + reacts
       if (window.Chiptune) window.Chiptune.coin(); // the "catch" clink as it lands
       await sleep(900); // matches the coinDrop arc
       if (seq !== this._seq) { try { window.__onTvReveal && window.__onTvReveal(res); } catch (e) {} return; }

@@ -62,6 +62,8 @@
   let planeGame = null;           // the Plane instance, built on first visit to CH 14
   let slots3dLoadPromise = null;  // lazy-load guard for the Gem Vault 3D slot (Three.js)
   let slots3dGame = null;         // the Gem Vault 3D instance, built on first visit to CH 15
+  let coinFlip3dLoadPromise = null; // lazy-load guard for the 3D coin (Three.js)
+  let coinFlip3d = null;          // the CoinFlip3D instance, built on first visit to CH 8
   let read = null; // connected to provider
   let maxBet = 0n;
   let gameWei = 0n; // cached in-game (deposited) balance, refreshed by refreshBalances
@@ -1946,14 +1948,14 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1050").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1060").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=1050"))
+      .then(() => loadScriptOnce("slots.js?v=1060"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -1963,9 +1965,9 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=1050"))
-      .then(() => loadScriptOnce("pressure-render.js?v=1050"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=1050"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=1060"))
+      .then(() => loadScriptOnce("pressure-render.js?v=1060"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=1060"))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -2019,10 +2021,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=1050"))
-      .then(() => loadScriptOnce("plane-render.js?v=1050"))
-      .then(() => loadScriptOnce("plane-feed.js?v=1050"))
-      .then(() => loadScriptOnce("plane-ui.js?v=1050"))
+      .then(() => loadScriptOnce("plane-engine.js?v=1060"))
+      .then(() => loadScriptOnce("plane-render.js?v=1060"))
+      .then(() => loadScriptOnce("plane-feed.js?v=1060"))
+      .then(() => loadScriptOnce("plane-ui.js?v=1060"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2101,15 +2103,15 @@
   function loadThreeOnce() {
     if (window.THREE) return Promise.resolve();
     if (threeLoadPromise) return threeLoadPromise;
-    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1050").catch((e) => { threeLoadPromise = null; throw e; });
+    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1060").catch((e) => { threeLoadPromise = null; throw e; });
     return threeLoadPromise;
   }
   function ensureSlots3dLoaded() {
     if (window.Slots3D) return Promise.resolve(true);
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("slots3d-engine.js?v=1050"))
-      .then(() => loadScriptOnce("slots3d.js?v=1050"))
+      .then(() => loadScriptOnce("slots3d-engine.js?v=1060"))
+      .then(() => loadScriptOnce("slots3d.js?v=1060"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2141,6 +2143,34 @@
       if (demoOn) { g.setBalance(demoUsd); g.setEnabled(true); } else { g.setEnabled(false); }
       if (window.TV && currentGame === "slots3d" && !TV._promoPlaying) try { TV.idle(); } catch (e) {}
     }).catch(() => toast("Couldn't load Gem Vault 3D — check your connection", "err"));
+  }
+
+  // ── Coin Flip (CH 8): premium Three.js 3D coin. Lazy-loaded; the CSS coin is
+  //    the fallback if WebGL/Three isn't available. tv.js drives it via TV._coin3d.
+  function loadCoinFlip3dOnce() {
+    if (window.CoinFlip3D) return Promise.resolve(true);
+    if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
+    coinFlip3dLoadPromise = loadThreeOnce()
+      .then(() => loadScriptOnce("coinflip3d.js?v=1060"))
+      .then(() => true)
+      .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
+    return coinFlip3dLoadPromise;
+  }
+  function buildCoinFlip3d() {
+    if (coinFlip3d || !window.CoinFlip3D) return coinFlip3d;
+    const mount = $("flip3d-stage"); if (!mount) return null;
+    coinFlip3d = new window.CoinFlip3D({ mount: mount, width: 800, height: 600 });
+    if (window.TV) TV._coin3d = coinFlip3d;
+    document.body.classList.add("coin3d-on"); // hides the CSS coin fallback
+    try { window.__coin3d = coinFlip3d; } catch (e) {}
+    return coinFlip3d;
+  }
+  function ensureCoinFlip3dReady() {
+    loadCoinFlip3dOnce().then(() => {
+      const g = buildCoinFlip3d(); if (!g) return;
+      g.setActive(true);
+      if (window.TV && currentGame === "flip" && !TV._promoPlaying && TV._flipPreview) { try { TV._flipPreview(); } catch (e) {} }
+    }).catch(() => {}); // silent — the CSS coin stays as the fallback
   }
   // "How free spins & payouts work" explainer — built live from the engine so the
   // numbers always match the real math (paytable, scatter, free-spin counts).
@@ -2455,10 +2485,12 @@
     if (game !== "pressure" && pressureGame) pressureGame.setActive(false);
     if (game !== "plane" && planeGame) planeGame.setActive(false);
     if (game !== "slots3d" && slots3dGame) slots3dGame.setActive(false);
+    if (game !== "flip" && coinFlip3d) coinFlip3d.setActive(false);
     // Poker is its own full-width view (no TV); everything else uses the TV channel.
     if (game === "poker") { if (window.PokerUI) PokerUI.show(); }
     else { if (window.PokerUI) PokerUI.hide(); if (window.TV && TV.changeChannel) TV.changeChannel(GAME_CHANNEL[game]); }
-    if (game === "dice") { refreshDiceHouse(); diceReadouts(); }
+    if (game === "flip") { ensureCoinFlip3dReady(); }
+    else if (game === "dice") { refreshDiceHouse(); diceReadouts(); }
     else if (game === "twodice") { refreshDiceHouse(); twoDiceReadouts(); ensureTwoDiceSupport(); }
     else if (game === "crash") { refreshDiceHouse(); crashReadouts(); ensureCrashSupport(); }
     else if (game === "slots") { refreshDiceHouse(); slotsReadouts(); ensureSlotsSupport(); ensureSlotsLoaded().then(() => { if (window.CryptoReels) CryptoReels.setActive(true); }).catch(() => {}); }
@@ -2561,6 +2593,7 @@
     // game instead of an empty black layer once the promo intro ends.
     if (saved === "plane") ensurePlaneReady();
     if (saved === "slots3d") ensureSlots3dReady();
+    if (saved === "flip") ensureCoinFlip3dReady(); // build the 3D coin on reload too
   }
 
   // My open tables: show bank + idle countdown, auto-close (refund) when stale.
