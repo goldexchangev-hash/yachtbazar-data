@@ -54,8 +54,15 @@ body {
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
   padding-left: var(--rail-w); /* room for the fixed left sidebar */
-  /* kill the annoying double-tap-to-zoom on iOS/Android (keeps pinch-zoom) */
+  /* no accidental double-tap zoom anywhere (every mobile browser + Safari) */
   touch-action: manipulation;
+  /* no accidental text highlighting anywhere (all browsers) */
+  -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none;
+  -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+}
+/* …but form fields stay selectable/editable so you can type + copy from them */
+input, textarea, select, [contenteditable="true"], .selectable {
+  -webkit-user-select: text; -moz-user-select: text; -ms-user-select: text; user-select: text;
 }
 /* tone the neon backdrop way down — the Stake shell is flat dark navy */
 .bg-glow { opacity: 0.12; }

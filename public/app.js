@@ -1896,14 +1896,14 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=975").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=976").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=975"))
+      .then(() => loadScriptOnce("slots.js?v=976"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -1913,9 +1913,9 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=975"))
-      .then(() => loadScriptOnce("pressure-render.js?v=975"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=975"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=976"))
+      .then(() => loadScriptOnce("pressure-render.js?v=976"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=976"))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -3503,7 +3503,25 @@
     } catch {}
   }
 
+  // Hard-disable browser zoom gestures across every mobile browser + Safari:
+  // pinch (multi-touch + iOS gesture events) and the double-tap / double-tap-hold
+  // zoom (Chrome). The viewport meta (user-scalable=no) covers most of it; these
+  // listeners close the gaps (esp. iOS, which ignores user-scalable=no).
+  function lockZoom() {
+    const stop = (e) => { try { e.preventDefault(); } catch (_) {} };
+    ["gesturestart", "gesturechange", "gestureend"].forEach((ev) => document.addEventListener(ev, stop, { passive: false }));
+    document.addEventListener("touchmove", (e) => { if (e.touches && e.touches.length > 1) stop(e); }, { passive: false });
+    let lastEnd = 0;
+    document.addEventListener("touchend", (e) => {
+      const now = Date.now();
+      if (now - lastEnd <= 350) stop(e); // kill double-tap (and double-tap-hold) zoom
+      lastEnd = now;
+    }, { passive: false });
+    document.addEventListener("dblclick", stop, { passive: false });
+  }
+
   window.addEventListener("DOMContentLoaded", () => {
+    lockZoom();
     TV.init();
     wireUI();
     syncSoundBtn();
