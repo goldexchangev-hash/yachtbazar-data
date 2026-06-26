@@ -81,7 +81,7 @@
       if (!inHand && now() - r.lastActivity >= T.idle) closeRoom(r, "idle"); else scheduleIdle(r);
     }, T.idle); }
     function closeRoom(r, reason) {
-      for (const s of r.seats) if (s) { const refund = seatStake(s); if (refund > 0 && !s.settled) { bank.credit(s.wallet, refund); s.baseBet = 0; s.hands = []; s.insurance = 0; pushWallet(s.sock, s.wallet); } }
+      for (const s of r.seats) if (s) { if (s._dcTimer) { clrT(s._dcTimer); s._dcTimer = null; } const refund = seatStake(s); if (refund > 0 && !s.settled) { bank.credit(s.wallet, refund); s.baseBet = 0; s.hands = []; s.insurance = 0; pushWallet(s.sock, s.wallet); } }
       for (const k in r.timers) clrT(r.timers[k]);
       broadcast(r, { type: "bj:event", kind: "roomClosing", id: r.id, reason });
       if (r.serverSeed) broadcast(r, { type: "bj:reveal", roomId: r.id, serverSeed: r.serverSeed, commit: r.commit });
@@ -97,7 +97,7 @@
         done: !!h.done, doubled: !!h.doubled, fromSplit: !!h.fromSplit, surrendered: !!h.surrendered, bet: h.bet, result: h.result || null }; }
     function seatView(s) { if (!s) return null;
       const ins = s.insurance || (s.insuranceResult && s.insuranceResult.taken ? s.insuranceResult.amount : 0);
-      return { wallet: s.wallet, baseBet: s.baseBet || 0, active: s.active == null ? -1 : s.active, insurance: ins, left: !!s.left,
+      return { wallet: s.wallet, baseBet: s.baseBet || 0, active: s.active == null ? -1 : s.active, insurance: ins, left: !!s.left, away: !!s.disconnected,
         hands: (s.hands || []).map(handView), bet: seatStake(s) }; }
     function snapshot(r) {
       const showHole = r.phase === "dealer" || r.phase === "settle";
@@ -120,11 +120,18 @@
       for (const s of r.seats) if (s) { s.baseBet = 0; s.hands = []; s.active = -1; s.insurance = 0; s.insuranceResult = null; s.insuranceDecided = false; s.left = false; s.settled = false; s.clientSeed = ""; }
       r.deadline = now() + T.betting;
       // no touch() here — opening a window isn't player activity; abandoned tables still idle-close.
-      r.timers.betting = setT(() => endBetting(r), T.betting);
+      armBetting(r, T.betting);
       broadcastState(r);
     }
-    function endBetting(r) {
+    // Arm the betting/deal timer with a generation token so a stale timer that was
+    // re-armed or cancelled (e.g. the grace vs a cancelBet) can never fire endBetting twice.
+    function armBetting(r, ms) {
       clrT(r.timers.betting);
+      const ep = (r.bettingEpoch = (r.bettingEpoch || 0) + 1);
+      r.timers.betting = setT(() => { if (r.bettingEpoch === ep) endBetting(r); }, ms);
+    }
+    function endBetting(r) {
+      clrT(r.timers.betting); r.bettingEpoch = (r.bettingEpoch || 0) + 1; // invalidate any queued betting timer
       const active = r.seats.filter(inRound);
       if (active.length === 0) { if (r.seats.some(Boolean)) return startBetting(r); r.phase = "idle"; broadcastState(r); reapEmptyExtras(); return; }
       deal(r);
@@ -313,6 +320,24 @@
     function err(sock, code, msg, intent) { send(sock, { type: "bj:error", code, msg, intent }); }
 
     function join(sock, wallet, roomId, seatPref) {
+      // Reconnect grace: if this wallet has a seat that's only temporarily disconnected
+      // (the player backgrounded the app / lost signal), reclaim that EXACT seat + hand
+      // instead of taking a new one. Keeps you at the table across an app switch.
+      for (const room of rooms.values()) {
+        for (let i = 0; i < 4; i++) {
+          const s = room.seats[i];
+          if (s && s.disconnected && s.wallet === wallet) {
+            if (s._dcTimer) { clrT(s._dcTimer); s._dcTimer = null; }
+            s.sock = sock; s.disconnected = 0; s.left = false;
+            room.spectators.delete(sock);
+            send(sock, Object.assign(snapshot(room), { you: { roomId: room.id, seat: i, balance: bank.get(wallet) } }));
+            pushWallet(sock, wallet);
+            broadcast(room, { type: "bj:event", kind: "seatReconnected", seat: i, wallet });
+            broadcastState(room); pushLobby();
+            return room;
+          }
+        }
+      }
       for (const rr of rooms.values()) if (seatOf(rr, sock) >= 0) return err(sock, "already_seated", "Leave your current table first", "join"); // one seat per connection, across all tables
       let r = roomId ? rooms.get(roomId) : openRoom(); if (!r) r = openRoom(); if (!r) return err(sock, "lobby_full", "No tables available");
       if (r.seats.some((s) => s && s.wallet === wallet)) return err(sock, "already_seated", "One seat per table", "join");
@@ -355,22 +380,57 @@
         pushLobby();
       }
     }
+    // A socket dropped (often a mobile app-switch). DON'T free the seat right away —
+    // reserve it for a grace window so the player reclaims it on reconnect. If it's
+    // their turn meanwhile, the normal turn timer auto-stands them so the table never
+    // deadlocks; if the grace expires, the seat is dropped for real.
+    const RECONNECT_GRACE = 45000;
+    function markDisconnected(sock) {
+      lobbySubs.delete(sock);
+      for (const r of rooms.values()) {
+        r.spectators.delete(sock);
+        const i = seatOf(r, sock); if (i < 0) continue;
+        const s = r.seats[i];
+        s.disconnected = now();
+        if (s._dcTimer) clrT(s._dcTimer);
+        s._dcTimer = setT(() => dropSeat(r, i, s), RECONNECT_GRACE);
+        broadcast(r, { type: "bj:event", kind: "seatAway", seat: i, wallet: s.wallet });
+        broadcastState(r); pushLobby();
+      }
+    }
+    function dropSeat(r, i, s) {
+      if (r.seats[i] !== s) return; // already reclaimed or replaced
+      s._dcTimer = null;
+      if (r.phase === "betting" || r.phase === "idle") {
+        if (s.baseBet > 0) bank.credit(s.wallet, s.baseBet); // refund the un-dealt bet
+        r.seats[i] = null; r.full = false;
+        broadcast(r, { type: "bj:event", kind: "seatOpen", seat: i });
+        broadcastState(r); reapEmptyExtras();
+      } else {
+        s.left = true; if (s.hands) for (const h of s.hands) h.done = true;
+        broadcast(r, { type: "bj:event", kind: "seatLeaving", seat: i, wallet: s.wallet });
+        if (r.phase === "turns" && r.turnIdx === i) { clrT(r.timers.turn); nextSeat(r); }
+        else broadcastState(r);
+      }
+      pushLobby();
+    }
     function placeBet(sock, amountUsd, clientSeed) {
       for (const r of rooms.values()) { const i = seatOf(r, sock); if (i < 0) continue;
         if (r.phase !== "betting") return err(sock, "not_betting", "Betting is closed", "bet");
         const amt = r2(+amountUsd); const s = r.seats[i];
         if (!(amt >= config.minBet)) return err(sock, "min_bet", "Minimum bet is $" + config.minBet, "bet");
         if (bank.get(s.wallet) + (s.baseBet || 0) < amt) return err(sock, "insufficient", "Not enough balance", "bet");
-        if (s.baseBet > 0) bank.credit(s.wallet, s.baseBet); // re-bet replaces
-        bank.debit(s.wallet, amt); s.baseBet = amt; s.clientSeed = clientSeed || Shuffle.randomSeed(8);
+        const had = s.baseBet || 0;
+        if (had > 0) bank.credit(s.wallet, had); // refund the old escrow first (re-bet replaces)
+        if (!bank.debit(s.wallet, amt)) { if (had > 0) bank.debit(s.wallet, had); return err(sock, "insufficient", "Not enough balance", "bet"); } // re-debit; never escrow an unfunded bet
+        s.baseBet = amt; s.clientSeed = clientSeed || Shuffle.randomSeed(8);
         touch(r);
         const seated = r.seats.filter(Boolean);
         if (seated.length && seated.every((x) => x.baseBet > 0)) {
           // everyone's in — hold a short "no more bets" grace so a misclick can be
           // removed before the deal, then deal automatically.
-          clrT(r.timers.betting);
           r.deadline = now() + 3000;
-          r.timers.betting = setT(() => endBetting(r), 3000);
+          armBetting(r, 3000);
         }
         pushWallet(sock, s.wallet); broadcastState(r);
         return;
@@ -383,7 +443,7 @@
         const s = r.seats[i];
         if (s.baseBet > 0) {
           bank.credit(s.wallet, s.baseBet); s.baseBet = 0;
-          clrT(r.timers.betting); r.deadline = now() + T.betting; r.timers.betting = setT(() => endBetting(r), T.betting); // fresh window
+          r.deadline = now() + T.betting; armBetting(r, T.betting); // fresh window (epoch-guarded)
           touch(r); pushWallet(s.sock, s.wallet); broadcastState(r);
         }
         return;
@@ -436,7 +496,7 @@
         default: break;
       }
     }
-    function onClose(sock) { lobbySubs.delete(sock); leave(sock); }
+    function onClose(sock) { markDisconnected(sock); } // keep the seat reserved through a grace so a reconnect reclaims it
 
     createRoom();
     return { handle, onClose, bank, config,
