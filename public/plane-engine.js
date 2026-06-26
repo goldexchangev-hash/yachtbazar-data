@@ -114,10 +114,12 @@
   function timeForMultiplier(m) { return Math.max(0, Math.log(Math.max(1, m)) / GROWTH); }
 
   /* ---------------- round resolution ----------------
-     Win iff the player cashed out (cashOutMult set) AND cashOutMult < crash. */
+     Win iff the player cashed out AND cashOutMult <= crash. The `<=` (a tie at
+     the exact crash is a WIN) mirrors the on-chain crash settle (won = crashX >=
+     target) so the demo and real boundary cases agree. */
   function resolveRound(o) {
     const stake = o.stake, crash = o.crash, co = o.cashOutMult;
-    const won = co != null && co > 0 && co < crash;
+    const won = co != null && co > 0 && co <= crash;
     const payout = won ? stake * co : 0;
     return { won, payout, profit: payout - stake, cashOutMult: co || null, crash };
   }

@@ -72,8 +72,9 @@
   // paytables as the real on-chain games, and drive the SAME TV animations.
   let demoOn = false;
   const DEMO_START_USD = 1000;
+  const DEMO_MAX_USD = 10000000; // play-money is bounded — ignore a tampered/absurd stored value
   let demoUsd = DEMO_START_USD;
-  try { const s = +localStorage.getItem("ctf_demo_usd"); if (s > 0) demoUsd = s; } catch {}
+  try { const s = +localStorage.getItem("ctf_demo_usd"); if (s > 0) demoUsd = Math.min(s, DEMO_MAX_USD); } catch {}
   let activeRoomId = null; // a room I'm a participant in, currently live
   let ws = null;
   let wsPlayers = [];     // presence reported by a live chat server (only if one exists)
@@ -152,7 +153,25 @@
     lastResult = r;
     const btn = $("share-result-btn");
     if (btn) btn.classList.toggle("hidden", !r.won); // the share button only appears on a WIN
+    // Persistent on-screen win badge: every game's win lands here, so show the
+    // amount won over the TV and keep it up until the next bet starts (cleared by
+    // the action-dock pointer listener). Covers flip/dice/crash/slots AND the
+    // canvas games (Balloon Pop / Plane / Gem Vault 3D) that bank via onWin.
+    if (r.won && (+r.amountUsd || 0) > 0) showTvWin(r.amountUsd, r.tier);
   }
+  // ── Persistent "WON +$X" badge pinned over the TV, for every game. ──
+  function showTvWin(amt, tier) {
+    const el = $("tv-win-badge"); if (!el) return;
+    const v = Math.max(0, +amt || 0);
+    if (v <= 0) return clearTvWin();
+    const t = tier || (v >= 300 ? "mega" : v >= 100 ? "big" : "");
+    el.className = "tv-win-badge" + (t ? " " + t : "");
+    el.textContent = "WON +$" + v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    void el.offsetWidth; // restart the pop animation if it's already showing
+    el.classList.remove("hidden");
+  }
+  function clearTvWin() { const el = $("tv-win-badge"); if (el) el.classList.add("hidden"); }
+  window.__showTvWin = showTvWin; window.__clearTvWin = clearTvWin;
   // Every game's reveal funnels through window.__onTvReveal with a result object —
   // surface the share button + remember the win uniformly, on any game.
   function maybeShareWin(res) {
@@ -1915,14 +1934,14 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=995").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=996").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=995"))
+      .then(() => loadScriptOnce("slots.js?v=996"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -1932,9 +1951,9 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=995"))
-      .then(() => loadScriptOnce("pressure-render.js?v=995"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=995"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=996"))
+      .then(() => loadScriptOnce("pressure-render.js?v=996"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=996"))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -1987,10 +2006,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=995"))
-      .then(() => loadScriptOnce("plane-render.js?v=995"))
-      .then(() => loadScriptOnce("plane-feed.js?v=995"))
-      .then(() => loadScriptOnce("plane-ui.js?v=995"))
+      .then(() => loadScriptOnce("plane-engine.js?v=996"))
+      .then(() => loadScriptOnce("plane-render.js?v=996"))
+      .then(() => loadScriptOnce("plane-feed.js?v=996"))
+      .then(() => loadScriptOnce("plane-ui.js?v=996"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2068,15 +2087,15 @@
   function loadThreeOnce() {
     if (window.THREE) return Promise.resolve();
     if (threeLoadPromise) return threeLoadPromise;
-    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=995").catch((e) => { threeLoadPromise = null; throw e; });
+    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=996").catch((e) => { threeLoadPromise = null; throw e; });
     return threeLoadPromise;
   }
   function ensureSlots3dLoaded() {
     if (window.Slots3D) return Promise.resolve(true);
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("slots3d-engine.js?v=995"))
-      .then(() => loadScriptOnce("slots3d.js?v=995"))
+      .then(() => loadScriptOnce("slots3d-engine.js?v=996"))
+      .then(() => loadScriptOnce("slots3d.js?v=996"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2287,6 +2306,7 @@
     }, 4200);
   }
   function demoDice() {
+    if (revealLock) return; // a reveal is in flight → ignore the spam tap (no stacked debits)
     const v = demoStake("dice-stake"); if (!v) return;
     const T = Math.min(9899, Math.max(100, (+$("dice-target").value) | 0));
     const over = diceMode === "over";
@@ -2301,6 +2321,7 @@
     TV.revealDice({ roll: roll / 100, target: T / 100, mode: over ? "over" : "under", youWon: won, mult, amountUsd: won ? profitUsd : v, tier: demoTier(profitUsd) });
   }
   function demoTwoDice() {
+    if (revealLock) return; // in-flight guard (see demoDice)
     const v = demoStake("td-stake"); if (!v) return;
     const T = Math.min(12, Math.max(2, (+$("td-target").value) | 0));
     const over = tdMode === "over";
@@ -2317,6 +2338,7 @@
     TV.revealTwoDice({ d1, d2, target: T, mode: over ? "over" : "under", youWon: won, mult, amountUsd: won ? profitUsd : v, tier: demoTier(profitUsd) });
   }
   function demoCrash() {
+    if (revealLock) return; // in-flight guard (see demoDice)
     const v = demoStake("crash-stake"); if (!v) return;
     const targetX = crashTargetVal();
     const crashX = (window.CrashEngine && CrashEngine.crashFromRandom) ? CrashEngine.crashFromRandom(Math.random, CRASH_EDGE) : 1;
@@ -2328,6 +2350,7 @@
     TV.revealCrash({ crashX, targetX, won, amountUsd: won ? profitUsd : v, mult: targetX, tier: demoTier(profitUsd) });
   }
   function demoSlots() {
+    if (revealLock) return; // in-flight guard (see demoDice)
     const v = demoStake("slots-stake"); if (!v) return;
     rememberBet(v);
     ensureSlotsLoaded().then(() => {
@@ -2673,14 +2696,22 @@
 
   function handleProposalResponse(d) {
     if (!eq(d.to, account) || !myProposal || myProposal.id !== String(d.roomId)) return;
-    if (d.accepted) {
-      toast("Host accepted! Joining at " + usdOf(BigInt(d.amount)) + "…", "ok");
-      read.getRoom(d.roomId).then((r) => doJoinRoom(String(d.roomId), r, BigInt(d.amount)));
-    } else {
-      toast("Host denied — pick another amount and propose again", "err");
-      read.getRoom(d.roomId).then((r) => { if (Number(r.status) === 0) joinRoom(String(d.roomId), r); });
-    }
-    myProposal = null;
+    // NEVER trust the relayed `amount`/identity — a forged bet-response could drive
+    // us to auto-join at an attacker-chosen stake. Use OUR own proposed amount, and
+    // only act if the response truly came from the room's on-chain creator.
+    const amount = BigInt(myProposal.amount);
+    read.getRoom(d.roomId).then((r) => {
+      if (!eq(d.from, r.creator)) return; // only the table's creator can accept/deny
+      if (d.accepted) {
+        if (Number(r.status) !== 0) { toast("That table is no longer open", "err"); myProposal = null; return; }
+        toast("Host accepted! Joining at " + usdOf(amount) + "…", "ok");
+        doJoinRoom(String(d.roomId), r, amount);
+      } else {
+        toast("Host denied — pick another amount and propose again", "err");
+        if (Number(r.status) === 0) joinRoom(String(d.roomId), r);
+      }
+      myProposal = null;
+    }).catch(() => {});
   }
 
   // ---------------------------------------------------------- TV reveal reconciler
@@ -3574,10 +3605,20 @@
     // ── Promo intro reel: autoplays (muted) ONCE on load, then fades to the game.
     //    The only control is the Replay button under the TV (plays back WITH sound). ──
     window.__onPromoEnded = startMusicAfterPromo; // random track after the intro's first run
-    // Play the intro on EVERY page load / refresh (not remembered) — but it never
-    // replays on channel switches within the same load.
-    try { localStorage.removeItem("ctf_promo_seen"); } catch (e) {} // clear any old "seen" flag
-    if (window.TV && TV.playPromo) { try { TV.playPromo(); } catch (e) {} }
+    // The intro reel plays ONCE per deployed build, then is remembered — it only
+    // replays after a NEW website push (the build tag changes), never on plain
+    // refreshes or channel switches within the same build.
+    {
+      const playPromo = () => { if (window.TV && TV.playPromo) { try { TV.playPromo(); } catch (e) {} } };
+      let build = "", seen = null;
+      try { build = (($("build-tag") || {}).textContent || "").trim(); } catch (e) {}
+      try { seen = localStorage.getItem("ctf_promo_seen"); } catch (e) {}
+      if (!build) { playPromo(); }                    // no build tag → just play (don't lock out)
+      else if (seen !== build) {                      // not seen for THIS build → play once, remember it
+        playPromo();
+        try { localStorage.setItem("ctf_promo_seen", build); } catch (e) {}
+      }
+    }
     // Hitting any bet/play button mid-intro skips the promo instantly so you can
     // bet right away. Capture phase → runs BEFORE the button's own handler (covers
     // clicks AND the Balloon Pop hold-to-pump pointerdown).
@@ -3585,6 +3626,7 @@
       const t = e.target;
       if (!(t && t.closest && t.closest(".action-dock"))) return;
       hideShareBtn(); // a new bet is starting → clear the previous win's share button
+      clearTvWin();   // …and the previous win's on-screen amount badge
       if (window.TV && TV._promoPlaying && TV.skipPromo) TV.skipPromo();
     }, true);
 

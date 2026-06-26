@@ -13,6 +13,7 @@
 
   let cfg = { getBalanceUsd: () => 0, onSit: () => {}, onLeave: () => {}, usd: (n) => "$" + Math.round(n), toast: () => {} };
   let seats = new Array(SEATS).fill(null); // each: {id,name,isBot,stack,seat}
+  let botBank = 0; // bounded reserve the bots re-buy from — chips never minted
   let buttonSeat = 0;
   let hand = null;
   let heroBuyIn = 0;
@@ -79,6 +80,7 @@
     const spread = [5, 3, 7, 2, 6, 4, 8, 1]; // seats around a 9-max ring (hero is seat 0)
     let placed = 0;
     for (const s of spread) { if (placed >= nBots) break; if (!seats[s]) { seats[s] = { id: "bot" + s, name: BOT_NAMES[placed % BOT_NAMES.length], isBot: true, stack: 100, seat: s }; placed++; } }
+    botBank = nBots * 200; // finite re-buy reserve (≈2 rebuys/bot); when dry, busted bots leave
     buttonSeat = 0;
     $("poker-leave").hidden = false;
     updateChips();
@@ -108,8 +110,15 @@
   function occupiedSeats() { return seats.filter((s) => s && s.stack > 0); }
 
   function nextHand() {
-    // top up / refresh bots so the table stays alive; drop busted bots
-    for (let i = 1; i < SEATS; i++) { if (seats[i] && seats[i].isBot && seats[i].stack < BB) seats[i].stack = 100; }
+    // Re-buy busted bots from the finite botBank (no chip minting); if the
+    // reserve can't cover a full rebuy, the bot leaves the table instead.
+    for (let i = 1; i < SEATS; i++) {
+      if (seats[i] && seats[i].isBot && seats[i].stack < BB) {
+        const need = 100 - seats[i].stack;
+        if (botBank >= need) { botBank -= need; seats[i].stack = 100; }
+        else { seats[i] = null; }
+      }
+    }
     const hero = seats[0];
     if (!hero || hero.stack < BB) { offerRebuy(); return; }
     const occ = occupiedSeats();

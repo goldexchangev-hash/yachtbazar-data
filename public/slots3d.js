@@ -119,7 +119,7 @@
     bg.position.z = -6; scene.add(bg);
 
     // ── reel bank ──
-    this.TILE = 1.62; this.REELW = 1.86;
+    this.TILE = 1.5; this.REELW = 1.66;
     const bank = new THREE.Group(); scene.add(bank); this.bank = bank;
     const faceGeo = new THREE.PlaneGeometry(1.5, 1.5);
     const bodyGeo = new THREE.BoxGeometry(1.66, 1.6, 0.36);
@@ -161,8 +161,21 @@
     this.fx = new THREE.Group(); scene.add(this.fx);
     this.flash = new THREE.Mesh(new THREE.PlaneGeometry(40, 26), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 })); this.flash.position.z = 2; scene.add(this.flash);
 
+    this._fitCamera();
     this._paintReels(true);
     this.renderer.render(this.scene, this.cam);
+  };
+
+  // Pull the camera back so all 5 reels + 3 rows always fit inside the TV with a
+  // margin — no clipped edges, whatever the screen aspect.
+  Slots3D.prototype._fitCamera = function () {
+    const aspect = this.W / this.H, halfH = Math.tan((this.cam.fov * Math.PI / 180) / 2);
+    const bankW = REELS * this.REELW + 0.9;   // reels + posts + air
+    const winH = ROWS * this.TILE + 0.9;
+    const zForW = (bankW / 0.94) / (2 * halfH * aspect); // width fits within 94%
+    const zForH = (winH / 0.86) / (2 * halfH);           // height fits within 86%
+    this.cam.position.set(0, 0, Math.max(zForW, zForH));
+    this.cam.lookAt(0, 0, 0); this.cam.updateProjectionMatrix();
   };
 
   // place tiles for current reel.pos and set their symbol textures

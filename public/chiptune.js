@@ -7,7 +7,7 @@
    synthesized, no copyrighted audio. Drop your own track at public/music.mp3
    to use that instead.
 
-   window.Chiptune: .toggle() .start() .stop() .isOn()  .blip() .coin() .win() .lose()
+   window.Chiptune: .toggle() .start() .stop() .isOn()  .blip() .coin() .swoosh() .win() .lose()
    ============================================================ */
 (function () {
   "use strict";
@@ -504,6 +504,32 @@
       const t = ctx.currentTime;
       voice(NOTES["B5"], t, 0.07, "square", master, 0.26);
       voice(NOTES["E6"], t + 0.07, 0.18, "square", master, 0.26);
+    },
+    // Airy "whoosh" for the coin spinning through the air: looped noise through a
+    // bandpass that sweeps up as it launches and back down as it falls, with a
+    // fast flutter so it shimmers like a spinning coin. ms = airborne duration.
+    swoosh(ms) {
+      if (!this._sfx() || !noiseBuf) return;
+      const t = ctx.currentTime;
+      const dur = Math.max(0.3, (ms || 700) / 1000);
+      const src = ctx.createBufferSource();
+      src.buffer = noiseBuf; src.loop = true;
+      const bp = ctx.createBiquadFilter();
+      bp.type = "bandpass"; bp.Q.value = 1.2;
+      bp.frequency.setValueAtTime(450, t);
+      bp.frequency.exponentialRampToValueAtTime(2200, t + dur * 0.45); // rises on the launch
+      bp.frequency.exponentialRampToValueAtTime(600, t + dur);          // falls as it drops
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(0.16, t + 0.12);
+      g.gain.setValueAtTime(0.16, Math.max(t + 0.12, t + dur - 0.2));
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      const lfo = ctx.createOscillator(), lg = ctx.createGain(); // flutter
+      lfo.frequency.value = 11; lg.gain.value = 0.05;
+      lfo.connect(lg); lg.connect(g.gain);
+      src.connect(bp); bp.connect(g); g.connect(master);
+      src.start(t); src.stop(t + dur + 0.05);
+      lfo.start(t); lfo.stop(t + dur + 0.05);
     },
     // Which win-scene theme is active, so the fanfare matches the visuals.
     _theme() { try { return (window.WinScenes && window.WinScenes.getTheme && window.WinScenes.getTheme()) || "neon"; } catch (e) { return "neon"; } },

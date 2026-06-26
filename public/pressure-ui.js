@@ -130,6 +130,7 @@
       if (modalUp()) return; // don't pump behind an open dialog
       if (e.code === "Space") { e.preventDefault(); this._press(); }
       else if (e.key === "a" || e.key === "A") this._toggleAuto();
+      else if (e.key === "v" || e.key === "V") this._valve(); // lock a pop-proof floor at the current mult
     });
     window.addEventListener("keyup", (e) => { if (this._active && e.code === "Space" && !modalUp()) this._release(); });
 

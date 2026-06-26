@@ -275,11 +275,19 @@ kbd { font-family: ui-monospace, monospace; font-size: 11px; background: rgba(25
 @keyframes countPop { 0% { transform: scale(2.4); opacity: 0; } 30% { opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
 
 /* Coin */
-#layer-flip { perspective: 900px; position: relative; }
+/* Inherit .screen-layer's `position:absolute; inset:0` so the flip layer FILLS
+   the TV screen (an explicit position:relative here used to shrink it to its
+   content, pinning the coin to the top third). Still a positioned box, so the
+   absolute coin-shadow / caption resolve against it. */
+#layer-flip { perspective: 900px; }
 /* ── The TOSS: a wrapper does the vertical arc (launch up → hover/spin in the
    air while we wait → drop + bounce on the reveal); the .coin inside owns the
    rotateX flip-spin. Two concerns, two transforms, no conflict. ── */
-.coin-toss { position: relative; transform: translateY(0); transform-style: preserve-3d; will-change: transform; }
+/* A touch below dead-center so it sits in the open area under the scoreboard;
+   `top` is independent of the toss `transform` arc, so it composes cleanly. */
+.coin-toss { position: relative; top: 4%; transform: translateY(0); transform-style: preserve-3d; will-change: transform; }
+/* While a bet is live (toss → land) hide the "PLACE YOUR BET BELOW" prompt. */
+#layer-flip.betting .flip-caption { opacity: 0; }
 .coin-toss.up   { animation: coinUp 0.5s cubic-bezier(.2,.7,.3,1) forwards, coinHover 1.7s ease-in-out 0.5s infinite; }
 .coin-toss.land { animation: coinDrop 0.92s cubic-bezier(.22,1.18,.42,1) forwards; }
 /* Rise + shrink (flies up & away into the distance), then fall + grow back and
@@ -2062,3 +2070,21 @@ body.plane-real .plane-bets { grid-template-columns: 1fr; }
   .plane-bp { padding: 8px; }
   .plane-feed { max-height: 130px; }
 }
+
+/* ════════ Persistent win badge — last win stays on the TV until the next bet ════════ */
+.tv-win-badge {
+  position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 9;
+  pointer-events: none; white-space: nowrap;
+  font-family: var(--display, "Press Start 2P", monospace); font-weight: 800;
+  font-size: clamp(13px, 3.2vw, 22px); letter-spacing: .5px; color: #06231a;
+  padding: 7px 16px; border-radius: 999px;
+  background: linear-gradient(135deg, #6dffb0, #2bdc7e 55%, #ffd23f);
+  box-shadow: 0 4px 14px rgba(0,0,0,.45), 0 0 18px rgba(43,220,126,.55);
+  text-shadow: 0 1px 0 rgba(255,255,255,.4);
+  animation: tvWinPop .5s cubic-bezier(.18,1.6,.4,1);
+}
+.tv-win-badge.big  { background: linear-gradient(135deg, #ffe27a, #ffd23f 55%, #ff8a3d); box-shadow: 0 4px 14px rgba(0,0,0,.45), 0 0 22px rgba(255,210,63,.7); }
+.tv-win-badge.mega { background: linear-gradient(135deg, #fff, #ffd23f 45%, #ff4d9d); box-shadow: 0 4px 16px rgba(0,0,0,.5), 0 0 28px rgba(255,77,157,.75); }
+.tv-win-badge.hidden { display: none !important; }
+@keyframes tvWinPop { 0% { transform: translateX(-50%) scale(.4); opacity: 0; } 60% { transform: translateX(-50%) scale(1.12); } 100% { transform: translateX(-50%) scale(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .tv-win-badge { animation: none; } }

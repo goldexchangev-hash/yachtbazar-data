@@ -246,7 +246,7 @@
     },
     _flipPreview() {
       const L = this.layers.flip;
-      if (L) { L.classList.remove("win", "lose", "tier-big", "tier-mega"); L.classList.remove("airborne"); }
+      if (L) { L.classList.remove("win", "lose", "tier-big", "tier-mega"); L.classList.remove("airborne", "betting"); }
       if (this.coinToss) this.coinToss.classList.remove("up", "land"); // coin resting on the table
       if (this.coin) { this.coin.classList.remove("spin", "show-tails"); this.coin.classList.add("show-heads"); }
       const cap = L && L.querySelector(".flip-caption"); if (cap) cap.textContent = "PLACE YOUR BET BELOW";
@@ -441,12 +441,18 @@
     // Turn the dial between Coin Flip (08) and Dice (09) with a CRT "tune" effect.
     async changeChannel(num) {
       const seq = ++this._seq;
+      // Commit the channel identity SYNCHRONOUSLY, before any await. The visual
+      // CRT transition below is seq-guarded (a rapid re-switch supersedes it), but
+      // _activeChannel must NOT depend on that race: a lazy-loaded game's
+      // ensureReady()→TV.idle() bumps _seq within the 210ms window and would
+      // otherwise cancel this assignment, leaving _activeChannel stuck on the
+      // previous channel (the "crash loads on every game" desync).
+      this._activeChannel = num; this.setChannel(num);
       this._setStatic(0.95);
       if (window.Chiptune) window.Chiptune.blip();
       this.screenEl.classList.remove("ch-switch"); void this.screenEl.offsetWidth; this.screenEl.classList.add("ch-switch");
       const badge = $("tv-channel"); if (badge) { badge.classList.remove("changing"); void badge.offsetWidth; badge.classList.add("changing"); }
       await sleep(210); if (seq !== this._seq) return;
-      this.setChannel(num); this._activeChannel = num;
       if (!this._connected) this._staticIdle();
       else if (num === 11) this._crashIdle();
       else if (num === 12) this._slotsIdle();
@@ -691,10 +697,11 @@
       this._setStatic(0.06);
       this._show("flip");
       if (this.coinToss) { this.coinToss.classList.remove("land"); void this.coinToss.offsetWidth; this.coinToss.classList.add("up"); }
-      if (this.layerFlip) this.layerFlip.classList.add("airborne"); // shrink the ground shadow
+      if (this.layerFlip) this.layerFlip.classList.add("airborne", "betting"); // shrink the ground shadow + hide the bet prompt
       this.coin.classList.remove("show-heads", "show-tails");
       this.coin.classList.add("spin");
       if (window.Chiptune) window.Chiptune.coin(); // the "toss" chime
+      if (window.Chiptune && window.Chiptune.swoosh) window.Chiptune.swoosh(2300); // airborne whoosh for the spin
       this._spinReadyAt = now() + 2300; // a satisfying airborne spin before it lands
 
       // If the result already arrived during the countdown, reveal it now.
