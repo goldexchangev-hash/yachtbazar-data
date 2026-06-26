@@ -9,7 +9,7 @@
   "use strict";
   var COLORS = ["#39e7ff", "#45f0a6", "#ffd23f", "#ff4d9d", "#ffffff"];
   var GOLD = ["#ffd23f", "#ffe9a0", "#ff8a3d", "#fff5cf", "#ffc24d"];
-  var canvas, ctx, parts = [], raf = 0, banner, bannerT = 0;
+  var canvas, ctx, parts = [], raf = 0, banner, bannerT = 0, flashEl;
 
   function ensure() {
     if (canvas) return;
@@ -63,13 +63,27 @@
   function celebrate(outcome, delta) {
     ensure();
     var amt = delta > 0 ? "+$" + (Math.round(delta * 100) / 100).toLocaleString() : "";
-    if (outcome === "blackjack") {
-      burst(160, GOLD, 1.5);
+    var tier = outcome === "blackjack" ? "blackjack" : (delta >= 250 ? "big" : "win");
+    if (root.BlackjackSFX) root.BlackjackSFX.win(tier); // tiered fanfare
+    if (tier === "blackjack") {
+      burst(190, GOLD, 1.7); flash("rgba(255,210,63,.45)");
       showBanner('<span style="color:#ffd23f">BLACKJACK!</span><br><span style="font-size:16px;color:#fff">' + amt + "</span>", "#ffd23f");
+    } else if (tier === "big") {
+      burst(150, COLORS, 1.45); flash("rgba(69,240,166,.35)");
+      showBanner('<span style="color:#ffd23f">BIG WIN</span><br><span style="font-size:16px;color:#fff">' + amt + "</span>", "#ffd23f");
     } else {
       burst(90, COLORS, 1.1);
       showBanner('<span style="color:#45f0a6">YOU WIN</span><br><span style="font-size:16px;color:#fff">' + amt + "</span>", "#45f0a6");
     }
+  }
+  function flash(color) {
+    if (!flashEl) { flashEl = document.createElement("div");
+      flashEl.style.cssText = "position:fixed;inset:0;pointer-events:none;z-index:59;opacity:0;transition:opacity .12s ease-out";
+      document.body.appendChild(flashEl); }
+    flashEl.style.background = "radial-gradient(circle at 50% 42%, " + color + ", transparent 62%)";
+    flashEl.style.opacity = "1";
+    setTimeout(function () { flashEl.style.transition = "opacity .55s ease-out"; flashEl.style.opacity = "0"; }, 70);
+    setTimeout(function () { flashEl.style.transition = "opacity .12s ease-out"; }, 700);
   }
 
   root.BlackjackFX = { celebrate: celebrate };

@@ -80,15 +80,37 @@ body {
 
 /* ---------- table view ---------- */
 .felt-wrap { position: relative; }
+/* LAYER 1 — ambient WebGL atmosphere (zero game state; CSS felt is the full fallback) */
+#bjGL { position: absolute; inset: -42px -32px; width: calc(100% + 64px); height: calc(100% + 84px); z-index: 0; pointer-events: none; opacity: 0; transition: opacity 1.2s ease; }
+#bjGL.on { opacity: 1; }
+/* LAYER 2 — the readable felt (premium neon-rimmed teal slab) */
 .felt {
-  position: relative; border-radius: 180px / 120px; min-height: 420px; padding: 24px 18px 16px;
+  position: relative; z-index: 1; border-radius: 180px / 120px; min-height: 420px; padding: 24px 18px 16px; overflow: hidden;
   background:
-    radial-gradient(120% 90% at 50% 8%, rgba(255, 255, 255, .08), transparent 40%),
-    radial-gradient(130% 120% at 50% 120%, var(--felt-1), var(--felt-2) 70%);
-  box-shadow: inset 0 0 0 6px rgba(0, 0, 0, .35), inset 0 0 60px rgba(0, 0, 0, .5),
-    0 0 0 3px var(--felt-edge), 0 0 0 6px rgba(57, 231, 255, .18), 0 22px 60px rgba(0, 0, 0, .5);
-  overflow: hidden;
+    radial-gradient(120% 92% at 50% 6%, rgba(57, 231, 255, .10), transparent 38%),
+    radial-gradient(140% 130% at 50% 120%, #0a4d3b 0%, #073a2e 52%, #04241c 100%);
+  box-shadow:
+    inset 0 0 0 6px rgba(0, 0, 0, .40), inset 0 0 80px rgba(0, 0, 0, .60),
+    0 0 0 3px #2a1d4a, 0 0 0 5px rgba(57, 231, 255, .55), 0 0 22px 4px rgba(57, 231, 255, .30),
+    0 0 0 8px rgba(255, 77, 157, .18), 0 26px 70px rgba(0, 0, 0, .55);
+  animation: rimBreathe 6s ease-in-out infinite;
 }
+.felt.gl { background: radial-gradient(140% 130% at 50% 120%, rgba(10, 77, 59, .42), rgba(4, 36, 28, .58) 70%); } /* translucent so the GL felt shows through */
+@keyframes rimBreathe { 50% { box-shadow:
+  inset 0 0 0 6px rgba(0, 0, 0, .40), inset 0 0 80px rgba(0, 0, 0, .60),
+  0 0 0 3px #2a1d4a, 0 0 0 5px rgba(57, 231, 255, .78), 0 0 30px 6px rgba(57, 231, 255, .42),
+  0 0 0 8px rgba(255, 77, 157, .22), 0 26px 70px rgba(0, 0, 0, .55); } }
+.felt::after { /* vignette + pit sheen + drifting hex caustic */
+  content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: inherit; z-index: 0;
+  background:
+    radial-gradient(closest-side at 50% 38%, rgba(234, 242, 255, .08), transparent 46%),
+    radial-gradient(closest-side at 50% 50%, transparent 60%, rgba(0, 0, 0, .62) 100%),
+    repeating-linear-gradient(60deg, rgba(57, 231, 255, .05) 0 1px, transparent 1px 48px),
+    repeating-linear-gradient(-60deg, rgba(57, 231, 255, .05) 0 1px, transparent 1px 48px);
+  animation: feltDrift 24s linear infinite;
+}
+@keyframes feltDrift { to { background-position: 0 0, 0 0, 96px 56px, -96px 56px; } }
+.felt > * { position: relative; z-index: 1; }
 .felt .arc-text { position: absolute; top: 72px; left: 0; right: 0; text-align: center; color: rgba(255, 255, 255, .5);
   font-family: var(--pixel); font-size: 8px; letter-spacing: 2px; pointer-events: none; }
 .felt .arc-text.lo { top: auto; bottom: 16px; color: rgba(255, 255, 255, .28); }
@@ -167,26 +189,53 @@ body {
 .total-pill.soft { color: var(--cyan); } .total-pill.bust { color: var(--red); border-color: rgba(255, 91, 115, .5); }
 .total-pill.bj { color: var(--gold); border-color: rgba(255, 210, 63, .5); }
 
+.hand, .hand-box { perspective: 900px; }
 .card {
-  position: relative; width: 62px; height: 88px; border-radius: 8px; flex: none;
-  background: linear-gradient(160deg, #fff, #e9eef7); color: #16203a;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, .45), inset 0 0 0 1px rgba(0, 0, 0, .08);
+  position: relative; width: 62px; height: 88px; border-radius: 9px; flex: none;
+  background: linear-gradient(158deg, #ffffff 0%, #eef3fb 62%, #dfe7f4 100%); color: #14213d;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, .5), inset 0 1px 0 rgba(255, 255, 255, .9),
+    inset 0 0 0 1px rgba(255, 210, 63, .28), inset -2px -2px 0 rgba(29, 44, 94, .12);
   font-family: var(--font); font-weight: 800; user-select: none;
 }
-.card.sm { width: 46px; height: 66px; }
-.card .corner { position: absolute; top: 5px; left: 6px; line-height: .9; text-align: center; }
+.card.sm { width: 46px; height: 66px; border-radius: 7px; }
+.card .corner { position: absolute; top: 5px; left: 6px; line-height: .82; text-align: center; z-index: 2; }
 .card .corner.br { top: auto; left: auto; bottom: 5px; right: 6px; transform: rotate(180deg); }
-.card .corner .r { font-size: 15px; display: block; } .card .corner .s { font-size: 12px; display: block; }
-.card .pip { position: absolute; inset: 0; display: grid; place-items: center; font-size: 34px; }
+.card .corner .r { font-size: 15px; display: block; font-weight: 800; } .card .corner .s { font-size: 12px; display: block; }
+.card .pip { position: absolute; inset: 0; display: grid; place-items: center; font-size: 36px; z-index: 2; text-shadow: 0 1px 0 rgba(255, 255, 255, .55); }
 .card.sm .pip { font-size: 24px; } .card.sm .corner .r { font-size: 11px; } .card.sm .corner .s { font-size: 9px; }
-.card.red { color: #e8284e; } .card.black { color: #16203a; }
-.card.back { background: repeating-linear-gradient(45deg, #15224a 0 7px, #1d2c5e 7px 14px); box-shadow: 0 4px 10px rgba(0, 0, 0, .45), inset 0 0 0 2px rgba(57, 231, 255, .35), inset 0 0 0 6px rgba(0, 0, 0, .25); }
-.card.back::after { content: "♦"; position: absolute; inset: 0; display: grid; place-items: center; font-size: 26px; color: rgba(57, 231, 255, .5); }
-.card.dealing { animation: dealIn .34s cubic-bezier(.2, .8, .2, 1) both; }
-@keyframes dealIn { from { opacity: 0; transform: translate(-60px, -120px) rotate(-22deg) scale(.85); } to { opacity: 1; transform: none; } }
-.card.flip { animation: flipCard .42s ease both; }
-@keyframes flipCard { 0% { transform: rotateY(180deg); } 100% { transform: rotateY(0); } }
-.seat.win .hand .card { box-shadow: 0 0 0 2px var(--green), 0 4px 10px rgba(0, 0, 0, .45); }
+.card.red { color: #e8284e; } .card.black { color: #14213d; }
+.card::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 1;
+  background: linear-gradient(120deg, transparent 42%, rgba(57, 231, 255, .10) 50%, transparent 58%); } /* calm holo foil */
+.card.back { background: repeating-linear-gradient(45deg, #15224a 0 7px, #1d2c5e 7px 14px), #0e1b40;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, .5), inset 0 0 0 2px rgba(57, 231, 255, .40), inset 0 0 0 6px rgba(4, 6, 15, .5); }
+.card.back::before { content: ""; position: absolute; inset: 0; border-radius: inherit; mix-blend-mode: screen;
+  background: linear-gradient(115deg, transparent 30%, rgba(57, 231, 255, .5) 47%, rgba(255, 77, 157, .5) 53%, transparent 70%);
+  background-size: 280% 280%; animation: holoSheen 2.4s linear infinite; }
+.card.back::after { content: "♦"; position: absolute; inset: 0; display: grid; place-items: center; font-size: 26px;
+  color: rgba(57, 231, 255, .55); text-shadow: 0 0 8px rgba(255, 77, 157, .6); }
+@keyframes holoSheen { to { background-position: 280% 280%; } }
+.card.dealing { animation: dealIn .4s cubic-bezier(.2, .85, .25, 1) both; }
+@keyframes dealIn { 0% { opacity: 0; transform: translate(74px, -132px) rotate(8deg) scale(.9); } 60% { opacity: 1; } 100% { opacity: 1; transform: none; } }
+.card.flip { animation: flipReveal .52s cubic-bezier(.34, 1.4, .5, 1) both; }
+@keyframes flipReveal {
+  0% { transform: rotateY(180deg) scale(1.03); box-shadow: 0 0 0 2px rgba(255, 210, 63, .6), 0 6px 14px rgba(0, 0, 0, .5); }
+  50% { transform: rotateY(90deg) translateZ(30px) scale(1.07); }
+  100% { transform: rotateY(0) scale(1); }
+}
+.seat.win .hand .card { box-shadow: 0 0 0 2px var(--green), 0 6px 14px rgba(0, 0, 0, .5); }
+
+/* ---------- chips (LED denomination stacks) ---------- */
+.chipstack { position: relative; width: 38px; height: 46px; margin: 2px auto 0; filter: drop-shadow(0 3px 4px rgba(0, 0, 0, .5)); }
+.chip3d { position: absolute; left: 50%; width: 30px; height: 30px; border-radius: 50%; transform: translateX(-50%);
+  background:
+    repeating-conic-gradient(from 0deg, var(--cc) 0 18deg, #06091a 18deg 26deg),
+    radial-gradient(circle at 38% 32%, color-mix(in srgb, var(--cc) 70%, #fff 30%), var(--cc) 56%, color-mix(in srgb, var(--cc) 70%, #000 30%) 100%);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .6), inset 0 0 0 4px rgba(255, 255, 255, .5), 0 0 8px var(--cc);
+  border: 1px solid rgba(0, 0, 0, .35); }
+.chip3d .v { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--pixel); font-size: 7px; color: #06091a; text-shadow: 0 0 3px rgba(255, 255, 255, .7); }
+.chip-pill { position: absolute; left: 50%; top: -6px; transform: translateX(-50%); font-family: var(--pixel); font-size: 7px; color: #06091a; background: var(--gold); border-radius: 6px; padding: 1px 4px; }
+.bet-pill { font-family: var(--pixel); font-size: 9px; color: var(--gold); background: #0c2018; border: 1px solid rgba(255, 210, 63, .3); border-radius: 999px; padding: 4px 8px; }
+.bet-pill .e { color: var(--muted); font-family: ui-monospace, monospace; font-size: 8px; }
 
 /* ---------- control dock ---------- */
 .dock { margin-top: 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 12px; }

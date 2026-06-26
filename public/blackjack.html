@@ -36,6 +36,7 @@
       <!-- ============ TABLE ============ -->
       <section id="table" class="hidden">
         <div class="felt-wrap">
+          <canvas id="bjGL"></canvas>
           <div class="felt">
             <div class="shoe" id="shoe"></div>
             <div class="arc-text">BLACKJACK PAYS 3 TO 2</div>
@@ -81,13 +82,15 @@
     <script src="blackjack-net.js"></script>
     <script src="blackjack-fx.js"></script>
     <script src="blackjack-sfx.js"></script>
+    <script src="vendor/three.min.js"></script>
+    <script src="blackjack-gl.js"></script>
     <script src="blackjack-ui.js"></script>
     <script>
       window.addEventListener("DOMContentLoaded", function () {
         var id = function (x) { return document.getElementById(x); };
         var back = id("back");
         var els = {
-          balUsd: id("bal-usd"), balEth: id("bal-eth"), back: back, soundBtn: id("sound-btn"),
+          balUsd: id("bal-usd"), balEth: id("bal-eth"), back: back, soundBtn: id("sound-btn"), glCanvas: id("bjGL"),
           lobby: id("lobby"), tables: id("tables"), table: id("table"),
           dealerHand: id("dealer-hand"), dealerTotal: id("dealer-total"), shoe: id("shoe"),
           phaseBanner: id("phase-banner"), phaseMain: id("phase-main"), phaseSub: id("phase-sub"), ring: id("ring"),

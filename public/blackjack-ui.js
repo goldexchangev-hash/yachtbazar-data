@@ -21,11 +21,13 @@
   function rankLabel(r) { return r === "T" ? "10" : r; }
   function money(n) { return "$" + (Math.round(n * 100) / 100).toLocaleString(undefined, { maximumFractionDigits: 2 }); }
   function eth(n) { return "≈ Ξ" + (n / ETH_USD).toFixed(4); } // ETH equivalent of the USD amount (demo rate $3400/ETH)
+  function isWallet(w) { return /^0x[0-9a-fA-F]{6,}/.test(w || ""); } // a real connected wallet (not a guest/demo id)
   function shortHash(h) { return h ? h.slice(0, 10) + "…" : "—"; }
 
   function BlackjackClient(opts) {
     this.E = opts.els;
     this.wallet = opts.wallet || null;
+    this.showEth = isWallet(this.wallet); // ETH amounts only matter once a real wallet is connected
     this.net = opts.net || new root.BJNet({ wallet: this.wallet });
     this.view = "lobby";
     this.you = null; this.spectating = null;
@@ -71,6 +73,7 @@
 
   BlackjackClient.prototype._wireStatic = function () {
     var self = this, E = this.E;
+    if (E.balEth && !this.showEth) E.balEth.style.display = "none"; // demo: hide ETH until a wallet connects
     if (E.back) E.back.onclick = function () { self.leaveTable(); };
     if (E.pfVerify) E.pfVerify.onclick = function () { self._verify(); };
     if (E.soundBtn) E.soundBtn.onclick = function () {
@@ -94,7 +97,18 @@
     this.E.lobby.classList.remove("hidden"); this.E.table.classList.add("hidden");
     this.net.send({ type: "bj:lobby:subscribe" });
   };
-  BlackjackClient.prototype.showTable = function () { this.view = "table"; this.E.lobby.classList.add("hidden"); this.E.table.classList.remove("hidden"); };
+  BlackjackClient.prototype.showTable = function () { this.view = "table"; this.E.lobby.classList.add("hidden"); this.E.table.classList.remove("hidden"); this._tryGL(); };
+  // tier gate: light up the ambient WebGL layer once the table is visible (graceful fallback to CSS felt)
+  BlackjackClient.prototype._tryGL = function () {
+    if (this._glStarted || !root.BlackjackGL || !this.E.glCanvas) return;
+    try { if (root.matchMedia && root.matchMedia("(prefers-reduced-motion: reduce)").matches) return; } catch (e) {}
+    var self = this;
+    setTimeout(function () { // let the table lay out so the canvas has a size
+      if (self._glStarted) return;
+      var ok = root.BlackjackGL.start(self.E.glCanvas);
+      if (ok) { self._glStarted = true; self.E.glCanvas.classList.add("on"); if (root.BlackjackGL._resize) setTimeout(root.BlackjackGL._resize, 80); }
+    }, 50);
+  };
   BlackjackClient.prototype.renderLobby = function (rooms) {
     if (this.view !== "lobby") return;
     var grid = this.E.tables; grid.innerHTML = "";
@@ -194,6 +208,18 @@
     if (d.total != null) this.E.dealerTotal.appendChild(el("span", "total-pill" + (d.total > 21 ? " bust" : ""), String(d.total)));
     this.E.shoe.innerHTML = "Hand <code>#" + (m.handNumber || 0) + "</code><br>commit <code>" + shortHash(m.commit) + "</code>";
   };
+  var CHIP_DENOMS = [[1000, "#eaf2ff"], [500, "#ffd23f"], [100, "#ff4d9d"], [25, "#45f0a6"], [10, "#39e7ff"]];
+  BlackjackClient.prototype._chipStack = function (value) {
+    var stack = el("div", "chipstack"); var chips = []; var v = Math.round(value);
+    for (var d = 0; d < CHIP_DENOMS.length; d++) while (v >= CHIP_DENOMS[d][0]) { chips.push(CHIP_DENOMS[d]); v -= CHIP_DENOMS[d][0]; }
+    var show = chips.slice(0, 5); // largest denoms at the bottom; cap visible
+    for (var i = 0; i < show.length; i++) { var c = el("div", "chip3d", '<span class="v">' + show[i][0] + "</span>"); c.style.setProperty("--cc", show[i][1]); c.style.bottom = (i * 4) + "px"; stack.appendChild(c); }
+    if (chips.length > 5) stack.appendChild(el("div", "chip-pill", "×" + chips.length));
+    return stack;
+  };
+  BlackjackClient.prototype._betPill = function (value, doubled) {
+    return el("div", "bet-pill", money(value) + (doubled ? " ²" : "") + (this.showEth ? ' <span class="e">' + eth(value) + "</span>" : ""));
+  };
   BlackjackClient.prototype._renderSeats = function (m) {
     var host = this.E.seats; host.innerHTML = "";
     for (var i = 0; i < 4; i++) {
@@ -210,7 +236,7 @@
       }
       var hands = s.hands || [];
       if (hands.length === 0) {
-        if (s.baseBet > 0) seat.appendChild(el("div", "bet-chip", money(s.baseBet)));
+        if (s.baseBet > 0) { seat.appendChild(this._chipStack(s.baseBet)); seat.appendChild(this._betPill(s.baseBet)); }
         else seat.appendChild(el("div", "seatno", "—"));
       } else {
         var wrap = el("div", "hands" + (hands.length > 1 ? " multi" : ""));
@@ -225,7 +251,7 @@
             var dl = h.result.delta, dtxt = dl > 0 ? "+" + money(dl) : (dl < 0 ? "-" + money(-dl) : "±0");
             b.innerHTML = (oc === "blackjack" ? "BJ" : oc.toUpperCase()) + ' <span class="d">' + dtxt + "</span>";
             hb.appendChild(b);
-          } else { var tag = el("div", "hand-bet", money(h.bet) + (h.doubled ? " ²" : "")); hb.appendChild(tag); }
+          } else { hb.appendChild(this._betPill(h.bet, h.doubled)); }
           wrap.appendChild(hb);
         }
         seat.appendChild(wrap);
@@ -328,13 +354,13 @@
     var stepper = el("div", "bet-stepper");
     var minus = el("button", null, "−"), plus = el("button", null, "+");
     var input = document.createElement("input"); input.type = "number"; input.min = "10"; input.step = "10"; input.value = String(this.bet);
-    var ethSpan = el("span", "bet-eth", eth(this.bet));
-    function sync() { self.bet = Math.max(10, Math.round(+input.value || 10)); input.value = self.bet; ethSpan.textContent = eth(self.bet); }
+    var ethSpan = this.showEth ? el("span", "bet-eth", eth(this.bet)) : null; // ETH only with a wallet connected
+    function sync() { self.bet = Math.max(10, Math.round(+input.value || 10)); input.value = self.bet; if (ethSpan) ethSpan.textContent = eth(self.bet); }
     minus.onclick = function () { self.bet = Math.max(10, self.bet - 10); input.value = self.bet; sync(); };
     plus.onclick = function () { self.bet = self.bet + 10; input.value = self.bet; sync(); };
     input.oninput = sync;
     stepper.appendChild(minus); stepper.appendChild(input); stepper.appendChild(plus);
-    row.appendChild(stepper); row.appendChild(ethSpan);
+    row.appendChild(stepper); if (ethSpan) row.appendChild(ethSpan);
     var chips = el("div", "qchips");
     [["MIN", function () { return 10; }], ["+50", function () { return self.bet + 50; }], ["2×", function () { return self.bet * 2; }],
       ["MAX", function () { return Math.max(10, Math.floor(self.balance || 0)); }]].forEach(function (c) {
@@ -360,7 +386,13 @@
   BlackjackClient.prototype._renderBalance = function () {
     if (this.balance == null) return;
     if (this.E.balUsd) this.E.balUsd.textContent = money(this.balance);
-    if (this.E.balEth) this.E.balEth.textContent = eth(this.balance);
+    if (this.E.balEth) { if (this.showEth) { this.E.balEth.style.display = ""; this.E.balEth.textContent = eth(this.balance); } else this.E.balEth.style.display = "none"; }
+  };
+  // call when a wallet connects/disconnects so the ETH amounts appear/hide live
+  BlackjackClient.prototype.setWallet = function (addr) {
+    this.wallet = addr || null; this.showEth = isWallet(this.wallet);
+    if (this.net) this.net.wallet = this.wallet;
+    this._renderBalance(); this._dockSig = null; this._renderDock();
   };
   BlackjackClient.prototype._renderPF = function () {
     var E = this.E;
