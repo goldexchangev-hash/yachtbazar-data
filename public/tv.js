@@ -624,7 +624,8 @@
       if (res.won) {
         L.classList.add("win");
         if (multEl) { multEl.classList.add("win"); multEl.textContent = res.targetX.toFixed(2) + "×"; }
-        if (subEl) subEl.textContent = "CASHED OUT  +$" + Math.abs(res.amountUsd).toFixed(2);
+        const wm = (R && R.winMessage) ? R.winMessage(res.targetX) : null; // universe-themed by altitude reached
+        if (subEl) subEl.textContent = (wm ? wm.emoji + " " + wm.text + "  " : "CASHED OUT  ") + "+$" + Math.abs(res.amountUsd).toFixed(2);
         if (R) { R.cashout(); R.setState("cashed"); }
       } else {
         L.classList.add("lose");
