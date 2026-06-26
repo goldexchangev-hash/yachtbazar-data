@@ -218,10 +218,12 @@ body {
 .card.back { background: repeating-linear-gradient(45deg, #15224a 0 7px, #1d2c5e 7px 14px), #0e1b40;
   box-shadow: 0 6px 14px rgba(0, 0, 0, .5), inset 0 0 0 2px rgba(57, 231, 255, .40), inset 0 0 0 6px rgba(4, 6, 15, .5); }
 .card.back::before { content: ""; position: absolute; inset: 0; border-radius: inherit; mix-blend-mode: screen;
-  background: linear-gradient(115deg, transparent 30%, rgba(57, 231, 255, .5) 47%, rgba(255, 77, 157, .5) 53%, transparent 70%);
-  background-size: 280% 280%; animation: holoSheen 2.4s linear infinite; }
-.card.back::after { content: "♦"; position: absolute; inset: 0; display: grid; place-items: center; font-size: 26px;
-  color: rgba(57, 231, 255, .55); text-shadow: 0 0 8px rgba(255, 77, 157, .6); }
+  background: linear-gradient(115deg, transparent 32%, rgba(57, 231, 255, .32) 48%, rgba(255, 77, 157, .32) 52%, transparent 68%);
+  background-size: 280% 280%; animation: holoSheen 2.6s linear infinite; }
+/* neutral neon emblem (a glowing ring) — NOT a card suit, so it can't be mistaken for the hidden card */
+.card.back::after { content: ""; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 26px; height: 26px; border-radius: 50%;
+  border: 2px solid rgba(57, 231, 255, .55); box-shadow: 0 0 10px rgba(255, 77, 157, .45), inset 0 0 7px rgba(57, 231, 255, .3); background: radial-gradient(circle, rgba(57, 231, 255, .12), transparent 70%); }
+.card.sm.back::after { width: 18px; height: 18px; }
 @keyframes holoSheen { to { background-position: 280% 280%; } }
 .card.dealing { animation: dealIn .4s cubic-bezier(.2, .85, .25, 1) both; }
 @keyframes dealIn { 0% { opacity: 0; transform: translate(74px, -132px) rotate(8deg) scale(.9); } 60% { opacity: 1; } 100% { opacity: 1; transform: none; } }
