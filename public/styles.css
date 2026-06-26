@@ -280,6 +280,12 @@ kbd { font-family: ui-monospace, monospace; font-size: 11px; background: rgba(25
 body.dice3d-on #dice-tv-line { display: none; } /* the 3D rail replaces the DOM number-line bar */
 #layer-dice .dice-tv-target, #layer-dice .dice-roll-num, #layer-dice .dice-verdict, #layer-dice .dice-payout { position: relative; z-index: 2; }
 
+/* 3D tumbling dice stage (Dice #2) — fills the layer behind the DOM target/sum/verdict */
+.dice2-3d-stage { position: absolute; inset: 0; z-index: 0; }
+.dice2-3d-stage canvas { width: 100% !important; height: 100% !important; display: block; }
+body.dice2-3d-on .td-dice { display: none; } /* the 3D dice replace the CSS dice */
+#layer-twodice .td-target, #layer-twodice .td-sum, #layer-twodice .dice-verdict, #layer-twodice .dice-payout { position: relative; z-index: 2; }
+
 /* 3D coin stage (Three.js) — fills the flip layer; hides the CSS coin when live */
 .flip3d-stage { position: absolute; inset: 0; z-index: 1; }
 .flip3d-stage canvas { width: 100% !important; height: 100% !important; display: block; }

@@ -66,6 +66,8 @@
   let coinFlip3d = null;          // the CoinFlip3D instance, built on first visit to CH 8
   let rail3dLoadPromise = null;   // lazy-load guard for the 0-100 neon rail (Three.js)
   let rail3d = null;              // the Rail3D instance, built on first visit to CH 9
+  let d2_3dLoadPromise = null;    // lazy-load guard for the Dice #2 3D dice (Three.js)
+  let d2_3d = null;               // the TwoDice3D instance, built on first visit to CH 10
   let read = null; // connected to provider
   let maxBet = 0n;
   let gameWei = 0n; // cached in-game (deposited) balance, refreshed by refreshBalances
@@ -2201,6 +2203,27 @@
   function ensureDice3dReady() {
     loadRail3dOnce().then(() => { const g = buildRail3d(); if (g) g.setActive(true); }).catch(() => {}); // silent — DOM rail stays as fallback
   }
+
+  // ── Dice #2 (CH 10): two chunky neon dice tumble in 3D. Lazy-loaded; the CSS
+  //    dice are the fallback. tv.js drives it via TV._d2_3d.
+  function loadDice2_3dOnce() {
+    if (window.TwoDice3D) return Promise.resolve(true);
+    if (d2_3dLoadPromise) return d2_3dLoadPromise;
+    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1101")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
+    return d2_3dLoadPromise;
+  }
+  function buildDice2_3d() {
+    if (d2_3d || !window.TwoDice3D) return d2_3d;
+    const mount = $("dice2-3d-stage"); if (!mount) return null;
+    d2_3d = new window.TwoDice3D({ mount: mount, width: 800, height: 600 });
+    if (window.TV) TV._d2_3d = d2_3d;
+    document.body.classList.add("dice2-3d-on"); // hides the CSS dice
+    try { window.__d2_3d = d2_3d; } catch (e) {}
+    return d2_3d;
+  }
+  function ensureDice2_3dReady() {
+    loadDice2_3dOnce().then(() => { const g = buildDice2_3d(); if (g) g.setActive(true); }).catch(() => {}); // silent — CSS dice stay as fallback
+  }
   // "How free spins & payouts work" explainer — built live from the engine so the
   // numbers always match the real math (paytable, scatter, free-spin counts).
   let s3dHelpBuilt = false;
@@ -2516,12 +2539,13 @@
     if (game !== "slots3d" && slots3dGame) slots3dGame.setActive(false);
     if (game !== "flip" && coinFlip3d) coinFlip3d.setActive(false);
     if (game !== "dice" && rail3d) rail3d.setActive(false);
+    if (game !== "twodice" && d2_3d) d2_3d.setActive(false);
     // Poker is its own full-width view (no TV); everything else uses the TV channel.
     if (game === "poker") { if (window.PokerUI) PokerUI.show(); }
     else { if (window.PokerUI) PokerUI.hide(); if (window.TV && TV.changeChannel) TV.changeChannel(GAME_CHANNEL[game]); }
     if (game === "flip") { ensureCoinFlip3dReady(); }
     else if (game === "dice") { refreshDiceHouse(); diceReadouts(); ensureDice3dReady(); }
-    else if (game === "twodice") { refreshDiceHouse(); twoDiceReadouts(); ensureTwoDiceSupport(); }
+    else if (game === "twodice") { refreshDiceHouse(); twoDiceReadouts(); ensureTwoDiceSupport(); ensureDice2_3dReady(); }
     else if (game === "crash") { refreshDiceHouse(); crashReadouts(); ensureCrashSupport(); }
     else if (game === "slots") { refreshDiceHouse(); slotsReadouts(); ensureSlotsSupport(); ensureSlotsLoaded().then(() => { if (window.CryptoReels) CryptoReels.setActive(true); }).catch(() => {}); }
     else if (game === "pressure") { ensurePressureReady(); }
@@ -2625,6 +2649,7 @@
     if (saved === "slots3d") ensureSlots3dReady();
     if (saved === "flip") ensureCoinFlip3dReady(); // build the 3D coin on reload too
     if (saved === "dice") ensureDice3dReady();     // build the 0-100 neon rail on reload too
+    if (saved === "twodice") ensureDice2_3dReady(); // build the 3D dice on reload too
   }
 
   // My open tables: show bank + idle countdown, auto-close (refund) when stale.

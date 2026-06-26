@@ -532,6 +532,7 @@
       $("td-tv-verdict").textContent = ""; $("td-tv-payout").textContent = "";
       d1El.classList.add("rolling"); d2El.classList.add("rolling");
       this._setStatic(0.06); this._show("twodice");
+      if (this._d2_3d) try { this._d2_3d.reset(); this._d2_3d.roll(res.d1, res.d2, res.youWon); } catch (e) {} // two 3D dice tumble + land + burst
       // 1) tumble for ~1.1s, flashing random faces, then lock to the real result
       const dur = 1100, start = now();
       await new Promise((resolve) => {
