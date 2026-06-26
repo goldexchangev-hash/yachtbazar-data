@@ -3,7 +3,7 @@
    are picked up immediately and users never get a stale build online), caching
    each response, and falls back to cache only when offline. Cross-origin
    requests (RPC node, fonts, price API, MetaMask) are left untouched. */
-const CACHE = "ctf-v11.9";
+const CACHE = "ctf-v11.10";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png"];
 
 self.addEventListener("install", (e) => {
@@ -28,6 +28,29 @@ self.addEventListener("fetch", (e) => {
   let url;
   try { url = new URL(req.url); } catch { return; }
   if (url.origin !== self.location.origin) return; // don't touch RPC / fonts / CDNs
+
+  // CACHE-FIRST for immutable, versioned assets (anything carrying a ?v= query, or
+  // the /vendor/ libs like three.min.js): these only change when their ?v= is
+  // bumped, so a cache hit is always correct AND instant on refresh — this is what
+  // makes the big Three.js bundle + lazy 3D modules load fast instead of being
+  // re-fetched over the network every time.
+  const immutable = url.search.includes("v=") || url.pathname.includes("/vendor/");
+  if (immutable) {
+    e.respondWith(
+      caches.match(req).then((hit) =>
+        hit || fetch(req).then((res) => {
+          if (res && res.ok && res.type === "basic") {
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
+          }
+          return res;
+        }).catch(() => caches.match("./index.html"))
+      )
+    );
+    return;
+  }
+
+  // NETWORK-FIRST for everything else (HTML, unversioned files) so deploys land.
   e.respondWith(
     fetch(req)
       .then((res) => {

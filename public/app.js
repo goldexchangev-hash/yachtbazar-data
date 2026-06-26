@@ -3959,6 +3959,14 @@
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => { try { navigator.serviceWorker.register("sw.js"); } catch (e) {} });
     }
+    // Warm Three.js in the background once the page is idle, so the first 3D game
+    // (Gem Vault, the coin, the 0-100 rail, etc.) builds fast instead of paying
+    // the ~600KB fetch+parse on the critical path. Cheap after the SW caches it.
+    {
+      const warmThree = () => { try { loadThreeOnce(); } catch (e) {} };
+      if (window.requestIdleCallback) requestIdleCallback(warmThree, { timeout: 3000 });
+      else setTimeout(warmThree, 1500);
+    }
     // Music NEVER auto-plays — it only starts when the user taps the Music button.
     // Live ETH→USD price: fetch now, refresh labels, and re-poll every 60s.
     fetchEthUsd().then(() => { setupSliders(); if (demoOn) demoSyncBalance(); if (read && chainOK) { refreshBalances(); refreshStats(); refreshHouse(); refreshRooms(); } });

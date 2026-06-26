@@ -46,6 +46,7 @@
         pressure: $("layer-pressure"),
         plane: $("layer-plane"),
         slots3d: $("layer-slots3d"),
+        loading: $("layer-loading"),
       };
       this._activeChannel = 8; // 8 = Flip, 9 = Dice — so idle() advertises the active game
       this.scoreboard = $("scoreboard");
@@ -244,6 +245,14 @@
       if (ch === 10) return this._twodicePreview();
       return this._flipPreview(); // ch 8 (default)
     },
+    // Shown while a lazy game module (Three.js scene, etc.) is still loading, so the
+    // screen advertises the CORRECT game name instead of impersonating Coin Flip.
+    _loadingScreen(label) {
+      const t = $("tv-loading-title");
+      if (t) t.textContent = "LOADING " + (label || this._channelTitle || "GAME") + "…";
+      this._setStatic(0.06);
+      this._show("loading");
+    },
     _flipPreview() {
       const L = this.layers.flip;
       if (L) { L.classList.remove("win", "lose", "tier-big", "tier-mega"); L.classList.remove("airborne", "betting"); }
@@ -412,7 +421,7 @@
       if (!this._connected) return this._staticIdle(); // signed out → static, no balloon
       // Engine not mounted yet (lazy-loading) → show the ready room, not a black layer.
       const stage = $("pressure-stage");
-      if (!stage || !stage.querySelector("canvas")) return this._readyRoom();
+      if (!stage || !stage.querySelector("canvas")) return this._loadingScreen();
       this._setStatic(0.03);
       this._show("pressure");
     },
@@ -424,7 +433,7 @@
       if (!this._connected) return this._staticIdle();
       // Engine not mounted yet (lazy-loading) → show the ready room, not a black layer.
       const stage = $("plane-stage");
-      if (!stage || !stage.querySelector("canvas")) return this._readyRoom();
+      if (!stage || !stage.querySelector("canvas")) return this._loadingScreen();
       this._setStatic(0.03);
       this._show("plane");
     },
@@ -434,7 +443,7 @@
     _slots3dIdle() {
       if (!this._connected) return this._staticIdle();
       const stage = $("slots3d-stage");
-      if (!stage || !stage.querySelector("canvas")) return this._readyRoom();
+      if (!stage || !stage.querySelector("canvas")) return this._loadingScreen();
       this._setStatic(0.03);
       this._show("slots3d");
     },
