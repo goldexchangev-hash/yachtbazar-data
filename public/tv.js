@@ -199,6 +199,7 @@
       this.scoreboard.classList.add("hidden");
       this._clearConfetti();
       this.setChannel(this._activeChannel || 8); // keep showing the active game's channel
+      if (this._activeChannel === 16) return this._blackjackIdle(); // guest-friendly: show the live felt even with no wallet
       if (!this._connected) return this._staticIdle();          // disconnected → static on every channel
       if (this._activeChannel === 11) return this._crashIdle();  // rocket room
       if (this._activeChannel === 12) return this._slotsIdle();  // reels room

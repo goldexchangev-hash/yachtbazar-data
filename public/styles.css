@@ -2145,6 +2145,8 @@ body.demo-mode #bankroll { display: none !important; }
 .bj-act.bj-split { background: var(--magenta); color: #fff; border: none; font-weight: 700; }
 .bj-act.bj-split:hover { filter: brightness(1.08); }
 .bj-act:disabled { opacity: .45; filter: grayscale(.35); cursor: default; }
+.bj-share { margin: 12px auto 0; display: block; width: 100%; font-size: 13px; letter-spacing: .3px; }
+.bj-share:disabled { opacity: .5; cursor: default; }
 
 /* Universal "loading <game>…" screen while a lazy 3D module builds */
 #layer-loading { gap: 14px; }

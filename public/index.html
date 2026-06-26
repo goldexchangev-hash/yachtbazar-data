@@ -27,7 +27,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=1116" />
+    <link rel="stylesheet" href="styles.css?v=1117" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -42,7 +42,7 @@
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v11.16</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v11.17</span>
       </div>
       <div class="topbar-right">
         <div class="tb-tools">
@@ -399,7 +399,7 @@
 
                 <!-- Promo intro reel — autoplays once (muted) on first load, then fades
                      to black and hands off to the game. Replay button under the TV. -->
-                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=1116"></video>
+                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=1117"></video>
 
                 <!-- Shown while a bet tx is being signed + mined (esp. slow on mobile) -->
                 <div id="tv-pending" class="tv-pending hidden">⏳ SENDING BET…<br />confirm in your wallet, then hold tight</div>
@@ -483,6 +483,7 @@
             <span class="bj-count" id="bj-count"></span>
           </div>
           <div class="bj-controls" id="bj-controls"></div>
+          <button type="button" class="btn btn-ghost bj-share" id="bj-share" disabled title="Copy a link to this exact table so a friend can sit down with you">🔗 Share this table</button>
         </div>
 
         <!-- Win-animation theme switcher (hidden for now — locked to Scarfblade Films) -->
@@ -1203,9 +1204,11 @@
           <li><b>Install MetaMask</b> (browser extension or app) and create a wallet.</li>
           <li><b>Switch to the test network.</b> Click <i>Connect Wallet</i> — the site
             offers to add/switch to the right network automatically.</li>
-          <li><b>Get free test ETH.</b> On Sepolia, paste your address into a faucet
-            (e.g. <span class="mono">sepoliafaucet.com</span> or
-            <span class="mono">cloud.google.com/application/web3/faucet/ethereum/sepolia</span>).
+          <li><b>Get free test ETH.</b> On Sepolia, the easiest faucet (gives the most) is
+            <a href="https://sepolia-faucet.pk910.de/#/" target="_blank" rel="noopener">sepolia-faucet.pk910.de ↗</a> —
+            mine some Sepolia ETH to your address in the browser. (Alternatives:
+            <span class="mono">sepoliafaucet.com</span>,
+            <span class="mono">cloud.google.com/application/web3/faucet/ethereum/sepolia</span>.)
             On a local chain, test ETH is pre-funded — import a test key into MetaMask.</li>
           <li><b>Deposit ETH</b> into the game from the panel under the TV.</li>
           <li><b>Create or join a room.</b> Two players, equal bet. Max bet is shown by the
@@ -1329,17 +1332,17 @@
     </aside>
 
     <script defer src="vendor/ethers.umd.min.js"></script>
-    <script defer src="config.js?v=1116"></script>
-    <script defer src="contract.js?v=1116"></script>
-    <script defer src="chiptune.js?v=1116"></script>
-    <script defer src="scenes.js?v=1116"></script>
-    <script defer src="tv.js?v=1116"></script>
-    <script defer src="poker-engine.js?v=1116"></script>
-    <script defer src="poker-bots.js?v=1116"></script>
-    <script defer src="poker-ui.js?v=1116"></script>
-    <script defer src="crash-engine.js?v=1116"></script>
-    <script defer src="crash-render.js?v=1116"></script>
-    <script defer src="profile.js?v=1116"></script>
-    <script defer src="app.js?v=1116"></script>
+    <script defer src="config.js?v=1117"></script>
+    <script defer src="contract.js?v=1117"></script>
+    <script defer src="chiptune.js?v=1117"></script>
+    <script defer src="scenes.js?v=1117"></script>
+    <script defer src="tv.js?v=1117"></script>
+    <script defer src="poker-engine.js?v=1117"></script>
+    <script defer src="poker-bots.js?v=1117"></script>
+    <script defer src="poker-ui.js?v=1117"></script>
+    <script defer src="crash-engine.js?v=1117"></script>
+    <script defer src="crash-render.js?v=1117"></script>
+    <script defer src="profile.js?v=1117"></script>
+    <script defer src="app.js?v=1117"></script>
   </body>
 </html>

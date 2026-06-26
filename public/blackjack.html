@@ -7,7 +7,10 @@
     <title>🃏 BLACKJACK — Crypto TV</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Space+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <!-- Load fonts non-render-blocking so a slow/unreachable Google Fonts never stalls
+         the felt's scripts (they'd otherwise wait on this stylesheet before running). -->
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Space+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
+    <noscript><link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Space+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet" /></noscript>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🃏</text></svg>" />
     <link rel="stylesheet" href="blackjack.css" />
     <style>
@@ -110,9 +113,12 @@
           pfCommit: id("pf-commit"), pfClient: id("pf-client"), pfVerify: id("pf-verify"), pfReveal: id("pf-reveal"), pfOut: id("pf-out"),
           toast: id("toast"),
         };
-        var tv = /[?&]tv=1/.test(location.search); // embedded inside the Crypto TV channel
+        var params = new URLSearchParams(location.search);
+        var tv = params.get("tv") === "1"; // embedded inside the Crypto TV channel
+        var guest = params.get("guest") || null; // temp identity handed in by the host page
+        var table = params.get("table") || null; // a specific shared table to sit at
         if (tv) document.body.classList.add("tv-embed");
-        window.BJ = new BlackjackClient({ els: els, embed: tv });
+        window.BJ = new BlackjackClient({ els: els, embed: tv, wallet: guest, joinTable: table });
         if (tv) {
           // scale the fixed-size felt+dock to fill the 4:3 TV screen
           var table = id("table");

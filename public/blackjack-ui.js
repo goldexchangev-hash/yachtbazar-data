@@ -27,6 +27,7 @@
   function BlackjackClient(opts) {
     this.E = opts.els;
     this.embed = !!opts.embed; // TV-channel mode: no lobby, auto-join one table, felt+dock pre-mounted
+    this.joinTable = opts.joinTable || null; // a specific shared table to sit at (from a share link)
     this.wallet = opts.wallet || null;
     this.showEth = isWallet(this.wallet); // ETH amounts only matter once a real wallet is connected
     this.net = opts.net || new root.BJNet({ wallet: this.wallet });
@@ -43,8 +44,14 @@
     else this.net.send({ type: "bj:lobby:subscribe" });
     var self = this; this._timer = setInterval(function () { self._tick(); }, 200);
   }
-  // embed: drop straight into an open table (or a fresh one) — no lobby to pick from
-  BlackjackClient.prototype._autoJoin = function () { this._resetRoundVis(); this._sfxReady = false; this.net.send({ type: "bj:room:join" }); };
+  // embed: drop straight into an open table (or a fresh one) — no lobby to pick from.
+  // If we arrived via a share link, sit at that SPECIFIC table the first time (so
+  // friends land together); after that, fall back to any open table.
+  BlackjackClient.prototype._autoJoin = function () {
+    this._resetRoundVis(); this._sfxReady = false;
+    var room = this.joinTable; this.joinTable = null;
+    this.net.send({ type: "bj:room:join", roomId: room || undefined });
+  };
 
   /* ---------------- net ---------------- */
   BlackjackClient.prototype._bindNet = function () {
@@ -390,8 +397,9 @@
     var legal = []; ["hit", "stand", "double", "split", "surrender"].forEach(function (a) { if (self.legal.indexOf(a) >= 0) legal.push(a); });
     // one countdown for the controls under the TV: the whole betting window (pre- AND post-bet), or YOUR turn
     var countMsLeft = (this.deadline && (m.phase === "betting" || mode === "turn")) ? Math.max(0, this.deadline - (Date.now() + this.skew)) : null;
+    var roomId = this.you ? this.you.roomId : (this.spectating || (this.room ? this.room.roomId : null));
     var state = { type: "bj:dock", mode: mode, msg: msg, balance: this.balance, showEth: this.showEth,
-      bet: this.bet, betMin: 10, betMax: maxBet, betStep: 5, legal: legal, countMsLeft: countMsLeft };
+      bet: this.bet, betMin: 10, betMax: maxBet, betStep: 5, legal: legal, countMsLeft: countMsLeft, roomId: roomId };
     try { if (root.parent && root.parent !== root) root.parent.postMessage(state, "*"); } catch (e) {}
   };
   BlackjackClient.prototype._settleMsg = function (mySeat) {

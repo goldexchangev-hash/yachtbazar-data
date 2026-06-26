@@ -1223,7 +1223,7 @@
     if (hint) {
       if (account && walletWei <= depositReserveWei()) {
         // No test ETH to play with — surface a faucet right where they're stuck.
-        hint.innerHTML = 'No test ETH? <a href="https://www.alchemy.com/faucets/ethereum-sepolia" target="_blank" rel="noopener">Get free Sepolia ETH ↗</a>';
+        hint.innerHTML = 'No test ETH? <a href="https://sepolia-faucet.pk910.de/#/" target="_blank" rel="noopener">Get free Sepolia ETH ↗</a>';
       } else {
         hint.textContent = walletWei > 0n
           ? "Max ≈ " + usd(weiToUsd(depositableWei())) + " (a little ETH kept for gas)"
@@ -2575,20 +2575,32 @@
   // betting + action CONTROLS are native site elements in the dock under the TV,
   // bridged to the felt via postMessage. ──
   function bjFramePost(active) { const f = $("bj-frame"); if (f && f.contentWindow) try { f.contentWindow.postMessage({ type: "bj:active", active }, "*"); } catch (e) {} }
+  // A persistent temp "guest" identity so every visitor is a distinct player with
+  // their own demo balance and can sit at a shared table together (multiplayer demo).
+  function bjGuestId() {
+    try { let g = localStorage.getItem("bj_guest"); if (!g || !/^guest:/.test(g)) { g = "guest:" + Math.random().toString(36).slice(2, 10); localStorage.setItem("bj_guest", g); } return g; }
+    catch (e) { return "guest:" + Math.random().toString(36).slice(2, 10); }
+  }
+  let bjPendingTable = null; // a specific table id arrived via a share link (?bjtable=…)
+  try { bjPendingTable = new URLSearchParams(location.search).get("bjtable"); } catch (e) {}
+  let bjRoomId = null; // latest table id the felt reports (for the Share button)
   function ensureBlackjackReady() {
     const f = $("bj-frame");
-    if (f && !f.src) f.src = "blackjack.html?tv=1&v=1116"; // loads the felt + scripts inside the TV
-    // pass the connected wallet (if any) into the felt so real-money play can settle to it
-    setTimeout(() => { bjFramePost(true); bjSyncWallet(); }, 50);
+    if (f && !f.src) {
+      let src = "blackjack.html?tv=1&v=1117&guest=" + encodeURIComponent(bjGuestId());
+      if (bjPendingTable) { src += "&table=" + encodeURIComponent(bjPendingTable); bjPendingTable = null; }
+      f.src = src; // loads the felt + scripts inside the TV
+    }
+    setTimeout(() => bjFramePost(true), 50);
   }
   window.BJ_MUTE = (mute) => bjFramePost(!mute); // hush the iframe's audio when off-channel
-  // tell the felt which wallet/balance to play with (demo guest, or a real connected wallet)
-  function bjSyncWallet() {
-    const f = $("bj-frame"); if (!f || !f.contentWindow) return;
-    const real = !demoOn && account ? String(account) : null;
-    try { f.contentWindow.postMessage({ type: "bj:wallet", wallet: real, real: !!real, ethUsd: ethUsd || 0 }, "*"); } catch (e) {}
+  function bjShareLink() { return location.origin + location.pathname + "?game=blackjack" + (bjRoomId ? "&bjtable=" + encodeURIComponent(bjRoomId) : ""); }
+  function bjShareTable() {
+    const link = bjShareLink();
+    const done = () => toast("Table link copied — send it to a friend to sit down with you", "ok");
+    try { navigator.clipboard.writeText(link).then(done, () => { window.prompt("Copy this table link:", link); }); }
+    catch (e) { window.prompt("Copy this table link:", link); }
   }
-  window.bjSyncWallet = bjSyncWallet;
   // ---- Blackjack dock (under the TV). The felt emits a compact "bj:dock" state on
   // every render; here we paint native, site-styled controls and post the player's
   // intents back into the iframe as "bj:cmd". ----
@@ -2665,9 +2677,9 @@
   }
   window.addEventListener("message", (e) => {
     const f = $("bj-frame"); if (!f || e.source !== f.contentWindow) return; // only accept dock-state from our felt iframe
-    const d = e.data; if (!d) return;
-    if (d.type === "bj:dock") { if (currentGame === "blackjack") renderBjDock(d); return; }
-    if (d.type === "bj:ready") { bjSyncWallet(); return; } // felt booted → (re)send the wallet/balance context
+    const d = e.data; if (!d || d.type !== "bj:dock") return;
+    if (d.roomId) { bjRoomId = d.roomId; const sb = $("bj-share"); if (sb) sb.disabled = false; } // enable the Share button once we're at a table
+    if (currentGame === "blackjack") renderBjDock(d);
   });
   // Poker chips are a session-local pool seeded from your in-game balance.
   // Phase 1 (vs house bots) plays out client-side; net results are NOT yet
@@ -2750,6 +2762,8 @@
     initPoker();
     // restore the last-played game silently (no CRT animation on load)
     let saved = "flip"; try { saved = localStorage.getItem("ctf_game") || "flip"; } catch {}
+    // A shared link (?game=blackjack[&bjtable=…]) drops you straight onto that channel/table.
+    try { const qp = new URLSearchParams(location.search); const qg = qp.get("game"); if (qg && GAME_CHANNEL[qg]) saved = qg; else if (qp.get("bjtable")) saved = "blackjack"; } catch (e) {}
     if (!GAME_CHANNEL[saved]) saved = "flip";
     currentGame = saved;
     paintGameTabs(saved);
@@ -2767,7 +2781,7 @@
     if (saved === "flip") ensureCoinFlip3dReady(); // build the 3D coin on reload too
     if (saved === "dice") ensureDice3dReady();     // build the 0-100 neon rail on reload too
     if (saved === "twodice") ensureDice2_3dReady(); // build the 3D dice on reload too
-    if (saved === "blackjack") ensureBlackjackReady(); // restore the CH 16 felt iframe on reload
+    if (saved === "blackjack") { ensureBlackjackReady(); if (window.TV && TV._blackjackIdle) try { TV._blackjackIdle(); } catch (e) {} } // restore + show the CH 16 felt on reload
   }
 
   // My open tables: show bank + idle countdown, auto-close (refund) when stale.
@@ -3711,6 +3725,7 @@
     $("disconnect-btn").onclick = disconnect;
     { const dr = $("demo-reset"); if (dr) dr.onclick = demoReset; }
     { const dc = $("demo-connect"); if (dc) dc.onclick = connect; }
+    { const bs = $("bj-share"); if (bs) bs.onclick = bjShareTable; } // copy a link to the current blackjack table
     $("raise-max-btn").onclick = raiseMaxBet;
     $("fund-house-btn").onclick = fundHouseTool;
     $("cashout-house-btn").onclick = cashOutHouse;
