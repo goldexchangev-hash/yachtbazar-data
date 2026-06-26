@@ -278,7 +278,8 @@
     } else {
       this.r.win({ finalMult: releaseMult, payout: res.payout, profit: res.profit });
       const nearMiss = (this.burst - releaseMult) <= Math.max(0.05, this.burst * 0.03);
-      this.r.showReceipt("you " + (exit === "auto" ? "auto-" : "") + "banked " + releaseMult.toFixed(2) + "x  ·  pop was " + this.burst.toFixed(2) + "x", nearMiss);
+      // (the on-canvas "you banked …" receipt was removed — the YOU WIN result
+      //  screen now shows the win; keep only the quieter panel status line)
       this._msg((exit === "auto" ? "🔔 Auto-banked " : "💰 Banked ") + releaseMult.toFixed(2) + "x  →  " + this._usd(res.payout) + (nearMiss ? "  (so close!)" : ""));
       // tiered fanfare — louder the bigger the win (the coin-shower ticks are added
       // by the renderer's count-up).

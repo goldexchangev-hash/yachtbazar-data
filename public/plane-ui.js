@@ -159,7 +159,9 @@
 
   PlaneGame.prototype._cashOut = function (b, mult, auto) {
     if (this.state !== "flying" || !b.active || b.cashed) return;
-    mult = Math.floor(mult * 100) / 100; if (mult >= this.crash) return;
+    // cashing out exactly AT the crash point is a WIN (matches PlaneEngine.resolveRound's
+    // `co <= crash` and the on-chain `crashX >= target`); only a strictly higher cash-out loses.
+    mult = Math.floor(mult * 100) / 100; if (mult > this.crash) return;
     b.cashed = true; b._cashedAt = mult;
     const res = E.resolveRound({ stake: b.stake, crash: this.crash, cashOutMult: mult });
     this.balance = Math.round((this.balance + res.payout) * 100) / 100; this._save();
@@ -240,6 +242,7 @@
 
   /* ---------- REAL (single-shot, one on-chain tx) ---------- */
   PlaneGame.prototype._startRealIdle = function () {
+    this._realEpoch = (this._realEpoch || 0) + 1; // invalidate any older in-flight tx resolution
     this.state = "real-idle"; this._realBusy = false; this._realRes = null; this._miles = {};
     this.r.reset(); this.r.setCountdown(0, BET_WINDOW);
     this._msg("Set your bet + auto-cash-out, then LAUNCH for real", "");
@@ -253,14 +256,25 @@
     const stake = b.stake, target = Math.max(1.01, Math.min(this.cap, b.autoTarget));
     if (this.balance < stake) { this._msg("Not enough balance — deposit first 👇", "lose"); return; }
     this._realBusy = true; this._miles = {};
+    const epoch = this._realEpoch; // a mode switch / new idle bumps this → a stale resolve is dropped
     this._msg("Launching… confirm in your wallet ✈️", "");
     this.r.takeoff(); this._renderButtons();
     Promise.resolve(this.onRealBet(stake, Math.round(target * 100))).then((res) => {
+      if (epoch !== this._realEpoch) return; // superseded (e.g. switched to demo mid-tx) — don't write back
       if (!res) { this._realBusy = false; this._startRealIdle(); return; }
       this._realRes = { won: !!res.won, crashX: res.crashX, targetX: res.targetX, profitUsd: res.profitUsd || 0, stake: stake };
+      if (!this._active) {
+        // Left the channel while the wallet tx was still pending. The round is
+        // already settled on-chain, so finish it HEADLESSLY (no animation — the
+        // ticker is paused) so _realBusy clears and the host's revealLock releases
+        // immediately instead of hanging on the 20s safety timer.
+        this.history.unshift(res.crashX); this.history = this.history.slice(0, 20); this._renderHistory();
+        this.lastRound = { nonce: this.nonce, crash: res.crashX }; this._updatePfLast();
+        this.state = "real-end"; this._endRealRound(); return;
+      }
       this.crash = res.crashX; this.flightT = 0; this.state = "real-flying";
       this.r.flying(); Riser.start(); this._sfx("blip");
-    }).catch(() => { this._realBusy = false; this._startRealIdle(); });
+    }).catch(() => { if (epoch !== this._realEpoch) return; this._realBusy = false; this._startRealIdle(); });
   };
   PlaneGame.prototype._realCashOut = function () {
     const res = this._realRes;
@@ -360,7 +374,10 @@
       else if (this.state === "real-end") { this._endRealRound(); }
     }
     try { if (on) this.r.resume(); else this.r.pause(); } catch (e) {}
-    if (!on) { try { Riser.stop(); } catch (e) {} }
+    // Resume the climb audio if we're returning to a frozen-mid-flight round
+    // (the ticker was paused on leave); silence it when leaving.
+    if (on) { if (this.state === "flying" || this.state === "real-flying") { try { Riser.start(); } catch (e) {} } }
+    else { try { Riser.stop(); } catch (e) {} }
   };
   PlaneGame.prototype.setEnabled = function (on) { this._enabled = !!on; this._renderButtons(); };
   // Drop any in-flight demo round and start a fresh betting window (used on credit reset).
@@ -388,6 +405,7 @@
       if (refund > 0) { this.balance = Math.round((this.balance + refund) * 100) / 100; this._save(); }
     }
     this.mode = m;
+    this._realEpoch = (this._realEpoch || 0) + 1; // abandon any pending real round's resolution
     try { Riser.stop(); } catch (e) {}
     this.bets.forEach((b) => { b.betPlaced = false; b.active = false; b.cashed = false; b.autoBet = false; this._syncPanel(b); });
     this._realBusy = false; this._realRes = null;

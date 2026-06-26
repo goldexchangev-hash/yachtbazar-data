@@ -107,7 +107,7 @@
     this.label = new PIXI.Text("", { fontFamily: '"Press Start 2P",monospace', fontSize: 12, fill: C.gold, dropShadow: true, dropShadowColor: 0, dropShadowBlur: 4, dropShadowDistance: 0 });
     this.label.anchor.set(0.5); this.label.position.set(W / 2, H * 0.34 - 46); this.label.alpha = 0; app.stage.addChild(this.label);
     this.subText = new PIXI.Text("", { fontFamily: '"Press Start 2P",monospace', fontSize: 12, fill: C.muted, align: "center" });
-    this.subText.anchor.set(0.5); this.subText.position.set(W / 2, H * 0.34 + 46); app.stage.addChild(this.subText);
+    this.subText.anchor.set(0.5); this.subText.position.set(W / 2, H * 0.34 + 92); app.stage.addChild(this.subText); // below the 70px countdown ring, so "place your bet" never overlaps the timer
     this.ring = new PIXI.Graphics(); this.ring.position.set(W / 2, H * 0.34); app.stage.addChild(this.ring);
 
     this.banner = new PIXI.Text("", { fontFamily: '"Bungee",monospace', fontSize: 34, fill: C.gold, align: "center", dropShadow: true, dropShadowColor: C.magenta, dropShadowBlur: 10, dropShadowDistance: 0, dropShadowAlpha: 1 });
