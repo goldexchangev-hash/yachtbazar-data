@@ -1934,14 +1934,14 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=998").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=999").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=998"))
+      .then(() => loadScriptOnce("slots.js?v=999"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -1951,9 +1951,9 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=998"))
-      .then(() => loadScriptOnce("pressure-render.js?v=998"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=998"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=999"))
+      .then(() => loadScriptOnce("pressure-render.js?v=999"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=999"))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -2006,10 +2006,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=998"))
-      .then(() => loadScriptOnce("plane-render.js?v=998"))
-      .then(() => loadScriptOnce("plane-feed.js?v=998"))
-      .then(() => loadScriptOnce("plane-ui.js?v=998"))
+      .then(() => loadScriptOnce("plane-engine.js?v=999"))
+      .then(() => loadScriptOnce("plane-render.js?v=999"))
+      .then(() => loadScriptOnce("plane-feed.js?v=999"))
+      .then(() => loadScriptOnce("plane-ui.js?v=999"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2087,15 +2087,15 @@
   function loadThreeOnce() {
     if (window.THREE) return Promise.resolve();
     if (threeLoadPromise) return threeLoadPromise;
-    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=998").catch((e) => { threeLoadPromise = null; throw e; });
+    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=999").catch((e) => { threeLoadPromise = null; throw e; });
     return threeLoadPromise;
   }
   function ensureSlots3dLoaded() {
     if (window.Slots3D) return Promise.resolve(true);
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("slots3d-engine.js?v=998"))
-      .then(() => loadScriptOnce("slots3d.js?v=998"))
+      .then(() => loadScriptOnce("slots3d-engine.js?v=999"))
+      .then(() => loadScriptOnce("slots3d.js?v=999"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2127,6 +2127,48 @@
       if (demoOn) { g.setBalance(demoUsd); g.setEnabled(true); } else { g.setEnabled(false); }
       if (window.TV && currentGame === "slots3d" && !TV._promoPlaying) try { TV.idle(); } catch (e) {}
     }).catch(() => toast("Couldn't load Gem Vault 3D — check your connection", "err"));
+  }
+  // "How free spins & payouts work" explainer — built live from the engine so the
+  // numbers always match the real math (paytable, scatter, free-spin counts).
+  let s3dHelpBuilt = false;
+  function buildSlots3dHelp() {
+    const E = window.Slots3DEngine, body = $("s3d-help-body");
+    if (!E || !body || s3dHelpBuilt) return;
+    const EMO = ["🍒", "🔔", "⭐", "7️⃣", "🟫", "💎", "🃏", "🔒"];
+    const NAME = ["Cherry", "Bell", "Star", "Lucky 7", "Gold Bar", "Diamond", "WILD line", "Vault"];
+    // paytable: payout per matching LINE, as a multiple of the per-line bet (3/4/5)
+    let payRows = "";
+    for (let s = 0; s <= 6; s++) { const p = E.PAY[s]; if (!p) continue;
+      payRows += `<tr><td class="s3dh-sym">${EMO[s]} ${NAME[s]}</td><td>${p[0]}×</td><td>${p[1]}×</td><td>${p[2]}×</td></tr>`; }
+    // a real bonus-triggering board (grid[reel][row]) — exactly 3 Vaults anywhere
+    const board = [[0, 7, 2], [1, 3, 0], [7, 4, 1], [5, 0, 2], [7, 1, 3]];
+    let cells = "";
+    for (let row = 0; row < 3; row++) for (let reel = 0; reel < 5; reel++) {
+      const sym = board[reel][row], v = sym === 7;
+      cells += `<div class="s3dh-cell${v ? " v" : ""}">${EMO[sym]}</div>`;
+    }
+    const fs = E.FREE_SPINS, sp = E.SCATTER_PAY, mult = E.FREE_MULT;
+    let fsRows = "";
+    [3, 4, 5].forEach((n) => { fsRows += `<tr><td>${n} × 🔒 Vault</td><td><strong>${fs[n]} free spins</strong></td><td>+ ${sp[n]}× total-bet cash</td></tr>`; });
+    body.innerHTML =
+      `<h2>💎 Gem Vault 3D — how it pays</h2>
+       <p class="s3dh-lead">5 reels × 3 rows, <strong>20 paylines</strong>. Your bet is split across all 20 lines. Match <strong>3+ identical symbols left-to-right</strong> on a line (starting from reel 1) to win. <strong>🃏 WILD</strong> stands in for any symbol except the Vault.</p>
+       <h3>Line payouts <span class="muted">(× the per-line bet, for 3 / 4 / 5 in a row)</span></h3>
+       <table class="s3dh-pay"><thead><tr><th>Symbol</th><th>3</th><th>4</th><th>5</th></tr></thead><tbody>${payRows}</tbody></table>
+       <h3>🎁 Free-spins bonus — this is the big one</h3>
+       <p class="s3dh-lead">Land <strong>3 or more 🔒 Vault</strong> symbols <em>anywhere</em> on the reels (they don't need to be on a line) and you trigger a <strong>FREE SPINS</strong> round — plus an instant scatter cash payout. Here's a board that triggers it (3 Vaults lit):</p>
+       <div class="s3dh-grid">${cells}</div>
+       <p class="s3dh-trigger">⬆ 3 × 🔒 &nbsp;→&nbsp; <strong>${fs[3]} FREE SPINS</strong></p>
+       <table class="s3dh-pay s3dh-bonus"><thead><tr><th>Vaults</th><th>Free spins</th><th>Scatter cash</th></tr></thead><tbody>${fsRows}</tbody></table>
+       <p class="s3dh-lead">During the round, spins play automatically and <strong>every win is multiplied ×${mult}</strong>, all adding to one running grand total that stays on screen. It's <strong>provably fair</strong> — the whole bonus is fixed the instant the Vaults land (derived from the same commit), so the total can't change, it just plays out.</p>
+       <p class="muted s3dh-foot">Play-money demo · ~95% RTP · verify any spin in the “Provably fair” panel.</p>`;
+    s3dHelpBuilt = true;
+  }
+  function openSlots3dHelp() {
+    const m = $("s3d-help-modal"); if (!m) return;
+    const show = () => { buildSlots3dHelp(); m.classList.remove("hidden"); };
+    if (window.Slots3DEngine) show();
+    else ensureSlots3dLoaded().then(show).catch(() => toast("Couldn't load the paytable — check your connection", "err"));
   }
   // Unpack the contract's 15-symbol grid (4 bits each, cell = reel*3+row) into [5][3].
   function unpackSlotsGrid(packed) {
@@ -2471,14 +2513,26 @@
       setSliderUsd("slots-stake");
       slotsReadouts();
     }
+    // Gem Vault paytable / free-spins explainer
+    { const b = $("s3d-help-btn"); if (b) b.onclick = openSlots3dHelp; }
+    { const c = $("s3d-help-close"); if (c) c.onclick = () => $("s3d-help-modal").classList.add("hidden"); }
+    { const m = $("s3d-help-modal"); if (m) m.addEventListener("click", (e) => { if (e.target === m) m.classList.add("hidden"); }); }
     document.querySelectorAll("#game-nav .game-card").forEach((b) => { b.onclick = () => switchGame(b.dataset.game); });
     // keyboard: ←/→ to cycle channels through every game
+    // BULLETPROOF: a focused nav card must NEVER switch games on Space. Space is a
+    // bet key for the canvas games (Gem Vault / Plane / Balloon Pop). When their
+    // action button disables mid-spin the browser can punt focus onto a nav card,
+    // and a follow-up Space would "click" it → jump to another game (usually Coin
+    // Flip). Kill Space on the card at the CAPTURE phase (before its activation),
+    // on both keydown and keyup, so it can't switch — the active game keeps Space.
+    const navSpaceGuard = (e) => {
+      if (!(e.code === "Space" || e.key === " " || e.key === "Spacebar")) return;
+      const t = e.target;
+      if (t && t.closest && t.closest("#game-nav")) { e.preventDefault(); e.stopPropagation(); }
+    };
+    document.addEventListener("keydown", navSpaceGuard, true);
+    document.addEventListener("keyup", navSpaceGuard, true);
     $("game-nav").addEventListener("keydown", (e) => {
-      // SPACE/ENTER is a BET key for the canvas games (Gem Vault / Plane / Balloon
-      // Pop spin/launch on Space). If a nav card happens to hold focus — e.g. the
-      // spin button just disabled mid-spin and the browser punted focus onto a
-      // card — a stray Space would otherwise "click" that card and yank you into
-      // another game. Swallow it here so the active game keeps Space.
       if (e.code === "Space" || e.key === " " || e.key === "Spacebar") { e.preventDefault(); return; }
       const i = GAME_ORDER.indexOf(currentGame);
       if (i < 0) return; // unknown/hidden channel (e.g. poker) → don't snap to flip
