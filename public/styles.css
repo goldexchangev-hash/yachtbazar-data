@@ -283,7 +283,7 @@ body.dice3d-on #dice-tv-line { display: none; } /* the 3D rail replaces the DOM 
 /* with the 3D rail filling the center, pin the readouts to the top/bottom edges so
    the rail (and the win/lose celebration) are never covered by text. */
 body.dice3d-on #layer-dice .dice-tv-target { position: absolute; top: 8px; left: 0; right: 0; }
-body.dice3d-on #layer-dice .dice-roll-num { position: absolute; top: 47%; left: 0; right: 0; transform: translateY(-50%); } /* centered in the tachometer dial */
+body.dice3d-on #layer-dice .dice-roll-num { position: absolute; top: 41%; left: 0; right: 0; transform: translateY(-50%); font-size: clamp(28px,8.4vw,58px); } /* sized to sit inside the tachometer dial, nudged up */
 body.dice3d-on #layer-dice .dice-bottom { position: absolute; bottom: 10px; left: 0; right: 0; }
 
 /* 3D tumbling dice stage (Dice #2) — fills the layer behind the DOM target/sum/verdict */
