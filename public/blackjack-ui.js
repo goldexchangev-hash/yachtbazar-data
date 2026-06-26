@@ -57,6 +57,7 @@
   };
   // Cancel a placed bet before the deal (refunds it to your balance).
   BlackjackClient.prototype.cancelBet = function () { this.net.send({ type: "bj:bet:cancel" }); };
+  BlackjackClient.prototype.topUp = function (amount) { this.net.send({ type: "bj:topup", amount: Math.max(0, +amount || 0) }); };
   // Mobile resume: when the tab comes back, make sure the socket is alive and pull a
   // fresh table snapshot so a stale (frozen-while-backgrounded) state can't block betting.
   BlackjackClient.prototype.resume = function () {
@@ -77,7 +78,7 @@
       if (m.you) { self.you = { roomId: m.you.roomId, seat: m.you.seat }; self.spectating = null; if (m.you.balance != null) { self.balance = m.you.balance; self._renderBalance(); } }
       self._onSnapshot(m);
     });
-    this.net.on("bj:turn", function (m) { if (self.you && m.seat === self.you.seat) { self.legal = m.legalActions || []; self.activeHand = m.hand; self._dockSig = null; } self._renderDock(); });
+    this.net.on("bj:turn", function (m) { if (self.you && m.seat === self.you.seat) { self.legal = m.legalActions || []; self.needFunds = m.needFunds || []; self.handBet = m.bet || 0; self.activeHand = m.hand; self._dockSig = null; } self._renderDock(); });
     this.net.on("bj:insurance:offer", function () { self._insuranceDone = false; self._renderDock(); });
     this.net.on("bj:insurance:result", function (m) { self.toast(m.dealerBlackjack ? "Dealer had blackjack — insurance pays" : "No dealer blackjack — insurance off"); });
     this.net.on("bj:settle", function (m) { self._onSettle(m); });
@@ -416,8 +417,10 @@
     // one countdown for the controls under the TV: the whole betting window (pre- AND post-bet), or YOUR turn
     var countMsLeft = (this.deadline && (m.phase === "betting" || mode === "turn")) ? Math.max(0, this.deadline - (Date.now() + this.skew)) : null;
     var roomId = this.you ? this.you.roomId : (this.spectating || (this.room ? this.room.roomId : null));
+    var needFunds = (isMyTurn && this.needFunds) ? this.needFunds : [];
     var state = { type: "bj:dock", mode: mode, msg: msg, balance: this.balance, showEth: this.showEth,
       bet: this.bet, betMin: 10, betMax: maxBet, betStep: 5, legal: legal, countMsLeft: countMsLeft, roomId: roomId,
+      needFunds: needFunds, handBet: this.handBet || 0,
       placed: (mySeat && mySeat.baseBet > 0) ? mySeat.baseBet : 0 };
     try { if (root.parent && root.parent !== root) root.parent.postMessage(state, "*"); } catch (e) {}
   };

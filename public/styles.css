@@ -2193,6 +2193,12 @@ body.demo-mode #bankroll { display: none !important; }
 .bj-act.bj-split { background: var(--magenta); color: #fff; border: none; font-weight: 700; }
 .bj-act.bj-split:hover { filter: brightness(1.08); }
 .bj-act:disabled { opacity: .45; filter: grayscale(.35); cursor: default; }
+/* "TOP UP to double/split" — you can do the move but need chips to cover the bet */
+.bj-act.bj-topup-act { background: linear-gradient(180deg, #ffd23f, #f0a700); color: #2a1a00; border: none; font-weight: 800;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.05; gap: 1px; animation: bjTuPulse 1.6s ease-in-out infinite; }
+.bj-act.bj-topup-act:hover { filter: brightness(1.08); }
+.bj-act.bj-topup-act .bj-tu-sub { font-size: 10px; font-weight: 700; opacity: .8; letter-spacing: .3px; }
+@keyframes bjTuPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(255,210,63,.5); } 50% { box-shadow: 0 0 0 6px rgba(255,210,63,0); } }
 .bj-share { margin: 12px auto 0; display: block; width: 100%; font-size: 13px; letter-spacing: .3px; }
 .bj-share:disabled { opacity: .5; cursor: default; }
 /* top row: live balance (left) + countdown (right) */

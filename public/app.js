@@ -2177,7 +2177,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1129"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1130"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -2594,7 +2594,7 @@
     const f = $("bj-frame");
     if (f && !f.src) {
       // No &bal= seed — the table starts from its own server default ($1,000), NOT the demo balance.
-      let src = "blackjack.html?tv=1&v=1129&guest=" + encodeURIComponent(bjGuestId());
+      let src = "blackjack.html?tv=1&v=1130&guest=" + encodeURIComponent(bjGuestId());
       if (bjPendingTable) { src += "&table=" + encodeURIComponent(bjPendingTable); bjPendingTable = null; }
       f.src = src; // loads the felt + scripts inside the TV
     }
@@ -2654,13 +2654,33 @@
   const BJ_ACT = { hit: ["HIT", "btn-primary"], stand: ["STAND", "bj-stand"], double: ["DOUBLE", "bj-double"], split: ["SPLIT", "bj-split"], surrender: ["SURRENDER", "btn-ghost"] };
   function buildBjActions(ctr, s) {
     const row = document.createElement("div"); row.className = "bj-actions";
+    const need = s.needFunds || [];
     ["hit", "stand", "double", "split", "surrender"].forEach((a) => {
-      if ((s.legal || []).indexOf(a) < 0) return;
-      const b = document.createElement("button"); b.className = "btn bj-act " + BJ_ACT[a][1]; b.textContent = BJ_ACT[a][0];
-      b.onclick = () => { Array.from(row.children).forEach((c) => (c.disabled = true)); bjCmd("action", { action: a }); };
+      const canDo = (s.legal || []).indexOf(a) >= 0;
+      const needTopUp = (a === "double" || a === "split") && need.indexOf(a) >= 0;
+      if (!canDo && !needTopUp) return;
+      const b = document.createElement("button");
+      if (needTopUp) {
+        // You can double/split here but don't have the chips to match the bet → offer a top-up.
+        b.className = "btn bj-act bj-topup-act";
+        b.innerHTML = '💰 TOP&nbsp;UP <span class="bj-tu-sub">to ' + BJ_ACT[a][0] + "</span>";
+        b.onclick = () => bjTopUp(a, s, b);
+      } else {
+        b.className = "btn bj-act " + BJ_ACT[a][1]; b.textContent = BJ_ACT[a][0];
+        b.onclick = () => { Array.from(row.children).forEach((c) => (c.disabled = true)); bjCmd("action", { action: a }); };
+      }
       row.appendChild(b);
     });
     ctr.appendChild(row);
+  }
+  // Mid-hand top-up so you can afford a double/split after seeing your cards. Play-money
+  // tops up instantly server-side and re-emits the turn (so DOUBLE/SPLIT light up). For a
+  // real-money table this is where the on-chain buy-in + MetaMask approval would run (and
+  // pause the turn clock) — wired with real-money blackjack.
+  function bjTopUp(action, s, btn) {
+    const amount = Math.max(500, Math.ceil(s.handBet || 0)); // always enough to cover the matching bet
+    if (btn) { btn.disabled = true; btn.innerHTML = "💰 Topping up…"; }
+    bjCmd("topUp", { amount: amount });
   }
   function buildBjInsurance(ctr) {
     const row = document.createElement("div"); row.className = "bj-actions";

@@ -143,6 +143,7 @@
               if (d.cmd === "setBet") bj.bet = d.value;
               else if (d.cmd === "placeBet") { if (d.value != null) bj.bet = d.value; bj.placeBet(); }
               else if (d.cmd === "cancelBet") bj.cancelBet();
+              else if (d.cmd === "topUp") bj.topUp(d.amount);
               else if (d.cmd === "action") bj.act(d.action);
               else if (d.cmd === "insurance") bj.sendInsurance(!!d.take);
             }

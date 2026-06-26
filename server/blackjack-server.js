@@ -222,6 +222,33 @@
       for (let i = s.active + 1; i < s.hands.length; i++) if (!s.hands[i].done) { s.active = i; return startTurn(r); }
       nextSeat(r); // seat fully done
     }
+    function handRules(h) {
+      return { cards: h.cards, bet: h.bet, firstAction: h.cards.length === 2 && !h.doubled, fromSplit: h.fromSplit, isAceSplit: h.isAceSplit, doubled: h.doubled, done: h.done };
+    }
+    // Broadcast the current turn, including which actions are blocked ONLY by balance
+    // (so the client can offer a "TOP UP to double/split" button) and the bet to cover.
+    function emitTurn(r) {
+      const s = r.seats[r.turnIdx]; if (!s) return; const h = s.hands[s.active];
+      const bal = bank.get(s.wallet);
+      const legal = Rules.legalActions(handRules(h), { balance: bal, config, numHands: s.hands.length });
+      const funded = Rules.legalActions(handRules(h), { balance: Infinity, config, numHands: s.hands.length });
+      const needFunds = funded.filter((a) => (a === "double" || a === "split") && legal.indexOf(a) < 0);
+      broadcast(r, { type: "bj:turn", roomId: r.id, seat: r.turnIdx, hand: s.active, legalActions: legal, needFunds, bet: h.bet, balance: bal, deadline: r.deadline });
+    }
+    // Mid-hand top-up so a player can afford a double/split after seeing their cards.
+    // DEMO/guest play-money only — real-money buy-ins lock funds on-chain elsewhere.
+    function topUp(sock, amount) {
+      const w = sock.wallet || "";
+      if (!/^guest:/.test(w)) return; // guests only (play money)
+      const amt = r2(Math.max(0, Math.min(100000, +amount || 0)));
+      if (amt <= 0) return;
+      bank.credit(w, amt); pushWallet(sock, w);
+      for (const r of rooms.values()) {
+        const i = seatOf(r, sock); if (i < 0) continue;
+        if (r.phase === "turns" && r.turnIdx === i) emitTurn(r); else broadcastState(r);
+        break;
+      }
+    }
     function startTurn(r) {
       const s = r.seats[r.turnIdx], h = s.hands[s.active];
       if (h.cards.length === 1) {                    // a freshly-split hand: deal its second card now
@@ -231,12 +258,9 @@
       }
       const hv = Rules.handValue(h.cards);
       if (hv.bust || hv.total === 21) { h.done = true; return advanceHand(r); }
-      const legal = Rules.legalActions(
-        { cards: h.cards, bet: h.bet, firstAction: h.cards.length === 2 && !h.doubled, fromSplit: h.fromSplit, isAceSplit: h.isAceSplit, doubled: h.doubled, done: h.done },
-        { balance: bank.get(s.wallet), config, numHands: s.hands.length });
       r.deadline = now() + T.turn; touch(r);
       r.timers.turn = setT(() => applyAction(r, r.turnIdx, "stand", true), T.turn);
-      broadcast(r, { type: "bj:turn", roomId: r.id, seat: r.turnIdx, hand: s.active, legalActions: legal, deadline: r.deadline });
+      emitTurn(r);
       broadcastState(r);
     }
     function applyAction(r, seatIdx, action, auto) {
@@ -491,6 +515,7 @@
         case "bj:bet:place": placeBet(sock, m.amountUsd, m.clientSeed); break;
         case "bj:bet:cancel": cancelBet(sock); break;
         case "bj:seed": seedGuest(sock, +m.balance); break;
+        case "bj:topup": topUp(sock, +m.amount); break;
         case "bj:action": action(sock, m.action); break;
         case "bj:insurance": insurance(sock, m.take); break;
         default: break;
