@@ -55,10 +55,13 @@
     this.burst = 0;
     this._resetTimer = null;
 
+    // 3D red balloon (Three.js) — optional; when present the Pixi renderer goes
+    // transparent and hides its 2D balloon, and we drive the 3D one in parallel.
+    this._b3d = opts.balloon3d || null;
     // renderer
     this.r = new root.PressureRenderer({
       mount: opts.mount, width: opts.width || 480, height: opts.height || 640,
-      onTick: (dt) => this._tick(dt),
+      onTick: (dt) => this._tick(dt), transparent: !!this._b3d,
     });
 
     this._wire();
@@ -204,6 +207,7 @@
     this.pressing = true;
     this.state = "inflating";
     this.r.reset();              // fresh limp balloon
+    if (this._b3d) this._b3d.reset();
     this.r.setState("inflating");
     this.r.setAutoLine(this.autoMult);
     this._renderHud();
@@ -218,6 +222,7 @@
     const typical = Math.max(0.5, E.timeForMultiplier(REF_MULT, this.pumpSpeed));
     const progress = Math.min(1, this.heldSec / typical);
     this.r.setLive(mult, progress);
+    if (this._b3d) this._b3d.setPressure(progress);
 
     if (mult >= this.burst) { this._resolve("pop", this.burst); return; }
     if (this.autoOn && mult >= this.autoMult) { this._resolve("auto", this.autoMult); return; }
@@ -271,12 +276,14 @@
 
     if (res.popped) {
       this.r.pop();
+      if (this._b3d) this._b3d.pop(); // 3D shard burst + size-scaled pop sound
       this.r.showReceipt("POP @ " + this.burst.toFixed(2) + "x", false);
       const keptMsg = res.lockedSum > 0 ? ("  · kept " + this._usd(res.lockedSum)) : "";
       this._msg("💥 POP at " + this.burst.toFixed(2) + "x — lost the bet" + keptMsg);
       if (root.Chiptune && Chiptune.lose) try { Chiptune.lose(); } catch (e) {}
     } else {
       this.r.win({ finalMult: releaseMult, payout: res.payout, profit: res.profit });
+      if (this._b3d) this._b3d.bank(res.profit >= 300 ? "mega" : res.profit >= 100 ? "big" : "normal"); // 3D relax + glow
       const nearMiss = (this.burst - releaseMult) <= Math.max(0.05, this.burst * 0.03);
       // (the on-canvas "you banked …" receipt was removed — the YOU WIN result
       //  screen now shows the win; keep only the quieter panel status line)
@@ -301,6 +308,7 @@
     this.floors = [];
     this.r.clearValveRings();
     this.r.reset();
+    if (this._b3d) this._b3d.reset();
     this.state = "armed";
     this._msg(this.balance < this.bet ? "Add funds to keep playing" : "HOLD the balloon to pump");
     this._renderHud();
@@ -338,6 +346,7 @@
     this._active = !!on;
     if (!on && this.pressing) this._release(); // never strand a held round when leaving
     try { on ? this.r.app.ticker.start() : this.r.app.ticker.stop(); } catch (e) {}
+    if (this._b3d) try { this._b3d.setActive(on); } catch (e) {}
   };
   // Real-money mode has no on-chain Pressure yet → lock play with a clear note.
   PressureGame.prototype.setEnabled = function (on) {

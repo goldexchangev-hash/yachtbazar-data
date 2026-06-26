@@ -50,8 +50,9 @@
     this._cracks = []; this._rings = []; this._particles = []; this._coins = [];
     this._shock = []; this._floats = []; this._sparks = [];
 
+    this._transparent = !!opts.transparent; // 3D balloon shows through behind a transparent HUD
     const app = new PIXI.Application({
-      width: W, height: H, backgroundColor: C.bg, antialias: true,
+      width: W, height: H, backgroundColor: C.bg, backgroundAlpha: this._transparent ? 0 : 1, antialias: true,
       resolution: Math.min(1.5, root.devicePixelRatio || 1), autoDensity: true,
     });
     this.app = app; this.view = app.view;
@@ -61,17 +62,17 @@
     this.texGlow = radialTexture(256, [[0, "rgba(255,255,255,1)"], [0.45, "rgba(255,255,255,0.55)"], [1, "rgba(255,255,255,0)"]]);
     this.texVignette = radialTexture(512, [[0, "rgba(255,40,40,0)"], [0.55, "rgba(255,30,30,0)"], [1, "rgba(255,40,40,0.95)"]]);
 
-    // ---- background ----
-    const bg = new PIXI.Graphics();
-    bg.beginFill(C.bg).drawRect(0, 0, W, H).endFill();
-    // gradient-ish floor
-    for (let i = 0; i < 6; i++) bg.beginFill(0x140a26, 0.10).drawRect(0, H * (0.55 + i * 0.07), W, H).endFill();
-    app.stage.addChild(bg);
-
-    const spot = new PIXI.Sprite(this.texGlow);
-    spot.anchor.set(0.5); spot.tint = 0x6b4bd8; spot.alpha = 0.5;
-    spot.width = W * 1.9; spot.height = H * 1.5; spot.position.set(this.cx, this.cy);
-    app.stage.addChild(spot); this.spot = spot;
+    // ---- background (skipped when transparent: the 3D balloon stage provides it) ----
+    if (!this._transparent) {
+      const bg = new PIXI.Graphics();
+      bg.beginFill(C.bg).drawRect(0, 0, W, H).endFill();
+      for (let i = 0; i < 6; i++) bg.beginFill(0x140a26, 0.10).drawRect(0, H * (0.55 + i * 0.07), W, H).endFill();
+      app.stage.addChild(bg);
+      const spot = new PIXI.Sprite(this.texGlow);
+      spot.anchor.set(0.5); spot.tint = 0x6b4bd8; spot.alpha = 0.5;
+      spot.width = W * 1.9; spot.height = H * 1.5; spot.position.set(this.cx, this.cy);
+      app.stage.addChild(spot); this.spot = spot;
+    }
 
     this.bgFx = new PIXI.Container(); app.stage.addChild(this.bgFx);
     this._initSparks();
@@ -82,6 +83,7 @@
     const balloonLayer = new PIXI.Container();
     balloonLayer.position.set(this.cx, this.cy);
     world.addChild(balloonLayer); this.balloonLayer = balloonLayer;
+    if (this._transparent) balloonLayer.visible = false; // the 3D balloon replaces the 2D one
 
     this.glow = new PIXI.Sprite(this.texGlow);
     this.glow.anchor.set(0.5); this.glow.blendMode = PIXI.BLEND_MODES.ADD; this.glow.tint = C.balloon; this.glow.alpha = 0.5;
@@ -282,9 +284,11 @@
     const dTarget = this._state === "inflating" ? p * p * (0.55 + 0.2 * Math.sin(this._t * 12)) : 0;
     this.danger.alpha = lerp(this.danger.alpha, Math.max(0, dTarget), 0.2);
 
-    // spotlight breathe
-    this.spot.alpha = 0.45 + 0.06 * Math.sin(this._t * 2) + p * 0.12;
-    this.spot.tint = mixColor(0x6b4bd8, 0x8f1338, p * 0.5);
+    // spotlight breathe (skipped in transparent mode — the 3D stage owns the bg)
+    if (this.spot) {
+      this.spot.alpha = 0.45 + 0.06 * Math.sin(this._t * 2) + p * 0.12;
+      this.spot.tint = mixColor(0x6b4bd8, 0x8f1338, p * 0.5);
+    }
 
     // sparks drift
     for (const sp of this._sparks) {

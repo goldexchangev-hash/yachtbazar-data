@@ -1874,8 +1874,11 @@ body.demo-mode #bankroll { display: none !important; }
 /* TV layer hosts the PixiJS balloon canvas — fill the screen, no distortion
    (the renderer is sized to the screen on build). */
 #layer-pressure { position: absolute; inset: 0; }
-.pressure-stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.pressure-stage { position: absolute; inset: 0; z-index: 1; display: flex; align-items: center; justify-content: center; }
 .pressure-stage canvas { width: 100% !important; height: 100% !important; display: block; }
+/* 3D red balloon sits behind the (transparent) Pixi HUD, over a soft purple stage glow */
+.pressure3d-stage { position: absolute; inset: 0; z-index: 0; background: radial-gradient(ellipse at 50% 42%, #2a1450 0%, #160a2e 48%, #08040f 100%); }
+.pressure3d-stage canvas { width: 100% !important; height: 100% !important; display: block; }
 
 /* Bet panel controls */
 /* Compact ½ / 2× / Max quick-bet chips (smaller + easier than the old buttons) */

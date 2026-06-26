@@ -1948,14 +1948,14 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1070").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1080").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=1070"))
+      .then(() => loadScriptOnce("slots.js?v=1080"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -1965,9 +1965,11 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=1070"))
-      .then(() => loadScriptOnce("pressure-render.js?v=1070"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=1070"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=1080"))
+      .then(() => loadScriptOnce("pressure-render.js?v=1080"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=1080"))
+      // optional 3D red balloon (Three.js) — falls back to the 2D balloon if it can't load
+      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1080")).catch(() => {}))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -1980,8 +1982,12 @@
     // to fill the screen uniformly → no distortion, and it can't get squished by a
     // bad/early getBoundingClientRect measurement (which caused a portrait-ratio
     // canvas to be squashed into the landscape screen).
+    // optional 3D red balloon mounted behind the (transparent) Pixi HUD
+    let balloon3d = null;
+    if (window.Balloon3D) { const b3m = $("pressure3d-stage"); if (b3m) try { balloon3d = new window.Balloon3D({ mount: b3m, width: 800, height: 600 }); } catch (e) { balloon3d = null; } }
     pressureGame = new window.PressureGame({
       mount, width: 800, height: 600,
+      balloon3d: balloon3d,
       ethUsd: ethUsd,
       initialBalance: demoUsd,
       onBalance: (b) => { demoUsd = Math.round(b * 100) / 100; demoSave(); demoPaint(); },
@@ -2021,10 +2027,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=1070"))
-      .then(() => loadScriptOnce("plane-render.js?v=1070"))
-      .then(() => loadScriptOnce("plane-feed.js?v=1070"))
-      .then(() => loadScriptOnce("plane-ui.js?v=1070"))
+      .then(() => loadScriptOnce("plane-engine.js?v=1080"))
+      .then(() => loadScriptOnce("plane-render.js?v=1080"))
+      .then(() => loadScriptOnce("plane-feed.js?v=1080"))
+      .then(() => loadScriptOnce("plane-ui.js?v=1080"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2103,15 +2109,15 @@
   function loadThreeOnce() {
     if (window.THREE) return Promise.resolve();
     if (threeLoadPromise) return threeLoadPromise;
-    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1070").catch((e) => { threeLoadPromise = null; throw e; });
+    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1080").catch((e) => { threeLoadPromise = null; throw e; });
     return threeLoadPromise;
   }
   function ensureSlots3dLoaded() {
     if (window.Slots3D) return Promise.resolve(true);
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("slots3d-engine.js?v=1070"))
-      .then(() => loadScriptOnce("slots3d.js?v=1070"))
+      .then(() => loadScriptOnce("slots3d-engine.js?v=1080"))
+      .then(() => loadScriptOnce("slots3d.js?v=1080"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2151,7 +2157,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1070"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1080"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
