@@ -59,6 +59,10 @@
 
         <div class="dock">
           <div class="msg" id="dock-msg">Loading…</div>
+          <div class="turn-timer" id="turn-timer" hidden>
+            <span class="tt-label" id="tt-label">Auto-stand in 20s</span>
+            <div class="tt-bar"><i id="tt-fill"></i></div>
+          </div>
           <div class="row" id="dock-row"></div>
         </div>
 
@@ -94,6 +98,7 @@
           dealerHand: id("dealer-hand"), dealerTotal: id("dealer-total"), shoe: id("shoe"),
           phaseBanner: id("phase-banner"), phaseMain: id("phase-main"), phaseSub: id("phase-sub"), ring: id("ring"),
           seats: id("seats"), dockMsg: id("dock-msg"), dockRow: id("dock-row"),
+          turnTimer: id("turn-timer"), ttFill: id("tt-fill"), ttLabel: id("tt-label"),
           pfCommit: id("pf-commit"), pfClient: id("pf-client"), pfVerify: id("pf-verify"), pfReveal: id("pf-reveal"), pfOut: id("pf-out"),
           toast: id("toast"),
         };
