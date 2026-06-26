@@ -1940,14 +1940,14 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1000").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1010").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=1000"))
+      .then(() => loadScriptOnce("slots.js?v=1010"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -1957,9 +1957,9 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=1000"))
-      .then(() => loadScriptOnce("pressure-render.js?v=1000"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=1000"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=1010"))
+      .then(() => loadScriptOnce("pressure-render.js?v=1010"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=1010"))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -2012,10 +2012,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=1000"))
-      .then(() => loadScriptOnce("plane-render.js?v=1000"))
-      .then(() => loadScriptOnce("plane-feed.js?v=1000"))
-      .then(() => loadScriptOnce("plane-ui.js?v=1000"))
+      .then(() => loadScriptOnce("plane-engine.js?v=1010"))
+      .then(() => loadScriptOnce("plane-render.js?v=1010"))
+      .then(() => loadScriptOnce("plane-feed.js?v=1010"))
+      .then(() => loadScriptOnce("plane-ui.js?v=1010"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2050,6 +2050,7 @@
       },
       panels: [panel("a"), panel("b")],
     });
+    try { window.__plane = planeGame; } catch (e) {} // debug/support handle
     return planeGame;
   }
   function ensurePlaneReady() {
@@ -2093,15 +2094,15 @@
   function loadThreeOnce() {
     if (window.THREE) return Promise.resolve();
     if (threeLoadPromise) return threeLoadPromise;
-    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1000").catch((e) => { threeLoadPromise = null; throw e; });
+    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1010").catch((e) => { threeLoadPromise = null; throw e; });
     return threeLoadPromise;
   }
   function ensureSlots3dLoaded() {
     if (window.Slots3D) return Promise.resolve(true);
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("slots3d-engine.js?v=1000"))
-      .then(() => loadScriptOnce("slots3d.js?v=1000"))
+      .then(() => loadScriptOnce("slots3d-engine.js?v=1010"))
+      .then(() => loadScriptOnce("slots3d.js?v=1010"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;

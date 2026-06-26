@@ -83,7 +83,13 @@
   PressureGame.prototype._usd = function (n) { return "$" + this._fmt(n); };
   PressureGame.prototype._eth = function (n) { return "Ξ" + (n / (this.ethUsd || ETH_USD)).toFixed(4); };
   PressureGame.prototype._msg = function (t) { if (this.els.message) this.els.message.textContent = t; };
+  // Stake is editable only when a balloon ISN'T in play (locks during inflate/resolve).
+  PressureGame.prototype._canEditBet = function () {
+    return this.state !== "inflating" && this.state !== "resolving";
+  };
   PressureGame.prototype._renderHud = function () {
+    const canEdit = this._canEditBet(); const e = this.els;
+    [e.bet, e.betSlider, e.betUp, e.betDown, e.betHalf, e.betDouble, e.betMax].forEach((el) => { if (el) el.disabled = !canEdit; });
     if (this.els.balance) this.els.balance.textContent = this._usd(this.balance);
     if (this.els.balanceEth) this.els.balanceEth.textContent = "≈ " + this._eth(this.balance);
     if (this.els.bet) this.els.bet.value = this.bet;
@@ -136,7 +142,13 @@
 
     // bet controls ($ value, $10 minimum)
     const betStep = (b) => (b < 100 ? 10 : b < 1000 ? 50 : 100);
-    const setBet = (v) => { this.bet = Math.max(MIN_BET, Math.round(v * 100) / 100); this._renderHud(); };
+    const setBet = (v) => {
+      // Stake LOCKS the moment the balloon starts inflating — otherwise sliding it
+      // mid-pump would change the payout (stake is deducted at press, but the
+      // win is computed on the current stake). Editable while armed/idle/result.
+      if (!this._canEditBet()) { this._renderHud(); return; }
+      this.bet = Math.max(MIN_BET, Math.round(v * 100) / 100); this._renderHud();
+    };
     if (els.betUp) els.betUp.addEventListener("click", () => setBet(this.bet + betStep(this.bet)));
     if (els.betDown) els.betDown.addEventListener("click", () => setBet(this.bet - betStep(this.bet - 0.01)));
     if (els.betHalf) els.betHalf.addEventListener("click", () => setBet(this.bet / 2));

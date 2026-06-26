@@ -190,8 +190,17 @@
     this._updatePfLast(); this._renderButtons();
   };
 
+  // The stake is editable only before a round commits (demo betting window, or
+  // real-mode idle) — never once it's taking off / flying / settling.
+  PlaneGame.prototype._canEditBet = function () {
+    return this.state === "betting" || this.state === "real-idle";
+  };
+
   /* ---------- buttons ---------- */
   PlaneGame.prototype._renderButton = function (b, live) {
+    // lock/unlock the stake controls to match whether a bet can be changed
+    const ed = b.els, canEdit = this._canEditBet();
+    [ed.betInput, ed.betUp, ed.betDown, ed.betHalf, ed.betDouble, ed.betMax].forEach((el) => { if (el) el.disabled = !canEdit; });
     const btn = b.els.action; if (!btn) return;
     let txt = "", kind = "wait", dis = true;
     // REAL single-shot: only bet A launches one on-chain round at its auto target.
@@ -298,7 +307,14 @@
   PlaneGame.prototype._wirePanel = function (b) {
     const e = b.els;
     const step = (s) => (s < 100 ? 10 : s < 1000 ? 50 : 100);
-    const setBet = (v) => { b.stake = Math.max(MIN_BET, Math.round(v * 100) / 100); b.baseStake = b.stake; this._syncPanel(b); this._renderButtons(); };
+    const setBet = (v) => {
+      // Once a round has committed (taking off / in flight) the stake is LOCKED —
+      // otherwise sliding it mid-flight would change the active payout (the demo
+      // deducts at launch but cashes out on the current stake). Edit only while
+      // betting / idle; the controls are also disabled in those states.
+      if (!this._canEditBet()) { this._syncPanel(b); return; }
+      b.stake = Math.max(MIN_BET, Math.round(v * 100) / 100); b.baseStake = b.stake; this._syncPanel(b); this._renderButtons();
+    };
     if (e.action) e.action.addEventListener("click", () => this._onAction(b));
     if (e.betUp) e.betUp.addEventListener("click", () => setBet(b.stake + step(b.stake)));
     if (e.betDown) e.betDown.addEventListener("click", () => setBet(b.stake - step(b.stake - 0.01)));
