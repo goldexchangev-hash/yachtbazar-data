@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#06091a" />
+    <title>🃏 BLACKJACK — Crypto TV</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Space+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🃏</text></svg>" />
+    <link rel="stylesheet" href="blackjack.css" />
+    <style>
+      /* TV-embed mode (?tv=1): just the felt, scaled to fill the 4:3 screen. The
+         betting/action controls render in the PARENT page's dock under the TV, so the
+         in-iframe dock + page chrome are hidden here. */
+      body.tv-embed { padding: 0; margin: 0; height: 100vh; overflow: hidden; background: transparent; }
+      body.tv-embed .wrap { max-width: none; margin: 0; padding: 0; height: 100%; }
+      body.tv-embed .top, body.tv-embed #lobby, body.tv-embed .pf, body.tv-embed .toast, body.tv-embed .dock,
+      body.tv-embed .phase-banner, body.tv-embed .seat-timer { display: none !important; } /* betting prompt + ALL countdowns live UNDER the TV, not in the screen */
+      body.tv-embed #table { display: flex !important; flex-direction: column; position: absolute; top: 50%; left: 50%;
+        transform-origin: center center; width: 720px; height: 540px; padding: 0; } /* 4:3 */
+      body.tv-embed .felt-wrap { flex: 1; min-height: 0; }
+      body.tv-embed .felt { min-height: 0; height: 100%; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="top">
+        <div class="brand"><span class="be">🃏</span><h1>BLACKJACK</h1></div>
+        <div class="top-actions">
+          <div class="bal"><span id="bal-usd">$5,000</span><small id="bal-eth">≈ Ξ1.4706</small></div>
+          <button class="icon-btn" id="sound-btn" title="Sound on/off">🔊</button>
+          <button class="icon-btn hidden" id="back">↩ LOBBY</button>
+        </div>
+      </div>
+
+      <!-- ============ LOBBY ============ -->
+      <section id="lobby">
+        <div class="lobby-head">
+          <div>
+            <h2><span class="live-dot"></span>LIVE TABLES</h2>
+            <p>Grab an open seat to play, or watch a table live. New tables open automatically when one fills.</p>
+          </div>
+        </div>
+        <div class="tables" id="tables"></div>
+      </section>
+
+      <!-- ============ TABLE ============ -->
+      <section id="table" class="hidden">
+        <div class="felt-wrap">
+          <canvas id="bjGL"></canvas>
+          <div class="felt">
+            <div class="shoe" id="shoe"></div>
+            <div class="arc-text lo">BLACKJACK PAYS 3:2 · DEALER STANDS ON 17 · INSURANCE 2:1</div>
+
+            <div class="dealer">
+              <div class="who">DEALER</div>
+              <div class="hand" id="dealer-hand"></div>
+              <div id="dealer-total"></div>
+            </div>
+
+            <div class="phase-banner" id="phase-banner">
+              <div class="ring" id="ring" data-sec="" style="display:none"></div>
+              <div class="pb-main" id="phase-main"></div>
+              <div class="pb-sub" id="phase-sub"></div>
+            </div>
+
+            <div class="seats" id="seats"></div>
+          </div>
+        </div>
+
+        <div class="dock">
+          <div class="msg" id="dock-msg">Loading…</div>
+          <div class="row" id="dock-row"></div>
+        </div>
+
+        <div class="pf">
+          <div class="pf-r"><b>Provably fair</b> · commit <code id="pf-commit">—</code></div>
+          <div class="pf-r">your client seed <input id="pf-client" type="text" placeholder="(auto)" maxlength="32" />
+            <button class="pf-verify" id="pf-verify">Verify last hand</button></div>
+          <div class="pf-reveal" id="pf-reveal"></div>
+          <div id="pf-out" style="margin-top:6px"></div>
+          <p style="margin:8px 0 0;color:var(--muted)">The shoe is committed (hashed) <b>before</b> any bet and the seed revealed after — combine it with every seat's
+            client seed to recompute the exact 6-deck shoe. USD value, settled in ETH · play money.</p>
+        </div>
+      </section>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="blackjack-shuffle.js"></script>
+    <script src="blackjack-rules.js"></script>
+    <script src="blackjack-net.js"></script>
+    <script src="blackjack-fx.js"></script>
+    <script src="blackjack-sfx.js"></script>
+    <script src="vendor/three.min.js"></script>
+    <script src="blackjack-gl.js"></script>
+    <script src="blackjack-ui.js"></script>
+    <script>
+      window.addEventListener("DOMContentLoaded", function () {
+        var id = function (x) { return document.getElementById(x); };
+        var back = id("back");
+        var els = {
+          balUsd: id("bal-usd"), balEth: id("bal-eth"), back: back, soundBtn: id("sound-btn"), glCanvas: id("bjGL"),
+          lobby: id("lobby"), tables: id("tables"), table: id("table"),
+          dealerHand: id("dealer-hand"), dealerTotal: id("dealer-total"), shoe: id("shoe"),
+          phaseBanner: id("phase-banner"), phaseMain: id("phase-main"), phaseSub: id("phase-sub"), ring: id("ring"),
+          seats: id("seats"), dockMsg: id("dock-msg"), dockRow: id("dock-row"),
+          pfCommit: id("pf-commit"), pfClient: id("pf-client"), pfVerify: id("pf-verify"), pfReveal: id("pf-reveal"), pfOut: id("pf-out"),
+          toast: id("toast"),
+        };
+        var tv = /[?&]tv=1/.test(location.search); // embedded inside the Crypto TV channel
+        if (tv) document.body.classList.add("tv-embed");
+        window.BJ = new BlackjackClient({ els: els, embed: tv });
+        if (tv) {
+          // scale the fixed-size felt+dock to fill the 4:3 TV screen
+          var table = id("table");
+          var fit = function () { var s = Math.min(window.innerWidth / 720, window.innerHeight / 540); table.style.transform = "translate(-50%,-50%) scale(" + s + ")"; };
+          window.addEventListener("resize", fit); fit(); setTimeout(fit, 100);
+          // messages from the TV page: mute toggle + control intents from the dock under the TV
+          window.addEventListener("message", function (e) {
+            if (e.source && e.source !== window.parent) return; // only honor commands from the host TV page
+            var d = e.data; if (!d) return;
+            if (d.type === "bj:active") {
+              if (window.BlackjackSFX) window.BlackjackSFX.muted = !d.active;
+              if (d.active && window.BJ && window.BJ.room) window.BJ._renderDock(); // re-sync the parent dock on channel re-entry
+            }
+            else if (d.type === "bj:cmd" && window.BJ) {
+              var bj = window.BJ;
+              if (d.cmd === "setBet") bj.bet = d.value;
+              else if (d.cmd === "placeBet") { if (d.value != null) bj.bet = d.value; bj.placeBet(); }
+              else if (d.cmd === "action") bj.act(d.action);
+              else if (d.cmd === "insurance") bj.sendInsurance(!!d.take);
+            }
+          });
+        } else {
+          setInterval(function () { back.classList.toggle("hidden", window.BJ.view !== "table"); }, 200);
+        }
+      });
+    </script>
+  </body>
+</html>

@@ -1078,7 +1078,8 @@ body:not(.game-slots) [data-game="slots"] { display: none !important; }
 body:not(.game-pressure) [data-game="pressure"] { display: none !important; }
 body:not(.game-plane) [data-game="plane"] { display: none !important; }
 body:not(.game-slots3d) [data-game="slots3d"] { display: none !important; }
-body.game-dice [data-game="flip"], body.game-twodice [data-game="flip"], body.game-crash [data-game="flip"], body.game-slots [data-game="flip"], body.game-pressure [data-game="flip"], body.game-plane [data-game="flip"], body.game-slots3d [data-game="flip"] { display: none !important; }
+body:not(.game-blackjack) [data-game="blackjack"] { display: none !important; }
+body.game-dice [data-game="flip"], body.game-twodice [data-game="flip"], body.game-crash [data-game="flip"], body.game-slots [data-game="flip"], body.game-pressure [data-game="flip"], body.game-plane [data-game="flip"], body.game-slots3d [data-game="flip"], body.game-blackjack [data-game="flip"] { display: none !important; }
 /* …but the channel selector tiles are always visible (they're how you switch) */
 #game-nav .game-card { display: flex !important; }
 #game-nav .game-card[hidden] { display: none !important; } /* hidden channels (e.g. poker) stay hidden */
@@ -2107,6 +2108,43 @@ body.demo-mode #bankroll { display: none !important; }
 #layer-slots3d { position: absolute; inset: 0; }
 .slots3d-stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
 .slots3d-stage canvas { width: 100% !important; height: 100% !important; display: block; }
+
+/* Blackjack (CH 16) felt runs in an isolated iframe filling the 4:3 screen */
+.bj-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; background: #06091a; }
+/* ── Blackjack controls — felt is in the TV iframe, these sit under it. Driven by
+   postMessage; styled with the same tokens as every other game's dock. ── */
+.bj-dock { max-width: 520px; margin: 4px auto 0; }
+.bj-statusrow { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 20px; margin-bottom: 10px; }
+.bj-status { text-align: center; color: var(--s-text-2); font-weight: 700; font-size: 14px; }
+.bj-status b { color: var(--s-text); }
+.bj-controls:empty { display: none; }
+.bj-dock:has(.bj-controls:empty) .bj-statusrow { margin-bottom: 0; }
+.bj-bet { display: flex; flex-direction: column; gap: 10px; }
+.bj-bet-val { display: flex; align-items: baseline; justify-content: center; gap: 10px; }
+.bj-bet-money { display: inline-flex; align-items: baseline; gap: 10px; }
+.bj-bv { font-family: var(--display); font-size: 26px; line-height: 1; color: var(--s-green); }
+.bj-bv-eth { color: var(--s-text-2); font-size: 13px; }
+.bj-count { font-family: var(--display); font-size: 14px; color: var(--s-text-2); }
+.bj-count.crit { color: var(--s-gold); }
+.bj-count:empty { display: none; }
+.bj-slider { -webkit-appearance: none; appearance: none; width: 100%; height: 8px; border-radius: 999px; margin: 0;
+  background: linear-gradient(90deg, var(--s-green) 0 var(--fill, 30%), var(--s-surface) var(--fill, 30%) 100%); outline: none; cursor: pointer; }
+.bj-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 22px; height: 22px; border-radius: 50%;
+  background: #fff; border: 3px solid var(--s-green); box-shadow: 0 2px 8px rgba(0, 0, 0, .45); cursor: pointer; }
+.bj-slider::-moz-range-thumb { width: 22px; height: 22px; border-radius: 50%; background: #fff; border: 3px solid var(--s-green); box-shadow: 0 2px 8px rgba(0, 0, 0, .45); cursor: pointer; }
+.bj-chips { display: flex; gap: 6px; }
+.bj-chip { flex: 1; padding: 8px 4px; font-weight: 700; font-size: 13px; }
+.bj-place { margin-top: 2px; }
+.bj-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.bj-act { flex: 1 1 calc(50% - 4px); min-width: 92px; padding: 13px 10px;
+  font-family: var(--display); font-size: 15px; letter-spacing: .5px; }
+.bj-act.bj-stand { background: var(--cyan); color: #04121a; border: none; font-weight: 700; }
+.bj-act.bj-stand:hover { background: #5cebff; }
+.bj-act.bj-double { background: var(--s-gold); color: #2a1a00; border: none; font-weight: 700; }
+.bj-act.bj-double:hover { filter: brightness(1.08); }
+.bj-act.bj-split { background: var(--magenta); color: #fff; border: none; font-weight: 700; }
+.bj-act.bj-split:hover { filter: brightness(1.08); }
+.bj-act:disabled { opacity: .45; filter: grayscale(.35); cursor: default; }
 
 /* Universal "loading <game>…" screen while a lazy 3D module builds */
 #layer-loading { gap: 14px; }

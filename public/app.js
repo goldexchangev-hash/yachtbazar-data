@@ -2519,9 +2519,9 @@
 
   // ── Game switcher ("change the channel") ──
   // Poker is temporarily disabled (hidden from the channel bar) — to be revisited.
-  const GAME_CHANNEL = { flip: 8, dice: 9, twodice: 10, crash: 11, slots: 12, pressure: 13, plane: 14, slots3d: 15 };
-  const GAME_TITLE = { flip: "CRYPTO TV FLIP", dice: "CRYPTO TV 0-100", twodice: "CRYPTO TV DICE #2", crash: "CRYPTO TV CRASH", slots: "CRYPTO REELS", pressure: "BALLOON POP", plane: "CRYPTO TV PLANE", slots3d: "GEM VAULT 3D" };
-  const GAME_ORDER = ["flip", "dice", "twodice", "crash", "slots", "pressure", "plane", "slots3d"];
+  const GAME_CHANNEL = { flip: 8, dice: 9, twodice: 10, crash: 11, slots: 12, pressure: 13, plane: 14, slots3d: 15, blackjack: 16 };
+  const GAME_TITLE = { flip: "CRYPTO TV FLIP", dice: "CRYPTO TV 0-100", twodice: "CRYPTO TV DICE #2", crash: "CRYPTO TV CRASH", slots: "CRYPTO REELS", pressure: "BALLOON POP", plane: "CRYPTO TV PLANE", slots3d: "GEM VAULT 3D", blackjack: "BLACKJACK" };
+  const GAME_ORDER = ["flip", "dice", "twodice", "crash", "slots", "pressure", "plane", "slots3d", "blackjack"];
   function paintGameTabs(game) {
     document.body.classList.toggle("game-dice", game === "dice");
     document.body.classList.toggle("game-twodice", game === "twodice");
@@ -2530,6 +2530,7 @@
     document.body.classList.toggle("game-pressure", game === "pressure");
     document.body.classList.toggle("game-plane", game === "plane");
     document.body.classList.toggle("game-slots3d", game === "slots3d");
+    document.body.classList.toggle("game-blackjack", game === "blackjack");
     document.body.classList.toggle("game-poker", game === "poker"); // CSS hides the TV layout, shows #poker-view
     const bar = $("game-nav"); if (bar) bar.dataset.game = game;
     document.querySelectorAll("#game-nav .game-card").forEach((b) => {
@@ -2555,6 +2556,7 @@
     if (game !== "flip" && coinFlip3d) coinFlip3d.setActive(false);
     if (game !== "dice" && rail3d) rail3d.setActive(false);
     if (game !== "twodice" && d2_3d) d2_3d.setActive(false);
+    if (game !== "blackjack" && window.BJ_MUTE) { window.BJ_MUTE(true); bjStopCount(); } // hush blackjack + stop its countdown off-channel
     // Poker is its own full-width view (no TV); everything else uses the TV channel.
     if (game === "poker") { if (window.PokerUI) PokerUI.show(); }
     else { if (window.PokerUI) PokerUI.hide(); if (window.TV && TV.changeChannel) TV.changeChannel(GAME_CHANNEL[game]); }
@@ -2566,7 +2568,107 @@
     else if (game === "pressure") { ensurePressureReady(); }
     else if (game === "plane") { refreshDiceHouse(); ensurePlaneReady(); }
     else if (game === "slots3d") { ensureSlots3dReady(); }
+    else if (game === "blackjack") { ensureBlackjackReady(); }
   }
+  // ── Blackjack channel (CH 16): the live felt runs in an isolated iframe (its own
+  // CSS/scripts can't collide with the site). Lazy-set the src on first visit. The
+  // betting + action CONTROLS are native site elements in the dock under the TV,
+  // bridged to the felt via postMessage. ──
+  function bjFramePost(active) { const f = $("bj-frame"); if (f && f.contentWindow) try { f.contentWindow.postMessage({ type: "bj:active", active }, "*"); } catch (e) {} }
+  function ensureBlackjackReady() {
+    const f = $("bj-frame");
+    if (f && !f.src) f.src = "blackjack.html?tv=1&v=1116"; // loads the felt + scripts inside the TV
+    // pass the connected wallet (if any) into the felt so real-money play can settle to it
+    setTimeout(() => { bjFramePost(true); bjSyncWallet(); }, 50);
+  }
+  window.BJ_MUTE = (mute) => bjFramePost(!mute); // hush the iframe's audio when off-channel
+  // tell the felt which wallet/balance to play with (demo guest, or a real connected wallet)
+  function bjSyncWallet() {
+    const f = $("bj-frame"); if (!f || !f.contentWindow) return;
+    const real = !demoOn && account ? String(account) : null;
+    try { f.contentWindow.postMessage({ type: "bj:wallet", wallet: real, real: !!real, ethUsd: ethUsd || 0 }, "*"); } catch (e) {}
+  }
+  window.bjSyncWallet = bjSyncWallet;
+  // ---- Blackjack dock (under the TV). The felt emits a compact "bj:dock" state on
+  // every render; here we paint native, site-styled controls and post the player's
+  // intents back into the iframe as "bj:cmd". ----
+  let bjBet = 25, bjBetSig = "";
+  let bjCountTimer = null, bjBetEndAt = 0;
+  function bjStopCount() { if (bjCountTimer) { clearInterval(bjCountTimer); bjCountTimer = null; } }
+  function bjPaintCount() {
+    const el = $("bj-count"); if (!el) { bjStopCount(); return; }
+    const s = Math.max(0, Math.ceil((bjBetEndAt - Date.now()) / 1000));
+    el.textContent = "⏱ " + s + "s"; el.classList.toggle("crit", s <= 3);
+    if (bjBetEndAt - Date.now() <= 0) bjStopCount();
+  }
+  function bjCmd(cmd, extra) { const f = $("bj-frame"); if (f && f.contentWindow) try { f.contentWindow.postMessage(Object.assign({ type: "bj:cmd", cmd }, extra || {}), "*"); } catch (e) {} }
+  function bjEth(usd) { const r = ethUsd || 3400; return "≈ Ξ" + (usd / r).toFixed(4); }
+  function buildBjBet(ctr, s) {
+    bjBet = Math.min(Math.max(10, Math.round((s.bet || bjBet) / 5) * 5), s.betMax);
+    const wrap = document.createElement("div"); wrap.className = "bj-bet";
+    const val = document.createElement("div"); val.className = "bj-bet-val";
+    const moneyEl = document.createElement("span"); moneyEl.className = "bj-bet-money";
+    const renderVal = () => { moneyEl.innerHTML = '<span class="bj-bv">$' + bjBet.toLocaleString() + "</span>" + (s.showEth ? '<span class="bj-bv-eth">' + bjEth(bjBet) + "</span>" : ""); };
+    renderVal(); val.append(moneyEl);
+    const slider = document.createElement("input"); slider.type = "range"; slider.className = "bj-slider";
+    slider.min = "10"; slider.max = String(s.betMax); slider.step = "5"; slider.value = String(bjBet);
+    const fill = () => { const pct = ((bjBet - 10) / Math.max(1, s.betMax - 10)) * 100; slider.style.setProperty("--fill", pct.toFixed(1) + "%"); };
+    fill();
+    slider.oninput = () => { bjBet = Math.max(10, Math.round(+slider.value / 5) * 5); renderVal(); fill(); bjCmd("setBet", { value: bjBet }); };
+    const chips = document.createElement("div"); chips.className = "bj-chips";
+    [["$10", 10], ["$25", 25], ["$50", 50], ["$100", 100], ["MAX", s.betMax]].forEach((pair) => {
+      const label = pair[0], v = pair[1];
+      const b = document.createElement("button"); b.className = "btn btn-ghost bj-chip"; b.textContent = label;
+      b.onclick = () => { bjBet = Math.min(s.betMax, Math.max(10, Math.round(v / 5) * 5)); slider.value = bjBet; renderVal(); fill(); bjCmd("setBet", { value: bjBet }); };
+      chips.appendChild(b);
+    });
+    const place = document.createElement("button"); place.className = "btn btn-primary btn-block act-btn bj-place";
+    place.innerHTML = '<span class="ab-verb">🃏 PLACE BET</span><span class="ab-amt">Deal me in</span>';
+    place.onclick = () => bjCmd("placeBet", { value: bjBet });
+    wrap.append(val, slider, chips, place); ctr.appendChild(wrap);
+  }
+  const BJ_ACT = { hit: ["HIT", "btn-primary"], stand: ["STAND", "bj-stand"], double: ["DOUBLE", "bj-double"], split: ["SPLIT", "bj-split"], surrender: ["SURRENDER", "btn-ghost"] };
+  function buildBjActions(ctr, s) {
+    const row = document.createElement("div"); row.className = "bj-actions";
+    ["hit", "stand", "double", "split", "surrender"].forEach((a) => {
+      if ((s.legal || []).indexOf(a) < 0) return;
+      const b = document.createElement("button"); b.className = "btn bj-act " + BJ_ACT[a][1]; b.textContent = BJ_ACT[a][0];
+      b.onclick = () => { Array.from(row.children).forEach((c) => (c.disabled = true)); bjCmd("action", { action: a }); };
+      row.appendChild(b);
+    });
+    ctr.appendChild(row);
+  }
+  function buildBjInsurance(ctr) {
+    const row = document.createElement("div"); row.className = "bj-actions";
+    const yes = document.createElement("button"); yes.className = "btn btn-primary bj-act"; yes.textContent = "INSURE ½";
+    yes.onclick = () => { yes.disabled = no.disabled = true; bjCmd("insurance", { take: true }); };
+    const no = document.createElement("button"); no.className = "btn btn-ghost bj-act"; no.textContent = "NO";
+    no.onclick = () => { yes.disabled = no.disabled = true; bjCmd("insurance", { take: false }); };
+    row.append(yes, no); ctr.appendChild(row);
+  }
+  function renderBjDock(s) {
+    const status = $("bj-status"), ctr = $("bj-controls"); if (!ctr) return;
+    if (status) status.innerHTML = s.msg || "Taking a seat at a live table…";
+    if (s.countMsLeft != null && s.countMsLeft > 0) {
+      bjBetEndAt = Date.now() + s.countMsLeft; bjPaintCount();
+      if (!bjCountTimer) bjCountTimer = setInterval(bjPaintCount, 250);
+    } else { bjStopCount(); const cEl = $("bj-count"); if (cEl) cEl.textContent = ""; }
+    if (s.mode === "betting") {
+      const sig = "bet|" + s.betMax + "|" + (s.showEth ? 1 : 0);
+      if (sig !== bjBetSig) { bjBetSig = sig; ctr.innerHTML = ""; buildBjBet(ctr, s); }
+      return;
+    }
+    bjBetSig = ""; ctr.innerHTML = ""; // turn/insurance rebuild every emit so a rejected action re-enables its buttons
+    if (s.mode === "turn") buildBjActions(ctr, s);
+    else if (s.mode === "insurance") buildBjInsurance(ctr);
+    // waiting / dealing / settle / spectating → status line only
+  }
+  window.addEventListener("message", (e) => {
+    const f = $("bj-frame"); if (!f || e.source !== f.contentWindow) return; // only accept dock-state from our felt iframe
+    const d = e.data; if (!d) return;
+    if (d.type === "bj:dock") { if (currentGame === "blackjack") renderBjDock(d); return; }
+    if (d.type === "bj:ready") { bjSyncWallet(); return; } // felt booted → (re)send the wallet/balance context
+  });
   // Poker chips are a session-local pool seeded from your in-game balance.
   // Phase 1 (vs house bots) plays out client-side; net results are NOT yet
   // written on-chain — the trusted house-signed settlement lands with the
@@ -2665,6 +2767,7 @@
     if (saved === "flip") ensureCoinFlip3dReady(); // build the 3D coin on reload too
     if (saved === "dice") ensureDice3dReady();     // build the 0-100 neon rail on reload too
     if (saved === "twodice") ensureDice2_3dReady(); // build the 3D dice on reload too
+    if (saved === "blackjack") ensureBlackjackReady(); // restore the CH 16 felt iframe on reload
   }
 
   // My open tables: show bank + idle countdown, auto-close (refund) when stale.

@@ -46,6 +46,7 @@
         pressure: $("layer-pressure"),
         plane: $("layer-plane"),
         slots3d: $("layer-slots3d"),
+        blackjack: $("layer-blackjack"),
         loading: $("layer-loading"),
       };
       this._activeChannel = 8; // 8 = Flip, 9 = Dice — so idle() advertises the active game
@@ -448,6 +449,14 @@
       this._show("slots3d");
     },
 
+    // Blackjack (CH 16): the live felt runs in its own iframe over its own WebSocket
+    // (guest-friendly play-money), so just reveal its layer — BlackjackClient drives
+    // the table + the dock under the TV itself.
+    _blackjackIdle() {
+      this._setStatic(0.03);
+      this._show("blackjack");
+    },
+
     // Turn the dial between Coin Flip (08) and Dice (09) with a CRT "tune" effect.
     async changeChannel(num) {
       const seq = ++this._seq;
@@ -469,6 +478,7 @@
       else if (num === 13) this._pressureIdle();
       else if (num === 14) this._planeIdle();
       else if (num === 15) this._slots3dIdle();
+      else if (num === 16) this._blackjackIdle();
       else this._readyRoom();
       await sleep(160); if (seq !== this._seq) return;
       this.screenEl.classList.remove("ch-switch");

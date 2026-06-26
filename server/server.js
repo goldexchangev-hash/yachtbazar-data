@@ -16,6 +16,7 @@ const http = require("http");
 const os = require("os");
 const express = require("express");
 const { WebSocketServer } = require("ws");
+const { attachBlackjack } = require("./blackjack-server.js");
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const HOST = process.env.HOST || "0.0.0.0";
@@ -37,6 +38,13 @@ app.get("*", (req, res) => {
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, maxPayload: 64 * 1024 });
+
+// Multiplayer Blackjack (TV channel) — server-authoritative engine attached to the
+// SAME ws server. Players are identified by their connection's stamped wallet.
+const blackjack = attachBlackjack({
+  startBalance: 5000,
+  timers: { dealReveal: 450, dealPace: 430, dealerReveal: 800, dealerPace: 900 },
+});
 
 /** ws -> { address } */
 const clients = new Map();
@@ -89,8 +97,14 @@ wss.on("connection", (ws) => {
     } catch {
       return;
     }
+    // Blackjack sub-protocol: route any bj:* intent to the engine first.
+    if (typeof data.type === "string" && data.type.startsWith("bj:")) {
+      blackjack.handle(ws, data);
+      return;
+    }
     if (data.type === "hello" && typeof data.address === "string") {
       clients.get(ws).address = data.address;
+      ws.wallet = data.address; // stamp the connection's wallet so the blackjack engine trusts it
       broadcastPlayers();
       // Replay recent chat so the conversation is already there when they arrive
       // (and so a host who reconnects sees what players said while away).
@@ -131,6 +145,7 @@ wss.on("connection", (ws) => {
   });
 
   ws.on("close", () => {
+    blackjack.onClose(ws); // free the player's seat / spectator slot
     clients.delete(ws);
     broadcastPlayers();
   });
