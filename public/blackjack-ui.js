@@ -20,7 +20,7 @@
   function el(tag, cls, html) { var d = document.createElement(tag); if (cls) d.className = cls; if (html != null) d.innerHTML = html; return d; }
   function rankLabel(r) { return r === "T" ? "10" : r; }
   function money(n) { return "$" + (Math.round(n * 100) / 100).toLocaleString(undefined, { maximumFractionDigits: 2 }); }
-  function eth(n) { return "Ξ" + (n / ETH_USD).toFixed(4); }
+  function eth(n) { return "≈ Ξ" + (n / ETH_USD).toFixed(4); } // ETH equivalent of the USD amount (demo rate $3400/ETH)
   function shortHash(h) { return h ? h.slice(0, 10) + "…" : "—"; }
 
   function BlackjackClient(opts) {
@@ -34,7 +34,7 @@
     this.skew = 0; this.deadline = 0; this.phaseTotal = 0;
     this.seen = {}; this.holeShown = false; this.handNo = -1;
     this.reveal = null; this._insuranceDone = false;
-    this._connectedOnce = false; this._reconnectRoom = null; this._stagger = 0;
+    this._connectedOnce = false; this._reconnectRoom = null; this._stagger = 0; this._sfxReady = false;
     this._bindNet(); this._wireStatic();
     this.net.send({ type: "bj:lobby:subscribe" });
     var self = this; this._timer = setInterval(function () { self._tick(); }, 200);
@@ -73,6 +73,11 @@
     var self = this, E = this.E;
     if (E.back) E.back.onclick = function () { self.leaveTable(); };
     if (E.pfVerify) E.pfVerify.onclick = function () { self._verify(); };
+    if (E.soundBtn) E.soundBtn.onclick = function () {
+      var sfx = root.BlackjackSFX; if (!sfx) return;
+      sfx.muted = !sfx.muted; E.soundBtn.textContent = sfx.muted ? "🔇" : "🔊";
+      if (!sfx.muted) sfx.card(0); // little confirmation blip when turning on
+    };
     if (E.tables) E.tables.addEventListener("click", function (e) {
       var b = e.target.closest("[data-act]"); if (!b) return;
       var act = b.getAttribute("data-act"), room = b.getAttribute("data-room");
@@ -120,9 +125,9 @@
   };
 
   /* ---------------- intents ---------------- */
-  BlackjackClient.prototype.joinRoom = function (roomId) { this._resetRoundVis(); this.showTable(); this.E.dockMsg.textContent = "Taking a seat…"; this.net.send({ type: "bj:room:join", roomId: roomId }); };
-  BlackjackClient.prototype.takeSeat = function (seat) { this.net.send({ type: "bj:room:join", roomId: this.room ? this.room.roomId : undefined, seatPref: seat }); };
-  BlackjackClient.prototype.watchRoom = function (roomId) { this._resetRoundVis(); this.spectating = roomId; this.showTable(); this.E.dockMsg.textContent = "Joining as spectator…"; this.net.send({ type: "bj:room:watch", roomId: roomId }); };
+  BlackjackClient.prototype.joinRoom = function (roomId) { this._resetRoundVis(); this._sfxReady = false; this.showTable(); this.E.dockMsg.textContent = "Taking a seat…"; this.net.send({ type: "bj:room:join", roomId: roomId }); };
+  BlackjackClient.prototype.takeSeat = function (seat) { this._sfxReady = false; this.net.send({ type: "bj:room:join", roomId: this.room ? this.room.roomId : undefined, seatPref: seat }); };
+  BlackjackClient.prototype.watchRoom = function (roomId) { this._resetRoundVis(); this._sfxReady = false; this.spectating = roomId; this.showTable(); this.E.dockMsg.textContent = "Joining as spectator…"; this.net.send({ type: "bj:room:watch", roomId: roomId }); };
   BlackjackClient.prototype.leaveTable = function () { if (this.you || this.spectating) this.net.send({ type: "bj:room:leave" }); this.showLobby(); };
   BlackjackClient.prototype.placeBet = function () {
     var amt = Math.max(10, Math.round(+this.bet || 0));
@@ -130,6 +135,7 @@
     this.net.send({ type: "bj:bet:place", amountUsd: amt, clientSeed: seed || undefined });
   };
   BlackjackClient.prototype._onReconnect = function () {
+    this._sfxReady = false; // don't replay the whole hand's cards as sound on rejoin
     this.net.send({ type: "bj:lobby:subscribe" });
     if (this.you) { this._reconnectRoom = this.you.roomId; this.toast("Reconnecting…"); this.net.send({ type: "bj:room:join", roomId: this._reconnectRoom }); }
     else if (this.spectating) { this.net.send({ type: "bj:room:watch", roomId: this.spectating }); }
@@ -152,6 +158,7 @@
     this.phaseTotal = PHASE_TOTAL[m.phase] || 0;
     this._stagger = 0; // stagger newly-dealt cards within THIS snapshot for a one-at-a-time reveal
     this._renderDealer(m); this._renderSeats(m); this._renderBanner(m); this._renderDock(); this._renderPF();
+    this._sfxReady = true; // suppress sounds on the first (sync) snapshot; play on real deals after
   };
   BlackjackClient.prototype._cardEl = function (c, key, sm, faceDownFlip) {
     if (!c || c === "back") return el("div", "card back" + (sm ? " sm" : ""));
@@ -163,6 +170,7 @@
       this.seen[key] = 1; d.classList.add(faceDownFlip ? "flip" : "dealing");
       var delay = (this._stagger || 0) * 150; if (delay) d.style.animationDelay = delay + "ms"; // cascade the deal
       this._stagger = (this._stagger || 0) + 1;
+      if (this._sfxReady && root.BlackjackSFX) root.BlackjackSFX.card(delay); // swoosh + snap, in sync with the reveal
     }
     return d;
   };
@@ -299,7 +307,11 @@
         btn.onclick = function () { self.act(a); }; row.appendChild(btn);
       });
     }
-    var leave = el("button", "btn danger", "LEAVE"); leave.onclick = function () { self.leaveTable(); }; row.appendChild(leave);
+    // LEAVE only while you can actually act on it — hidden during the dealer draw and
+    // the win/lose result (use the top ↩ LOBBY button to step out there).
+    if (m.phase === "betting" || m.phase === "turns" || m.phase === "insurance" || m.phase === "idle") {
+      var leave = el("button", "btn danger", "LEAVE"); leave.onclick = function () { self.leaveTable(); }; row.appendChild(leave);
+    }
   };
   BlackjackClient.prototype._settleMsg = function (mySeat) {
     if (!mySeat || !mySeat.hands || !mySeat.hands.length) return "Round over";
