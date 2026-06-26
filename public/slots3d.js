@@ -257,6 +257,7 @@
     const bet = this.bet;
     this.balance = Math.round((this.balance - bet) * 100) / 100; this._save(); this._renderHud();
     this._clearWinFx();
+    this._hideOverlay(); // clear a lingering "BONUS COMPLETE" total once they bet again
     this.nonce += 1;
     const grid = E.deriveGrid(this.serverSeed, this.clientSeed, this.nonce); // grid[reel][row]
     this._result = E.evaluate(grid, bet);
@@ -419,8 +420,11 @@
     this._showOverlay("🏆 BONUS COMPLETE", "+" + this._usd(total), spins + " free spins · ×" + mult, "end");
     const C = root.Chiptune; if (C && C.jackpot) try { C.jackpot(); } catch (e) {}
     if (this.onWin && total > 0) try { this.onWin({ profitUsd: total, mult: mult, bonus: true }); } catch (e) {}
-    this._renderHud(); this._renderSpinBtn();
-    clearTimeout(this._bonusT); this._bonusT = setTimeout(() => { this._hideOverlay(); this.state = "idle"; this._msg("Tap SPIN", ""); this._renderSpinBtn(); }, 2900);
+    this._renderHud();
+    // Leave the grand total on screen (no auto-hide) so a big bonus can be
+    // photographed — go idle + spin-ready, and _spin() clears it on next bet.
+    clearTimeout(this._bonusT); this._bonusT = setTimeout(() => { this.state = "idle"; this._msg("🏆 Bonus banked — tap SPIN", "win"); this._renderSpinBtn(); }, 1400);
+    this._renderSpinBtn();
   };
   // Abort (e.g. leaving the channel): honor the predetermined total by banking any
   // free spins not yet animated, then close out cleanly.

@@ -2036,11 +2036,12 @@ body.demo-mode #bankroll { display: none !important; }
 .s3d-bonus.intro, .s3d-bonus.end { background: radial-gradient(ellipse at center, rgba(40,6,30,.55), rgba(4,5,15,.82) 75%); }
 .s3d-bonus.intro .s3d-bonus-big { color: #ffd23f; }
 .s3d-bonus.end   .s3d-bonus-big { color: #6dffb0; }
-/* While the free spins run, shrink to a compact top banner so the reels show. */
+/* While the free spins run, dock the running total to the BOTTOM band so the
+   reels show and it sits where the normal win amount does. */
 .s3d-bonus.spin {
-  inset: auto 0 auto 0; top: 8px; justify-content: flex-start; gap: 2px;
-  background: linear-gradient(180deg, rgba(40,6,30,.62), rgba(40,6,30,0));
-  padding: 8px 10px 16px;
+  inset: auto 0 0 0; top: auto; justify-content: flex-end; gap: 2px;
+  background: linear-gradient(0deg, rgba(40,6,30,.66), rgba(40,6,30,0));
+  padding: 16px 10px 9px;
 }
 .s3d-bonus.spin .s3d-bonus-title { color: #ffd23f; font-size: clamp(8px, 2vw, 12px); }
 .s3d-bonus.spin .s3d-bonus-big   { font-size: clamp(15px, 3.6vw, 26px); color: #fff; }
@@ -2051,9 +2052,9 @@ body.demo-mode #bankroll { display: none !important; }
 
 /* ── on-TV win banner: sits in the black band just under the spinning reels ── */
 .s3d-winbanner {
-  position: absolute; left: 50%; bottom: 6%; transform: translateX(-50%);
+  position: absolute; left: 50%; bottom: 2.5%; transform: translateX(-50%);
   z-index: 7; pointer-events: none; display: inline-flex; align-items: center; gap: 9px;
-  padding: 6px 18px; border-radius: 999px; white-space: nowrap;
+  padding: 5px 16px; border-radius: 999px; white-space: nowrap;
   background: linear-gradient(180deg, rgba(8,22,15,.85), rgba(3,9,7,.93));
   border: 1px solid rgba(69,240,166,.55);
   box-shadow: 0 0 22px rgba(69,240,166,.4), inset 0 0 12px rgba(69,240,166,.16);
