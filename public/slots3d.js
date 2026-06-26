@@ -501,7 +501,7 @@
   };
   Slots3D.prototype._showWinBanner = function (label, kind) {
     this._buildWinBanner(); if (!this._wb) return;
-    this._wb.querySelector(".s3d-wb-label").textContent = label || "WIN";
+    this._wb.querySelector(".s3d-wb-label").textContent = (label == null) ? "WIN" : label;
     this._wb.className = "s3d-winbanner " + (kind || "");
     void this._wb.offsetWidth; this._wb.classList.add("pop");
   };
