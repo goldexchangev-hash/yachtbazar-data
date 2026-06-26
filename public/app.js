@@ -1582,6 +1582,7 @@
         side: coinHeads ? "HEADS" : "TAILS",
         youWon: playerWon,
         role: "participant",
+        picked: wantsHeads ? "HEADS" : "TAILS",
         amountUsd: playerWon ? weiToUsd(rv.netWei) : rv.amountUsd,
         tier: rv.tier,
         sub: playerWon ? "YOU WON! Net profit shown — your stake came back too (10% to host)" : "You lost your stake — it went to the host",
@@ -2176,7 +2177,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1125"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1126"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -2453,11 +2454,12 @@
       playOutcome({ won, netUsd: weiToUsd(rv.netWei), betUsd: v, side });
       TV.revealResult({
         side, youWon: won, role: "participant",
+        picked: wantsHeads ? "HEADS" : "TAILS", // show the player exactly what they bet vs what landed
         amountUsd: won ? weiToUsd(rv.netWei) : rv.amountUsd, tier: rv.tier,
         sub: won ? "DEMO win — play money (connect a wallet to play for real)" : "DEMO — play money, nothing real lost",
       });
       release();
-    }, 4200);
+    }, 2800); // land sooner — then the TV holds on the flat, fully-facing coin so the side is clear
   }
   function demoDice() {
     if (revealLock) return; // a reveal is in flight → ignore the spam tap (no stacked debits)
@@ -2592,7 +2594,7 @@
     const f = $("bj-frame");
     if (f && !f.src) {
       // No &bal= seed — the table starts from its own server default ($1,000), NOT the demo balance.
-      let src = "blackjack.html?tv=1&v=1125&guest=" + encodeURIComponent(bjGuestId());
+      let src = "blackjack.html?tv=1&v=1126&guest=" + encodeURIComponent(bjGuestId());
       if (bjPendingTable) { src += "&table=" + encodeURIComponent(bjPendingTable); bjPendingTable = null; }
       f.src = src; // loads the felt + scripts inside the TV
     }
@@ -3073,6 +3075,7 @@
           side,
           youWon,
           role: "participant",
+          picked: youWon ? side : (side === "HEADS" ? "TAILS" : "HEADS"), // your side won iff you won
           amountUsd: youWon ? weiToUsd(rv.netWei) : rv.amountUsd,
           tier: rv.tier,
           sub: youWon ? "YOU WON! Net profit shown — your stake came back too (10% to house)" : "You lost your stake — the pot went to the other side",

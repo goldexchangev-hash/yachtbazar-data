@@ -756,7 +756,11 @@
         void this.coin.offsetWidth; this.coin.style.transition = prev || "";
       }
       if (window.Chiptune) window.Chiptune.coin(); // the "catch" clink as it lands
-      await sleep(900); // matches the coinDrop arc
+      await sleep(940); // wait out the coinDrop arc so the coin is fully landed + DEAD FLAT
+      if (seq !== this._seq) { try { window.__onTvReveal && window.__onTvReveal(res); } catch (e) {} return; }
+      // HOLD on the clearly-landed, fully-facing coin so the player plainly sees which
+      // side it landed on BEFORE the result overlay covers it.
+      await sleep(1100);
       if (seq !== this._seq) { try { window.__onTvReveal && window.__onTvReveal(res); } catch (e) {} return; }
 
       // Result screen (per-viewer). Clear any prior celebration state.
@@ -784,7 +788,14 @@
         this.resultHeadline.textContent = "YOU LOSE";
         this.resultSub.textContent = res.sub || "Better luck next flip";
       }
-      this.resultCoin.textContent = "RESULT: " + res.side;
+      // Spell out exactly what happened so a win/loss can never "not make sense":
+      // what you picked → what the coin landed on → ✓/✗. (picked omitted for spectators.)
+      if (res.picked) {
+        const hit = res.picked === res.side;
+        this.resultCoin.innerHTML = "YOU PICKED <b>" + res.picked + "</b> · LANDED <b>" + res.side + "</b> " + (hit ? "✓" : "✗");
+      } else {
+        this.resultCoin.textContent = "RESULT: " + res.side;
+      }
       this._animateMoney(res);
       this._show("result");
       // While a full-motion cinematic reel is playing, hold the outcome cues
