@@ -879,6 +879,7 @@
       const layer = this.layers.result; if (!layer) return;
       this._clearConfetti(); this._clearCelebration();
       layer.classList.remove("win", "lose", "tier-big", "tier-mega");
+      void layer.offsetWidth; // reflow so the entrance/pop animations replay every round
       const tier = o.won ? (o.tier === "mega" ? "mega" : o.tier === "big" ? "big" : "normal") : "normal";
       if (o.won) {
         layer.classList.add("win");

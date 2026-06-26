@@ -12,6 +12,7 @@
   "use strict";
   const THREE = root.THREE, E = root.Slots3DEngine;
   const REELS = 5, ROWS = 3, MIN_BET = 10;
+  const PANY = 0.55; // shift the reels UP in frame, leaving a black shelf at the bottom for the win/bonus banners
 
   /* palette per symbol id (0..7) */
   const SYM = [
@@ -151,7 +152,7 @@
 
     const scene = new THREE.Scene(); scene.background = new THREE.Color(0x05060f);
     scene.fog = new THREE.Fog(0x05060f, 9, 18); this.scene = scene;
-    const cam = new THREE.PerspectiveCamera(42, W / H, 0.1, 100); cam.position.set(0, 0, 8.2); cam.lookAt(0, 0, 0); this.cam = cam;
+    const cam = new THREE.PerspectiveCamera(42, W / H, 0.1, 100); cam.position.set(0, -PANY, 8.2); cam.lookAt(0, -PANY, 0); this.cam = cam;
 
     // lighting — warm key + neon cyan/magenta rims
     scene.add(new THREE.AmbientLight(0x4a5a8a, 0.7));
@@ -230,8 +231,8 @@
     const winH = ROWS * this.TILE + 0.9;
     const zForW = (bankW / 0.94) / (2 * halfH * aspect); // width fits within 94%
     const zForH = (winH / 0.86) / (2 * halfH);           // height fits within 86%
-    this.cam.position.set(0, 0, Math.max(zForW, zForH));
-    this.cam.lookAt(0, 0, 0); this.cam.updateProjectionMatrix();
+    this.cam.position.set(0, -PANY, Math.max(zForW, zForH));
+    this.cam.lookAt(0, -PANY, 0); this.cam.updateProjectionMatrix();
   };
 
   // place tiles for current reel.pos and set their symbol textures
@@ -340,7 +341,8 @@
       this.balance = Math.round((this.balance + res.winUsd) * 100) / 100; this._save();
       this._showWinFx(res, bet);
     } else if (!this._bonus) {
-      this._msg("No win — spin again", "");
+      this._showWinBanner("", "miss"); if (this._wbAmt) this._wbAmt.textContent = "No win — spin again";
+      this._msg("", "");
       const C = root.Chiptune; if (C && C.lose) try { C.lose(); } catch (e) {}
     }
     this.lastRound = { nonce: this.nonce, win: res.winUsd };
@@ -566,7 +568,7 @@
     // gentle camera parallax + decaying impact shake
     this._shake = (this._shake || 0) * 0.86; if (this._shake < 0.003) this._shake = 0;
     const sx = (Math.random() - 0.5) * this._shake, sy = (Math.random() - 0.5) * this._shake;
-    this.cam.position.x = Math.sin(this._t * 0.4) * 0.18 + sx; this.cam.position.y = sy; this.cam.lookAt(0, 0, 0);
+    this.cam.position.x = Math.sin(this._t * 0.4) * 0.18 + sx; this.cam.position.y = -PANY + sy; this.cam.lookAt(0, -PANY, 0);
 
     this.renderer.render(this.scene, this.cam);
   };
