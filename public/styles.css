@@ -2038,17 +2038,21 @@ body.demo-mode #bankroll { display: none !important; }
 .pr-fair-reveal { font-family: ui-monospace, monospace; font-size: 10.5px; color: var(--s-green, #00e701); word-break: break-all; }
 
 /* Demo balance + reset, docked directly under the TV (moved out of the top bar) */
+/* One line, never wraps: chip + balance number + reset button always stay on a
+   single row. When space is tight the "Play balance" LABEL truncates first, so
+   the number and the Reset button are never pushed below or clipped. */
 .demo-below {
-  display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px 14px;
+  display: flex; align-items: center; justify-content: center; flex-wrap: nowrap; gap: 8px 10px;
   margin: 2px auto 0; max-width: 520px; padding: 8px 14px;
   background: linear-gradient(180deg, rgba(255, 196, 60, 0.14), rgba(255, 168, 40, 0.08));
   border: 1px solid rgba(255, 196, 60, 0.45); border-radius: 14px; box-shadow: var(--shadow);
 }
-.demo-below-chip { font-family: var(--display); font-size: 11px; font-weight: 800; letter-spacing: .5px; color: #2a1a00; background: #ffc43c; border-radius: 999px; padding: 3px 9px; box-shadow: 0 0 12px rgba(255,196,60,.5); }
-.demo-below-bal { font-weight: 700; color: #ffe6b0; }
-.demo-below-bal strong { color: #ffd23f; font-family: var(--display); font-size: 16px; margin-left: 6px; }
-.demo-below .demo-reset { border-color: rgba(255, 210, 63, 0.5); color: #ffe6b0; }
-@media (max-width: 640px) { .demo-below { gap: 6px 10px; padding: 7px 10px; } }
+.demo-below-chip { flex: 0 0 auto; font-family: var(--display); font-size: 11px; font-weight: 800; letter-spacing: .5px; color: #2a1a00; background: #ffc43c; border-radius: 999px; padding: 3px 9px; box-shadow: 0 0 12px rgba(255,196,60,.5); }
+.demo-below-lbl { flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 700; color: #ffe6b0; }
+.demo-below-num { flex: 0 0 auto; white-space: nowrap; color: #ffd23f; font-family: var(--display); font-size: clamp(13px, 3.6vw, 16px); }
+.demo-below .demo-reset { flex: 0 0 auto; white-space: nowrap; border-color: rgba(255, 210, 63, 0.5); color: #ffe6b0; }
+@media (max-width: 640px) { .demo-below { gap: 6px 8px; padding: 7px 10px; } .demo-below .demo-reset { padding: 7px 10px; font-size: 12px; } }
+@media (max-width: 440px) { .demo-below-lbl { display: none; } } /* phones: drop the label, keep DEMO · $balance · Reset on one line */
 
 /* Primary action button docked under the play balance (above the bet controls) */
 .action-dock { margin-top: 2px; }
