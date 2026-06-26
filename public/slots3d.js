@@ -157,6 +157,15 @@
       this.reels.push(reel);
     }
 
+    // Per-reel ANTICIPATION glow: a column lights up gold and pulses while it
+    // slow-rolls for a possible Vault/bonus. Hidden (opacity 0) until triggered.
+    this._anticGlows = [];
+    for (let r = 0; r < REELS; r++) {
+      const gMat = new THREE.MeshBasicMaterial({ color: 0xffcf3a, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+      const gl = new THREE.Mesh(new THREE.PlaneGeometry(this.REELW * 1.04, ROWS * this.TILE + 0.34), gMat);
+      gl.position.set((r - 2) * this.REELW, 0, 0.78); scene.add(gl); this._anticGlows.push(gl);
+    }
+
     // cabinet frame: top & bottom masks (hide buffer tiles) + neon side posts
     const maskMat = new THREE.MeshStandardMaterial({ color: 0x080c16, metalness: 0.5, roughness: 0.5 });
     const winH = ROWS * this.TILE; const bankW = REELS * this.REELW + 0.5;
@@ -229,26 +238,73 @@
     this._launchReels(grid, false);
     this._renderSpinBtn();
   };
-  // Start the eased reel-stop animation so each reel lands on the given grid.
-  // `fast` shortens the spin (used for the auto-played free spins).
+  // Write the result cells (3) into a reel's strip at a fresh land position some
+  // `turns` ahead of the current pos, scrambling the few cells just before the
+  // landing window so the approach reads as random. Sets start/land/t for the ease.
+  Slots3D.prototype._writeLand = function (reel, cells, turns) {
+    const L = reel.strip.length;
+    const land = Math.floor(reel.pos) + Math.max(3, turns | 0);
+    reel.strip[((land % L) + L) % L] = cells[0];
+    reel.strip[(((land + 1) % L) + L) % L] = cells[1];
+    reel.strip[(((land + 2) % L) + L) % L] = cells[2];
+    for (let k = 1; k <= 3; k++) reel.strip[((((land - k) % L) + L) % L)] = (Math.random() * 6) | 0; // no scatter teases right at the seam
+    reel.start = reel.pos; reel.land = land; reel.t = 0;
+  };
+  // Launch the reels. Normal spins use an ANTICIPATION model: reels stop
+  // left-to-right; the moment 2+ Vaults have landed, every remaining reel
+  // slow-rolls one at a time (dramatic decel + glowing column) because the next
+  // Vault could light the bonus. `fast` (free spins) skips anticipation.
   Slots3D.prototype._launchReels = function (grid, fast) {
+    // find the first reel index that should slow-roll: once stopped reels hold 2+ scatters
+    let anticStart = REELS, sc = 0;
+    if (!fast) {
+      for (let r = 0; r < REELS; r++) {
+        for (let row = 0; row < ROWS; row++) if (grid[r][row] === E.SCATTER) sc++;
+        if (sc >= 2 && r + 1 < REELS) { anticStart = r + 1; break; }
+      }
+    }
+    this._anticStart = anticStart;
     for (let r = 0; r < REELS; r++) {
-      const reel = this.reels[r], L = reel.strip.length;
-      const turns = (fast ? 8 : 14) + r * (fast ? 2 : 3) + ((Math.random() * 3) | 0);
-      const land = Math.floor(reel.pos) + turns;
-      // write the result into the strip at the landing window
-      reel.strip[((land % L) + L) % L] = grid[r][0];
-      reel.strip[(((land + 1) % L) + L) % L] = grid[r][1];
-      reel.strip[(((land + 2) % L) + L) % L] = grid[r][2];
-      // also scramble the cells just before landing so the approach looks random
-      for (let k = 1; k <= 3; k++) reel.strip[((((land - k) % L) + L) % L)] = (Math.random() * 8) | 0;
-      reel.spinning = true; reel.t = 0; reel.start = reel.pos; reel.land = land;
-      reel.dur = (fast ? 0.6 : 1.15) + r * (fast ? 0.14 : 0.32);
+      const reel = this.reels[r];
+      reel.cells = grid[r]; reel.glowTarget = 0;
+      if (r < anticStart) {
+        // normal cascade: ease to land with a staggered duration
+        this._writeLand(reel, grid[r], (fast ? 8 : 14) + r * (fast ? 2 : 3) + ((Math.random() * 3) | 0));
+        reel.mode = "ease"; reel.easePow = 3; reel.dur = (fast ? 0.6 : 1.15) + r * (fast ? 0.14 : 0.32);
+      } else {
+        // anticipation segment: spin freely (hold) until released sequentially
+        reel.mode = "hold"; reel.holdSpeed = 11 + Math.random() * 2; reel.t = 0;
+      }
     }
   };
 
+  // A reel just landed.
+  Slots3D.prototype._onReelStopped = function (r) {
+    if (root.Chiptune && root.Chiptune.blip) try { root.Chiptune.blip(); } catch (e) {}
+    // If this reel was in the anticipation segment, flare on a Vault / fade on a miss.
+    if (this._anticStart < REELS && r >= this._anticStart) {
+      if (this._landedGrid[r].indexOf(E.SCATTER) >= 0) this._anticHit(r); else this._anticMiss(r);
+    }
+    // Hand off: the next reel (if still holding) begins its dramatic slow roll.
+    if (r + 1 < REELS && this.reels[r + 1].mode === "hold") this._releaseAntic(r + 1);
+  };
+  Slots3D.prototype._releaseAntic = function (r) {
+    const reel = this.reels[r];
+    this._writeLand(reel, reel.cells, 5 + ((Math.random() * 2) | 0)); // a few slow turns from the held position
+    reel.mode = "antic"; reel.easePow = 5; reel.dur = 2.3; reel.glowTarget = 1;
+    if (root.Chiptune && root.Chiptune.swoosh) try { root.Chiptune.swoosh(2100); } catch (e) {} // rising tension
+  };
+  Slots3D.prototype._anticHit = function (r) {
+    this.reels[r].glowTarget = 1.7; // landed a Vault → keep the column lit + a gold flash
+    this.flash.material.color.set(0xffd23f); this.flash.material.opacity = Math.max(this.flash.material.opacity, 0.24);
+    this._punch(0.2);
+    const C = root.Chiptune; if (C && C.coin) try { C.coin(); } catch (e) {}
+  };
+  Slots3D.prototype._anticMiss = function (r) { this.reels[r].glowTarget = 0; }; // tension releases
+
   Slots3D.prototype._settle = function () {
     this._spinning = false; this.state = "win";
+    for (const rr of this.reels) rr.glowTarget = 0; // let any anticipation glows fade out
     const res = this._result, bet = this._betThisSpin;
     if (res.winUsd > 0) {
       this.balance = Math.round((this.balance + res.winUsd) * 100) / 100; this._save();
@@ -278,6 +334,7 @@
     if (res.scatter) res.scatter.cells.forEach((c) => { mark[c[0] + ":" + c[1]] = 1; });
     this._pulseCells(mark);
     const big = res.winUsd >= bet * 10, mega = res.winUsd >= bet * 40;
+    if (mega) this._punch(0.42); else if (big) this._punch(0.24);
     this.flash.material.opacity = mega ? 0.5 : big ? 0.34 : 0.2; this.flash.material.color.set(mega ? 0xffd23f : (this._bonus ? 0xff4d9d : 0x45f0a6));
     this._winFx = { t: 0, total: res.winUsd, shown: 0, dur: this._bonus ? 0.7 : (mega ? 1.9 : big ? 1.5 : 1.0), big: big, mega: mega, lastCoin: -1 };
     const n = mega ? 46 : big ? 28 : 14; for (let i = 0; i < n; i++) this._spawnCoin();
@@ -294,6 +351,10 @@
     if (!plan.spins) { clearTimeout(this._idleT); this._idleT = setTimeout(() => { this.state = "idle"; this._msg("Tap SPIN", ""); this._renderSpinBtn(); }, 1600); return; }
     this._bonus = { plan: plan, i: 0, total: 0, count: scatterCount };
     this._renderSpinBtn();
+    // punchy trigger: gold flash, screen shake, a burst of coins, lit Vault columns
+    this._punch(0.6); this.flash.material.color.set(0xffd23f); this.flash.material.opacity = 0.65;
+    for (let i = 0; i < 42; i++) this._spawnCoin();
+    if (this._result && this._result.scatter) this._result.scatter.cells.forEach((c) => { this.reels[c[0]].glowTarget = 1.5; });
     this._showOverlay("🔓 VAULT BONUS!", plan.spins + " FREE SPINS", "every win pays ×" + plan.mult, "intro");
     const C = root.Chiptune; if (C && C.jackpot) try { C.jackpot(); } catch (e) {}
     clearTimeout(this._bonusT); this._bonusT = setTimeout(() => this._bonusSpin(), 2100);
@@ -387,26 +448,32 @@
     this._raf = requestAnimationFrame(this._loop);
     const now = performance.now(); const dt = Math.min(0.05, (now - (this._last || now)) / 1000); this._last = now; this._t += dt;
 
-    // reels
+    // reels — mode-driven: ease (cascade), hold (free spin awaiting release), antic (slow roll)
     if (this._spinning) {
-      let allStopped = true;
       for (let r = 0; r < REELS; r++) {
         const reel = this.reels[r];
-        if (!reel.spinning) continue;
-        allStopped = false;
+        if (reel.mode === "stopped") continue;
+        if (reel.mode === "hold") { reel.pos += reel.holdSpeed * dt; continue; } // free spin, no land yet
         reel.t += dt; const k = Math.min(1, reel.t / reel.dur);
-        const e = 1 - Math.pow(1 - k, 3); // easeOutCubic (fast → settle)
+        const e = 1 - Math.pow(1 - k, reel.easePow || 3);
         reel.pos = reel.start + (reel.land - reel.start) * e;
-        if (k >= 1) { reel.pos = reel.land; reel.spinning = false;
-          if (root.Chiptune && root.Chiptune.blip) try { root.Chiptune.blip(); } catch (x) {} }
+        if (k >= 1) { reel.pos = reel.land; reel.mode = "stopped"; this._onReelStopped(r); }
       }
       this._paintReels();
-      if (allStopped || this.reels.every((rr) => !rr.spinning)) { this._paintReels(); this._settle(); }
+      if (this.reels.every((rr) => rr.mode === "stopped")) { this._paintReels(); this._settle(); }
     } else { this._paintReels(); }
 
     // trim neon pulse
     const tp = 1.0 + 0.35 * Math.sin(this._t * 3);
     this._trimTop.material.emissiveIntensity = tp; this._trimBot.material.emissiveIntensity = tp;
+
+    // per-reel anticipation glow (eased toward target, pulsing while it rolls)
+    if (this._anticGlows) for (let r = 0; r < REELS; r++) {
+      const reel = this.reels[r], gl = this._anticGlows[r];
+      reel.glow += (reel.glowTarget - reel.glow) * Math.min(1, dt * 7);
+      const pulse = reel.mode === "antic" ? (0.62 + 0.38 * Math.abs(Math.sin(this._t * 9))) : 1;
+      gl.material.opacity = Math.max(0, reel.glow * 0.42 * pulse);
+    }
 
     // win count-up
     if (this._winFx) { const w = this._winFx; w.t += dt; const kk = Math.min(1, w.t / w.dur); w.shown = w.total * (1 - Math.pow(1 - kk, 3));
@@ -424,11 +491,14 @@
     // flash decay
     if (this.flash.material.opacity > 0.01) this.flash.material.opacity *= 0.9; else this.flash.material.opacity = 0;
 
-    // gentle camera parallax
-    this.cam.position.x = Math.sin(this._t * 0.4) * 0.18; this.cam.lookAt(0, 0, 0);
+    // gentle camera parallax + decaying impact shake
+    this._shake = (this._shake || 0) * 0.86; if (this._shake < 0.003) this._shake = 0;
+    const sx = (Math.random() - 0.5) * this._shake, sy = (Math.random() - 0.5) * this._shake;
+    this.cam.position.x = Math.sin(this._t * 0.4) * 0.18 + sx; this.cam.position.y = sy; this.cam.lookAt(0, 0, 0);
 
     this.renderer.render(this.scene, this.cam);
   };
+  Slots3D.prototype._punch = function (amt) { this._shake = Math.max(this._shake || 0, amt); };
 
   Slots3D.prototype._clearWinFx = function () {
     for (const p of this._pulses) { p.tile.scale.set(1, 1, 1); p.tile.userData.mat.emissiveIntensity = 0.55; }
