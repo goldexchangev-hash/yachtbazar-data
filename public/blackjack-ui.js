@@ -285,13 +285,29 @@
     this.E.phaseBanner.style.display = (m.phase === "turns") ? "none" : "block";
   };
   BlackjackClient.prototype._tick = function () {
-    var ring = this.E.ring, m = this.room;
-    if (!m || !this.phaseTotal || (m.phase !== "betting" && m.phase !== "turns" && m.phase !== "insurance")) { ring.style.display = "none"; return; }
-    ring.style.display = "grid";
-    var remaining = Math.max(0, this.deadline - (Date.now() + this.skew));
-    var sec = Math.ceil(remaining / 1000), pct = Math.max(0, Math.min(100, (remaining / this.phaseTotal) * 100));
-    ring.style.setProperty("--p", pct.toFixed(1)); ring.setAttribute("data-sec", sec);
-    ring.className = "ring" + (sec <= 3 ? " crit" : (sec <= 6 ? " warn" : ""));
+    var m = this.room, E = this.E;
+    var remaining = m ? Math.max(0, this.deadline - (Date.now() + this.skew)) : 0;
+    // center ring — betting & insurance (the phase banner is visible then)
+    if (E.ring) {
+      if (m && this.phaseTotal && (m.phase === "betting" || m.phase === "insurance")) {
+        E.ring.style.display = "grid";
+        var sec = Math.ceil(remaining / 1000), pct = Math.max(0, Math.min(100, (remaining / this.phaseTotal) * 100));
+        E.ring.style.setProperty("--p", pct.toFixed(1)); E.ring.setAttribute("data-sec", sec);
+        E.ring.className = "ring" + (sec <= 3 ? " crit" : (sec <= 6 ? " warn" : ""));
+      } else E.ring.style.display = "none";
+    }
+    // dock turn-timer — ONLY on your own turn (auto-stands when it empties)
+    if (E.turnTimer) {
+      var myTurn = m && m.phase === "turns" && this.you && m.turnIdx === this.you.seat;
+      if (myTurn) {
+        E.turnTimer.hidden = false;
+        var total = PHASE_TOTAL.turns || 20000;
+        var s2 = Math.ceil(remaining / 1000), pct2 = Math.max(0, Math.min(100, (remaining / total) * 100));
+        if (E.ttFill) E.ttFill.style.width = pct2.toFixed(1) + "%";
+        if (E.ttLabel) E.ttLabel.textContent = "⏱ Auto-stand in " + s2 + "s";
+        E.turnTimer.className = "turn-timer" + (s2 <= 3 ? " crit" : (s2 <= 6 ? " warn" : ""));
+      } else E.turnTimer.hidden = true;
+    }
   };
 
   /* ---------------- control dock ---------------- */
