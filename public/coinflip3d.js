@@ -262,8 +262,17 @@
       const fall = this._dropY0 + (0.4 - this._dropY0) * (1 - Math.pow(1 - k, 2));
       const bounce = 0.5 * Math.exp(-5 * k) * Math.abs(Math.cos(k * 16));
       c.position.y = fall + bounce; c.position.z = Math.max(0, c.position.z - dt * 2.2);
-      // ease the spin onto the exact landing rotation
-      const se = 1 - Math.pow(1 - k, 3); this._spin = this._spinStart + (this._spinEnd - this._spinStart) * se;
+      // Land WITHOUT a last-second fake-out. A plain ease-out decelerates straight through
+      // the opposite face right before the result face, so you clearly see (e.g.) heads
+      // then watch it roll over to tails — feels like a bait-and-switch. Instead overshoot
+      // slightly PAST the result face during the fast blur, then settle BACK onto it: the
+      // opposite-face crossing happens at speed early, and the slow, readable settle is
+      // always on the winning side.
+      const OVER = 0.45; // overshoot in radians — stays within the result-face hemisphere
+      const peak = this._spinEnd + (this._spinEnd >= this._spinStart ? OVER : -OVER);
+      const kp = 0.6;
+      if (k < kp) { const kk = k / kp, e = 1 - Math.pow(1 - kk, 2); this._spin = this._spinStart + (peak - this._spinStart) * e; }
+      else { const kk = (k - kp) / (1 - kp), e = 1 - Math.pow(1 - kk, 2); this._spin = peak + (this._spinEnd - peak) * e; }
       c.rotation.x = this._spin;
       // settle wobble on Z
       c.rotation.z = (k > 0.5 ? 1 : 0) * 0.13 * Math.exp(-6 * (k - 0.5)) * Math.cos(22 * (k - 0.5));
