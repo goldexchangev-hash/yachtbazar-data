@@ -158,6 +158,10 @@
     const ch = (window.TV && TV._activeChannel) || 8;
     const m = SHARE_GAME[ch] || ["Crypto TV", "🎰"];
     let amountUsd = (res.amountUsd != null) ? res.amountUsd : (typeof res.winUsd === "number" ? res.winUsd : 0);
+    // Slots (CH 12) reveal carries GROSS winUsd (stake-inclusive); every other
+    // game's amountUsd is NET profit. Subtract the stake so the share card's
+    // "+$X" matches the +profit semantics used by flip/dice/crash.
+    if (ch === 12 && res.amountUsd == null && typeof res.winUsd === "number" && typeof res.betUsd === "number") amountUsd = res.winUsd - res.betUsd;
     let detail = "";
     if (ch === 11 && res.crashX != null) detail = "cashed " + Number(res.targetX).toFixed(2) + "× · crashed " + Number(res.crashX).toFixed(2) + "×";
     else if (res.mult != null && res.mult > 0) detail = Number(res.mult).toFixed(2) + "× payout";
@@ -947,6 +951,7 @@
   // it doesn't move (up=won / down=lost) and spoil the reveal. Unlocked when the
   // TV actually shows the result (tv.js fires window.__onTvReveal).
   let revealLock = false, revealLockTimer = 0;
+  let demoFlipBusy = false; // a flip settles money immediately; block a 2nd until its reveal lands
   function lockReveal() {
     revealLock = true;
     clearTimeout(revealLockTimer);
@@ -1017,9 +1022,10 @@
     preloadReels();     // decode soundtracks + warm videos in the background
   }
   function setupRevealAudioUnlock() {
-    ["pointerdown", "touchend", "click", "keydown"].forEach((ev) => document.addEventListener(ev, unlockReelAudio, { passive: true }));
+    const evs = ["pointerdown", "touchend", "click", "keydown"];
+    const f = () => { unlockReelAudio(); evs.forEach((e) => document.removeEventListener(e, f)); };
+    evs.forEach((e) => document.addEventListener(e, f, { passive: true, once: true }));
   }
-  let cineTimer = 0;
   // The outcome "payoff" — balance update + (fallback) win/loss sound — fires at
   // the reel's CLIMAX (when Scarfblade opens the chest), not at the start, so it
   // never spoils the result early. If the reel is playing WITH its own audio we
@@ -1036,6 +1042,7 @@
   }
   function videoReveal(won, netUsd) {
     const v = $("reveal-video"); if (!v) return false;
+    let myTimer = 0; // per-reveal safety timer so overlapping reveals don't orphan each other's
     const vids = won ? CINE.win : CINE.loss;
     const auds = won ? CINE_AUDIO.win : CINE_AUDIO.loss;
     if (!vids || !vids.length) return false;
@@ -1045,14 +1052,14 @@
     const pay = () => { if (paid) return; paid = true; cinePayoff(won, netUsd || 0); };
     const done = () => {
       if (ended) return; ended = true;
-      clearTimeout(cineTimer); v.onended = null; v.onerror = null; v.oncanplay = null;
+      clearTimeout(myTimer); v.onended = null; v.onerror = null; v.oncanplay = null;
       pay();                                              // balance + fanfare at the very end (no spoiler)
       try { if (clip) clip.stop(); } catch {}
       v.classList.remove("show"); try { v.pause(); } catch {} v.removeAttribute("src"); try { v.load(); } catch {}
       try { window.__winSceneActive = false; window.__cineActive = false; } catch {}
       try { window.Chiptune && Chiptune.duckMusic(false); } catch {}
     };
-    clearTimeout(cineTimer);
+    clearTimeout(myTimer);
     resumeVideoCtx();                                     // make sure the audio context is awake
     try { window.Chiptune && Chiptune.duckMusic(true); } catch {}
     // The VIDEO is always muted -> it autoplays on every platform, and never
@@ -1073,19 +1080,19 @@
     const startClip = (buf) => {
       if (ended || !buf) return false;
       clip = (window.Chiptune && Chiptune.playClip) ? Chiptune.playClip(buf, done) : null;
-      cineTimer = setTimeout(done, buf.duration * 1000 + 1500); // safety past the clip
+      myTimer = setTimeout(done, buf.duration * 1000 + 1500); // safety past the clip
       return !!clip;
     };
     const buf = reelAudio[audUrl];
     if (buf) {
-      if (!startClip(buf)) { v.onended = done; cineTimer = setTimeout(done, 9500); }
+      if (!startClip(buf)) { v.onended = done; myTimer = setTimeout(done, 9500); }
     } else {
       // not decoded yet — fetch+decode on the fly, drive off the video meanwhile
       v.onended = done;
-      cineTimer = setTimeout(done, 9500);
+      myTimer = setTimeout(done, 9500);
       fetch(audUrl).then((r) => r.arrayBuffer()).then((ab) => Chiptune.decode(ab)).then((b) => {
         reelAudio[audUrl] = b;
-        if (!ended && !clip) { clearTimeout(cineTimer); v.onended = null; startClip(b); }
+        if (!ended && !clip) { clearTimeout(myTimer); v.onended = null; startClip(b); }
       }).catch(() => {});
     }
     return true;
@@ -1902,14 +1909,14 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=984").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=985").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=984"))
+      .then(() => loadScriptOnce("slots.js?v=985"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -1919,9 +1926,9 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=984"))
-      .then(() => loadScriptOnce("pressure-render.js?v=984"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=984"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=985"))
+      .then(() => loadScriptOnce("pressure-render.js?v=985"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=985"))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -2019,7 +2026,7 @@
   //  the on-chain games and drive the SAME TV animations. Nothing touches the
   //  chain; the demo balance lives only in localStorage.
   // ════════════════════════════════════════════════════════════════════════
-  function demoSave() { try { localStorage.setItem("ctf_demo_usd", String(Math.round(demoUsd))); } catch {} }
+  function demoSave() { try { localStorage.setItem("ctf_demo_usd", String(Math.round(demoUsd * 100) / 100)); } catch {} }
   function demoPaint() {
     if (revealLock) return; // frozen mid-reveal so the balance can't spoil the outcome
     const b = $("game-balance"); if (b) b.textContent = usd(demoUsd);
@@ -2091,6 +2098,7 @@
   const demoTier = (profitUsd) => (profitUsd >= 500 ? "mega" : profitUsd >= 100 ? "big" : "normal");
 
   function demoFlip() {
+    if (demoFlipBusy) return; // a flip is still settling → ignore the spam tap/key
     const v = demoStake("house-bet"); if (!v) return;
     const wantsHeads = sideOf("house-side");
     rememberBet(v);
@@ -2102,6 +2110,9 @@
     // Win pays the pot minus the 10% house cut = 1.8× stake → +0.8× profit.
     // Credit in plain USD to match the other demo games (no wei round-trip drift).
     demoUsd += (won ? 0.8 * v : -v); demoSave();
+    demoFlipBusy = true;
+    const fb = $("play-house-btn"); if (fb) fb.disabled = true;
+    const release = () => { demoFlipBusy = false; if (fb) fb.disabled = false; };
     lockReveal();
     TV.startFlip({ p1: "DEMO", p2: "HOUSE", p1Heads: wantsHeads });
     const seq = TV._seq;
@@ -2110,13 +2121,14 @@
     setTimeout(() => {
       // Tuned away mid-flip → release the frozen balance now instead of waiting
       // out the 20s safety timer.
-      if (!demoOn || TV._seq !== seq) { try { window.__onTvReveal && window.__onTvReveal({}); } catch (e) {} return; }
+      if (!demoOn || TV._seq !== seq) { release(); try { window.__onTvReveal && window.__onTvReveal({}); } catch (e) {} return; }
       playOutcome({ won, netUsd: weiToUsd(rv.netWei), betUsd: v, side });
       TV.revealResult({
         side, youWon: won, role: "participant",
         amountUsd: won ? weiToUsd(rv.netWei) : rv.amountUsd, tier: rv.tier,
         sub: won ? "DEMO win — play money (connect a wallet to play for real)" : "DEMO — play money, nothing real lost",
       });
+      release();
     }, 4200);
   }
   function demoDice() {
@@ -2277,6 +2289,7 @@
     // keyboard: ←/→ to cycle channels through every game
     $("game-nav").addEventListener("keydown", (e) => {
       const i = GAME_ORDER.indexOf(currentGame);
+      if (i < 0) return; // unknown/hidden channel (e.g. poker) → don't snap to flip
       if (e.key === "ArrowLeft") switchGame(GAME_ORDER[Math.max(0, i - 1)]);
       else if (e.key === "ArrowRight") switchGame(GAME_ORDER[Math.min(GAME_ORDER.length - 1, i + 1)]);
     });
@@ -2569,7 +2582,7 @@
     rev.onclick = () => { rev.replaceWith(document.createTextNode(" " + short(from))); try { navigator.clipboard && navigator.clipboard.writeText(from); } catch {} };
     const colon = document.createElement("span"); colon.className = "chat-handle"; colon.textContent = ":";
     const t = document.createElement("span");
-    t.className = "chat-text";
+    t.className = "chat-text selectable"; // long-press copy on mobile (selectstart exempts .selectable)
     t.textContent = " " + text;
     line.appendChild(h); line.appendChild(rev); line.appendChild(colon); line.appendChild(t);
     if (ts) { const a = document.createElement("span"); a.className = "chat-ago"; a.textContent = " " + agoLabel(ts); line.appendChild(a); }
@@ -3304,30 +3317,54 @@
       const inp = $("invite-link"); if (!inp) return; inp.select();
       navigator.clipboard?.writeText(inp.value).then(() => toast("Invite link copied! 🎟️", "ok"), () => {});
     };
-    // ---- Keyboard hotkeys (skip while typing) ----
+    // Step the CURRENT game's stake slider (not just the flip one) and refresh it.
+    function stepCurrentStake(dir) {
+      const SL = { flip: "house-bet", dice: "dice-stake", twodice: "td-stake", crash: "crash-stake", slots: "slots-stake", pressure: "pr-bet-slider" };
+      const s = $(SL[currentGame]); if (!s) return false;
+      const step = (+s.step || 5) * (dir > 0 ? 1 : -1);
+      const v = Math.max(+s.min || 0, Math.min(+s.max || 1e9, (+s.value || 0) + step));
+      if (String(v) === s.value) return true;
+      s.value = String(v);
+      try { s.dispatchEvent(new Event("input", { bubbles: true })); } catch (e) {}
+      return true;
+    }
+    // ---- Keyboard hotkeys (skip while typing / over a modal / on a focused control) ----
     document.addEventListener("keydown", (e) => {
       const el = e.target, tag = (el.tagName || "").toLowerCase();
-      if (tag === "input" || tag === "textarea" || el.isContentEditable) return;
+      if (tag === "input" || tag === "textarea" || tag === "select" || el.isContentEditable) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const k = e.key.toLowerCase();
-      const betOpen = !$("bet-modal").classList.contains("hidden");
-      if (k === "escape") { closeBetModal(); $("help-modal").classList.add("hidden"); $("nego-modal").classList.add("hidden"); { const pm = $("profile-modal"); if (pm) pm.classList.add("hidden"); } return; }
-      if (k === " " || k === "enter") {
-        e.preventDefault(); // ALWAYS stop space/enter from scrolling the page
-        if (betOpen) { $("bet-accept").click(); return; } // confirm the open bet
-        // Space/Enter = "bet the CURRENT game" (was always firing the flip button,
-        // which made any game jump to a coin flip). Balloon Pop owns space itself.
-        if (currentGame === "pressure") return;
+      const isOpen = (id) => { const m = $(id); return !!(m && !m.classList.contains("hidden")); };
+      const betOpen = isOpen("bet-modal");
+
+      if (k === "escape") { // close only the topmost open overlay
+        if (betOpen) { closeBetModal(); return; }
+        for (const id of ["nego-modal", "profile-modal", "help-modal"]) if (isOpen(id)) { $(id).classList.add("hidden"); return; }
+        if (document.body.classList.contains("chat-open")) document.body.classList.remove("chat-open");
+        return;
+      }
+      if (betOpen) { if (k === "enter") { e.preventDefault(); $("bet-accept").click(); } return; }
+      // Behind any open overlay → don't fire game hotkeys.
+      if (isOpen("help-modal") || isOpen("profile-modal") || isOpen("nego-modal") ||
+          document.body.classList.contains("chat-open") || document.body.classList.contains("rail-open")) return;
+
+      if (k === " ") {
+        if (e.repeat) { e.preventDefault(); return; } // ignore key-repeat → no bet flood
+        // If a real control is focused, let SPACE activate it natively (don't hijack).
+        const focusable = el !== document.body && (tag === "button" || tag === "a" || el.getAttribute("role") === "tab" || (typeof el.tabIndex === "number" && el.tabIndex >= 0));
+        if (focusable) return;
+        e.preventDefault(); // no page scroll
+        if (currentGame === "pressure") return; // Balloon Pop owns space (pump)
         const BTN = { flip: "play-house-btn", dice: "dice-roll-btn", twodice: "td-roll-btn", crash: "crash-launch", slots: "slots-spin" };
         const btn = $(BTN[currentGame] || "play-house-btn");
         if (btn && !btn.disabled) btn.click();
         return;
       }
-      if (betOpen) return;
-      if (k === "h") setHotSide(true);
-      else if (k === "t") setHotSide(false);
-      else if (k === "+" || k === "=" || k === "arrowup") { e.preventDefault(); stepHouseBet(5); }
-      else if (k === "-" || k === "_" || k === "arrowdown") { e.preventDefault(); stepHouseBet(-5); }
+      if (k === "enter") return; // native: activate the focused control (e.g. a game tab)
+      if (k === "h" && currentGame === "flip") setHotSide(true);
+      else if (k === "t" && currentGame === "flip") setHotSide(false);
+      else if (k === "+" || k === "=" || k === "arrowup") { if (stepCurrentStake(1)) e.preventDefault(); }
+      else if (k === "-" || k === "_" || k === "arrowdown") { if (stepCurrentStake(-1)) e.preventDefault(); }
     });
     $("help-btn").onclick = () => $("help-modal").classList.remove("hidden");
     $("help-close").onclick = () => $("help-modal").classList.add("hidden");
@@ -3400,11 +3437,16 @@
         menu.classList.toggle("hidden");
         if (!menu.classList.contains("hidden")) {
           renderTrackList();
-          // On mobile the top bar wraps, so pin the (fixed) menu just below it.
+          // Menu is position:fixed (escapes the topbar stacking context), so pin it
+          // just below the bar at all widths. Align its right edge to the button.
+          const tb = document.querySelector(".topbar");
+          menu.style.top = ((tb ? tb.getBoundingClientRect().bottom : 60) + 6) + "px";
           if (window.matchMedia("(max-width:640px)").matches) {
-            const tb = document.querySelector(".topbar");
-            menu.style.top = ((tb ? tb.getBoundingClientRect().bottom : 60) + 6) + "px";
-          } else { menu.style.top = ""; }
+            menu.style.right = ""; // mobile rule stretches it full-width (left/right:10px)
+          } else {
+            const r = sb.getBoundingClientRect();
+            menu.style.right = Math.max(10, window.innerWidth - r.right) + "px";
+          }
         }
       }; }
     { const p = $("music-play"); if (p) p.onclick = (e) => { e.stopPropagation(); if (!window.Chiptune) return; const on = Chiptune.toggle(); userMutedMusic = !on; syncSoundBtn(); }; }
@@ -3524,12 +3566,9 @@
     const inField = (t) => !!(t && t.closest && t.closest("input, textarea, select, [contenteditable=\"true\"], .selectable"));
     ["gesturestart", "gesturechange", "gestureend"].forEach((ev) => document.addEventListener(ev, stop, { passive: false }));
     document.addEventListener("touchmove", (e) => { if (e.touches && e.touches.length > 1) stop(e); }, { passive: false });
-    let lastEnd = 0;
-    document.addEventListener("touchend", (e) => {
-      const now = Date.now();
-      if (now - lastEnd <= 350) stop(e); // kill double-tap (and double-tap-hold) zoom
-      lastEnd = now;
-    }, { passive: false });
+    // NB: no touchend double-tap guard — preventDefault on touchend suppresses the
+    // synthesized click, so a fast second tap would silently do nothing. Double-tap
+    // zoom is already killed by `touch-action: manipulation` + the viewport meta.
     document.addEventListener("dblclick", stop, { passive: false });
     // Stop the iOS long-press magnifier loupe at its source (selection start),
     // except inside real form fields. Also block the long-press context menu.

@@ -70,6 +70,12 @@ input, textarea, select, [contenteditable="true"], .selectable, .selectable * {
   -webkit-user-select: text !important; -moz-user-select: text !important;
   -ms-user-select: text !important; user-select: text !important;
 }
+/* informational readouts (addresses, payouts, chat, feed) stay long-press copyable */
+.chat-text, #contract-link, #profile-addr-short, .feed-list li, .result-money {
+  -webkit-user-select: text !important; -moz-user-select: text !important;
+  -ms-user-select: text !important; user-select: text !important;
+  -webkit-touch-callout: default !important;
+}
 /* tone the neon backdrop way down — the Stake shell is flat dark navy */
 .bg-glow { opacity: 0.12; }
 .bg-grid { opacity: 0.5; }
@@ -1301,6 +1307,7 @@ body:not(.game-poker) #poker-view { display:none !important; }
   -webkit-appearance: none; appearance: none; width: 100%; height: 40px;
   background: #0c1424; border: 1px solid #25395a; border-radius: 10px;
   color: #ffe34d; font: 700 16px/1 "Space Grotesk", sans-serif; text-align: center; padding: 0 10px;
+  touch-action: auto; -ms-touch-action: auto; /* it's a typed number field, not a range slider */
 }
 #crash-target.slider-dice:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 0 2px rgba(0,234,255,.25); }
 #crash-target-presets .qbet { font-weight: 700; }
@@ -1385,7 +1392,8 @@ body:not(.game-poker) #poker-view { display:none !important; }
 .topbar {
   position: sticky; top: 0; z-index: 50;
   background: var(--s-panel); border-bottom: 1px solid var(--s-border);
-  min-height: var(--topbar-h); padding: 0 18px; backdrop-filter: none;
+  min-height: calc(var(--topbar-h) + env(safe-area-inset-top, 0px));
+  padding: env(safe-area-inset-top, 0px) 18px 0; backdrop-filter: none;
 }
 .topbar .brand-name, .topbar .brand-tv { display: none; } /* brand lives in the sidebar now */
 .brand-live { background: transparent; }
@@ -1455,11 +1463,13 @@ html, body {
   overflow-x: hidden;
   overscroll-behavior-x: none;   /* no horizontal rubber-band / swipe-nav */
 }
-/* Every range slider owns its touch gesture, so a drag never scrolls the page. */
+/* Range sliders capture horizontal thumb drags but must still allow a vertical
+   swipe to scroll the page (pan-y), so a finger that lands on a slider mid-scroll
+   doesn't freeze the page. */
 .slider,
 input[type="range"] {
-  touch-action: none;
-  -ms-touch-action: none;
+  touch-action: pan-y;
+  -ms-touch-action: pan-y;
 }
 /* The slider track/thumb shouldn't be text-selectable on a drag either. */
 .slider, .slider-wrap, .td-slider-wrap {
@@ -1545,6 +1555,11 @@ body.chat-open .chat-drawer { transform: translateX(0); }
 /* ════════ Mobile bottom tab bar ════════ */
 .bottom-nav { display: none; }
 @media (max-width: 900px) {
+  /* meet the ~44px touch-target guidance for the smallest, most-tapped controls */
+  .btn-mini, .mm-ctrl, .chat-drawer-close, .modal-close {
+    min-width: 40px; min-height: 40px;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
   .bottom-nav {
     display: grid; grid-template-columns: repeat(4, 1fr);
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 64;
@@ -1558,14 +1573,16 @@ body.chat-open .chat-drawer { transform: translateX(0); }
   }
   .bn-ic { font-size: 18px; line-height: 1; }
   .bn-item:active, .bn-item.active { color: var(--s-green); }
-  body { padding-bottom: 64px; } /* keep content clear of the bar */
-  .toast { bottom: 78px; }       /* lift toasts above the bar */
+  body { padding-bottom: calc(64px + env(safe-area-inset-bottom)); } /* keep content clear of the bar + home indicator */
+  .toast { bottom: calc(78px + env(safe-area-inset-bottom)); }       /* lift toasts above the bar */
 }
 
 /* ════════ Music dropdown (top bar) ════════ */
 .music-wrap { position: relative; }
 .music-menu {
-  position: absolute; top: calc(100% + 8px); right: 0; z-index: 80;
+  /* fixed + high z-index so it escapes the sticky topbar's stacking context and
+     paints above the chat drawer (z:70) / left rail; positioned in JS. */
+  position: fixed; top: 64px; right: 10px; z-index: 120;
   width: 240px; max-width: calc(100vw - 24px);
   background: var(--s-panel); border: 1px solid var(--s-border);
   border-radius: var(--r-md); box-shadow: 0 12px 40px rgba(0,0,0,.5); padding: 10px;
@@ -1847,7 +1864,7 @@ body.demo-mode #bankroll { display: none !important; }
   line-height: 1.15; padding: 10px 12px;
 }
 .act-btn .ab-verb { font-family: var(--display); font-weight: 800; font-size: 15px; letter-spacing: .5px; }
-.act-btn .ab-amt { font-weight: 700; font-size: 13px; opacity: .9; letter-spacing: .2px; }
+.act-btn .ab-amt { font-weight: 700; font-size: clamp(11px, 3.4vw, 13px); opacity: .9; letter-spacing: .2px; white-space: normal; text-align: center; word-break: break-word; max-width: 100%; }
 .act-btn .ab-amt b { font-weight: 800; }
 @media (max-width: 640px) {
   .act-btn .ab-verb { font-size: 14px; }

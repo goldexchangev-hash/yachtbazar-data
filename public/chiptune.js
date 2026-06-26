@@ -195,6 +195,8 @@
     BAR = 4 * BEAT;
   }
 
+  const MUSIC_GAIN = 0.42; // melodic content sits above the beat (single source of truth)
+  let _duckN = 0; // depth counter: music only un-ducks when the last consumer releases
   let ctx = null, master = null, musicGain = null, noiseBuf = null;
   let on = false, barIdx = 0, nextBarTime = 0, schedulerTimer = null;
 
@@ -225,7 +227,7 @@
     master.gain.value = 0.6;
     master.connect(ctx.destination);
     musicGain = ctx.createGain();
-    musicGain.gain.value = 0.42; // melodic content sits above the beat
+    musicGain.gain.value = MUSIC_GAIN; // melodic content sits above the beat
     musicGain.connect(master);
     // noise buffer for hi-hats + snare
     const len = Math.floor(ctx.sampleRate * 0.3);
@@ -483,8 +485,10 @@
     // full-motion reel plays so its own audio can be heard over the loop.
     duckMusic(down) {
       try {
-        if (musicGain && ctx) musicGain.gain.setTargetAtTime(down ? 0.02 : 0.42, ctx.currentTime, 0.08);
-        if (audioEl) audioEl.volume = down ? 0.05 : 0.6;
+        _duckN = Math.max(0, _duckN + (down ? 1 : -1));
+        const ducked = _duckN > 0; // only un-duck once every overlapping reveal has released
+        if (musicGain && ctx) musicGain.gain.setTargetAtTime(ducked ? 0.02 : MUSIC_GAIN, ctx.currentTime, 0.08);
+        if (audioEl) audioEl.volume = ducked ? 0.05 : 0.6;
       } catch (e) {}
     },
 
@@ -572,12 +576,20 @@
   // the page becomes visible/focused, and resume on the next tap (iOS only allows
   // a resume inside a user gesture).
   try {
-    const recover = () => { try { Chiptune.resync(); } catch (e) {} };
+    // Debounce: focus + visibilitychange + pageshow can all fire within a few ms
+    // of returning to the tab; collapse them into a single resync so the scheduler
+    // is torn down and rebuilt exactly once.
+    let _recoverT = 0;
+    const recover = () => { clearTimeout(_recoverT); _recoverT = setTimeout(() => { try { Chiptune.resync(); } catch (e) {} }, 50); };
     document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") recover(); });
     window.addEventListener("focus", recover);
     window.addEventListener("pageshow", recover);
     // cheap belt-and-suspenders: any tap resumes a suspended context (iOS)
     ["pointerdown", "touchend", "click", "keydown"].forEach((ev) =>
-      window.addEventListener(ev, () => { try { if (ctx && ctx.state !== "running") ctx.resume(); } catch (e) {} }, { passive: true, capture: true }));
+      window.addEventListener(ev, () => {
+        try {
+          if (ctx && ctx.state !== "running") { ctx.resume(); recover(); } // re-arm the scheduler too, not just the ctx
+        } catch (e) {}
+      }, { passive: true, capture: true }));
   } catch (e) {}
 })();

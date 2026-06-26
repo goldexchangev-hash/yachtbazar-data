@@ -140,6 +140,7 @@
       const tick = (t) => {
         this._staticRAF = requestAnimationFrame(tick);
         if (document.hidden) return;          // don't burn cycles in a background tab
+        if (!this.staticCanvas.offsetParent) return; // TV is display:none (e.g. poker view) — skip
         if (window.__winSceneActive) return;  // a win scene covers the TV — don't paint static
         if (this._staticIntensity <= 0.02) { if (!this._grainDone) { ctx.clearRect(0, 0, W, H); this.staticCanvas.style.opacity = "0"; this._grainDone = true; } return; }
         // Subtle preview grain: paint a single frame and HOLD — the per-pixel loop
@@ -449,7 +450,7 @@
         };
         requestAnimationFrame(tick);
       });
-      if (seq !== this._seq) return;
+      if (seq !== this._seq) { try { window.__onTvReveal && window.__onTvReveal(res); } catch (e) {} return; }
       await sleep(140);
       // 2) verdict
       const tier = res.youWon ? (res.tier || "normal") : "normal";
@@ -496,7 +497,7 @@
         };
         requestAnimationFrame(tick);
       });
-      if (seq !== this._seq) return;
+      if (seq !== this._seq) { try { window.__onTvReveal && window.__onTvReveal(res); } catch (e) {} return; }
       d1El.classList.remove("rolling"); d2El.classList.remove("rolling");
       this._setDieFace(d1El, res.d1); this._setDieFace(d2El, res.d2);
       const sum = (res.d1 | 0) + (res.d2 | 0);
@@ -674,7 +675,7 @@
     async _doReveal(seq, res) {
       const wait = Math.max(0, this._spinReadyAt - now());
       await sleep(wait);
-      if (seq !== this._seq) return;
+      if (seq !== this._seq) { try { window.__onTvReveal && window.__onTvReveal(res); } catch (e) {} return; }
 
       // Stop the coin on the winning side. Commit the base transform between
       // removing .spin and adding the land class so the 0.7s transition fires
@@ -683,7 +684,7 @@
       void this.coin.offsetWidth; // force reflow to commit the base rotation
       this.coin.classList.add(res.side === "HEADS" ? "show-heads" : "show-tails");
       await sleep(720);
-      if (seq !== this._seq) return;
+      if (seq !== this._seq) { try { window.__onTvReveal && window.__onTvReveal(res); } catch (e) {} return; }
 
       // Result screen (per-viewer). Clear any prior celebration state.
       const layer = this.layers.result;

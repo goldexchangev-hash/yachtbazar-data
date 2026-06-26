@@ -44,13 +44,14 @@
     this.cx = W / 2; this.cy = H * 0.46;
     this.baseR = Math.min(W, H) * 0.155;
     this._mult = 1; this._progress = 0; this._state = "idle";
+    this._lastDrawKey = ""; // dirty-flag: skip the heavy Graphics rebuild when geometry is unchanged
     this._t = 0; this._breath = 0; this._shake = 0;
     this._cracks = []; this._rings = []; this._particles = []; this._coins = [];
     this._shock = []; this._floats = []; this._sparks = [];
 
     const app = new PIXI.Application({
       width: W, height: H, backgroundColor: C.bg, antialias: true,
-      resolution: Math.min(2, root.devicePixelRatio || 1), autoDensity: true,
+      resolution: Math.min(1.5, root.devicePixelRatio || 1), autoDensity: true,
     });
     this.app = app; this.view = app.view;
     if (opts.mount) opts.mount.appendChild(app.view);
@@ -134,7 +135,7 @@
     this.flash = new PIXI.Graphics(); this.flash.beginFill(C.white).drawRect(0, 0, W, H).endFill();
     this.flash.alpha = 0; app.stage.addChild(this.flash);
 
-    this._genCracks(); this._drawBalloon();
+    this._genCracks(); this._drawBalloon(); this._drawBar();
     app.ticker.add(() => this._frame(app.ticker.deltaMS / 1000));
   }
 
@@ -168,7 +169,7 @@
   PressureRenderer.prototype._balloonScale = function (mult) { return clamp(0.5 + 0.15 * Math.log2(mult + 1), 0.5, 1.95); };
 
   PressureRenderer.prototype._drawBalloon = function () {
-    const sc = this._balloonScale(this._mult) * (1 + this._breath);
+    const sc = this._balloonScale(this._mult); // breath now lives in the layer scale (no per-frame redraw)
     const rx = this.baseR * sc, ry = this.baseR * 1.14 * sc;
     const strain = clamp(this._progress, 0, 1);
     const edge = mixColor(C.balloonLo, C.hot, strain * 0.6);
@@ -255,9 +256,15 @@
 
     const p = clamp(this._progress, 0, 1);
 
-    // wobble (squash/stretch jelly), grows with strain
+    // wobble (squash/stretch jelly), grows with strain; breath folded in here so
+    // idle breathing animates via the cheap layer transform, not a geometry rebuild
     const wob = Math.sin(this._t * 9) * (0.012 + p * 0.05);
-    this.balloonLayer.scale.set(1 + wob, 1 - wob);
+    const br = 1 + this._breath;
+    this.balloonLayer.scale.set((1 + wob) * br, (1 - wob) * br);
+
+    // glow pulse is cheap (tint/alpha only) → keep it every frame even when the
+    // balloon body itself isn't redrawn
+    this.glow.alpha = 0.35 + 0.4 * p + 0.06 * Math.sin(this._t * 8);
 
     // jitter (B-independent)
     if (this._state === "inflating") {
@@ -350,7 +357,14 @@
       }
     }
 
-    this._drawBalloon(); this._drawBar();
+    // Only rebuild the balloon/bar Graphics when something geometric actually
+    // changed (inflating, or a state/mult/progress/ring change). At idle this
+    // skips the 7-layer sphere + bar re-tessellation every frame.
+    const key = this._mult + "|" + Math.round(this._progress * 1000) + "|" + this._state + "|" + this._rings.length;
+    if (this._state === "inflating" || key !== this._lastDrawKey) {
+      this._drawBalloon(); this._drawBar();
+      this._lastDrawKey = key;
+    }
   };
 
   // ---------- API ----------

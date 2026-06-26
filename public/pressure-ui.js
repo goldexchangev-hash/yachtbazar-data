@@ -124,14 +124,16 @@
     document.addEventListener("visibilitychange", () => { if (document.hidden) release(); });
 
     // keyboard: SPACE hold, V valve, A toggle auto
+    const modalUp = () => !!document.querySelector(".modal:not(.hidden)");
     window.addEventListener("keydown", (e) => {
       if (e.repeat || !this._active) return; // only when Balloon Pop is the active channel
       const tag = (e.target && e.target.tagName) || "";
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+      if (modalUp()) return; // don't pump behind an open dialog
       if (e.code === "Space") { e.preventDefault(); this._press(); }
       else if (e.key === "a" || e.key === "A") this._toggleAuto();
     });
-    window.addEventListener("keyup", (e) => { if (this._active && e.code === "Space") this._release(); });
+    window.addEventListener("keyup", (e) => { if (this._active && e.code === "Space" && !modalUp()) this._release(); });
 
     // bet controls ($ value, $10 minimum)
     const betStep = (b) => (b < 100 ? 10 : b < 1000 ? 50 : 100);
@@ -176,6 +178,7 @@
   // ---------------- round lifecycle ----------------
   PressureGame.prototype._press = function () {
     if (!this._active) return; // off-channel: ignore global SPACE / pointer input
+    if (document.querySelector(".modal:not(.hidden)")) return; // a dialog is open over the canvas
     if (this._disabled) { this._msg("🎈 Pressure is play-money only — disconnect to play it in demo."); return; }
     if (this.pressing) return;
     if (this.state !== "armed" && this.state !== "idle") return;

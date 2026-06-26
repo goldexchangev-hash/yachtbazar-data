@@ -284,7 +284,7 @@
     // Keep the loop alive but skip all drawing when the canvas isn't on screen
     // (another channel is active, or the tab is hidden) so it never competes
     // with the other games for the main thread on mobile.
-    if (document.hidden || !canvas || !canvas.offsetParent) { last = now; requestAnimationFrame(frame); return; }
+    if (document.hidden || !canvas || !canvas.offsetParent) { last = now; setTimeout(() => { if (running) requestAnimationFrame(frame); }, 200); return; } // poll at ~5Hz while off-screen instead of 60Hz
     let dt = (now - last) / 1000; last = now; dt = Math.min(dt, 0.05);
     if (onFrameCb) try { onFrameCb(dt); } catch (e) { /* keep the loop alive */ }
     const m = Math.max(1, scene.mult), t = now / 1000;
