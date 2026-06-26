@@ -1853,9 +1853,7 @@ body.demo-mode #bankroll { display: none !important; }
   .act-btn .ab-verb { font-size: 14px; }
   .act-btn .ab-amt { font-size: 12px; }
 }
-/* demo bar now lives inside the TV column → center it perfectly over the TV */
 .stage > .demo-bar { width: 100%; max-width: 100%; margin: 0 auto; justify-content: center; }
-/* mobile "use MetaMask browser" hint sits directly above the demo bar, same width */
 .stage > .mobile-hint { width: 100%; max-width: 100%; margin: 0 auto -8px; }
 
 /* Right cluster in the TV control strip: share-win pill sits just left of CH badge */

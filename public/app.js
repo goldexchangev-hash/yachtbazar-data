@@ -1902,14 +1902,14 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=982").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=983").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=982"))
+      .then(() => loadScriptOnce("slots.js?v=983"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -1919,9 +1919,9 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=982"))
-      .then(() => loadScriptOnce("pressure-render.js?v=982"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=982"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=983"))
+      .then(() => loadScriptOnce("pressure-render.js?v=983"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=983"))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -3313,13 +3313,14 @@
       const betOpen = !$("bet-modal").classList.contains("hidden");
       if (k === "escape") { closeBetModal(); $("help-modal").classList.add("hidden"); $("nego-modal").classList.add("hidden"); { const pm = $("profile-modal"); if (pm) pm.classList.add("hidden"); } return; }
       if (k === " " || k === "enter") {
-        if (betOpen) { e.preventDefault(); $("bet-accept").click(); return; } // confirm the open bet
+        e.preventDefault(); // ALWAYS stop space/enter from scrolling the page
+        if (betOpen) { $("bet-accept").click(); return; } // confirm the open bet
         // Space/Enter = "bet the CURRENT game" (was always firing the flip button,
         // which made any game jump to a coin flip). Balloon Pop owns space itself.
         if (currentGame === "pressure") return;
         const BTN = { flip: "play-house-btn", dice: "dice-roll-btn", twodice: "td-roll-btn", crash: "crash-launch", slots: "slots-spin" };
         const btn = $(BTN[currentGame] || "play-house-btn");
-        if (btn && !btn.disabled) { e.preventDefault(); btn.click(); }
+        if (btn && !btn.disabled) btn.click();
         return;
       }
       if (betOpen) return;
