@@ -83,6 +83,32 @@
     x.fillStyle = g; x.beginPath(); x.arc(S / 2, S / 2, S / 2 - 2, 0, 7); x.fill();
     return new THREE.CanvasTexture(cv);
   }
+  // A faceted brilliant-cut gem sprite — the confetti thrown on big & bonus wins.
+  function gemTexture(c, c2) {
+    const S = 96, cv = document.createElement("canvas"); cv.width = cv.height = S; const x = cv.getContext("2d");
+    const cx = S / 2, cy = S / 2 + 4, R = S * 0.4;
+    x.clearRect(0, 0, S, S);
+    const g = x.createLinearGradient(0, cy - R, 0, cy + R);
+    g.addColorStop(0, lighten(c)); g.addColorStop(0.5, c); g.addColorStop(1, c2);
+    x.fillStyle = g; x.strokeStyle = "rgba(255,255,255,.75)"; x.lineWidth = 2.5;
+    x.shadowColor = c; x.shadowBlur = 14;
+    // hexagonal brilliant: flat crown table + pointed pavilion
+    x.beginPath();
+    x.moveTo(cx - R * 0.5, cy - R); x.lineTo(cx + R * 0.5, cy - R);
+    x.lineTo(cx + R * 0.92, cy - R * 0.28); x.lineTo(cx, cy + R); x.lineTo(cx - R * 0.92, cy - R * 0.28);
+    x.closePath(); x.fill(); x.stroke();
+    // facet lines
+    x.shadowBlur = 0; x.strokeStyle = "rgba(255,255,255,.5)"; x.lineWidth = 1.4;
+    x.beginPath();
+    x.moveTo(cx - R * 0.92, cy - R * 0.28); x.lineTo(cx + R * 0.92, cy - R * 0.28);          // girdle
+    x.moveTo(cx - R * 0.5, cy - R); x.lineTo(cx - R * 0.28, cy - R * 0.28); x.lineTo(cx, cy + R);
+    x.moveTo(cx + R * 0.5, cy - R); x.lineTo(cx + R * 0.28, cy - R * 0.28); x.lineTo(cx, cy + R);
+    x.moveTo(cx - R * 0.28, cy - R * 0.28); x.lineTo(cx, cy - R); x.lineTo(cx + R * 0.28, cy - R * 0.28);
+    x.stroke();
+    // sparkle
+    x.fillStyle = "rgba(255,255,255,.9)"; x.beginPath(); x.arc(cx - R * 0.28, cy - R * 0.42, R * 0.13, 0, 7); x.fill();
+    const t = new THREE.CanvasTexture(cv); return t;
+  }
 
   /* ============================ the game ============================ */
   function Slots3D(opts) {
@@ -103,10 +129,13 @@
 
     this._texCache = []; for (let i = 0; i < 8; i++) this._texCache[i] = symTexture(i);
     this._coinTex = coinTexture();
-    this._coins = []; this._pulses = []; this._t = 0; this._winFx = null;
+    // colorful gem confetti (cyan, magenta, gold, green, purple, ruby)
+    this._gemTex = [["#39e7ff", "#0b4a63"], ["#ff4d9d", "#5e0b39"], ["#ffd23f", "#7a5400"], ["#45f0a6", "#0b5e3c"], ["#b14dff", "#3a1063"], ["#ff5d7a", "#7a1030"]].map((g) => gemTexture(g[0], g[1]));
+    this._coins = []; this._gems = []; this._pulses = []; this._t = 0; this._winFx = null;
 
     this._initScene();
     this._buildOverlay();
+    this._buildWinBanner();
     this._wire();
     this._syncBet(); this._renderHud();
     this._loop = this._loop.bind(this);
@@ -334,11 +363,14 @@
     if (res.scatter) res.scatter.cells.forEach((c) => { mark[c[0] + ":" + c[1]] = 1; });
     this._pulseCells(mark);
     const big = res.winUsd >= bet * 10, mega = res.winUsd >= bet * 40;
-    if (mega) this._punch(0.42); else if (big) this._punch(0.24);
-    this.flash.material.opacity = mega ? 0.5 : big ? 0.34 : 0.2; this.flash.material.color.set(mega ? 0xffd23f : (this._bonus ? 0xff4d9d : 0x45f0a6));
+    if (this._bonus) this._punch(mega ? 0.5 : 0.34); else if (mega) this._punch(0.42); else if (big) this._punch(0.24);
+    this.flash.material.opacity = mega ? 0.5 : big ? 0.34 : (this._bonus ? 0.28 : 0.2); this.flash.material.color.set(mega ? 0xffd23f : (this._bonus ? 0xff4d9d : 0x45f0a6));
     this._winFx = { t: 0, total: res.winUsd, shown: 0, dur: this._bonus ? 0.7 : (mega ? 1.9 : big ? 1.5 : 1.0), big: big, mega: mega, lastCoin: -1 };
     const n = mega ? 46 : big ? 28 : 14; for (let i = 0; i < n; i++) this._spawnCoin();
-    if (!this._bonus) this._msg("💰 WIN  " + this._usd(res.winUsd) + (res.scatter ? "  · VAULT BONUS" : ""), "win");
+    // GEMS thrown everywhere — every bonus win erupts with them; big/mega normal wins too.
+    const gemN = this._bonus ? (mega ? 34 : big ? 26 : 18) : (mega ? 30 : big ? 16 : 0);
+    if (gemN) this._burstGems(gemN, mega ? 7.5 : 6);
+    if (!this._bonus) { this._showWinBanner("💎 WIN", mega ? "mega" : big ? "big" : ""); this._msg(res.scatter ? "VAULT BONUS!" : "", "win"); }
     const C = root.Chiptune; if (C) try { if (mega && C.jackpot) C.jackpot(); else if (big && C.bigwin) C.bigwin(); else if (C.win) C.win(); } catch (e) {}
   };
 
@@ -373,7 +405,8 @@
   Slots3D.prototype._afterBonusSpin = function (res) {
     const b = this._bonus; if (!b) return;
     b.total = Math.round((b.total + res.winUsd) * 100) / 100;
-    this._updateOverlay("FREE SPIN " + (b.i + 1) + " / " + b.plan.spins, "BONUS  " + this._usd(b.total), res.winUsd > 0 ? "+" + this._usd(res.winUsd) : "— no win");
+    this._updateOverlay("FREE SPIN " + (b.i + 1) + " / " + b.plan.spins, "BONUS  " + this._usd(b.total), res.winUsd > 0 ? "+" + this._usd(res.winUsd) + "  💎" : "— no win");
+    if (res.winUsd > 0 && this._ov) { this._ov.classList.remove("pop"); void this._ov.offsetWidth; this._ov.classList.add("pop"); }
     b.i += 1;
     clearTimeout(this._bonusT);
     if (b.i < b.plan.spins) this._bonusT = setTimeout(() => this._bonusSpin(), res.winUsd > 0 ? 1050 : 650);
@@ -441,6 +474,32 @@
     sp.position.set((Math.random() - 0.5) * 6, -3.4, 2.4); this.fx.add(sp);
     this._coins.push({ s: sp, vx: (Math.random() - 0.5) * 3.5, vy: 5.5 + Math.random() * 4, vr: 0, life: 1.1 + Math.random() * 0.7, t: 0 });
   };
+  // A gem flung from the reel center — explodes outward + up, tumbles, then falls.
+  Slots3D.prototype._spawnGem = function (power) {
+    const tex = this._gemTex[(Math.random() * this._gemTex.length) | 0];
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+    const sc = 0.5 + Math.random() * 0.6; sp.scale.set(sc, sc, sc);
+    sp.material.rotation = Math.random() * 6.28;
+    sp.position.set((Math.random() - 0.5) * 1.6, 0.3 + (Math.random() - 0.5) * 1.2, 2.6); this.fx.add(sp);
+    const a = Math.random() * Math.PI * 2, spd = (0.55 + Math.random()) * power;
+    this._gems.push({ s: sp, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd * 0.7 + power * 0.7, vr: (Math.random() - 0.5) * 9, life: 1.3 + Math.random() * 0.9, t: 0 });
+  };
+  Slots3D.prototype._burstGems = function (n, power) { for (let i = 0; i < n; i++) this._spawnGem(power); };
+
+  /* ---------- on-TV win banner (sits in the black band under the reels) ---------- */
+  Slots3D.prototype._buildWinBanner = function () {
+    if (this._wb || !this.mount) return;
+    const d = document.createElement("div"); d.className = "s3d-winbanner hidden";
+    d.innerHTML = '<span class="s3d-wb-label">WIN</span><span class="s3d-wb-amt"></span>';
+    this.mount.appendChild(d); this._wb = d; this._wbAmt = d.querySelector(".s3d-wb-amt");
+  };
+  Slots3D.prototype._showWinBanner = function (label, kind) {
+    this._buildWinBanner(); if (!this._wb) return;
+    this._wb.querySelector(".s3d-wb-label").textContent = label || "WIN";
+    this._wb.className = "s3d-winbanner " + (kind || "");
+    void this._wb.offsetWidth; this._wb.classList.add("pop");
+  };
+  Slots3D.prototype._hideWinBanner = function () { if (this._wb) this._wb.className = "s3d-winbanner hidden"; };
 
   /* ---------- per-frame ---------- */
   Slots3D.prototype._loop = function () {
@@ -478,8 +537,17 @@
     // win count-up
     if (this._winFx) { const w = this._winFx; w.t += dt; const kk = Math.min(1, w.t / w.dur); w.shown = w.total * (1 - Math.pow(1 - kk, 3));
       if (this.els.win) this.els.win.textContent = this._usd(w.shown);
+      if (this._wbAmt && !this._bonus) this._wbAmt.textContent = this._usd(w.shown);
       if (kk < 1 && this._t - w.lastCoin > 0.06) { w.lastCoin = this._t; if (root.Chiptune && root.Chiptune.coin) try { root.Chiptune.coin(); } catch (e) {} }
       if (kk >= 1) this._winFx = null; }
+
+    // gems — explode out, tumble, fall under gravity, fade near end of life
+    for (let i = this._gems.length - 1; i >= 0; i--) {
+      const gm = this._gems[i]; gm.t += dt; gm.vy -= 8.5 * dt;
+      gm.s.position.x += gm.vx * dt; gm.s.position.y += gm.vy * dt; gm.s.material.rotation += gm.vr * dt;
+      const k = gm.t / gm.life; gm.s.material.opacity = k < 0.7 ? 1 : Math.max(0, 1 - (k - 0.7) / 0.3);
+      if (gm.t >= gm.life || gm.s.position.y < -4.6) { this.fx.remove(gm.s); gm.s.material.dispose(); this._gems.splice(i, 1); }
+    }
 
     // pulse winning tiles
     for (const p of this._pulses) { p.t += dt; const s = 1 + 0.12 * Math.abs(Math.sin(p.t * 7)); p.tile.scale.set(s, s, 1); p.tile.userData.mat.emissiveIntensity = 0.55 + 0.9 * Math.abs(Math.sin(p.t * 7)); }
@@ -505,6 +573,9 @@
     this._pulses = []; this._winFx = null; if (this.els.win) this.els.win.textContent = this._usd(0);
     for (const c of this._coins) { this.fx.remove(c.s); }
     this._coins = [];
+    for (const g of this._gems) { this.fx.remove(g.s); g.s.material.dispose(); }
+    this._gems = [];
+    this._hideWinBanner();
   };
 
   /* ---------- HUD / wiring ---------- */

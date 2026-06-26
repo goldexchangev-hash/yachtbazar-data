@@ -2049,6 +2049,30 @@ body.demo-mode #bankroll { display: none !important; }
 @keyframes s3dBonusPop { 0% { transform: scale(.6); opacity: 0; } 60% { transform: scale(1.08); } 100% { transform: scale(1); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .s3d-bonus.pop { animation: none; } }
 
+/* ── on-TV win banner: sits in the black band just under the spinning reels ── */
+.s3d-winbanner {
+  position: absolute; left: 50%; bottom: 6%; transform: translateX(-50%);
+  z-index: 7; pointer-events: none; display: inline-flex; align-items: center; gap: 9px;
+  padding: 6px 18px; border-radius: 999px; white-space: nowrap;
+  background: linear-gradient(180deg, rgba(8,22,15,.85), rgba(3,9,7,.93));
+  border: 1px solid rgba(69,240,166,.55);
+  box-shadow: 0 0 22px rgba(69,240,166,.4), inset 0 0 12px rgba(69,240,166,.16);
+  font-family: "Press Start 2P", var(--display, monospace);
+}
+.s3d-winbanner.hidden { display: none; }
+.s3d-wb-label { color: #8effc8; font-size: clamp(7px, 2vw, 11px); letter-spacing: 1px; text-shadow: 0 0 8px rgba(69,240,166,.85); }
+.s3d-wb-amt   { color: #fff; font-size: clamp(14px, 4.2vw, 24px); letter-spacing: .5px; text-shadow: 0 2px 0 #000, 0 0 16px rgba(69,240,166,.9); }
+/* bigger wins push toward gold/magenta */
+.s3d-winbanner.big { border-color: rgba(255,210,63,.6); box-shadow: 0 0 26px rgba(255,210,63,.5), inset 0 0 12px rgba(255,210,63,.18); }
+.s3d-winbanner.big .s3d-wb-label { color: #ffe27a; text-shadow: 0 0 8px rgba(255,210,63,.9); }
+.s3d-winbanner.big .s3d-wb-amt { text-shadow: 0 2px 0 #000, 0 0 18px rgba(255,210,63,.95); }
+.s3d-winbanner.mega { border-color: rgba(255,138,208,.7); box-shadow: 0 0 30px rgba(255,77,157,.6), inset 0 0 14px rgba(255,77,157,.2); }
+.s3d-winbanner.mega .s3d-wb-label { color: #ff8ad0; text-shadow: 0 0 10px rgba(255,77,157,.95); }
+.s3d-winbanner.mega .s3d-wb-amt { color: #fff; text-shadow: 0 2px 0 #000, 0 0 22px rgba(255,77,157,1); }
+.s3d-winbanner.pop { animation: s3dWbPop .5s cubic-bezier(.18,1.5,.4,1); }
+@keyframes s3dWbPop { 0% { transform: translateX(-50%) scale(.5); opacity: 0; } 60% { transform: translateX(-50%) scale(1.13); } 100% { transform: translateX(-50%) scale(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .s3d-winbanner.pop { animation: none; } }
+
 /* ── Gem Vault "how it pays" button + explainer modal ── */
 .s3d-help-btn { width: 100%; margin: 2px 0 8px; font-weight: 700; }
 .s3d-help-card { max-width: 560px; max-height: 86vh; overflow-y: auto; }
