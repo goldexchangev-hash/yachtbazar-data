@@ -278,13 +278,24 @@ kbd { font-family: ui-monospace, monospace; font-size: 11px; background: rgba(25
 .dice3d-stage { position: absolute; inset: 0; z-index: 0; }
 .dice3d-stage canvas { width: 100% !important; height: 100% !important; display: block; }
 body.dice3d-on #dice-tv-line { display: none; } /* the 3D rail replaces the DOM number-line bar */
-#layer-dice .dice-tv-target, #layer-dice .dice-roll-num, #layer-dice .dice-verdict, #layer-dice .dice-payout { position: relative; z-index: 2; }
+#layer-dice .dice-tv-target, #layer-dice .dice-roll-num, #layer-dice .dice-bottom, #layer-dice .dice-verdict, #layer-dice .dice-payout { position: relative; z-index: 2; }
+.dice-bottom { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+/* with the 3D rail filling the center, pin the readouts to the top/bottom edges so
+   the rail (and the win/lose celebration) are never covered by text. */
+body.dice3d-on #layer-dice .dice-tv-target { position: absolute; top: 8px; left: 0; right: 0; }
+body.dice3d-on #layer-dice .dice-roll-num { position: absolute; top: 24px; left: 0; right: 0; }
+body.dice3d-on #layer-dice .dice-bottom { position: absolute; bottom: 8px; left: 0; right: 0; }
 
 /* 3D tumbling dice stage (Dice #2) — fills the layer behind the DOM target/sum/verdict */
 .dice2-3d-stage { position: absolute; inset: 0; z-index: 0; }
 .dice2-3d-stage canvas { width: 100% !important; height: 100% !important; display: block; }
 body.dice2-3d-on .td-dice { display: none; } /* the 3D dice replace the CSS dice */
-#layer-twodice .td-target, #layer-twodice .td-sum, #layer-twodice .dice-verdict, #layer-twodice .dice-payout { position: relative; z-index: 2; }
+#layer-twodice .td-target, #layer-twodice .td-bottom, #layer-twodice .td-sum, #layer-twodice .dice-verdict, #layer-twodice .dice-payout { position: relative; z-index: 2; }
+.td-bottom { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+/* with the 3D dice filling the center, pin the labels to the top/bottom edges so
+   the dice (and the win/lose celebration) are never covered by text. */
+body.dice2-3d-on #layer-twodice .td-target { position: absolute; top: 10px; left: 0; right: 0; }
+body.dice2-3d-on #layer-twodice .td-bottom { position: absolute; bottom: 10px; left: 0; right: 0; }
 
 /* 3D coin stage (Three.js) — fills the flip layer; hides the CSS coin when live */
 .flip3d-stage { position: absolute; inset: 0; z-index: 1; }
