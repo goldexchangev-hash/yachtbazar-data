@@ -269,6 +269,7 @@
     if (tier >= 4) setTimeout(() => this._ring(this.W / 2, this.H * 0.42, C.magenta, 900, 0.8), 120);
     // rays for big+
     if (tier >= 3) { this._rayLife = tier >= 5 ? 1.6 : tier >= 4 ? 1.3 : 1.0; this.rays.alpha = 0.6; for (const ry of this.rays.children) ry.tint = tier >= 4 ? C.gold : C.cyan; }
+    this.subText.text = ""; // clear "CASH OUT before…" so it doesn't sit under the win number
     // win number + banner
     const fmt = "+$" + (Math.round(profit * 100) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const txt = fmt + "   " + m.toFixed(2) + "x"; this.winNum.text = txt; this.winGlow.text = txt;
@@ -295,6 +296,8 @@
   PlaneRenderer.prototype.getRenderedMultiplier = function () { return this._mult; };
   PlaneRenderer.prototype.setTargets = function (l) { this._targets = l || []; };
   PlaneRenderer.prototype.setCountdown = function (secs, total) { this._state = "betting"; this._cd = secs; this._cdTotal = total || this._cdTotal; this._mult = 1; this._placePlane(1);
+    // clear any leftover win number/banner so it never lingers under "place your bet"
+    this._winT = 0; this.winNum.alpha = 0; this.winGlow.alpha = 0; this.banner.alpha = 0;
     this.multText.text = secs.toFixed(1); this.multWrap.scale.set(0.62); this.multText.style.fill = C.cyan; this.multText.style.dropShadowColor = C.cyan; this.subText.text = "place your bet"; this.subText.style.fill = C.muted; this.label.alpha = 0; this.vig.alpha = 0; };
   PlaneRenderer.prototype.takeoff = function () { this._state = "takeoff"; this.multText.text = "TAKING OFF"; this.multWrap.scale.set(0.5); this.multText.style.fill = C.gold; this.subText.text = ""; this.ring.clear(); this._shake = 4; };
   PlaneRenderer.prototype.flying = function () { this.setState("flying"); this._trail = []; this.subText.text = "CASH OUT before it flies away!"; this.subText.style.fill = C.gold; this.multWrap.scale.set(1); this._kick = 0.2; this._lastInt = 1; };

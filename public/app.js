@@ -174,7 +174,13 @@
     if (ch !== 9 && ch !== 10 && ch !== 11) return; // 0-100, Dice #2, Crash (one bet → one result)
     if (res.youWon === undefined && res.won === undefined) return; // bare lock-release call → ignore
     const won = res.youWon === true || res.won === true;
-    const detail = (res.mult != null && res.mult > 0) ? Number(res.mult).toFixed(2) + "× payout" : "";
+    const detail = (won && res.mult != null && res.mult > 0) ? Number(res.mult).toFixed(2) + "× payout" : "";
+    // Clear each game's INLINE verdict/payout text so it doesn't show through and
+    // collide with the result overlay (the overlay is now the single win/lose readout).
+    const clr = (id) => { const e = $(id); if (e) e.textContent = ""; };
+    if (ch === 9) { clr("dice-tv-verdict"); clr("dice-tv-payout"); }
+    else if (ch === 10) { clr("td-tv-verdict"); clr("td-tv-payout"); }
+    else if (ch === 11) { clr("crash-sub"); }
     showGameOutcome(won, res.amountUsd, res.tier, detail);
   }
   // Every game's reveal funnels through window.__onTvReveal with a result object —
@@ -1940,14 +1946,14 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1020").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1030").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=1020"))
+      .then(() => loadScriptOnce("slots.js?v=1030"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -1957,9 +1963,9 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=1020"))
-      .then(() => loadScriptOnce("pressure-render.js?v=1020"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=1020"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=1030"))
+      .then(() => loadScriptOnce("pressure-render.js?v=1030"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=1030"))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -1977,7 +1983,7 @@
       ethUsd: ethUsd,
       initialBalance: demoUsd,
       onBalance: (b) => { demoUsd = Math.round(b * 100) / 100; demoSave(); demoPaint(); },
-      onWin: (i) => { setLastResult({ won: true, game: "Balloon Pop", emoji: "🎈", amountUsd: i.profitUsd, detail: i.mult.toFixed(2) + "× banked" }); showGameOutcome(true, i.profitUsd, null, i.mult.toFixed(2) + "× banked"); },
+      onWin: (i) => setLastResult({ won: true, game: "Balloon Pop", emoji: "🎈", amountUsd: i.profitUsd, detail: i.mult.toFixed(2) + "× banked" }), // Balloon Pop shows its own rich in-canvas win — no result overlay (would collide)
       els: {
         balance: el("pr-balance"),
         betSlider: el("pr-bet-slider"), betVal: el("pr-bet-val"), betEth: el("pr-bet-eth"),
@@ -1990,6 +1996,7 @@
         pfVerify: el("pr-pf-verify"), pfReveal: el("pr-pf-reveal"), pfLast: el("pr-pf-last"),
       },
     });
+    try { window.__pressure = pressureGame; } catch (e) {} // debug/support handle
     return pressureGame;
   }
   // Build (first time) + activate the Balloon Pop channel, syncing the shared
@@ -2012,10 +2019,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=1020"))
-      .then(() => loadScriptOnce("plane-render.js?v=1020"))
-      .then(() => loadScriptOnce("plane-feed.js?v=1020"))
-      .then(() => loadScriptOnce("plane-ui.js?v=1020"))
+      .then(() => loadScriptOnce("plane-engine.js?v=1030"))
+      .then(() => loadScriptOnce("plane-render.js?v=1030"))
+      .then(() => loadScriptOnce("plane-feed.js?v=1030"))
+      .then(() => loadScriptOnce("plane-ui.js?v=1030"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2038,7 +2045,7 @@
       mode: demoOn ? "demo" : "real",
       initialBalance: demoOn ? demoUsd : weiToUsd(gameWei),
       onBalance: (b) => { demoUsd = Math.round(b * 100) / 100; demoSave(); demoPaint(); }, // demo only
-      onWin: (i) => { setLastResult({ won: true, game: "Plane", emoji: "✈️", amountUsd: i.profitUsd, detail: i.mult.toFixed(2) + "× cashed" }); showGameOutcome(true, i.profitUsd, null, i.mult.toFixed(2) + "× cashed"); },
+      onWin: (i) => setLastResult({ won: true, game: "Plane", emoji: "✈️", amountUsd: i.profitUsd, detail: i.mult.toFixed(2) + "× cashed" }), // Plane shows its own in-canvas cash-out win — no result overlay (would collide)
       onRealBet: (betUsd, targetX100) => doPlanePlay(betUsd, targetX100),       // single on-chain round
       onRealDone: () => { unlockReveal(); refreshBalances().then(() => { if (planeGame) planeGame.setBalance(weiToUsd(gameWei)); }); refreshDiceHouse(); try { refreshStats(); } catch (e) {} },
       els: {
@@ -2094,15 +2101,15 @@
   function loadThreeOnce() {
     if (window.THREE) return Promise.resolve();
     if (threeLoadPromise) return threeLoadPromise;
-    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1020").catch((e) => { threeLoadPromise = null; throw e; });
+    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1030").catch((e) => { threeLoadPromise = null; throw e; });
     return threeLoadPromise;
   }
   function ensureSlots3dLoaded() {
     if (window.Slots3D) return Promise.resolve(true);
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("slots3d-engine.js?v=1020"))
-      .then(() => loadScriptOnce("slots3d.js?v=1020"))
+      .then(() => loadScriptOnce("slots3d-engine.js?v=1030"))
+      .then(() => loadScriptOnce("slots3d.js?v=1030"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
