@@ -287,10 +287,12 @@
       case "settle": main = "ROUND OVER"; sub = "Next hand shortly…"; break;
     }
     this.E.phaseMain.textContent = main; this.E.phaseSub.textContent = sub;
-    this.E.phaseBanner.style.display = (m.phase === "turns") ? "none" : "block";
-    // betting has room up top (ring + prompt, no dealer cards); once cards are out, drop the
-    // text into the clear band BELOW the dealer's total so it never lands on the cards/number.
-    this.E.phaseBanner.style.top = (m.phase === "betting" || m.phase === "idle") ? "32%" : "44%";
+    // ONLY show the center banner during betting/idle (no dealer cards then, so it can't
+    // overlap the dealer's total). Once cards are out, the dock message carries the status
+    // ("Dealer is playing…", "✅ You win +$X") and the win FX carries the drama — no banner,
+    // no overlap, ever.
+    this.E.phaseBanner.style.display = (m.phase === "betting" || m.phase === "idle") ? "block" : "none";
+    this.E.phaseBanner.style.top = "32%";
   };
   BlackjackClient.prototype._tick = function () {
     var m = this.room, E = this.E;
