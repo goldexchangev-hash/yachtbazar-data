@@ -143,7 +143,8 @@
     const bodyMat = new THREE.MeshStandardMaterial({ color: 0x0c1422, metalness: 0.6, roughness: 0.45 });
     this.reels = [];
     for (let r = 0; r < REELS; r++) {
-      const reel = { x: (r - 2) * this.REELW, pos: r * 7.3, strip: [], tiles: [], spinning: false, t: 0, dur: 1, start: 0, land: 0 };
+      // mode: stopped | ease (normal decel to land) | hold (free spin, awaiting release) | antic (slow dramatic roll)
+      const reel = { x: (r - 2) * this.REELW, pos: r * 7.3, strip: [], tiles: [], mode: "stopped", t: 0, dur: 1, start: 0, land: 0, easePow: 3, holdSpeed: 12, glow: 0, glowTarget: 0, cells: [0, 0, 0] };
       for (let i = 0; i < 64; i++) reel.strip.push((Math.random() * 8) | 0);
       for (let s = 0; s < 5; s++) { // 5 tiles: buffer + 3 visible + buffer
         const grp = new THREE.Group(); grp.position.x = reel.x;

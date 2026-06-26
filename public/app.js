@@ -1946,14 +1946,14 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1030").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1040").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=1030"))
+      .then(() => loadScriptOnce("slots.js?v=1040"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -1963,9 +1963,9 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=1030"))
-      .then(() => loadScriptOnce("pressure-render.js?v=1030"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=1030"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=1040"))
+      .then(() => loadScriptOnce("pressure-render.js?v=1040"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=1040"))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -2019,10 +2019,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=1030"))
-      .then(() => loadScriptOnce("plane-render.js?v=1030"))
-      .then(() => loadScriptOnce("plane-feed.js?v=1030"))
-      .then(() => loadScriptOnce("plane-ui.js?v=1030"))
+      .then(() => loadScriptOnce("plane-engine.js?v=1040"))
+      .then(() => loadScriptOnce("plane-render.js?v=1040"))
+      .then(() => loadScriptOnce("plane-feed.js?v=1040"))
+      .then(() => loadScriptOnce("plane-ui.js?v=1040"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2101,15 +2101,15 @@
   function loadThreeOnce() {
     if (window.THREE) return Promise.resolve();
     if (threeLoadPromise) return threeLoadPromise;
-    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1030").catch((e) => { threeLoadPromise = null; throw e; });
+    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1040").catch((e) => { threeLoadPromise = null; throw e; });
     return threeLoadPromise;
   }
   function ensureSlots3dLoaded() {
     if (window.Slots3D) return Promise.resolve(true);
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("slots3d-engine.js?v=1030"))
-      .then(() => loadScriptOnce("slots3d.js?v=1030"))
+      .then(() => loadScriptOnce("slots3d-engine.js?v=1040"))
+      .then(() => loadScriptOnce("slots3d.js?v=1040"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2532,20 +2532,9 @@
     { const c = $("s3d-help-close"); if (c) c.onclick = () => $("s3d-help-modal").classList.add("hidden"); }
     { const m = $("s3d-help-modal"); if (m) m.addEventListener("click", (e) => { if (e.target === m) m.classList.add("hidden"); }); }
     document.querySelectorAll("#game-nav .game-card").forEach((b) => { b.onclick = () => switchGame(b.dataset.game); });
-    // keyboard: ←/→ to cycle channels through every game
-    // BULLETPROOF: a focused nav card must NEVER switch games on Space. Space is a
-    // bet key for the canvas games (Gem Vault / Plane / Balloon Pop). When their
-    // action button disables mid-spin the browser can punt focus onto a nav card,
-    // and a follow-up Space would "click" it → jump to another game (usually Coin
-    // Flip). Kill Space on the card at the CAPTURE phase (before its activation),
-    // on both keydown and keyup, so it can't switch — the active game keeps Space.
-    const navSpaceGuard = (e) => {
-      if (!(e.code === "Space" || e.key === " " || e.key === "Spacebar")) return;
-      const t = e.target;
-      if (t && t.closest && t.closest("#game-nav")) { e.preventDefault(); e.stopPropagation(); }
-    };
-    document.addEventListener("keydown", navSpaceGuard, true);
-    document.addEventListener("keyup", navSpaceGuard, true);
+    // keyboard: ←/→ to cycle channels through every game. SPACE is swallowed here
+    // too (belt-and-suspenders) so a focused nav card can never switch on Space —
+    // the global SPACE→bet handler routes it to the live game instead.
     $("game-nav").addEventListener("keydown", (e) => {
       if (e.code === "Space" || e.key === " " || e.key === "Spacebar") { e.preventDefault(); return; }
       const i = GAME_ORDER.indexOf(currentGame);
@@ -3622,14 +3611,17 @@
 
       if (k === " ") {
         if (e.repeat) { e.preventDefault(); return; } // ignore key-repeat → no bet flood
-        // If a real control is focused, let SPACE activate it natively (don't hijack).
-        const focusable = el !== document.body && (tag === "button" || tag === "a" || el.getAttribute("role") === "tab" || (typeof el.tabIndex === "number" && el.tabIndex >= 0));
-        if (focusable) return;
-        e.preventDefault(); // no page scroll
-        if (currentGame === "pressure") return; // Balloon Pop owns space (pump)
-        if (currentGame === "plane") return;    // Plane owns space (launch / cash-out)
+        // SPACE is a dedicated BET key on the game page. ALWAYS swallow its default
+        // action so it can never activate a stray focused button / nav card (the
+        // old "let it activate natively" branch is exactly how a Space could land
+        // on the Coin Flip card or — with no slots3d entry below — fall through to
+        // the flip bet button and yank you into Coin Flip from Gem Vault).
+        e.preventDefault();
+        // Canvas games own SPACE through their OWN handlers (pump / launch / spin) —
+        // bail so we don't double-fire; do NOT fall back to the flip button.
+        if (currentGame === "pressure" || currentGame === "plane" || currentGame === "slots3d") return;
         const BTN = { flip: "play-house-btn", dice: "dice-roll-btn", twodice: "td-roll-btn", crash: "crash-launch", slots: "slots-spin" };
-        const btn = $(BTN[currentGame] || "play-house-btn");
+        const btn = $(BTN[currentGame]); // no default → an unknown channel (e.g. poker) does nothing
         if (btn && !btn.disabled) btn.click();
         return;
       }
