@@ -115,6 +115,19 @@
     this.fx = new PIXI.Container(); world.addChild(this.fx);
     this.fxAdd = new PIXI.Container(); this.fxAdd.blendMode = PIXI.BLEND_MODES.ADD; world.addChild(this.fxAdd);
 
+    // BIG win readouts (on top of the coin shower)
+    this.winBanner = new PIXI.Text("", {
+      fontFamily: '"Bungee","Press Start 2P",monospace', fontSize: 46, fill: 0xffd23f, align: "center",
+      dropShadow: true, dropShadowColor: 0xff4d9d, dropShadowBlur: 16, dropShadowDistance: 0, dropShadowAlpha: 1,
+    });
+    this.winBanner.anchor.set(0.5); this.winBanner.position.set(this.cx, H * 0.30); this.winBanner.alpha = 0; this.winBanner.visible = false; world.addChild(this.winBanner);
+
+    this.winAmt = new PIXI.Text("", {
+      fontFamily: '"Bungee","Press Start 2P",monospace', fontSize: 70, fill: 0x7cffb2, align: "center",
+      dropShadow: true, dropShadowColor: 0x00863a, dropShadowBlur: 14, dropShadowDistance: 0, dropShadowAlpha: 1,
+    });
+    this.winAmt.anchor.set(0.5); this.winAmt.position.set(this.cx, H * 0.52); this.winAmt.alpha = 0; this.winAmt.visible = false; world.addChild(this.winAmt);
+
     this.danger = new PIXI.Sprite(this.texVignette);
     this.danger.width = W; this.danger.height = H; this.danger.alpha = 0; app.stage.addChild(this.danger);
 
@@ -304,6 +317,39 @@
       if (f.life <= 0) { this.fx.removeChild(f.g); f.g.destroy(); this._floats.splice(i, 1); }
     }
 
+    // BIG win count-up — the amount races up (gold→green), pops, with a sustained
+    // coin shower + "cha-ching" ticks climbing alongside it.
+    if (this._winFx) {
+      const w = this._winFx;
+      w.t += dt;
+      const k = clamp(w.t / w.dur, 0, 1);
+      const e = 1 - Math.pow(1 - k, 3); // easeOutCubic
+      w.displayed = w.total * e;
+      const baseScale = w.mega ? 1.55 : w.big ? 1.28 : 1;
+      const pop = clamp(w.t / 0.3, 0, 1);
+      const popS = 0.4 + 0.6 * (1 - (1 - pop) * (1 - pop));
+      const pulse = k < 1 ? (1 + 0.07 * Math.sin(this._t * 24)) : 1;
+      this.winAmt.text = "+$" + (Math.round(w.displayed * 100) / 100).toFixed(2);
+      this.winAmt.scale.set(baseScale * popS * pulse);
+      this.winAmt.alpha = clamp(w.t / 0.18, 0, 1);
+      this.winAmt.style.fill = k < 1 ? 0xffe27a : 0x7cffb2; // gold while counting → green when banked
+      this.winBanner.alpha = clamp(w.t / 0.22, 0, 1);
+      this.winBanner.scale.set((w.mega ? 1.15 : 1) * (1 + 0.06 * Math.sin(this._t * 9)));
+      this.winBanner.rotation = Math.sin(this._t * 5.5) * 0.035;
+      if (k < 1) {
+        if (this._t - w.lastCoin > 0.05) { w.lastCoin = this._t; const n = w.mega ? 3 : w.big ? 2 : 1; for (let i = 0; i < n; i++) this._spawnCoin(); }
+        if (this._t - w.lastTick > 0.065) { w.lastTick = this._t; try { root.Chiptune && root.Chiptune.coin && root.Chiptune.coin(); } catch (e) {} }
+      } else {
+        if (!w.done) { w.done = true; w.holdT = this._t; this.winAmt.text = "+$" + (Math.round(w.total * 100) / 100).toFixed(2); }
+        if (this._t - w.holdT > 1.5) {
+          const fade = dt * 1.3;
+          this.winAmt.alpha = Math.max(0, this.winAmt.alpha - fade);
+          this.winBanner.alpha = Math.max(0, this.winBanner.alpha - fade);
+          if (this.winAmt.alpha <= 0.02) { this.winAmt.visible = false; this.winBanner.visible = false; this._winFx = null; }
+        }
+      }
+    }
+
     this._drawBalloon(); this._drawBar();
   };
 
@@ -336,11 +382,25 @@
   };
   PressureRenderer.prototype.win = function (info) {
     this._mult = info.finalMult; this.multText.style.fill = C.green;
-    this.flash.tint = C.green; this.flash.alpha = 0.22;
-    this._shockwave(C.green, 520);
-    const coins = clamp(Math.round((info.payout || 1) * 0.6), 6, 26);
-    for (let i = 0; i < coins; i++) this._spawnCoin();
-    if (info.payout != null) this._floatText("+$" + (Math.round(info.payout * 100) / 100).toFixed(2), C.green);
+    const payout = Math.max(0, info.payout || 0);
+    const profit = Math.max(0, info.profit != null ? info.profit : payout);
+    const mult = info.finalMult || 1;
+    const big = mult >= 3 || profit >= 100;
+    const mega = mult >= 8 || profit >= 500;
+    // count-up state — slower, satisfying climb to the full amount
+    this._winFx = { t: 0, dur: mega ? 2.0 : big ? 1.7 : 1.35, total: payout, displayed: 0, profit, mult, big, mega, lastCoin: -1, lastTick: -1, done: false, holdT: 0 };
+    // banner + big amount
+    this.winBanner.text = mega ? "MEGA WIN!" : big ? "BIG WIN!" : "BANKED!";
+    this.winBanner.style.fill = mega ? 0xff4d9d : 0xffd23f;
+    this.winBanner.alpha = 0; this.winBanner.visible = true; this.winBanner.scale.set(1);
+    this.winAmt.text = "+$0.00"; this.winAmt.style.fill = 0xffe27a; this.winAmt.alpha = 0; this.winAmt.visible = true;
+    // big juice — flash, shake, layered shockwaves, and an instant coin burst
+    this.danger.alpha = 0;
+    this.flash.tint = C.green; this.flash.alpha = mega ? 0.5 : big ? 0.38 : 0.26;
+    this._shake = mega ? 28 : big ? 17 : 10;
+    this._shockwave(C.green, 560); if (big) this._shockwave(C.gold, 760); if (mega) this._shockwave(C.magenta, 1000);
+    const burst = mega ? 40 : big ? 26 : 16;
+    for (let i = 0; i < burst; i++) this._spawnCoin();
   };
   PressureRenderer.prototype.pop = function () {
     this.flash.tint = C.white; this.flash.alpha = 1.0; this._shake = 30;
@@ -359,10 +419,12 @@
   };
   PressureRenderer.prototype._spawnCoin = function () {
     const g = new PIXI.Graphics();
-    g.beginFill(C.gold).drawCircle(0, 0, 10).endFill();
-    g.beginFill(0xffec9e).drawCircle(-2, -3, 4).endFill();
+    const r = 12 + Math.random() * 4;
+    g.beginFill(C.gold).drawCircle(0, 0, r).endFill();
+    g.beginFill(0xffec9e).drawCircle(-r * 0.25, -r * 0.3, r * 0.42).endFill();
     g.blendMode = PIXI.BLEND_MODES.ADD; this.fxAdd.addChild(g);
-    this._coins.push({ g, x0: this.cx + (Math.random() - 0.5) * this.baseR * 1.4, y0: this.cy + (Math.random() - 0.5) * this.baseR, x1: this.cx, y1: this.H * 0.135, t: 0, dur: 0.5 + Math.random() * 0.45 });
+    // fly up from a wide spread toward the score, with a little arc
+    this._coins.push({ g, x0: this.cx + (Math.random() - 0.5) * this.W * 0.7, y0: this.H * (0.55 + Math.random() * 0.4), x1: this.cx + (Math.random() - 0.5) * 60, y1: this.H * 0.135, t: 0, dur: 0.55 + Math.random() * 0.5 });
   };
   PressureRenderer.prototype._floatText = function (txt, col) {
     const t = new PIXI.Text(txt, { fontFamily: '"Bungee",monospace', fontSize: 26, fill: col, dropShadow: true, dropShadowColor: 0x000000, dropShadowBlur: 6, dropShadowDistance: 0 });
@@ -372,8 +434,11 @@
   PressureRenderer.prototype.showReceipt = function (text, nearMiss) { this.receipt.text = text; this.receipt.style.fill = nearMiss ? C.gold : C.muted; this.receipt.alpha = 1; };
   PressureRenderer.prototype.reset = function () {
     this._mult = 1; this._progress = 0; this._rings = []; this.setLockedText(0);
-    this.multText.text = "1.00x"; this.multText.style.fill = C.white;
+    this.multText.text = "1.00x"; this.multText.style.fill = C.white; this.multText.scale.set(1);
     this.flash.alpha = 0; this._shake = 0; this.danger.alpha = 0;
+    this._winFx = null;
+    if (this.winAmt) { this.winAmt.visible = false; this.winAmt.alpha = 0; this.winAmt.scale.set(1); }
+    if (this.winBanner) { this.winBanner.visible = false; this.winBanner.alpha = 0; this.winBanner.scale.set(1); this.winBanner.rotation = 0; }
     this._genCracks(); this.setState("armed");
   };
 

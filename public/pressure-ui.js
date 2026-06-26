@@ -262,12 +262,13 @@
       this._msg("💥 POP at " + this.burst.toFixed(2) + "x — lost the bet" + keptMsg);
       if (root.Chiptune && Chiptune.lose) try { Chiptune.lose(); } catch (e) {}
     } else {
-      this.r.win({ finalMult: releaseMult, payout: res.payout });
-      if (root.Lenny) try { root.Lenny.celebrate({ betUsd: this.bet, winUsd: res.profit }); } catch (e) {}
+      this.r.win({ finalMult: releaseMult, payout: res.payout, profit: res.profit });
       const nearMiss = (this.burst - releaseMult) <= Math.max(0.05, this.burst * 0.03);
       this.r.showReceipt("you " + (exit === "auto" ? "auto-" : "") + "banked " + releaseMult.toFixed(2) + "x  ·  pop was " + this.burst.toFixed(2) + "x", nearMiss);
       this._msg((exit === "auto" ? "🔔 Auto-banked " : "💰 Banked ") + releaseMult.toFixed(2) + "x  →  " + this._usd(res.payout) + (nearMiss ? "  (so close!)" : ""));
-      if (root.Chiptune && Chiptune.win) try { Chiptune.win(); } catch (e) {}
+      // tiered fanfare — louder the bigger the win (the coin-shower ticks are added
+      // by the renderer's count-up).
+      try { var C = root.Chiptune; if (C) { if (res.profit >= 500 && C.jackpot) C.jackpot(); else if (res.profit >= 100 && C.bigwin) C.bigwin(); else if (C.win) C.win(); } } catch (e) {}
       if (this.onWin && res.profit > 0) try { this.onWin({ profitUsd: res.profit, mult: releaseMult }); } catch (e) {}
     }
 
@@ -276,7 +277,8 @@
     this._updatePfLast();
 
     clearTimeout(this._resetTimer);
-    this._resetTimer = setTimeout(() => this._toArmed(), RESET_MS);
+    // let the big win animation fully play out before re-arming; pops reset quicker.
+    this._resetTimer = setTimeout(() => this._toArmed(), res.popped ? RESET_MS : 3600);
   };
 
   PressureGame.prototype._toArmed = function () {
