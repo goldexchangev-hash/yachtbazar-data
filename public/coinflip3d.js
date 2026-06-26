@@ -257,13 +257,20 @@
       c.rotation.z = (k > 0.5 ? 1 : 0) * 0.13 * Math.exp(-6 * (k - 0.5)) * Math.cos(22 * (k - 0.5));
       c.scale.set(1, 1, 1);
       if (k >= 1) {
-        this.phase = "landed"; this._spin = this._spinEnd;
+        this.phase = "landed"; this._spin = this._spinEnd; this._landT = 0;
         c.rotation.set(this._spin - 0.14, 0, 0); // tip ~8° back so the winning face catches light, not edge-on
         this._punch(0.05);
         // bright specular pop on the resting face the instant it lands
         if (this._face) { this._face.intensity = 0.95; clearTimeout(this._faceT); this._faceT = setTimeout(function (f) { return function () { f.intensity = 0.5; }; }(this._face), 450); }
       }
       this._spinVel = 0;
+    } else if (P === "landed") {
+      // Hold a confident, flat, camera-facing PRESENT and grow slightly so the landed
+      // face is unmistakable — the coin must always read clearly as HEADS or TAILS at rest.
+      this._landT = (this._landT || 0) + dt;
+      const e = 1 - Math.pow(1 - Math.min(1, this._landT / 0.45), 3);
+      const sc = 1 + 0.12 * e; c.scale.set(sc, sc, sc);
+      c.rotation.set(this._spinEnd - 0.14, 0, 0); // pin it flat to the camera (no drift / edge-on)
     }
     // free spin (anticip/launch/hang) about the X axis
     if (P === "anticip" || P === "launch" || P === "hang") { this._spin += this._spinVel * dt; c.rotation.x = this._spin; c.rotation.y = this._spin * 0.08; }

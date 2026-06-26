@@ -2176,7 +2176,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1121"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1122"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -2589,7 +2589,7 @@
   function ensureBlackjackReady() {
     const f = $("bj-frame");
     if (f && !f.src) {
-      let src = "blackjack.html?tv=1&v=1121&guest=" + encodeURIComponent(bjGuestId());
+      let src = "blackjack.html?tv=1&v=1122&guest=" + encodeURIComponent(bjGuestId());
       if (demoOn) src += "&bal=" + encodeURIComponent(Math.max(0, Math.round((demoUsd || 0) * 100) / 100)); // seed the table from the demo balance
       if (bjPendingTable) { src += "&table=" + encodeURIComponent(bjPendingTable); bjPendingTable = null; }
       f.src = src; // loads the felt + scripts inside the TV
