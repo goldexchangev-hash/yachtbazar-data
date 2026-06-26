@@ -1915,14 +1915,14 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=987").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=988").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=987"))
+      .then(() => loadScriptOnce("slots.js?v=988"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -1932,9 +1932,9 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=987"))
-      .then(() => loadScriptOnce("pressure-render.js?v=987"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=987"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=988"))
+      .then(() => loadScriptOnce("pressure-render.js?v=988"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=988"))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -1976,6 +1976,9 @@
       g.setEthUsd(ethUsd);
       if (demoOn) { g.setBalance(demoUsd); g.setEnabled(true); }
       else { g.setEnabled(false); }
+      // Now the canvas exists → reveal the layer (idle may have shown the ready
+      // room while it was still loading, e.g. right after the promo ended).
+      if (window.TV && currentGame === "pressure" && !TV._promoPlaying) try { TV.idle(); } catch (e) {}
     }).catch(() => toast("Couldn't load Balloon Pop — check your connection", "err"));
   }
 
@@ -1984,10 +1987,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=987"))
-      .then(() => loadScriptOnce("plane-render.js?v=987"))
-      .then(() => loadScriptOnce("plane-feed.js?v=987"))
-      .then(() => loadScriptOnce("plane-ui.js?v=987"))
+      .then(() => loadScriptOnce("plane-engine.js?v=988"))
+      .then(() => loadScriptOnce("plane-render.js?v=988"))
+      .then(() => loadScriptOnce("plane-feed.js?v=988"))
+      .then(() => loadScriptOnce("plane-ui.js?v=988"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2032,6 +2035,9 @@
       g.setEthUsd(ethUsd);
       if (demoOn) { g.setMode("demo"); g.setBalance(demoUsd); g.setEnabled(true); }
       else { g.setMode("real"); g.setBalance(weiToUsd(gameWei)); g.setEnabled(!!(account && contract)); }
+      // Now the canvas exists → reveal the layer (idle may have shown the ready
+      // room while it was still loading, e.g. right after the promo ended).
+      if (window.TV && currentGame === "plane" && !TV._promoPlaying) try { TV.idle(); } catch (e) {}
     }).catch(() => toast("Couldn't load Plane — check your connection", "err"));
   }
   // The Plane's REAL mode settles each launch as ONE on-chain crash round (the
@@ -2407,6 +2413,9 @@
     // Balloon Pop needs its engine built + activated on reload too (enterDemo,
     // which runs just after, flips it to enabled once it exists).
     if (saved === "pressure") ensurePressureReady();
+    // Plane (CH 14) is lazy-loaded too — build it on reload so the TV shows the
+    // game instead of an empty black layer once the promo intro ends.
+    if (saved === "plane") ensurePlaneReady();
   }
 
   // My open tables: show bank + idle countdown, auto-close (refund) when stale.

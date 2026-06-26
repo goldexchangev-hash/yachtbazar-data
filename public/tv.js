@@ -350,6 +350,9 @@
       clearTimeout(this._promoFadeT);
       this._promoPlaying = false;
       if (v) { try { v.pause(); } catch (e) {} v.classList.remove("promo-fade"); v.classList.add("hidden"); }
+      // Reveal the resting game screen underneath — WITHOUT this the TV is left on
+      // a black screen until/unless the bet action happens to drive a layer itself.
+      try { this.idle(); } catch (e) {}
     },
 
     /* ---------------- crash (CH 11) ---------------- */
@@ -400,6 +403,9 @@
     // it and drives activation. Here we just reveal its layer.
     _pressureIdle() {
       if (!this._connected) return this._staticIdle(); // signed out → static, no balloon
+      // Engine not mounted yet (lazy-loading) → show the ready room, not a black layer.
+      const stage = $("pressure-stage");
+      if (!stage || !stage.querySelector("canvas")) return this._readyRoom();
       this._setStatic(0.03);
       this._show("pressure");
     },
@@ -409,6 +415,9 @@
     // and drives activation. Here we just reveal its layer (demo or real).
     _planeIdle() {
       if (!this._connected) return this._staticIdle();
+      // Engine not mounted yet (lazy-loading) → show the ready room, not a black layer.
+      const stage = $("plane-stage");
+      if (!stage || !stage.querySelector("canvas")) return this._readyRoom();
       this._setStatic(0.03);
       this._show("plane");
     },
