@@ -1913,14 +1913,14 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=991").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=992").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=991"))
+      .then(() => loadScriptOnce("slots.js?v=992"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -1930,9 +1930,9 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=991"))
-      .then(() => loadScriptOnce("pressure-render.js?v=991"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=991"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=992"))
+      .then(() => loadScriptOnce("pressure-render.js?v=992"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=992"))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -1985,10 +1985,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=991"))
-      .then(() => loadScriptOnce("plane-render.js?v=991"))
-      .then(() => loadScriptOnce("plane-feed.js?v=991"))
-      .then(() => loadScriptOnce("plane-ui.js?v=991"))
+      .then(() => loadScriptOnce("plane-engine.js?v=992"))
+      .then(() => loadScriptOnce("plane-render.js?v=992"))
+      .then(() => loadScriptOnce("plane-feed.js?v=992"))
+      .then(() => loadScriptOnce("plane-ui.js?v=992"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;

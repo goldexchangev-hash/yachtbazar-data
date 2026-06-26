@@ -44,6 +44,7 @@
     this.cx = W / 2; this.cy = H * 0.46;
     this.baseR = Math.min(W, H) * 0.155;
     this._mult = 1; this._progress = 0; this._state = "idle";
+    this._popped = false; this._popFx = null; this._pop = null; // burst FX state
     this._lastDrawKey = ""; // dirty-flag: skip the heavy Graphics rebuild when geometry is unchanged
     this._t = 0; this._breath = 0; this._shake = 0;
     this._cracks = []; this._rings = []; this._particles = []; this._coins = [];
@@ -166,12 +167,17 @@
     }
   };
 
-  PressureRenderer.prototype._balloonScale = function (mult) { return clamp(0.5 + 0.15 * Math.log2(mult + 1), 0.5, 1.95); };
+  PressureRenderer.prototype._balloonScale = function (mult) { return clamp(0.52 + 0.2 * Math.log2(mult + 1), 0.52, 2.15); };
 
   PressureRenderer.prototype._drawBalloon = function () {
-    const sc = this._balloonScale(this._mult); // breath now lives in the layer scale (no per-frame redraw)
-    const rx = this.baseR * sc, ry = this.baseR * 1.14 * sc;
+    if (this._popped) return; // burst → nothing to draw (the explosion owns the screen)
     const strain = clamp(this._progress, 0, 1);
+    // Swell FAST as it nears the burst: the strain bulge grows with strain² so the
+    // balloon visibly over-inflates and balloons up right before it pops.
+    const bulge = 1 + strain * strain * 0.6;
+    const sc = this._balloonScale(this._mult) * bulge;
+    // over-inflated balloons stretch taller as the skin gives out
+    const rx = this.baseR * sc, ry = this.baseR * (1.14 + strain * 0.12) * sc;
     const edge = mixColor(C.balloonLo, C.hot, strain * 0.6);
     const mid = mixColor(C.balloon, C.hot, strain * 0.6);
     const hi = mixColor(C.balloonHi, 0xffffff, strain * 0.3);
@@ -256,19 +262,19 @@
 
     const p = clamp(this._progress, 0, 1);
 
-    // wobble (squash/stretch jelly), grows with strain; breath folded in here so
-    // idle breathing animates via the cheap layer transform, not a geometry rebuild
-    const wob = Math.sin(this._t * 9) * (0.012 + p * 0.05);
+    // wobble (squash/stretch jelly) — trembles FASTER and harder as the strain
+    // climbs, so an over-inflated balloon visibly shudders right before it bursts.
+    const wob = Math.sin(this._t * (9 + p * 9)) * (0.014 + p * 0.09);
     const br = 1 + this._breath;
     this.balloonLayer.scale.set((1 + wob) * br, (1 - wob) * br);
 
-    // glow pulse is cheap (tint/alpha only) → keep it every frame even when the
-    // balloon body itself isn't redrawn
-    this.glow.alpha = 0.35 + 0.4 * p + 0.06 * Math.sin(this._t * 8);
+    // glow pulse is cheap (tint/alpha only) → keep it every frame, but kill it the
+    // instant the balloon bursts so no ghost glow lingers over the explosion.
+    this.glow.alpha = this._popped ? 0 : (0.35 + 0.45 * p + 0.08 * Math.sin(this._t * 8));
 
-    // jitter (B-independent)
-    if (this._state === "inflating") {
-      const amp = p * p * 8;
+    // jitter (B-independent) — bigger shake near the burst
+    if (this._state === "inflating" && !this._popped) {
+      const amp = p * p * 16;
       this.balloonLayer.position.set(this.cx + (Math.random() - 0.5) * amp, this.cy + (Math.random() - 0.5) * amp);
     } else this.balloonLayer.position.set(this.cx, this.cy);
 
@@ -357,11 +363,23 @@
       }
     }
 
+    // POP! punch — scales in with an elastic overshoot, shudders, then fades.
+    if (this._popFx && this._pop) {
+      const w = this._popFx; w.t += dt;
+      const inK = clamp(w.t / 0.22, 0, 1);
+      const e = 1 + 2.4 * Math.pow(inK - 1, 3) + 1.4 * Math.pow(inK - 1, 2); // easeOutBack
+      const s = (0.4 + 0.6 * e) * 1.5;
+      this._pop.scale.set(s + 0.05 * Math.sin(this._t * 40));
+      this._pop.rotation = Math.sin(this._t * 30) * 0.05;
+      this._pop.alpha = w.t < 0.55 ? 1 : Math.max(0, 1 - (w.t - 0.55) / 0.45);
+      if (this._pop.alpha <= 0.02) { this._pop.visible = false; this._popFx = null; }
+    }
+
     // Only rebuild the balloon/bar Graphics when something geometric actually
     // changed (inflating, or a state/mult/progress/ring change). At idle this
     // skips the 7-layer sphere + bar re-tessellation every frame.
     const key = this._mult + "|" + Math.round(this._progress * 1000) + "|" + this._state + "|" + this._rings.length;
-    if (this._state === "inflating" || key !== this._lastDrawKey) {
+    if (!this._popped && (this._state === "inflating" || key !== this._lastDrawKey)) {
       this._drawBalloon(); this._drawBar();
       this._lastDrawKey = key;
     }
@@ -417,19 +435,54 @@
     for (let i = 0; i < burst; i++) this._spawnCoin();
   };
   PressureRenderer.prototype.pop = function () {
-    this.flash.tint = C.white; this.flash.alpha = 1.0; this._shake = 30;
-    this.danger.alpha = 0.8;
-    this._shockwave(C.white, 900); this._shockwave(C.red, 620);
-    const n = 150;
+    // The balloon BURSTS: wipe its body so only the explosion remains.
+    this._popped = true;
+    try { this.body.clear(); this.sheen.clear(); this.crackG.clear(); this.ringG.clear(); } catch (e) {}
+    this.glow.alpha = 0;
+    // a violent screen punch + red danger bloom
+    this.flash.tint = C.white; this.flash.alpha = 1.0; this._shake = 44;
+    this.danger.alpha = 0.9;
+    // triple shock ring: the bang (white), a hot red blast, then the rubber-pink ring
+    this._shockwave(C.white, 1150); this._shockwave(C.red, 780); this._shockwave(C.balloon, 520);
+    const cx = this.cx, cy = this.cy;
+    // RUBBER SHREDS — irregular balloon-skin slivers tumbling out fast, then falling.
+    const shreds = 30;
+    for (let i = 0; i < shreds; i++) {
+      const g = new PIXI.Graphics();
+      const col = i % 5 === 0 ? C.balloonHi : i % 3 === 0 ? C.hot : C.balloon;
+      const w = 9 + Math.random() * 26, h = 5 + Math.random() * 11;
+      g.beginFill(col, 1).drawPolygon([-w / 2, 0, -w * 0.18, -h, w * 0.5, -h * 0.3, w * 0.28, h, -w * 0.34, h * 0.62]).endFill();
+      g.position.set(cx, cy); g.rotation = Math.random() * 6.28; this.fx.addChild(g);
+      const ang = Math.random() * Math.PI * 2, spd = 240 + Math.random() * 720;
+      this._particles.push({ g, x: cx, y: cy, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd - 120, vr: (Math.random() - 0.5) * 28, life: 0.9 + Math.random() * 0.9 });
+    }
+    // dense confetti specks for a bigger blast
+    const n = 130;
     for (let i = 0; i < n; i++) {
       const g = new PIXI.Graphics();
       const col = [C.gold, C.cyan, C.magenta, C.red, C.white, C.balloon][i % 6];
       const sz = 3 + (Math.random() * 6 | 0);
       g.beginFill(col).drawRect(-sz / 2, -sz / 2, sz, sz).endFill();
-      g.position.set(this.cx, this.cy); this.fx.addChild(g);
-      const ang = Math.random() * Math.PI * 2, spd = 140 + Math.random() * 560;
-      this._particles.push({ g, x: this.cx, y: this.cy, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd - 140, vr: (Math.random() - 0.5) * 18, life: 0.9 + Math.random() * 0.8 });
+      g.position.set(cx, cy); this.fx.addChild(g);
+      const ang = Math.random() * Math.PI * 2, spd = 170 + Math.random() * 640;
+      this._particles.push({ g, x: cx, y: cy, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd - 150, vr: (Math.random() - 0.5) * 22, life: 0.85 + Math.random() * 0.85 });
     }
+    // bright additive sparks right at the rupture
+    for (let i = 0; i < 22; i++) {
+      const g = new PIXI.Graphics(); g.beginFill(C.white).drawCircle(0, 0, 2 + Math.random() * 3).endFill();
+      g.blendMode = PIXI.BLEND_MODES.ADD; g.position.set(cx, cy); this.fxAdd.addChild(g);
+      const ang = Math.random() * Math.PI * 2, spd = 300 + Math.random() * 700;
+      this._particles.push({ g, x: cx, y: cy, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd, vr: 0, life: 0.3 + Math.random() * 0.35 });
+    }
+    this._popText();
+  };
+  PressureRenderer.prototype._popText = function () {
+    if (!this._pop) {
+      this._pop = new PIXI.Text("POP!", { fontFamily: '"Bungee","Press Start 2P",monospace', fontSize: 70, fill: 0xffffff, stroke: 0xff2a3a, strokeThickness: 9, dropShadow: true, dropShadowColor: 0x000000, dropShadowBlur: 10, dropShadowDistance: 0 });
+      this._pop.anchor.set(0.5); this.fx.addChild(this._pop);
+    }
+    this._pop.position.set(this.cx, this.cy); this._pop.visible = true; this._pop.alpha = 1; this._pop.scale.set(0.4);
+    this._popFx = { t: 0 };
   };
   PressureRenderer.prototype._spawnCoin = function () {
     const g = new PIXI.Graphics();
@@ -451,6 +504,9 @@
     this.multText.text = "1.00x"; this.multText.style.fill = C.white; this.multText.scale.set(1);
     this.flash.alpha = 0; this._shake = 0; this.danger.alpha = 0;
     this._winFx = null;
+    this._popped = false; this._popFx = null; this._lastDrawKey = ""; // fresh balloon, force a redraw
+    if (this._pop) { this._pop.visible = false; this._pop.alpha = 0; }
+    this.glow.alpha = 0.35;
     if (this.winAmt) { this.winAmt.visible = false; this.winAmt.alpha = 0; this.winAmt.scale.set(1); }
     if (this.winBanner) { this.winBanner.visible = false; this.winBanner.alpha = 0; this.winBanner.scale.set(1); this.winBanner.rotation = 0; }
     this._genCracks(); this.setState("armed");
