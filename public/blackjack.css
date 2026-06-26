@@ -135,6 +135,14 @@ body {
 .ring.warn { background: conic-gradient(var(--gold) calc(var(--p) * 1%), rgba(255, 255, 255, .12) 0); }
 .ring.crit { background: conic-gradient(var(--red) calc(var(--p) * 1%), rgba(255, 255, 255, .12) 0); }
 
+/* per-seat turn countdown — sits on whoever's turn it is (so you see it on YOUR seat too) */
+.seat-timer { position: absolute; top: -15px; left: 50%; transform: translateX(-50%); width: 32px; height: 32px; border-radius: 50%; z-index: 6;
+  background: conic-gradient(var(--cyan) calc(var(--p, 100) * 1%), rgba(255, 255, 255, .14) 0); display: grid; place-items: center; box-shadow: 0 2px 8px rgba(0, 0, 0, .55); }
+.seat-timer::after { content: attr(data-sec); width: 24px; height: 24px; border-radius: 50%; background: #06140f; display: grid; place-items: center; font-family: var(--pixel); font-size: 10px; color: var(--ink); }
+.seat-timer.warn { background: conic-gradient(var(--gold) calc(var(--p, 100) * 1%), rgba(255, 255, 255, .14) 0); }
+.seat-timer.crit { background: conic-gradient(var(--red) calc(var(--p, 100) * 1%), rgba(255, 255, 255, .14) 0); animation: stPulse .5s ease-in-out infinite; }
+@keyframes stPulse { 50% { transform: translateX(-50%) scale(1.13); } }
+
 /* seats row */
 .seats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 14px; align-items: end; }
 .seat {
@@ -243,14 +251,6 @@ body {
 .dock .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
 .dock .msg { text-align: center; color: var(--muted); font-size: 13px; min-height: 18px; margin-bottom: 8px; }
 .dock .msg b { color: var(--gold); }
-/* turn countdown (only on your turn — auto-stands when it runs out) */
-.turn-timer { display: flex; align-items: center; gap: 10px; max-width: 440px; margin: 0 auto 10px; }
-.turn-timer .tt-label { font-family: var(--pixel); font-size: 9px; color: var(--gold); white-space: nowrap; }
-.turn-timer .tt-bar { flex: 1; height: 8px; border-radius: 999px; background: rgba(8, 12, 24, .7); overflow: hidden; box-shadow: inset 0 1px 2px rgba(0, 0, 0, .5); }
-.turn-timer .tt-bar i { display: block; height: 100%; width: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--green), var(--gold)); transition: width .2s linear; }
-.turn-timer.warn .tt-label { color: #ff8a3d; } .turn-timer.warn .tt-bar i { background: linear-gradient(90deg, var(--gold), #ff8a3d); }
-.turn-timer.crit .tt-label { color: var(--red); } .turn-timer.crit .tt-bar i { background: var(--red); animation: ttPulse .5s ease-in-out infinite; }
-@keyframes ttPulse { 50% { opacity: .55; } }
 .bet-stepper { display: flex; align-items: center; background: rgba(8, 12, 24, .6); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
 .bet-stepper button { font-family: var(--pixel); font-size: 14px; color: var(--ink); background: rgba(255, 255, 255, .06); border: none; width: 40px; height: 44px; cursor: pointer; }
 .bet-stepper input { width: 92px; text-align: center; border: none; background: transparent; font-family: var(--pixel); font-size: 13px; color: var(--gold); }

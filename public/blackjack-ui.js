@@ -227,7 +227,12 @@
       var mine = this.you && this.you.seat === i;
       var seatTurn = m.phase === "turns" && m.turnIdx === i;
       if (mine) seat.classList.add("you");
-      if (seatTurn) seat.classList.add("turn");
+      if (seatTurn) {
+        seat.classList.add("turn");
+        var stm = el("div", "seat-timer"); // countdown on whoever's turn it is (updated by _tick)
+        stm.setAttribute("data-sec", Math.max(0, Math.ceil((this.deadline - (Date.now() + this.skew)) / 1000)));
+        seat.appendChild(stm);
+      }
       if (!s) {
         seat.classList.add("empty");
         if (this.you == null) { var take = el("button", "take", "SIT HERE"); take.setAttribute("data-take", i); seat.appendChild(take); }
@@ -296,17 +301,13 @@
         E.ring.className = "ring" + (sec <= 3 ? " crit" : (sec <= 6 ? " warn" : ""));
       } else E.ring.style.display = "none";
     }
-    // dock turn-timer — ONLY on your own turn (auto-stands when it empties)
-    if (E.turnTimer) {
-      var myTurn = m && m.phase === "turns" && this.you && m.turnIdx === this.you.seat;
-      if (myTurn) {
-        E.turnTimer.hidden = false;
-        var total = PHASE_TOTAL.turns || 20000;
-        var s2 = Math.ceil(remaining / 1000), pct2 = Math.max(0, Math.min(100, (remaining / total) * 100));
-        if (E.ttFill) E.ttFill.style.width = pct2.toFixed(1) + "%";
-        if (E.ttLabel) E.ttLabel.textContent = "⏱ Auto-stand in " + s2 + "s";
-        E.turnTimer.className = "turn-timer" + (s2 <= 3 ? " crit" : (s2 <= 6 ? " warn" : ""));
-      } else E.turnTimer.hidden = true;
+    // per-seat turn countdown — live-updates the ring on whoever's seat is active
+    var seatTimer = E.seats ? E.seats.querySelector(".seat-timer") : null;
+    if (seatTimer && m && m.phase === "turns") {
+      var total = PHASE_TOTAL.turns || 20000;
+      var s2 = Math.ceil(remaining / 1000), pct2 = Math.max(0, Math.min(100, (remaining / total) * 100));
+      seatTimer.style.setProperty("--p", pct2.toFixed(1)); seatTimer.setAttribute("data-sec", s2);
+      seatTimer.className = "seat-timer" + (s2 <= 3 ? " crit" : (s2 <= 6 ? " warn" : ""));
     }
   };
 
