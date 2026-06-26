@@ -752,6 +752,9 @@
 
     document.addEventListener("keydown", (e) => {
       if (e.code === "Space" && !e.repeat) {
+        // Only spin when Crypto Reels is the live channel — otherwise this global
+        // handler would spin the hidden reels (and burn credits) from any game.
+        if (!document.body.classList.contains("game-slots")) return;
         const tag = (e.target && e.target.tagName) || "";
         if (tag !== "INPUT" && tag !== "TEXTAREA") { e.preventDefault(); ensureAudio(); spin(); }
       } else if (e.code === "Escape") {

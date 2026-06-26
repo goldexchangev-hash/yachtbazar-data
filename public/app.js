@@ -1934,14 +1934,14 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=997").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=998").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=997"))
+      .then(() => loadScriptOnce("slots.js?v=998"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -1951,9 +1951,9 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=997"))
-      .then(() => loadScriptOnce("pressure-render.js?v=997"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=997"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=998"))
+      .then(() => loadScriptOnce("pressure-render.js?v=998"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=998"))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -2006,10 +2006,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=997"))
-      .then(() => loadScriptOnce("plane-render.js?v=997"))
-      .then(() => loadScriptOnce("plane-feed.js?v=997"))
-      .then(() => loadScriptOnce("plane-ui.js?v=997"))
+      .then(() => loadScriptOnce("plane-engine.js?v=998"))
+      .then(() => loadScriptOnce("plane-render.js?v=998"))
+      .then(() => loadScriptOnce("plane-feed.js?v=998"))
+      .then(() => loadScriptOnce("plane-ui.js?v=998"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2087,15 +2087,15 @@
   function loadThreeOnce() {
     if (window.THREE) return Promise.resolve();
     if (threeLoadPromise) return threeLoadPromise;
-    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=997").catch((e) => { threeLoadPromise = null; throw e; });
+    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=998").catch((e) => { threeLoadPromise = null; throw e; });
     return threeLoadPromise;
   }
   function ensureSlots3dLoaded() {
     if (window.Slots3D) return Promise.resolve(true);
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("slots3d-engine.js?v=997"))
-      .then(() => loadScriptOnce("slots3d.js?v=997"))
+      .then(() => loadScriptOnce("slots3d-engine.js?v=998"))
+      .then(() => loadScriptOnce("slots3d.js?v=998"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2474,6 +2474,12 @@
     document.querySelectorAll("#game-nav .game-card").forEach((b) => { b.onclick = () => switchGame(b.dataset.game); });
     // keyboard: ←/→ to cycle channels through every game
     $("game-nav").addEventListener("keydown", (e) => {
+      // SPACE/ENTER is a BET key for the canvas games (Gem Vault / Plane / Balloon
+      // Pop spin/launch on Space). If a nav card happens to hold focus — e.g. the
+      // spin button just disabled mid-spin and the browser punted focus onto a
+      // card — a stray Space would otherwise "click" that card and yank you into
+      // another game. Swallow it here so the active game keeps Space.
+      if (e.code === "Space" || e.key === " " || e.key === "Spacebar") { e.preventDefault(); return; }
       const i = GAME_ORDER.indexOf(currentGame);
       if (i < 0) return; // unknown/hidden channel (e.g. poker) → don't snap to flip
       if (e.key === "ArrowLeft") switchGame(GAME_ORDER[Math.max(0, i - 1)]);
