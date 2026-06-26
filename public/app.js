@@ -1915,14 +1915,14 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=986").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=987").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=986"))
+      .then(() => loadScriptOnce("slots.js?v=987"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -1932,9 +1932,9 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=986"))
-      .then(() => loadScriptOnce("pressure-render.js?v=986"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=986"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=987"))
+      .then(() => loadScriptOnce("pressure-render.js?v=987"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=987"))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -1984,10 +1984,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=986"))
-      .then(() => loadScriptOnce("plane-render.js?v=986"))
-      .then(() => loadScriptOnce("plane-feed.js?v=986"))
-      .then(() => loadScriptOnce("plane-ui.js?v=986"))
+      .then(() => loadScriptOnce("plane-engine.js?v=987"))
+      .then(() => loadScriptOnce("plane-render.js?v=987"))
+      .then(() => loadScriptOnce("plane-feed.js?v=987"))
+      .then(() => loadScriptOnce("plane-ui.js?v=987"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2176,6 +2176,9 @@
     if (planeGame) { planeGame.setMode("real"); planeGame.setBalance(weiToUsd(gameWei)); planeGame.setEnabled(!!(account && contract)); }
   }
   function demoReset() {
+    // A Plane round mid-flight has already debited its stake; restart it cleanly so
+    // the reset balance isn't settled against a stale in-flight bet.
+    if (planeGame && demoOn) try { planeGame.restartDemo(); } catch (e) {}
     demoUsd = DEMO_START_USD; demoSave(); demoSyncBalance();
     if (pressureGame) pressureGame.setBalance(demoUsd);
     if (planeGame && demoOn) planeGame.setBalance(demoUsd);
@@ -3451,6 +3454,7 @@
         if (focusable) return;
         e.preventDefault(); // no page scroll
         if (currentGame === "pressure") return; // Balloon Pop owns space (pump)
+        if (currentGame === "plane") return;    // Plane owns space (launch / cash-out)
         const BTN = { flip: "play-house-btn", dice: "dice-roll-btn", twodice: "td-roll-btn", crash: "crash-launch", slots: "slots-spin" };
         const btn = $(BTN[currentGame] || "play-house-btn");
         if (btn && !btn.disabled) btn.click();

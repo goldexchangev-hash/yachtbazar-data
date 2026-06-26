@@ -321,6 +321,11 @@
   PlaneGame.prototype._updatePfLast = function () { if (this.els.pfNonce) this.els.pfNonce.textContent = String(this.nonce); if (this.els.pfLast && this.lastRound) this.els.pfLast.textContent = "round #" + this.lastRound.nonce + " · crash " + this.lastRound.crash.toFixed(2) + "x"; };
   PlaneGame.prototype._verifyLast = function () {
     if (!this.lastRound) { this._msg("Wait for a round, then verify", ""); return; }
+    if (this.mode === "real") { // real crashes come from the on-chain contract, not this client engine
+      if (this.els.pfReveal) this.els.pfReveal.textContent = "Real mode: the crash point is decided on-chain — verify the result on the block explorer (this client seed verifies demo rounds).";
+      this._msg("Real rounds settle on-chain — they're verifiable on the explorer", "");
+      return;
+    }
     const v = E.verify(this.serverSeed, this.commitHash, this.clientSeed, this.lastRound.nonce, this.houseEdge, this.cap);
     const ok = v.hashOk && Math.abs(v.crash - this.lastRound.crash) < 1e-9;
     if (this.els.pfReveal) this.els.pfReveal.textContent = "serverSeed " + this.serverSeed.slice(0, 12) + "… → hash " + (v.hashOk ? "MATCHES ✓" : "✗") + " · crash " + v.crash.toFixed(2) + "x (" + (ok ? "verified ✓" : "✗") + ")";
@@ -330,10 +335,25 @@
   /* ---------- host bridge API (mirrors PressureGame) ---------- */
   PlaneGame.prototype.setActive = function (on) {
     this._active = !!on;
+    // Leaving the channel mid-REAL-flight would pause the Pixi ticker that drives
+    // _tick → the outcome never resolves, _realBusy stays latched, and the host's
+    // revealLock would hang for 20s. The on-chain round is ALREADY settled, so
+    // resolve the animation now (skipping the pause) and let the host unlock.
+    if (!on && this._realRes) {
+      if (this.state === "real-flying") { if (this._realRes.won) this._realCashOut(); else this._realCrash(); this._endRealRound(); }
+      else if (this.state === "real-end") { this._endRealRound(); }
+    }
     try { if (on) this.r.resume(); else this.r.pause(); } catch (e) {}
     if (!on) { try { Riser.stop(); } catch (e) {} }
   };
   PlaneGame.prototype.setEnabled = function (on) { this._enabled = !!on; this._renderButtons(); };
+  // Drop any in-flight demo round and start a fresh betting window (used on credit reset).
+  PlaneGame.prototype.restartDemo = function () {
+    if (this.mode !== "demo") return;
+    try { Riser.stop(); } catch (e) {}
+    this.bets.forEach((b) => { b.betPlaced = false; b.active = false; b.cashed = false; this._syncPanel(b); });
+    this._startBetting();
+  };
   PlaneGame.prototype.setBalance = function (usd) {
     if (!(usd >= 0)) usd = 0;
     this.balance = Math.round(usd * 100) / 100;
@@ -343,6 +363,14 @@
   PlaneGame.prototype.setMode = function (m) {
     if (m !== "real" && m !== "demo") return;
     if (m === this.mode) return;
+    // If a DEMO round is mid-flight when we switch (e.g. wallet just connected),
+    // its stake was already debited — refund the still-active bets so the play
+    // balance isn't silently eaten. (Real flights settle on-chain; nothing to refund.)
+    if (this.mode === "demo" && (this.state === "flying" || this.state === "takeoff")) {
+      let refund = 0;
+      this.bets.forEach((b) => { if (b.active && !b.cashed) { refund += b.stake; b.active = false; } });
+      if (refund > 0) { this.balance = Math.round((this.balance + refund) * 100) / 100; this._save(); }
+    }
     this.mode = m;
     try { Riser.stop(); } catch (e) {}
     this.bets.forEach((b) => { b.betPlaced = false; b.active = false; b.cashed = false; b.autoBet = false; this._syncPanel(b); });
