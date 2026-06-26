@@ -20,12 +20,13 @@
   const THREE = root.THREE;
   const HALF = Math.PI / 2, TAU = Math.PI * 2;
 
-  // 240° arc, opening downward: value 0 → lower-left, 50 → top, 100 → lower-right.
+  // 240° arc with the gap at the TOP: value 0 → upper-LEFT, 50 → bottom, 100 → upper-right.
   const ARC = (240 * Math.PI) / 180;
-  const ANG0 = -HALF + ARC / 2;            // value 0  (lower-left,  ~210°)
-  const ANG100 = -HALF - ARC / 2;          // value 100 (lower-right, ~-30°)
+  const ANG0 = -HALF + ARC / 2;
+  const ANG100 = -HALF - ARC / 2;
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-  const angOf = (v) => ANG0 + (clamp(v, 0, 100) / 100) * (ANG100 - ANG0); // decreases as v rises
+  // mirrored horizontally so 0 starts on the left and 100 ends on the right
+  const angOf = (v) => Math.PI - (ANG0 + (clamp(v, 0, 100) / 100) * (ANG100 - ANG0)); // increases as v rises
 
   // radii
   const R_BEZEL = 3.02, R_DIAL = 2.78, CELL_IN = 2.30, CELL_OUT = 2.60;
@@ -114,9 +115,9 @@
     this.cells = [];
     for (let i = 0; i < N_CELLS; i++) {
       const vLo = (i / N_CELLS) * 100, vHi = ((i + 1) / N_CELLS) * 100;
-      const aHi = angOf(vHi), aLo = angOf(vLo);                    // aHi < aLo (angle decreases as v rises)
-      const span = aLo - aHi, pad = span * 0.16;
-      const geo = new THREE.RingGeometry(CELL_IN, CELL_OUT, 3, 1, aHi + pad / 2, span - pad);
+      const a1 = angOf(vLo), a2 = angOf(vHi);
+      const start = Math.min(a1, a2), span = Math.abs(a2 - a1), pad = span * 0.16; // winding-robust
+      const geo = new THREE.RingGeometry(CELL_IN, CELL_OUT, 3, 1, start + pad / 2, span - pad);
       const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: C.cellOff, transparent: true, opacity: 0.95 }));
       m.position.z = 0.02; gauge.add(m);
       this.cells.push({ m, v: (i + 0.5) / N_CELLS * 100, base: col(C.cellOff) });
