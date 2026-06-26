@@ -60,6 +60,8 @@
   let pressureGame = null;        // the Balloon Pop instance, built on first visit to CH 13
   let planeLoadPromise = null;    // lazy-load guard for the Plane (Aviator) engine
   let planeGame = null;           // the Plane instance, built on first visit to CH 14
+  let slots3dLoadPromise = null;  // lazy-load guard for the Gem Vault 3D slot (Three.js)
+  let slots3dGame = null;         // the Gem Vault 3D instance, built on first visit to CH 15
   let read = null; // connected to provider
   let maxBet = 0n;
   let gameWei = 0n; // cached in-game (deposited) balance, refreshed by refreshBalances
@@ -141,7 +143,7 @@
   // ---- shareable win/loss card (canvas -> PNG -> Web Share / download) ----
   let lastResult = null;
   // Active TV channel → friendly game name + emoji for the share card.
-  const SHARE_GAME = { 8: ["Coin Flip", "🪙"], 9: ["0-100", "🎲"], 10: ["Dice #2", "🎲"], 11: ["Crash", "🚀"], 12: ["Crypto Reels", "🎰"], 13: ["Balloon Pop", "🎈"], 14: ["Plane", "✈️"] };
+  const SHARE_GAME = { 8: ["Coin Flip", "🪙"], 9: ["0-100", "🎲"], 10: ["Dice #2", "🎲"], 11: ["Crash", "🚀"], 12: ["Crypto Reels", "🎰"], 13: ["Balloon Pop", "🎈"], 14: ["Plane", "✈️"], 15: ["Gem Vault 3D", "💎"] };
   function hideShareBtn() { const b = $("share-result-btn"); if (b) b.classList.add("hidden"); }
   function setLastResult(r) {
     r = r || {};
@@ -1913,14 +1915,14 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=994").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=995").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=994"))
+      .then(() => loadScriptOnce("slots.js?v=995"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -1930,9 +1932,9 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=994"))
-      .then(() => loadScriptOnce("pressure-render.js?v=994"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=994"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=995"))
+      .then(() => loadScriptOnce("pressure-render.js?v=995"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=995"))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -1985,10 +1987,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=994"))
-      .then(() => loadScriptOnce("plane-render.js?v=994"))
-      .then(() => loadScriptOnce("plane-feed.js?v=994"))
-      .then(() => loadScriptOnce("plane-ui.js?v=994"))
+      .then(() => loadScriptOnce("plane-engine.js?v=995"))
+      .then(() => loadScriptOnce("plane-render.js?v=995"))
+      .then(() => loadScriptOnce("plane-feed.js?v=995"))
+      .then(() => loadScriptOnce("plane-ui.js?v=995"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2060,6 +2062,52 @@
       return { won: a.won, crashX: Number(a.crashX100) / 100, targetX: Number(a.targetX100) / 100, profitUsd: a.won ? weiToUsd(a.payout - bet) : 0 };
     } catch (e) { unlockReveal(); txErr(e); return null; }
   }
+
+  // ── Gem Vault 3D (CH 15): premium Three.js slot, play-money/demo. ──
+  let threeLoadPromise = null;
+  function loadThreeOnce() {
+    if (window.THREE) return Promise.resolve();
+    if (threeLoadPromise) return threeLoadPromise;
+    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=995").catch((e) => { threeLoadPromise = null; throw e; });
+    return threeLoadPromise;
+  }
+  function ensureSlots3dLoaded() {
+    if (window.Slots3D) return Promise.resolve(true);
+    if (slots3dLoadPromise) return slots3dLoadPromise;
+    slots3dLoadPromise = loadThreeOnce()
+      .then(() => loadScriptOnce("slots3d-engine.js?v=995"))
+      .then(() => loadScriptOnce("slots3d.js?v=995"))
+      .then(() => true)
+      .catch((e) => { slots3dLoadPromise = null; throw e; });
+    return slots3dLoadPromise;
+  }
+  function buildSlots3d() {
+    if (slots3dGame || !window.Slots3D) return slots3dGame;
+    const el = (id) => $(id);
+    const mount = $("slots3d-stage"); if (!mount) return null;
+    slots3dGame = new window.Slots3D({
+      mount, width: 800, height: 600, ethUsd: ethUsd, initialBalance: demoUsd,
+      onBalance: (b) => { demoUsd = Math.round(b * 100) / 100; demoSave(); demoPaint(); }, // demo play-money
+      onWin: (i) => setLastResult({ won: true, game: "Gem Vault 3D", emoji: "💎", amountUsd: i.profitUsd, detail: i.mult.toFixed(2) + "× spin" }),
+      els: {
+        balance: el("s3d-balance"), win: el("s3d-win"), message: el("s3d-message"),
+        betSlider: el("s3d-bet-slider"), betVal: el("s3d-bet-val"), betEth: el("s3d-bet-eth"),
+        betHalf: el("s3d-bet-half"), betDouble: el("s3d-bet-double"), betMax: el("s3d-bet-max"),
+        spinBtn: el("s3d-spin"),
+        pfHash: el("s3d-pf-hash"), pfClient: el("s3d-pf-client"), pfNonce: el("s3d-pf-nonce"),
+        pfVerify: el("s3d-pf-verify"), pfReveal: el("s3d-pf-reveal"), pfLast: el("s3d-pf-last"),
+      },
+    });
+    return slots3dGame;
+  }
+  function ensureSlots3dReady() {
+    ensureSlots3dLoaded().then(() => {
+      const g = buildSlots3d(); if (!g) return;
+      g.setActive(true); g.setEthUsd(ethUsd);
+      if (demoOn) { g.setBalance(demoUsd); g.setEnabled(true); } else { g.setEnabled(false); }
+      if (window.TV && currentGame === "slots3d" && !TV._promoPlaying) try { TV.idle(); } catch (e) {}
+    }).catch(() => toast("Couldn't load Gem Vault 3D — check your connection", "err"));
+  }
   // Unpack the contract's 15-symbol grid (4 bits each, cell = reel*3+row) into [5][3].
   function unpackSlotsGrid(packed) {
     const p = BigInt(packed);
@@ -2130,6 +2178,7 @@
     demoPaint();
     if (pressureGame) try { pressureGame.setEthUsd(ethUsd); } catch (e) {}
     if (planeGame) try { planeGame.setEthUsd(ethUsd); if (demoOn) planeGame.setBalance(demoUsd); } catch (e) {}
+    if (slots3dGame) try { slots3dGame.setEthUsd(ethUsd); if (demoOn) slots3dGame.setBalance(demoUsd); } catch (e) {}
     try {
       setupSliders();
       if (currentGame === "dice") diceReadouts();
@@ -2151,6 +2200,8 @@
     { const pc = $("ch-pressure"); if (pc) pc.hidden = false; } // Balloon Pop is play-money → demo only
     { const pp = $("plane-panel"); if (pp) pp.hidden = false; }   // Plane shows in demo AND real
     { const pc = $("ch-plane"); if (pc) pc.hidden = false; }
+    { const pp = $("slots3d-panel"); if (pp) pp.hidden = false; }  // Gem Vault 3D is play-money → demo only
+    { const pc = $("ch-slots3d"); if (pc) pc.hidden = false; }
     document.body.classList.remove("plane-real"); // demo → show the 2nd bet + feed + autobet
     { const bar = $("demo-bar"); if (bar) bar.classList.remove("hidden"); }
     { const below = $("demo-below"); if (below) below.classList.remove("hidden"); }
@@ -2159,6 +2210,7 @@
     const mh = $("maxbet-hint"); if (mh) mh.textContent = "· demo · $10–$" + HARD_MAX_USD;
     if (pressureGame) { pressureGame.setBalance(demoUsd); pressureGame.setEnabled(true); }
     if (planeGame) { planeGame.setMode("demo"); planeGame.setBalance(demoUsd); planeGame.setEnabled(true); }
+    if (slots3dGame) { slots3dGame.setBalance(demoUsd); slots3dGame.setEnabled(true); }
     demoSyncBalance();
   }
   function exitDemo() {
@@ -2171,10 +2223,12 @@
     // Balloon Pop is play-money only — once a real wallet connects the whole site
     // is real money, so hide it and bounce off the channel if they're on it.
     { const pc = $("ch-pressure"); if (pc) pc.hidden = true; }
+    { const pc = $("ch-slots3d"); if (pc) pc.hidden = true; } // Gem Vault 3D is play-money → demo only
     // setActive(false) first so any held round is released/refunded before
     // setEnabled(false) locks the game (which zeroes `pressing`).
     if (pressureGame) { pressureGame.setActive(false); pressureGame.setEnabled(false); }
-    if (currentGame === "pressure") switchGame("flip");
+    if (slots3dGame) { slots3dGame.setActive(false); slots3dGame.setEnabled(false); }
+    if (currentGame === "pressure" || currentGame === "slots3d") switchGame("flip");
     // Plane DOES have a real-money mode → keep it, switch to single-shot real.
     document.body.classList.add("plane-real");
     if (planeGame) { planeGame.setMode("real"); planeGame.setBalance(weiToUsd(gameWei)); planeGame.setEnabled(!!(account && contract)); }
@@ -2186,6 +2240,7 @@
     demoUsd = DEMO_START_USD; demoSave(); demoSyncBalance();
     if (pressureGame) pressureGame.setBalance(demoUsd);
     if (planeGame && demoOn) planeGame.setBalance(demoUsd);
+    if (slots3dGame && demoOn) slots3dGame.setBalance(demoUsd);
     toast("Demo credits topped back up to " + usd(DEMO_START_USD) + " 🎮", "ok");
   }
   // Read + validate a demo stake from a slider. Returns 0 (and toasts) if invalid.
@@ -2287,9 +2342,9 @@
 
   // ── Game switcher ("change the channel") ──
   // Poker is temporarily disabled (hidden from the channel bar) — to be revisited.
-  const GAME_CHANNEL = { flip: 8, dice: 9, twodice: 10, crash: 11, slots: 12, pressure: 13, plane: 14 };
-  const GAME_TITLE = { flip: "CRYPTO TV FLIP", dice: "CRYPTO TV 0-100", twodice: "CRYPTO TV DICE #2", crash: "CRYPTO TV CRASH", slots: "CRYPTO REELS", pressure: "BALLOON POP", plane: "CRYPTO TV PLANE" };
-  const GAME_ORDER = ["flip", "dice", "twodice", "crash", "slots", "pressure", "plane"];
+  const GAME_CHANNEL = { flip: 8, dice: 9, twodice: 10, crash: 11, slots: 12, pressure: 13, plane: 14, slots3d: 15 };
+  const GAME_TITLE = { flip: "CRYPTO TV FLIP", dice: "CRYPTO TV 0-100", twodice: "CRYPTO TV DICE #2", crash: "CRYPTO TV CRASH", slots: "CRYPTO REELS", pressure: "BALLOON POP", plane: "CRYPTO TV PLANE", slots3d: "GEM VAULT 3D" };
+  const GAME_ORDER = ["flip", "dice", "twodice", "crash", "slots", "pressure", "plane", "slots3d"];
   function paintGameTabs(game) {
     document.body.classList.toggle("game-dice", game === "dice");
     document.body.classList.toggle("game-twodice", game === "twodice");
@@ -2297,6 +2352,7 @@
     document.body.classList.toggle("game-slots", game === "slots");
     document.body.classList.toggle("game-pressure", game === "pressure");
     document.body.classList.toggle("game-plane", game === "plane");
+    document.body.classList.toggle("game-slots3d", game === "slots3d");
     document.body.classList.toggle("game-poker", game === "poker"); // CSS hides the TV layout, shows #poker-view
     const bar = $("game-nav"); if (bar) bar.dataset.game = game;
     document.querySelectorAll("#game-nav .game-card").forEach((b) => {
@@ -2317,6 +2373,7 @@
     if (game !== "slots" && window.CryptoReels && CryptoReels.setActive) CryptoReels.setActive(false);
     if (game !== "pressure" && pressureGame) pressureGame.setActive(false);
     if (game !== "plane" && planeGame) planeGame.setActive(false);
+    if (game !== "slots3d" && slots3dGame) slots3dGame.setActive(false);
     // Poker is its own full-width view (no TV); everything else uses the TV channel.
     if (game === "poker") { if (window.PokerUI) PokerUI.show(); }
     else { if (window.PokerUI) PokerUI.hide(); if (window.TV && TV.changeChannel) TV.changeChannel(GAME_CHANNEL[game]); }
@@ -2326,6 +2383,7 @@
     else if (game === "slots") { refreshDiceHouse(); slotsReadouts(); ensureSlotsSupport(); ensureSlotsLoaded().then(() => { if (window.CryptoReels) CryptoReels.setActive(true); }).catch(() => {}); }
     else if (game === "pressure") { ensurePressureReady(); }
     else if (game === "plane") { refreshDiceHouse(); ensurePlaneReady(); }
+    else if (game === "slots3d") { ensureSlots3dReady(); }
   }
   // Poker chips are a session-local pool seeded from your in-game balance.
   // Phase 1 (vs house bots) plays out client-side; net results are NOT yet
@@ -2414,6 +2472,7 @@
     // Plane (CH 14) is lazy-loaded too — build it on reload so the TV shows the
     // game instead of an empty black layer once the promo intro ends.
     if (saved === "plane") ensurePlaneReady();
+    if (saved === "slots3d") ensureSlots3dReady();
   }
 
   // My open tables: show bank + idle countdown, auto-close (refund) when stale.

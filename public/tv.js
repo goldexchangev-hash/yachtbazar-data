@@ -45,6 +45,7 @@
         slots: $("layer-slots"),
         pressure: $("layer-pressure"),
         plane: $("layer-plane"),
+        slots3d: $("layer-slots3d"),
       };
       this._activeChannel = 8; // 8 = Flip, 9 = Dice — so idle() advertises the active game
       this.scoreboard = $("scoreboard");
@@ -201,6 +202,7 @@
       if (this._activeChannel === 12) return this._slotsIdle();  // reels room
       if (this._activeChannel === 13) return this._pressureIdle(); // balloon room
       if (this._activeChannel === 14) return this._planeIdle();  // plane room
+      if (this._activeChannel === 15) return this._slots3dIdle(); // gem vault 3d
       this._readyRoom(subtext);                                  // flip / 0-100 / dice #2 ready room
     },
 
@@ -426,6 +428,16 @@
       this._show("plane");
     },
 
+    /* ---------------- Gem Vault 3D (CH 15) ---------------- */
+    // The Three.js slot renders itself (slots3d.js); app.js lazy-builds it.
+    _slots3dIdle() {
+      if (!this._connected) return this._staticIdle();
+      const stage = $("slots3d-stage");
+      if (!stage || !stage.querySelector("canvas")) return this._readyRoom();
+      this._setStatic(0.03);
+      this._show("slots3d");
+    },
+
     // Turn the dial between Coin Flip (08) and Dice (09) with a CRT "tune" effect.
     async changeChannel(num) {
       const seq = ++this._seq;
@@ -440,6 +452,7 @@
       else if (num === 12) this._slotsIdle();
       else if (num === 13) this._pressureIdle();
       else if (num === 14) this._planeIdle();
+      else if (num === 15) this._slots3dIdle();
       else this._readyRoom();
       await sleep(160); if (seq !== this._seq) return;
       this.screenEl.classList.remove("ch-switch");

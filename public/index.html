@@ -27,7 +27,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=994" />
+    <link rel="stylesheet" href="styles.css?v=995" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -42,7 +42,7 @@
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.94</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.95</span>
       </div>
       <div class="topbar-right">
         <div class="music-wrap">
@@ -164,6 +164,16 @@
             </svg>
           </span>
           <span class="gc-name">Plane</span>
+        </button>
+
+        <button type="button" class="game-card slots3d" id="ch-slots3d" role="tab" aria-selected="false" data-game="slots3d">
+          <span class="gc-tile">
+            <svg class="gc-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 2 5.5 6v5c0 4.2 2.8 7.5 6.5 9 3.7-1.5 6.5-4.8 6.5-9V6z"/>
+              <path d="M12 7 9.3 9.2 12 13l2.7-3.8z"/>
+            </svg>
+          </span>
+          <span class="gc-name">Gem Vault</span>
         </button>
 
         <button type="button" class="game-card poker" id="ch-poker" role="tab" aria-selected="false" data-game="poker" hidden>
@@ -336,6 +346,11 @@
                   <div id="plane-stage" class="plane-stage"></div>
                 </div>
 
+                <!-- Gem Vault 3D (CH 15): the Three.js slot plays on the TV -->
+                <div class="screen-layer hidden" id="layer-slots3d">
+                  <div id="slots3d-stage" class="slots3d-stage"></div>
+                </div>
+
                 <canvas id="confetti-canvas" class="confetti-canvas"></canvas>
                 <!-- Pixel "win scene" movie overlay (escalates with the amount) -->
                 <canvas id="scene-canvas" class="scene-canvas"></canvas>
@@ -344,7 +359,7 @@
 
                 <!-- Promo intro reel — autoplays once (muted) on first load, then fades
                      to black and hands off to the game. Replay button under the TV. -->
-                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=994"></video>
+                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=995"></video>
 
                 <!-- Shown while a bet tx is being signed + mined (esp. slow on mobile) -->
                 <div id="tv-pending" class="tv-pending hidden">⏳ SENDING BET…<br />confirm in your wallet, then hold tight</div>
@@ -389,6 +404,10 @@
         <div class="action-dock" data-game="pressure">
           <button id="pr-hold" class="btn btn-primary btn-block act-btn"><span class="ab-verb">🎈 HOLD TO PUMP</span><span class="ab-amt">BET $<b id="pr-bet-hint">10</b> · WIN $<b id="pr-win-hint">10.00</b></span></button>
           <div class="muted dice-roll-hint" id="pr-message">HOLD the balloon to pump</div>
+        </div>
+        <div class="action-dock" data-game="slots3d">
+          <button id="s3d-spin" class="s3d-spin" data-kind="spin">🎰 SPIN $10.00</button>
+          <div class="muted dice-roll-hint s3d-msg" id="s3d-message">Tap SPIN</div>
         </div>
         <div class="action-dock" data-game="plane">
           <div class="plane-actions">
@@ -808,6 +827,40 @@
           </details>
         </div>
 
+        <!-- Gem Vault 3D (CH 15): premium Three.js slot, play-money / demo only -->
+        <div class="card dice-panel slots3d-panel" id="slots3d-panel" data-game="slots3d" hidden>
+          <div class="ph-head">
+            <h2 class="card-title">💎 Gem Vault 3D <span class="ch-tag">CH 15</span></h2>
+            <span class="ph-bankroll muted">Balance: <strong id="s3d-balance">$0</strong> · edge ~5%</span>
+          </div>
+          <p class="muted td-intro">A 5×3, 20-line slot — match symbols left-to-right; <strong>WILD</strong> substitutes and 3+ <strong>Vault</strong> scatters pay anywhere. <strong>95% RTP</strong> · provably fair.</p>
+
+          <label class="field-label">Bet <span class="muted">— USD, $10 min</span></label>
+          <div class="slider-wrap">
+            <input id="s3d-bet-slider" class="slider" type="range" min="10" max="500" step="10" value="10" />
+            <div class="slider-val"><strong id="s3d-bet-val">$10</strong><span class="eth-sub" id="s3d-bet-eth"></span></div>
+          </div>
+          <div class="quickbet-row">
+            <button type="button" class="qbet" id="s3d-bet-half">½</button>
+            <button type="button" class="qbet" id="s3d-bet-double">2×</button>
+            <button type="button" class="qbet" id="s3d-bet-max">Max</button>
+          </div>
+          <div class="side-row"><span class="side-label">Last win</span><strong class="s3d-winval" id="s3d-win">$0.00</strong></div>
+
+          <details class="dropdown pr-fair">
+            <summary class="card-title dd-summary"><span>🔒 Provably fair</span><span class="dd-arrow" aria-hidden="true">▾</span></summary>
+            <div class="ht-body pr-fair-body">
+              <div class="pr-fair-row muted">server hash <code id="s3d-pf-hash">—</code> · nonce <code id="s3d-pf-nonce">0</code></div>
+              <div class="pr-fair-row">
+                <input id="s3d-pf-client" class="input" type="text" placeholder="client seed (auto)" />
+                <button id="s3d-pf-verify" class="btn btn-ghost">Verify last spin</button>
+              </div>
+              <div class="pr-fair-reveal" id="s3d-pf-reveal"></div>
+              <div class="muted" id="s3d-pf-last"></div>
+            </div>
+          </details>
+        </div>
+
         <!-- Host tools (owner only): adjust limits, fund house, redeploy -->
         <div class="card host-tools" id="host-tools" hidden>
           <details class="dropdown">
@@ -1218,17 +1271,17 @@
     </aside>
 
     <script defer src="vendor/ethers.umd.min.js"></script>
-    <script defer src="config.js?v=994"></script>
-    <script defer src="contract.js?v=994"></script>
-    <script defer src="chiptune.js?v=994"></script>
-    <script defer src="scenes.js?v=994"></script>
-    <script defer src="tv.js?v=994"></script>
-    <script defer src="poker-engine.js?v=994"></script>
-    <script defer src="poker-bots.js?v=994"></script>
-    <script defer src="poker-ui.js?v=994"></script>
-    <script defer src="crash-engine.js?v=994"></script>
-    <script defer src="crash-render.js?v=994"></script>
-    <script defer src="profile.js?v=994"></script>
-    <script defer src="app.js?v=994"></script>
+    <script defer src="config.js?v=995"></script>
+    <script defer src="contract.js?v=995"></script>
+    <script defer src="chiptune.js?v=995"></script>
+    <script defer src="scenes.js?v=995"></script>
+    <script defer src="tv.js?v=995"></script>
+    <script defer src="poker-engine.js?v=995"></script>
+    <script defer src="poker-bots.js?v=995"></script>
+    <script defer src="poker-ui.js?v=995"></script>
+    <script defer src="crash-engine.js?v=995"></script>
+    <script defer src="crash-render.js?v=995"></script>
+    <script defer src="profile.js?v=995"></script>
+    <script defer src="app.js?v=995"></script>
   </body>
 </html>
