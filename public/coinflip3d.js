@@ -207,7 +207,7 @@
   CoinFlip3D.prototype.toss = function () {
     this.phase = "anticip"; this._pt = 0; this._y0 = this.coin.position.y;
     this._spinVel = 9; this._gold.intensity = 0.15; this._apexFired = false;
-    this._pendingLand = null;
+    this._wantDrop = false; this._dropTarget = null;
   };
   CoinFlip3D.prototype.land = function (side, tier) {
     this._landSide = side === TAILS ? TAILS : HEADS; this._landTier = tier || "normal";
@@ -221,18 +221,33 @@
       try { this.renderer.render(this.scene, this.cam); } catch (e) {}
       return;
     }
-    if (this.phase === "anticip" || this.phase === "launch") { this._pendingLand = true; return; } // still rising → drop when it hangs
-    this._startDrop();
+    // Don't drop from wherever the coin happens to be — that gives a long, variable arc
+    // where the OPPOSITE face slowly rolls past right before the result (the "looks like
+    // heads, then switches to tails" fake-out). Instead keep spinning until the coin is
+    // cleanly aligned, then drop a SHORT, fixed arc so the opposite face is only ever
+    // crossed once, briefly, at full speed near the very start of the drop.
+    this._wantDrop = true; this._dropTarget = null; // the hang loop starts the drop when aligned
   };
-  CoinFlip3D.prototype._startDrop = function () {
-    // choose a final rotation that's a forward multiple of 2π landing on the right face
+  // Begin the drop the instant the spinning coin reaches a clean pre-aligned angle. The
+  // wait is < one rotation (the coin is already spinning), so there is no visible snap.
+  CoinFlip3D.prototype._tryAlignedDrop = function () {
     const want = this._landSide === TAILS ? Math.PI : 0;
-    const turns = Math.ceil((this._spin + 4) / (2 * Math.PI)); // a few more spins
-    this._spinEnd = turns * 2 * Math.PI + want;
-    this._spinStart = this._spin; this.phase = "drop"; this._pt = 0;
-    this._dropY0 = this.coin.position.y;
-    // signature flash colour: gold = heads, cyan = tails (readable even peripherally)
-    if (this._gold) this._gold.color.set(this._landSide === TAILS ? 0x49d8ff : 0xffd23f);
+    // Land in LESS than a half-turn, starting just past the edge on the RESULT side, so the
+    // drop rotates edge → result and NEVER shows the opposite face flat. (The big tumbling
+    // happened during the airborne hang; this is the decisive final settle.)
+    const ARC = Math.PI - 1.0; // ≈ 2.14 rad: starts ~1 rad off the opposite face = edge, not a readable face
+    if (this._dropTarget == null) {
+      const base = want - ARC;
+      const m = Math.ceil((this._spin - base) / (2 * Math.PI));
+      this._dropTarget = { start: m * 2 * Math.PI + base, end: m * 2 * Math.PI + want };
+    }
+    if (this._spin >= this._dropTarget.start) {
+      this._spinStart = this._dropTarget.start; this._spinEnd = this._dropTarget.end;
+      this._spin = this._spinStart; // exact (≤ one frame's catch-up, imperceptible)
+      this.phase = "drop"; this._pt = 0; this._dropY0 = this.coin.position.y;
+      this._wantDrop = false; this._dropTarget = null;
+      if (this._gold) this._gold.color.set(this._landSide === TAILS ? 0x49d8ff : 0xffd23f);
+    }
   };
 
   /* ---------- per-frame ---------- */
@@ -255,7 +270,7 @@
     } else if (P === "hang") {
       this._pt += dt; this._spinVel = Math.max(9, this._spinVel - 14 * dt); // decelerate the spin = suspense
       c.position.y += Math.sin(this._t * 2) * 0.004; // gentle hover
-      if (this._pendingLand) { this._pendingLand = false; this._startDrop(); }
+      if (this._wantDrop) this._tryAlignedDrop(); // start the drop once cleanly aligned
     } else if (P === "drop") {
       this._pt += dt; const dur = 0.92, k = Math.min(1, this._pt / dur);
       // fall with two decaying bounces
@@ -293,8 +308,9 @@
       const sc = 1 + 0.12 * e; c.scale.set(sc, sc, sc);
       c.rotation.set(this._spinEnd, 0, 0); // pin DEAD FLAT to the camera (never drifts edge-on / slim)
     }
-    // free spin (anticip/launch/hang) about the X axis
-    if (P === "anticip" || P === "launch" || P === "hang") { this._spin += this._spinVel * dt; c.rotation.x = this._spin; c.rotation.y = this._spin * 0.08; }
+    // free spin (anticip/launch/hang) about the X axis — re-check this.phase so we don't
+    // bump _spin on the frame an aligned drop just started.
+    if (this.phase === "anticip" || this.phase === "launch" || this.phase === "hang") { this._spin += this._spinVel * dt; c.rotation.x = this._spin; c.rotation.y = this._spin * 0.08; }
 
     // shadow tracks height (tightens + dims when airborne)
     const air = Math.max(0, c.position.y - 0.4);
