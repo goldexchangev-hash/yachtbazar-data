@@ -479,6 +479,7 @@
       $("dl-targetmark").style.left = tp + "%";
       if (res.mode === "under") { $("dl-win").style.cssText = `left:0;width:${tp}%`; $("dl-lose").style.cssText = `left:${tp}%;width:${100 - tp}%`; }
       else { $("dl-lose").style.cssText = `left:0;width:${tp}%`; $("dl-win").style.cssText = `left:${tp}%;width:${100 - tp}%`; }
+      if (this._rail3d) try { this._rail3d.reset(); this._rail3d.setup(tp, res.mode); } catch (e) {} // 3D neon rail: green/red zones
       const marker = $("dl-marker"), numEl = $("dice-tv-num");
       marker.style.left = "0%"; numEl.textContent = "00.00";
       $("dice-tv-verdict").textContent = ""; $("dice-tv-payout").textContent = "";
@@ -490,6 +491,7 @@
           if (seq !== this._seq) return resolve();
           const t = Math.min(1, (now() - start) / dur), e = 1 - Math.pow(1 - t, 3), v = end * e;
           marker.style.left = v + "%"; numEl.textContent = v.toFixed(2);
+          if (this._rail3d) this._rail3d.setPuck(v); // race the 3D puck
           if (window.Chiptune && Math.random() < 0.15) window.Chiptune.blip();
           if (t < 1) requestAnimationFrame(tick); else { numEl.textContent = end.toFixed(2); resolve(); }
         };
@@ -500,6 +502,7 @@
       // 2) verdict
       const tier = res.youWon ? (res.tier || "normal") : "normal";
       L.classList.add(res.youWon ? "win" : "lose");
+      if (this._rail3d) try { this._rail3d.setPuck(res.roll); this._rail3d.land(res.youWon); } catch (e) {} // 3D puck locks + burst
       $("dice-tv-verdict").textContent = res.youWon ? (tier === "mega" ? "JACKPOT!" : tier === "big" ? "BIG WIN!" : "WIN!") : "MISS";
       $("dice-tv-payout").textContent = res.youWon
         ? "+$" + Math.abs(res.amountUsd).toFixed(2) + " · " + res.mult.toFixed(2) + "×"

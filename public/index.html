@@ -27,7 +27,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=1090" />
+    <link rel="stylesheet" href="styles.css?v=1100" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -42,7 +42,7 @@
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v10.9</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v11.0</span>
       </div>
       <div class="topbar-right">
         <div class="music-wrap">
@@ -296,6 +296,7 @@
 
                 <!-- Dice roll result (CH 09) -->
                 <div class="screen-layer hidden" id="layer-dice">
+                  <div id="dice3d-stage" class="dice3d-stage"></div><!-- 3D neon rail (behind); DOM number/verdict on top -->
                   <div class="dice-tv-target" id="dice-tv-target">UNDER 50.00</div>
                   <div class="dice-roll-num" id="dice-tv-num">00.00</div>
                   <div class="dice-line" id="dice-tv-line">
@@ -362,7 +363,7 @@
 
                 <!-- Promo intro reel — autoplays once (muted) on first load, then fades
                      to black and hands off to the game. Replay button under the TV. -->
-                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=1090"></video>
+                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=1100"></video>
 
                 <!-- Shown while a bet tx is being signed + mined (esp. slow on mobile) -->
                 <div id="tv-pending" class="tv-pending hidden">⏳ SENDING BET…<br />confirm in your wallet, then hold tight</div>
@@ -1283,17 +1284,17 @@
     </aside>
 
     <script defer src="vendor/ethers.umd.min.js"></script>
-    <script defer src="config.js?v=1090"></script>
-    <script defer src="contract.js?v=1090"></script>
-    <script defer src="chiptune.js?v=1090"></script>
-    <script defer src="scenes.js?v=1090"></script>
-    <script defer src="tv.js?v=1090"></script>
-    <script defer src="poker-engine.js?v=1090"></script>
-    <script defer src="poker-bots.js?v=1090"></script>
-    <script defer src="poker-ui.js?v=1090"></script>
-    <script defer src="crash-engine.js?v=1090"></script>
-    <script defer src="crash-render.js?v=1090"></script>
-    <script defer src="profile.js?v=1090"></script>
-    <script defer src="app.js?v=1090"></script>
+    <script defer src="config.js?v=1100"></script>
+    <script defer src="contract.js?v=1100"></script>
+    <script defer src="chiptune.js?v=1100"></script>
+    <script defer src="scenes.js?v=1100"></script>
+    <script defer src="tv.js?v=1100"></script>
+    <script defer src="poker-engine.js?v=1100"></script>
+    <script defer src="poker-bots.js?v=1100"></script>
+    <script defer src="poker-ui.js?v=1100"></script>
+    <script defer src="crash-engine.js?v=1100"></script>
+    <script defer src="crash-render.js?v=1100"></script>
+    <script defer src="profile.js?v=1100"></script>
+    <script defer src="app.js?v=1100"></script>
   </body>
 </html>
