@@ -34,6 +34,7 @@
     this.skew = 0; this.deadline = 0; this.phaseTotal = 0;
     this.seen = {}; this.holeShown = false; this.handNo = -1;
     this.reveal = null; this._insuranceDone = false;
+    this._connectedOnce = false; this._reconnectRoom = null; this._stagger = 0;
     this._bindNet(); this._wireStatic();
     this.net.send({ type: "bj:lobby:subscribe" });
     var self = this; this._timer = setInterval(function () { self._tick(); }, 200);
@@ -42,6 +43,9 @@
   /* ---------------- net ---------------- */
   BlackjackClient.prototype._bindNet = function () {
     var self = this;
+    // a transient drop reconnects on a fresh socket (the server gave our seat away),
+    // so on reconnect re-subscribe + try to rejoin the table instead of stranding.
+    this.net.on("bj:net", function (m) { if (m.state === "open") { if (self._connectedOnce) self._onReconnect(); self._connectedOnce = true; } });
     this.net.on("bj:lobby:list", function (m) { self.renderLobby(m.rooms); });
     this.net.on("bj:wallet", function (m) { self.balance = m.balance; self._renderBalance(); });
     this.net.on("bj:room:snapshot", function (m) {
@@ -57,8 +61,12 @@
       if (m.kind === "roomClosing" && self.room && m.id === self.room.roomId) { self.toast("Table closed (" + (m.reason || "idle") + ")"); self.showLobby(); }
       if (m.kind === "bust" && self.room) self._flashSeat(m.seat);
     });
-    // restore controls on rejection: force a dock rebuild from the still-intact legal set
-    this.net.on("bj:error", function (m) { self.toast(m.msg || "Error", true); self._dockSig = null; self._renderDock(); });
+    this.net.on("bj:error", function (m) {
+      // a failed reconnect-rejoin (table full / gone) → fall back to the lobby cleanly
+      if (self._reconnectRoom && (m.intent === "join" || m.code === "table_full" || m.code === "no_room" || m.code === "lobby_full")) { self._reconnectRoom = null; self.toast("Reconnected — pick a table to jump back in"); self.showLobby(); return; }
+      // restore controls on rejection: force a dock rebuild from the still-intact legal set
+      self.toast(m.msg || "Error", true); self._dockSig = null; self._renderDock();
+    });
   };
 
   BlackjackClient.prototype._wireStatic = function () {
@@ -121,6 +129,11 @@
     var seed = (this.E.pfClient && this.E.pfClient.value.trim()) || "";
     this.net.send({ type: "bj:bet:place", amountUsd: amt, clientSeed: seed || undefined });
   };
+  BlackjackClient.prototype._onReconnect = function () {
+    this.net.send({ type: "bj:lobby:subscribe" });
+    if (this.you) { this._reconnectRoom = this.you.roomId; this.toast("Reconnecting…"); this.net.send({ type: "bj:room:join", roomId: this._reconnectRoom }); }
+    else if (this.spectating) { this.net.send({ type: "bj:room:watch", roomId: this.spectating }); }
+  };
   BlackjackClient.prototype.act = function (action) {
     this.net.send({ type: "bj:action", action: action });
     // disable buttons to prevent a double-send, but KEEP this.legal so a server
@@ -133,9 +146,11 @@
   BlackjackClient.prototype._resetRoundVis = function () { this.seen = {}; this.holeShown = false; this._insuranceDone = false; this._mySettle = null; };
   BlackjackClient.prototype._onSnapshot = function (m) {
     if (this.view !== "table") this.showTable();
+    this._reconnectRoom = null; // a snapshot means we're live again
     if (m.handNumber !== this.handNo) { this.handNo = m.handNumber; this._resetRoundVis(); this.reveal = null; }
     this.room = m; this.skew = (m.serverNow || Date.now()) - Date.now(); this.deadline = m.deadline || 0;
     this.phaseTotal = PHASE_TOTAL[m.phase] || 0;
+    this._stagger = 0; // stagger newly-dealt cards within THIS snapshot for a one-at-a-time reveal
     this._renderDealer(m); this._renderSeats(m); this._renderBanner(m); this._renderDock(); this._renderPF();
   };
   BlackjackClient.prototype._cardEl = function (c, key, sm, faceDownFlip) {
@@ -144,7 +159,11 @@
     var s = SUIT[c.suit], r = rankLabel(c.rank);
     d.innerHTML = '<span class="corner"><span class="r">' + r + '</span><span class="s">' + s + '</span></span>' +
       '<span class="pip">' + s + '</span><span class="corner br"><span class="r">' + r + '</span><span class="s">' + s + '</span></span>';
-    if (key && !this.seen[key]) { this.seen[key] = 1; d.classList.add(faceDownFlip ? "flip" : "dealing"); }
+    if (key && !this.seen[key]) {
+      this.seen[key] = 1; d.classList.add(faceDownFlip ? "flip" : "dealing");
+      var delay = (this._stagger || 0) * 150; if (delay) d.style.animationDelay = delay + "ms"; // cascade the deal
+      this._stagger = (this._stagger || 0) + 1;
+    }
     return d;
   };
   BlackjackClient.prototype._totalPill = function (h) {
