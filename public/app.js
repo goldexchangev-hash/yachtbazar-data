@@ -438,6 +438,21 @@
     b.textContent = msg;
     b.className = "setup-banner" + (warn ? " warn" : "");
   }
+  // Closable notice banners (the DEMO bar + the "on a phone" hint): an ✕ dismisses
+  // them and the dismissal is remembered so they stay gone across refreshes.
+  const NOTICE_KEYS = { demo: "notice:demo:dismissed", mobilehint: "notice:mobilehint:dismissed" };
+  function initNoticeDismiss() {
+    try {
+      if (localStorage.getItem(NOTICE_KEYS.demo) === "1") { const el = $("demo-bar"); if (el) el.classList.add("notice-dismissed"); }
+      if (localStorage.getItem(NOTICE_KEYS.mobilehint) === "1") { const el = $("mobile-hint"); if (el) el.classList.add("notice-dismissed"); }
+    } catch (e) {}
+    document.addEventListener("click", (e) => {
+      const x = e.target.closest && e.target.closest("[data-dismiss]"); if (!x) return;
+      const which = x.getAttribute("data-dismiss");
+      const host = x.closest(".demo-bar, .mobile-hint"); if (host) host.classList.add("notice-dismissed");
+      try { if (NOTICE_KEYS[which]) localStorage.setItem(NOTICE_KEYS[which], "1"); } catch (e2) {}
+    });
+  }
   // "Sending bet… confirm in your wallet" banner on the TV while a tx signs/mines.
   function tvPending(on) {
     const el = $("tv-pending"); if (el) el.classList.toggle("hidden", !on);
@@ -3532,9 +3547,8 @@
     const on = !!(window.Chiptune && window.Chiptune.isOn());
     const btn = $("sound-btn");
     if (btn) {
-      btn.textContent = (on ? "🔊" : "🔇") + " Music ▾";
-      btn.classList.toggle("btn-primary", on);
-      btn.classList.toggle("btn-ghost", !on);
+      btn.textContent = on ? "🔊" : "🔇";
+      btn.classList.toggle("active", on);
     }
     const play = $("music-play"); if (play) play.textContent = on ? "⏸" : "▶";
     if (window.Chiptune && Chiptune.current) {
@@ -3955,6 +3969,7 @@
     // Default landing experience: instant play-money demo so visitors can try
     // every game before connecting a wallet. A real connection takes over later.
     enterDemo();
+    initNoticeDismiss(); // wire the ✕ close buttons on the demo / phone notices
     // Register the PWA service worker (after load, best-effort).
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => { try { navigator.serviceWorker.register("sw.js"); } catch (e) {} });

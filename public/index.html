@@ -27,7 +27,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=1111" />
+    <link rel="stylesheet" href="styles.css?v=1112" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -42,11 +42,12 @@
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v11.11</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v11.12</span>
       </div>
       <div class="topbar-right">
+        <div class="tb-tools">
         <div class="music-wrap">
-          <button id="sound-btn" class="btn btn-ghost" title="Music & tracks">🔇 Music ▾</button>
+          <button id="sound-btn" class="btn btn-icon" title="Music & tracks" aria-label="Music">🔇</button>
           <div id="music-menu" class="music-menu hidden">
             <div class="mm-transport">
               <button id="music-prev" class="mm-ctrl" title="Previous track">⏮</button>
@@ -57,8 +58,9 @@
             <div id="music-tracks" class="mm-tracks"></div>
           </div>
         </div>
-        <button id="help-btn" class="btn btn-ghost" title="How to play" aria-label="How to play">?</button>
-        <button id="chat-toggle" class="btn btn-ghost" title="Open chat" aria-label="Open chat">💬</button>
+        <button id="help-btn" class="btn btn-icon" title="How to play" aria-label="How to play">?</button>
+        <button id="chat-toggle" class="btn btn-icon" title="Open chat" aria-label="Open chat">💬</button>
+        </div>
         <div id="net-badge" class="net-badge hidden"><i></i><span id="net-name">—</span></div>
         <button id="connect-btn" class="btn btn-primary">Connect Wallet</button>
         <div class="wallet-cluster">
@@ -211,6 +213,7 @@
              demo bar, aligned to the TV column. -->
         <div id="mobile-hint" class="mobile-hint hidden">
           📱 On a phone? Betting only works inside the <strong>MetaMask app's browser</strong>. Tap <strong>Connect Wallet</strong> to open it there — or in MetaMask, use 🌐 Browser and visit this site.
+          <button type="button" class="notice-x" data-dismiss="mobilehint" aria-label="Dismiss" title="Dismiss">✕</button>
         </div>
 
         <!-- Demo-mode bar: centered directly above the TV. Keeps the real-money CTA. -->
@@ -218,6 +221,7 @@
           <span class="demo-chip">🎮 DEMO</span>
           <span class="demo-text">You're playing with <strong>free demo credits</strong> — no wallet, no real money. Same games, same odds.</span>
           <button id="demo-connect" class="btn btn-primary demo-cta">Connect wallet to play for real →</button>
+          <button type="button" class="notice-x" data-dismiss="demo" aria-label="Dismiss demo notice" title="Dismiss">✕</button>
         </div>
 
         <!-- Retro TV, redesigned to fit the neon theme -->
@@ -377,7 +381,7 @@
 
                 <!-- Promo intro reel — autoplays once (muted) on first load, then fades
                      to black and hands off to the game. Replay button under the TV. -->
-                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=1111"></video>
+                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=1112"></video>
 
                 <!-- Shown while a bet tx is being signed + mined (esp. slow on mobile) -->
                 <div id="tv-pending" class="tv-pending hidden">⏳ SENDING BET…<br />confirm in your wallet, then hold tight</div>
@@ -1298,17 +1302,17 @@
     </aside>
 
     <script defer src="vendor/ethers.umd.min.js"></script>
-    <script defer src="config.js?v=1111"></script>
-    <script defer src="contract.js?v=1111"></script>
-    <script defer src="chiptune.js?v=1111"></script>
-    <script defer src="scenes.js?v=1111"></script>
-    <script defer src="tv.js?v=1111"></script>
-    <script defer src="poker-engine.js?v=1111"></script>
-    <script defer src="poker-bots.js?v=1111"></script>
-    <script defer src="poker-ui.js?v=1111"></script>
-    <script defer src="crash-engine.js?v=1111"></script>
-    <script defer src="crash-render.js?v=1111"></script>
-    <script defer src="profile.js?v=1111"></script>
-    <script defer src="app.js?v=1111"></script>
+    <script defer src="config.js?v=1112"></script>
+    <script defer src="contract.js?v=1112"></script>
+    <script defer src="chiptune.js?v=1112"></script>
+    <script defer src="scenes.js?v=1112"></script>
+    <script defer src="tv.js?v=1112"></script>
+    <script defer src="poker-engine.js?v=1112"></script>
+    <script defer src="poker-bots.js?v=1112"></script>
+    <script defer src="poker-ui.js?v=1112"></script>
+    <script defer src="crash-engine.js?v=1112"></script>
+    <script defer src="crash-render.js?v=1112"></script>
+    <script defer src="profile.js?v=1112"></script>
+    <script defer src="app.js?v=1112"></script>
   </body>
 </html>
