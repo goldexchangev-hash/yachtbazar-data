@@ -419,6 +419,22 @@
     // Make sure the audio context exists and is running (call on a user gesture).
     wake() { ensureCtx(); try { if (ctx && ctx.state !== "running") ctx.resume(); } catch (e) {} },
 
+    // Recover audio after the tab was backgrounded: browsers SUSPEND the context
+    // and the music scheduler drifts. Resume the context and realign the synth
+    // scheduler so music + SFX work again immediately on return.
+    resync() {
+      ensureCtx();
+      if (!ctx) { if (on && customReady && audioEl) audioEl.play().catch(() => {}); return; }
+      try { if (ctx.state !== "running") ctx.resume(); } catch (e) {}
+      if (customReady && audioEl) { if (on) audioEl.play().catch(() => {}); return; }
+      if (on) { // resynth: drop the stale (drifted) schedule and restart from "now"
+        if (schedulerTimer) clearTimeout(schedulerTimer);
+        schedulerTimer = null;
+        nextBarTime = ctx.currentTime + 0.1;
+        scheduler();
+      }
+    },
+
     // Route an HTML media element's audio through THIS shared context (iOS only
     // reliably allows one AudioContext, so reels must share it, not spawn their
     // own — a separate one drops out after a second). One-time per element.
@@ -549,4 +565,19 @@
   };
 
   window.Chiptune = Chiptune;
+
+  // ── Recover audio after backgrounding ──────────────────────────────────────
+  // Browsers suspend the AudioContext when the tab is hidden/app-switched; on
+  // return, music + SFX go silent until the context is resumed. Re-sync whenever
+  // the page becomes visible/focused, and resume on the next tap (iOS only allows
+  // a resume inside a user gesture).
+  try {
+    const recover = () => { try { Chiptune.resync(); } catch (e) {} };
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") recover(); });
+    window.addEventListener("focus", recover);
+    window.addEventListener("pageshow", recover);
+    // cheap belt-and-suspenders: any tap resumes a suspended context (iOS)
+    ["pointerdown", "touchend", "click", "keydown"].forEach((ev) =>
+      window.addEventListener(ev, () => { try { if (ctx && ctx.state !== "running") ctx.resume(); } catch (e) {} }, { passive: true, capture: true }));
+  } catch (e) {}
 })();

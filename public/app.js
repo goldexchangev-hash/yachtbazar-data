@@ -1902,14 +1902,14 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=979").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=980").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=979"))
+      .then(() => loadScriptOnce("slots.js?v=980"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -1919,9 +1919,9 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=979"))
-      .then(() => loadScriptOnce("pressure-render.js?v=979"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=979"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=980"))
+      .then(() => loadScriptOnce("pressure-render.js?v=980"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=980"))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
