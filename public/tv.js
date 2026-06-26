@@ -135,20 +135,26 @@
       const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       if (reduce) { this._staticIntensity = Math.min(this._staticIntensity, 0.25); paint(0); return; }
       const FRAME_MS = 1000 / 30; // 30fps reads as analog snow and halves cost
+      const GRAIN = 0.12;          // ≤ this = a static game-preview grain (paint ONCE, don't loop)
       let last = 0;
       const tick = (t) => {
         this._staticRAF = requestAnimationFrame(tick);
         if (document.hidden) return;          // don't burn cycles in a background tab
         if (window.__winSceneActive) return;  // a win scene covers the TV — don't paint static
+        if (this._staticIntensity <= 0.02) { if (!this._grainDone) { ctx.clearRect(0, 0, W, H); this.staticCanvas.style.opacity = "0"; this._grainDone = true; } return; }
+        // Subtle preview grain: paint a single frame and HOLD — the per-pixel loop
+        // was running 30×/s forever during normal play (the main idle-CPU cost).
+        if (this._staticIntensity <= GRAIN) { if (!this._grainDone) { paint(t); this._grainDone = true; } return; }
+        // Loud static (tuning / SIGNAL LOST): animate at 30fps.
         if (t - last < FRAME_MS) return;
         last = t;
-        if (this._staticIntensity <= 0.02) { ctx.clearRect(0, 0, W, H); this.staticCanvas.style.opacity = "0"; return; }
         paint(t);
       };
       this._staticRAF = requestAnimationFrame(tick);
     },
     _setStatic(i) {
       this._staticIntensity = i;
+      this._grainDone = false; // re-paint one frame for the new level
       this.staticCanvas.style.opacity = i > 0 ? String(i) : "0";
     },
 
