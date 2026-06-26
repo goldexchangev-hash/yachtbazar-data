@@ -15,7 +15,7 @@
   var ETH_USD = 3400;
   var PHASE_TOTAL = { betting: 15000, turns: 20000, insurance: 12000 };
   var ACT_LABEL = { hit: "HIT", stand: "STAND", double: "DOUBLE", split: "SPLIT", surrender: "SURRENDER" };
-  var ACT_CLASS = { hit: "hit", stand: "stand", double: "primary", split: "split", surrender: "ghost" };
+  var ACT_CLASS = { hit: "hit", stand: "stand", double: "double", split: "split", surrender: "surrender" };
 
   function el(tag, cls, html) { var d = document.createElement(tag); if (cls) d.className = cls; if (html != null) d.innerHTML = html; return d; }
   function rankLabel(r) { return r === "T" ? "10" : r; }
@@ -288,13 +288,16 @@
     }
     this.E.phaseMain.textContent = main; this.E.phaseSub.textContent = sub;
     this.E.phaseBanner.style.display = (m.phase === "turns") ? "none" : "block";
+    // betting has room up top (ring + prompt, no dealer cards); once cards are out, drop the
+    // text into the clear band BELOW the dealer's total so it never lands on the cards/number.
+    this.E.phaseBanner.style.top = (m.phase === "betting" || m.phase === "idle") ? "32%" : "44%";
   };
   BlackjackClient.prototype._tick = function () {
     var m = this.room, E = this.E;
     var remaining = m ? Math.max(0, this.deadline - (Date.now() + this.skew)) : 0;
-    // center ring — betting & insurance (the phase banner is visible then)
+    // center ring — betting only (it has room up top; later phases place text low instead)
     if (E.ring) {
-      if (m && this.phaseTotal && (m.phase === "betting" || m.phase === "insurance")) {
+      if (m && this.phaseTotal && m.phase === "betting") {
         E.ring.style.display = "grid";
         var sec = Math.ceil(remaining / 1000), pct = Math.max(0, Math.min(100, (remaining / this.phaseTotal) * 100));
         E.ring.style.setProperty("--p", pct.toFixed(1)); E.ring.setAttribute("data-sec", sec);
@@ -376,12 +379,14 @@
     renderVal();
     var slider = document.createElement("input"); slider.type = "range"; slider.className = "bet-slider";
     slider.min = "10"; slider.max = String(maxBet); slider.step = "5"; slider.value = String(self.bet);
-    slider.oninput = function () { self.bet = Math.max(10, Math.round(+slider.value / 5) * 5); renderVal(); };
+    function fill() { var pct = ((self.bet - 10) / Math.max(1, maxBet - 10)) * 100; slider.style.setProperty("--fill", pct.toFixed(1) + "%"); }
+    slider.oninput = function () { self.bet = Math.max(10, Math.round(+slider.value / 5) * 5); renderVal(); fill(); };
+    fill();
     var chips = el("div", "qchips");
-    [["MIN", function () { return 10; }], ["+$50", function () { return self.bet + 50; }], ["2×", function () { return self.bet * 2; }], ["MAX", function () { return maxBet; }]].forEach(function (c) {
-      var b = el("button", "chip", c[0]); b.onclick = function () { self.bet = Math.min(maxBet, Math.max(10, Math.round(c[1]() / 5) * 5)); slider.value = self.bet; renderVal(); }; chips.appendChild(b);
+    [["$10", 10], ["$25", 25], ["$50", 50], ["$100", 100], ["MAX", maxBet]].forEach(function (c) {
+      var b = el("button", "chip", c[0]); b.onclick = function () { self.bet = Math.min(maxBet, Math.max(10, Math.round(c[1] / 5) * 5)); slider.value = self.bet; renderVal(); fill(); }; chips.appendChild(b);
     });
-    var place = el("button", "btn primary wide", "PLACE BET"); place.onclick = function () { self.placeBet(); };
+    var place = el("button", "btn place", "PLACE BET"); place.onclick = function () { self.placeBet(); };
     wrap.appendChild(val); wrap.appendChild(slider); wrap.appendChild(chips); wrap.appendChild(place);
     row.appendChild(wrap);
   };
