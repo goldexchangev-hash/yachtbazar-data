@@ -1896,14 +1896,14 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=977").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=978").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=977"))
+      .then(() => loadScriptOnce("slots.js?v=978"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -1913,9 +1913,9 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=977"))
-      .then(() => loadScriptOnce("pressure-render.js?v=977"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=977"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=978"))
+      .then(() => loadScriptOnce("pressure-render.js?v=978"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=978"))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -1924,11 +1924,12 @@
     if (pressureGame || !window.PressureGame) return pressureGame;
     const el = (id) => $(id);
     const mount = $("pressure-stage"); if (!mount) return null;
-    // size the renderer to the TV screen so the balloon fills it without distortion
-    let W = 480, H = 600;
-    try { const r = $("tv-screen").getBoundingClientRect(); if (r.width > 40 && r.height > 40) { W = Math.round(r.width); H = Math.round(r.height); } } catch (e) {}
+    // Build at a FIXED 4:3 size (the TV screen is 4:3). CSS stretches the canvas
+    // to fill the screen uniformly → no distortion, and it can't get squished by a
+    // bad/early getBoundingClientRect measurement (which caused a portrait-ratio
+    // canvas to be squashed into the landscape screen).
     pressureGame = new window.PressureGame({
-      mount, width: W, height: H,
+      mount, width: 800, height: 600,
       ethUsd: ethUsd,
       initialBalance: demoUsd,
       onBalance: (b) => { demoUsd = Math.round(b * 100) / 100; demoSave(); demoPaint(); },
