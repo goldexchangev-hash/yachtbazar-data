@@ -27,7 +27,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=985" />
+    <link rel="stylesheet" href="styles.css?v=986" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -42,7 +42,7 @@
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.85</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.86</span>
       </div>
       <div class="topbar-right">
         <div class="music-wrap">
@@ -155,6 +155,15 @@
             </svg>
           </span>
           <span class="gc-name">Balloon Pop</span>
+        </button>
+
+        <button type="button" class="game-card plane" id="ch-plane" role="tab" aria-selected="false" data-game="plane">
+          <span class="gc-tile">
+            <svg class="gc-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 15.5 13.5 13l-1-7.5a1.3 1.3 0 0 0-2.5 0l-1 7.5L3 15.5v1.7l6.5-1.5.5 3.3-2 1.5v1l3.5-1 3.5 1v-1l-2-1.5.5-3.3 6.5 1.5z"/>
+            </svg>
+          </span>
+          <span class="gc-name">Plane</span>
         </button>
 
         <button type="button" class="game-card poker" id="ch-poker" role="tab" aria-selected="false" data-game="poker" hidden>
@@ -318,6 +327,11 @@
                   <div id="pressure-stage" class="pressure-stage"></div>
                 </div>
 
+                <!-- Plane (CH 14): the Aviator-style climb plays on the TV -->
+                <div class="screen-layer hidden" id="layer-plane">
+                  <div id="plane-stage" class="plane-stage"></div>
+                </div>
+
                 <canvas id="confetti-canvas" class="confetti-canvas"></canvas>
                 <!-- Pixel "win scene" movie overlay (escalates with the amount) -->
                 <canvas id="scene-canvas" class="scene-canvas"></canvas>
@@ -326,7 +340,7 @@
 
                 <!-- Promo intro reel — autoplays once (muted) on first load, then fades
                      to black and hands off to the game. Replay button under the TV. -->
-                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=985"></video>
+                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=986"></video>
 
                 <!-- Shown while a bet tx is being signed + mined (esp. slow on mobile) -->
                 <div id="tv-pending" class="tv-pending hidden">⏳ SENDING BET…<br />confirm in your wallet, then hold tight</div>
@@ -374,6 +388,13 @@
         <div class="action-dock" data-game="pressure">
           <button id="pr-hold" class="btn btn-primary btn-block act-btn"><span class="ab-verb">🎈 HOLD TO PUMP</span><span class="ab-amt">BET $<b id="pr-bet-hint">10</b> · WIN $<b id="pr-win-hint">10.00</b></span></button>
           <div class="muted dice-roll-hint" id="pr-message">HOLD the balloon to pump</div>
+        </div>
+        <div class="action-dock" data-game="plane">
+          <div class="plane-actions">
+            <button id="plane-a-action" class="plane-act" data-kind="bet">BET A</button>
+            <button id="plane-b-action" class="plane-act plane-act-b" data-kind="bet">BET B</button>
+          </div>
+          <div class="muted dice-roll-hint plane-msg" id="plane-message">Place your bets — plane departs soon</div>
         </div>
         <div class="action-dock" data-game="crash">
           <button id="crash-launch" class="btn btn-primary btn-block act-btn"><span class="ab-verb">🚀 LAUNCH</span><span class="ab-amt">BET $<b id="crash-bet-hint">25</b> · WIN $<b id="crash-payout-hint">0.00</b></span></button>
@@ -692,6 +713,96 @@
               </div>
               <div class="pr-fair-reveal" id="pr-pf-reveal"></div>
               <div class="muted" id="pr-pf-last"></div>
+            </div>
+          </details>
+        </div>
+
+        <!-- Plane (CH 14): Aviator-style live crash. Demo = fully live tap-to-cash-out
+             with two bets; connected = single-shot real round (one on-chain tx). -->
+        <div class="card dice-panel plane-panel" id="plane-panel" data-game="plane" hidden>
+          <div class="ph-head">
+            <h2 class="card-title">✈️ Plane <span class="ch-tag">CH 14</span></h2>
+            <span class="ph-bankroll muted">Balance: <strong id="plane-balance">$0</strong> · edge 1%</span>
+          </div>
+
+          <p class="muted td-intro plane-intro">The plane climbs from <strong>1.00×</strong> — cash out before it <strong>flies away</strong>.
+            <span class="plane-demo-only">Two live bets (safe A + risky B) — tap CASH OUT anytime, or let AUTO bank it.</span>
+            <span class="plane-real-only">Set your auto-cash-out target, hit LAUNCH for one real on-chain round.</span>
+            · <strong>1% house edge</strong> · provably fair.</p>
+
+          <div class="plane-bets">
+            <!-- BET A (safe) -->
+            <div class="plane-bp a">
+              <div class="plane-bp-head">BET A <span class="muted plane-tag">· safe</span></div>
+              <div class="slider-wrap">
+                <input id="plane-a-bet" class="slider plane-bet" type="range" min="10" max="500" step="5" value="10" />
+                <div class="slider-val"><strong id="plane-a-betval">$10</strong><span class="eth-sub" id="plane-a-eth"></span></div>
+              </div>
+              <div class="quickbet-row">
+                <button type="button" class="qbet" id="plane-a-half">½</button>
+                <button type="button" class="qbet" id="plane-a-double">2×</button>
+                <button type="button" class="qbet" id="plane-a-max">Max</button>
+              </div>
+              <label class="field-label">Auto cash-out @ <strong id="plane-a-autoval">1.50x</strong>
+                <button type="button" class="qbet plane-auto-toggle active" id="plane-a-auto-toggle">AUTO ✓</button>
+              </label>
+              <div class="slider-wrap">
+                <input id="plane-a-auto-slider" class="slider" type="range" min="1.2" max="20" step="0.05" value="1.5" />
+              </div>
+              <div class="quickbet-row plane-demo-only">
+                <button type="button" class="qbet" id="plane-a-autobet">⟳ AUTOBET</button>
+                <button type="button" class="qbet" id="plane-a-mart" title="double the stake after a loss">×2 LOSS</button>
+              </div>
+            </div>
+            <!-- BET B (risky) -->
+            <div class="plane-bp b plane-demo-only">
+              <div class="plane-bp-head">BET B <span class="muted plane-tag">· risky</span></div>
+              <div class="slider-wrap">
+                <input id="plane-b-bet" class="slider plane-bet" type="range" min="10" max="500" step="5" value="10" />
+                <div class="slider-val"><strong id="plane-b-betval">$10</strong><span class="eth-sub" id="plane-b-eth"></span></div>
+              </div>
+              <div class="quickbet-row">
+                <button type="button" class="qbet" id="plane-b-half">½</button>
+                <button type="button" class="qbet" id="plane-b-double">2×</button>
+                <button type="button" class="qbet" id="plane-b-max">Max</button>
+              </div>
+              <label class="field-label">Auto cash-out @ <strong id="plane-b-autoval">10.00x</strong>
+                <button type="button" class="qbet plane-auto-toggle active" id="plane-b-auto-toggle">AUTO ✓</button>
+              </label>
+              <div class="slider-wrap">
+                <input id="plane-b-auto-slider" class="slider" type="range" min="1.2" max="50" step="0.5" value="10" />
+              </div>
+              <div class="quickbet-row">
+                <button type="button" class="qbet" id="plane-b-autobet">⟳ AUTOBET</button>
+                <button type="button" class="qbet" id="plane-b-mart" title="double the stake after a loss">×2 LOSS</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="plane-history-row">
+            <span class="muted plane-hist-label">Recent</span>
+            <div class="plane-history" id="plane-history"></div>
+          </div>
+
+          <div class="plane-feed-wrap plane-demo-only">
+            <div class="feed-tabs plane-feed-tabs">
+              <div class="ftab active" data-tab="all">ALL</div>
+              <div class="ftab" data-tab="top">TOP</div>
+              <div class="ftab" data-tab="mine">MINE</div>
+            </div>
+            <div class="plane-feed" id="plane-feed"></div>
+          </div>
+
+          <details class="dropdown pr-fair">
+            <summary class="card-title dd-summary"><span>🔒 Provably fair</span><span class="dd-arrow" aria-hidden="true">▾</span></summary>
+            <div class="ht-body pr-fair-body">
+              <div class="pr-fair-row muted">server hash <code id="plane-pf-hash">—</code> · nonce <code id="plane-pf-nonce">0</code></div>
+              <div class="pr-fair-row">
+                <input id="plane-pf-client" class="input" type="text" placeholder="client seed (auto)" />
+                <button id="plane-pf-verify" class="btn btn-ghost">Verify last round</button>
+              </div>
+              <div class="pr-fair-reveal" id="plane-pf-reveal"></div>
+              <div class="muted" id="plane-pf-last"></div>
             </div>
           </details>
         </div>
@@ -1106,17 +1217,17 @@
     </aside>
 
     <script defer src="vendor/ethers.umd.min.js"></script>
-    <script defer src="config.js?v=985"></script>
-    <script defer src="contract.js?v=985"></script>
-    <script defer src="chiptune.js?v=985"></script>
-    <script defer src="scenes.js?v=985"></script>
-    <script defer src="tv.js?v=985"></script>
-    <script defer src="poker-engine.js?v=985"></script>
-    <script defer src="poker-bots.js?v=985"></script>
-    <script defer src="poker-ui.js?v=985"></script>
-    <script defer src="crash-engine.js?v=985"></script>
-    <script defer src="crash-render.js?v=985"></script>
-    <script defer src="profile.js?v=985"></script>
-    <script defer src="app.js?v=985"></script>
+    <script defer src="config.js?v=986"></script>
+    <script defer src="contract.js?v=986"></script>
+    <script defer src="chiptune.js?v=986"></script>
+    <script defer src="scenes.js?v=986"></script>
+    <script defer src="tv.js?v=986"></script>
+    <script defer src="poker-engine.js?v=986"></script>
+    <script defer src="poker-bots.js?v=986"></script>
+    <script defer src="poker-ui.js?v=986"></script>
+    <script defer src="crash-engine.js?v=986"></script>
+    <script defer src="crash-render.js?v=986"></script>
+    <script defer src="profile.js?v=986"></script>
+    <script defer src="app.js?v=986"></script>
   </body>
 </html>

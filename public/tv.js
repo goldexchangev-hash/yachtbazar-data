@@ -44,6 +44,7 @@
         crash: $("layer-crash"),
         slots: $("layer-slots"),
         pressure: $("layer-pressure"),
+        plane: $("layer-plane"),
       };
       this._activeChannel = 8; // 8 = Flip, 9 = Dice — so idle() advertises the active game
       this.scoreboard = $("scoreboard");
@@ -196,6 +197,7 @@
       if (this._activeChannel === 11) return this._crashIdle();  // rocket room
       if (this._activeChannel === 12) return this._slotsIdle();  // reels room
       if (this._activeChannel === 13) return this._pressureIdle(); // balloon room
+      if (this._activeChannel === 14) return this._planeIdle();  // plane room
       this._readyRoom(subtext);                                  // flip / 0-100 / dice #2 ready room
     },
 
@@ -402,6 +404,15 @@
       this._show("pressure");
     },
 
+    /* ---------------- Plane (CH 14) ---------------- */
+    // The Aviator-style climb renders itself (plane-*.js); app.js lazy-builds it
+    // and drives activation. Here we just reveal its layer (demo or real).
+    _planeIdle() {
+      if (!this._connected) return this._staticIdle();
+      this._setStatic(0.03);
+      this._show("plane");
+    },
+
     // Turn the dial between Coin Flip (08) and Dice (09) with a CRT "tune" effect.
     async changeChannel(num) {
       const seq = ++this._seq;
@@ -415,6 +426,7 @@
       else if (num === 11) this._crashIdle();
       else if (num === 12) this._slotsIdle();
       else if (num === 13) this._pressureIdle();
+      else if (num === 14) this._planeIdle();
       else this._readyRoom();
       await sleep(160); if (seq !== this._seq) return;
       this.screenEl.classList.remove("ch-switch");

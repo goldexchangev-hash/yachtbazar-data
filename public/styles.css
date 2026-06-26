@@ -908,7 +908,8 @@ body:not(.game-twodice) [data-game="twodice"] { display: none !important; }
 body:not(.game-crash) [data-game="crash"] { display: none !important; }
 body:not(.game-slots) [data-game="slots"] { display: none !important; }
 body:not(.game-pressure) [data-game="pressure"] { display: none !important; }
-body.game-dice [data-game="flip"], body.game-twodice [data-game="flip"], body.game-crash [data-game="flip"], body.game-slots [data-game="flip"], body.game-pressure [data-game="flip"] { display: none !important; }
+body:not(.game-plane) [data-game="plane"] { display: none !important; }
+body.game-dice [data-game="flip"], body.game-twodice [data-game="flip"], body.game-crash [data-game="flip"], body.game-slots [data-game="flip"], body.game-pressure [data-game="flip"], body.game-plane [data-game="flip"] { display: none !important; }
 /* …but the channel selector tiles are always visible (they're how you switch) */
 #game-nav .game-card { display: flex !important; }
 #game-nav .game-card[hidden] { display: none !important; } /* hidden channels (e.g. poker) stay hidden */
@@ -1454,7 +1455,8 @@ body:not(.game-poker) #poker-view { display:none !important; }
 #game-nav .game-card.dice .gc-tile,
 #game-nav .game-card.twodice .gc-tile,
 #game-nav .game-card.crash .gc-tile,
-#game-nav .game-card.slots .gc-tile { background: none !important; }
+#game-nav .game-card.slots .gc-tile,
+#game-nav .game-card.plane .gc-tile { background: none !important; }
 
 /* ════════ Mobile gesture lockdown ════════
    Dragging a slider must move the SLIDER, never pan/swipe the page; and the page
@@ -1895,3 +1897,91 @@ body.demo-mode #bankroll { display: none !important; }
   50% { transform: translateY(-2px) scale(1.05); }
 }
 @media (prefers-reduced-motion: reduce) { .share-win-btn { animation: none; } }
+
+/* ════════════════════ PLANE (CH 14) ════════════════════ */
+/* TV layer hosts the PixiJS plane canvas — fill the 4:3 screen, no distortion. */
+#layer-plane { position: absolute; inset: 0; }
+.plane-stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.plane-stage canvas { width: 100% !important; height: 100% !important; display: block; }
+
+/* Demo-only vs real-only UI: body.plane-real flips which pieces show */
+.plane-real-only { display: none; }
+body.plane-real .plane-real-only { display: inline; }
+body.plane-real .plane-demo-only { display: none !important; }
+
+/* Two live cash-out buttons (A safe / B risky), docked under the play balance */
+.action-dock[data-game="plane"] .plane-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+body.plane-real .action-dock[data-game="plane"] .plane-actions { grid-template-columns: 1fr; } /* real = single bet */
+body.plane-real .plane-act-b { display: none; } /* no 2nd live bet in single-shot real mode */
+.plane-act {
+  width: 100%; border: none; border-radius: var(--r-md, 10px); cursor: pointer;
+  font-family: var(--display); font-weight: 800; font-size: clamp(12px, 3.4vw, 15px); letter-spacing: .3px;
+  padding: 14px 8px; color: #04121a; background: linear-gradient(135deg, #39e7ff, #45f0a6);
+  box-shadow: 0 6px 16px rgba(57,231,255,.28); transition: transform .06s ease, filter .15s ease;
+  /* RULE: burned-in label — a tap/long-press never selects/highlights it */
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+}
+.plane-act.plane-act-b { background: linear-gradient(135deg, #ff4d9d, #ff8a3d); color: #2a0a06; box-shadow: 0 6px 16px rgba(255,77,157,.28); }
+.plane-act:active { transform: translateY(2px); }
+.plane-act[data-kind="cashout"] { background: linear-gradient(135deg, #ffd23f, #ff8a3d 60%, #ff4d9d); color: #2a0a06; animation: planePulse .6s ease-in-out infinite; }
+.plane-act[data-kind="cancel"] { background: linear-gradient(135deg, #3a2560, #52407e); color: #fff; box-shadow: none; }
+.plane-act[data-kind="auto"] { background: #1c2747; color: #ffd23f; box-shadow: none; border: 1px solid rgba(255,210,63,.4); }
+.plane-act[data-kind="wait"], .plane-act[data-kind="done"] { background: var(--s-surface, #1a2238); color: var(--s-muted, #6f7ba0); box-shadow: none; cursor: default; }
+.plane-act:disabled { cursor: not-allowed; }
+@keyframes planePulse { 50% { box-shadow: 0 0 0 5px rgba(255,210,63,.16), 0 6px 20px rgba(255,210,63,.55); } }
+@media (prefers-reduced-motion: reduce) { .plane-act[data-kind="cashout"] { animation: none; } }
+.plane-msg { margin-top: 6px; min-height: 16px; text-align: center; font-weight: 700; font-size: 12px; }
+.plane-msg.win { color: var(--s-green, #45f0a6); }
+.plane-msg.lose { color: #ff6b86; }
+
+/* Control panel: two bet config blocks side by side (single in real mode) */
+.plane-bets { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 6px; }
+body.plane-real .plane-bets { grid-template-columns: 1fr; }
+.plane-bp { background: var(--s-surface, #18202f); border: 1px solid var(--s-border, #2a3550); border-radius: var(--r-md, 10px); padding: 10px; }
+.plane-bp.a { border-color: rgba(57,231,255,.32); }
+.plane-bp.b { border-color: rgba(255,77,157,.32); }
+.plane-bp-head { font-family: var(--display); font-weight: 800; font-size: 12px; letter-spacing: .4px; margin-bottom: 8px; }
+.plane-bp.a .plane-bp-head { color: #39e7ff; }
+.plane-bp.b .plane-bp-head { color: #ff4d9d; }
+.plane-tag { font-weight: 600; font-size: 11px; }
+.plane-bp .slider-wrap { margin: 4px 0; }
+.plane-bp .quickbet-row { gap: 6px; margin-top: 6px; }
+.plane-bp .quickbet-row .qbet { padding: 7px 4px; font-size: 12px; font-weight: 700; }
+.plane-bp .field-label { display: flex; align-items: center; gap: 6px; margin: 8px 0 4px; font-size: 12px; }
+.plane-auto-toggle { margin-left: auto; }
+.plane-auto-toggle.active { background: linear-gradient(135deg, rgba(57,231,255,.22), rgba(57,231,255,.10)); border-color: #39e7ff; color: #fff; }
+
+/* Recent crash history pills */
+.plane-history-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.plane-hist-label { font-size: 11px; flex: 0 0 auto; }
+.plane-history { display: flex; gap: 5px; flex-wrap: wrap; overflow: hidden; max-height: 24px; }
+.plane-history .ph-pill { font-family: ui-monospace, monospace; font-size: 10px; padding: 3px 6px; border-radius: 6px; background: rgba(10,16,30,.7); border: 1px solid #223550; color: #9fb3cc; }
+.plane-history .ph-pill.mid { color: #39e7ff; border-color: #1d5e72; }
+.plane-history .ph-pill.hi { color: #ffd23f; border-color: #6a5a1a; }
+.plane-history .ph-pill.mega { color: #ff4d9d; border-color: #7a2348; }
+
+/* Live (cosmetic) player feed */
+.plane-feed-wrap { margin-top: 10px; }
+.plane-feed-tabs { display: flex; gap: 5px; margin-bottom: 6px; }
+.plane-feed-tabs .ftab { flex: 1; font-family: var(--display); font-weight: 700; font-size: 10px; padding: 6px 0; text-align: center; border-radius: 6px; background: rgba(10,16,30,.5); border: 1px solid var(--s-border, #2a3550); color: var(--s-muted, #8a97b5); cursor: pointer; }
+.plane-feed-tabs .ftab.active { color: #39e7ff; border-color: #39e7ff; }
+.plane-feed { max-height: 168px; overflow-y: auto; font-size: 12px; }
+.plane-feed .pf-head { font-size: 10px; color: var(--s-muted, #8a97b5); padding: 4px; position: sticky; top: 0; background: var(--s-panel, #131a28); }
+.plane-feed .pf-head b { color: #ffd23f; }
+.plane-feed .pf-row { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 6px; }
+.plane-feed .pf-row:nth-child(even) { background: rgba(255,255,255,.025); }
+.plane-feed .pf-row.mine { background: rgba(57,231,255,.12); outline: 1px solid rgba(57,231,255,.3); }
+.plane-feed .pf-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; font-size: 11px; }
+.plane-feed .pf-stake { color: var(--s-muted, #8a97b5); font-size: 11px; }
+.plane-feed .pf-cashed { color: var(--s-green, #45f0a6); font-weight: 700; font-size: 11px; }
+.plane-feed .pf-row.big .pf-cashed { color: #ffd23f; }
+.plane-feed .pf-lost { color: #6f7ba0; font-size: 11px; }
+.plane-feed .pf-pending { color: #5a6a86; font-size: 10px; }
+
+@media (max-width: 900px) {
+  .plane-panel { padding: 12px 12px 10px; }
+  .plane-panel .plane-intro { font-size: 11.5px; line-height: 1.35; margin: 2px 0 8px; }
+  .plane-bets { gap: 8px; }
+  .plane-bp { padding: 8px; }
+  .plane-feed { max-height: 130px; }
+}

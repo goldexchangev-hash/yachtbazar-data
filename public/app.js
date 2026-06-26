@@ -58,6 +58,8 @@
   let slotsLoadPromise = null; // lazy-load guard for pixi.min.js + slots.js
   let pressureLoadPromise = null; // lazy-load guard for the Balloon Pop (pressure) engine
   let pressureGame = null;        // the Balloon Pop instance, built on first visit to CH 13
+  let planeLoadPromise = null;    // lazy-load guard for the Plane (Aviator) engine
+  let planeGame = null;           // the Plane instance, built on first visit to CH 14
   let read = null; // connected to provider
   let maxBet = 0n;
   let gameWei = 0n; // cached in-game (deposited) balance, refreshed by refreshBalances
@@ -139,7 +141,7 @@
   // ---- shareable win/loss card (canvas -> PNG -> Web Share / download) ----
   let lastResult = null;
   // Active TV channel → friendly game name + emoji for the share card.
-  const SHARE_GAME = { 8: ["Coin Flip", "🪙"], 9: ["0-100", "🎲"], 10: ["Dice #2", "🎲"], 11: ["Crash", "🚀"], 12: ["Crypto Reels", "🎰"], 13: ["Balloon Pop", "🎈"] };
+  const SHARE_GAME = { 8: ["Coin Flip", "🪙"], 9: ["0-100", "🎲"], 10: ["Dice #2", "🎲"], 11: ["Crash", "🚀"], 12: ["Crypto Reels", "🎰"], 13: ["Balloon Pop", "🎈"], 14: ["Plane", "✈️"] };
   function hideShareBtn() { const b = $("share-result-btn"); if (b) b.classList.add("hidden"); }
   function setLastResult(r) {
     r = r || {};
@@ -668,6 +670,9 @@
     { const td = $("twodice-panel"); if (td) td.hidden = false; }
     { const cp = $("crash-panel"); if (cp) cp.hidden = false; }
     { const sp = $("slots-panel"); if (sp) sp.hidden = false; }
+    { const pp = $("plane-panel"); if (pp) pp.hidden = false; }     // Plane plays for real (single-shot)
+    { const pc = $("ch-plane"); if (pc) pc.hidden = false; }
+    document.body.classList.add("plane-real");
     refreshDiceHouse();
     $("maxbet-hint").textContent = "· $10–$" + betCapUsd().toLocaleString();
     setupHouseSlider();
@@ -1108,6 +1113,7 @@
       if (!revealLock) $("game-balance").textContent = usdOf(gb); // hold until the result is revealed
       $("wallet-balance").textContent = usdOf(wb);
       walletWei = wb;
+      if (planeGame && !demoOn && !revealLock) try { planeGame.setBalance(weiToUsd(gb)); } catch (e) {}
       syncDepositSlider();
       syncWithdrawSlider();
     } catch {}
@@ -1909,14 +1915,14 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=985").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=986").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=985"))
+      .then(() => loadScriptOnce("slots.js?v=986"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -1926,9 +1932,9 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=985"))
-      .then(() => loadScriptOnce("pressure-render.js?v=985"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=985"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=986"))
+      .then(() => loadScriptOnce("pressure-render.js?v=986"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=986"))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -1971,6 +1977,84 @@
       if (demoOn) { g.setBalance(demoUsd); g.setEnabled(true); }
       else { g.setEnabled(false); }
     }).catch(() => toast("Couldn't load Balloon Pop — check your connection", "err"));
+  }
+
+  // ── Plane (CH 14): lazy-load the Aviator engine, then build + bridge the instance.
+  function ensurePlaneLoaded() {
+    if (window.PlaneGame) return Promise.resolve(true);
+    if (planeLoadPromise) return planeLoadPromise;
+    planeLoadPromise = loadPixiOnce()
+      .then(() => loadScriptOnce("plane-engine.js?v=986"))
+      .then(() => loadScriptOnce("plane-render.js?v=986"))
+      .then(() => loadScriptOnce("plane-feed.js?v=986"))
+      .then(() => loadScriptOnce("plane-ui.js?v=986"))
+      .then(() => true)
+      .catch((e) => { planeLoadPromise = null; throw e; });
+    return planeLoadPromise;
+  }
+  function buildPlaneGame() {
+    if (planeGame || !window.PlaneGame) return planeGame;
+    const el = (id) => $(id);
+    const mount = $("plane-stage"); if (!mount) return null;
+    const panel = (p) => ({
+      action: el("plane-" + p + "-action"),
+      betInput: el("plane-" + p + "-bet"), betVal: el("plane-" + p + "-betval"), betEth: el("plane-" + p + "-eth"),
+      betHalf: el("plane-" + p + "-half"), betDouble: el("plane-" + p + "-double"), betMax: el("plane-" + p + "-max"),
+      autoSlider: el("plane-" + p + "-auto-slider"), autoVal: el("plane-" + p + "-autoval"), autoToggle: el("plane-" + p + "-auto-toggle"),
+      autobet: el("plane-" + p + "-autobet"), mart: el("plane-" + p + "-mart"),
+    });
+    // 4:3 to fill the TV screen uniformly (CSS stretches it, like Balloon Pop).
+    planeGame = new window.PlaneGame({
+      mount, width: 800, height: 600,
+      ethUsd: ethUsd, houseEdge: CRASH_EDGE, // 1% — identical to the on-chain crash it settles through
+      mode: demoOn ? "demo" : "real",
+      initialBalance: demoOn ? demoUsd : weiToUsd(gameWei),
+      onBalance: (b) => { demoUsd = Math.round(b * 100) / 100; demoSave(); demoPaint(); }, // demo only
+      onWin: (i) => setLastResult({ won: true, game: "Plane", emoji: "✈️", amountUsd: i.profitUsd, detail: i.mult.toFixed(2) + "× cashed" }),
+      onRealBet: (betUsd, targetX100) => doPlanePlay(betUsd, targetX100),       // single on-chain round
+      onRealDone: () => { unlockReveal(); refreshBalances().then(() => { if (planeGame) planeGame.setBalance(weiToUsd(gameWei)); }); refreshDiceHouse(); try { refreshStats(); } catch (e) {} },
+      els: {
+        balance: el("plane-balance"), message: el("plane-message"),
+        history: el("plane-history"), feed: el("plane-feed"),
+        feedTabs: Array.prototype.slice.call(document.querySelectorAll(".plane-feed-tabs .ftab")),
+        pfHash: el("plane-pf-hash"), pfClient: el("plane-pf-client"), pfNonce: el("plane-pf-nonce"),
+        pfVerify: el("plane-pf-verify"), pfReveal: el("plane-pf-reveal"), pfLast: el("plane-pf-last"),
+      },
+      panels: [panel("a"), panel("b")],
+    });
+    return planeGame;
+  }
+  function ensurePlaneReady() {
+    document.body.classList.toggle("plane-real", !demoOn); // hides demo-only UI (2nd bet, feed, autobet)
+    ensurePlaneLoaded().then(() => {
+      const g = buildPlaneGame(); if (!g) return;
+      g.setActive(true);
+      g.setEthUsd(ethUsd);
+      if (demoOn) { g.setMode("demo"); g.setBalance(demoUsd); g.setEnabled(true); }
+      else { g.setMode("real"); g.setBalance(weiToUsd(gameWei)); g.setEnabled(!!(account && contract)); }
+    }).catch(() => toast("Couldn't load Plane — check your connection", "err"));
+  }
+  // The Plane's REAL mode settles each launch as ONE on-chain crash round (the
+  // audited playCrash path) at the bet's pre-set auto-cash-out target, then the
+  // renderer animates the outcome. Returns the parsed result, or null on cancel.
+  async function doPlanePlay(betUsd, targetX100) {
+    if (!ready()) return null;
+    if ((await ensureCrashSupport()) === false) { toast("Plane needs the Crash contract on this house — it needs a redeploy. (Other channels still work.)", "err"); return null; }
+    let bet; try { bet = usdToWei(betUsd); } catch { return null; }
+    if (bet > maxBet) { toast("Max bet is " + usdOf(maxBet), "err"); return null; }
+    if (gameWei > 0n && bet > gameWei) { toast("Not enough in-game balance — deposit first 👇", "err"); return null; }
+    const tx100 = Math.max(101, Math.min(100000, targetX100 | 0));
+    activeRoomId = null; lastRevealed = null;
+    lockReveal();
+    toast("Launching the plane… confirm in your wallet ✈️", "ok");
+    try {
+      const tx = await contract.playCrash(bet, BigInt(tx100), { gasLimit: 500000n });
+      const rcpt = await tx.wait();
+      const ev = rcpt.logs.map((l) => safeParse(l)).find((p) => p && p.name === "CrashRolled");
+      if (!ev) { unlockReveal(); refreshBalances(); refreshDiceHouse(); toast("Round settled on-chain — check your balance.", "ok"); return null; }
+      const a = ev.args;
+      return { won: a.won, crashX: Number(a.crashX100) / 100, targetX: Number(a.targetX100) / 100, profitUsd: a.won ? weiToUsd(a.payout - bet) : 0 };
+    } catch (e) { unlockReveal(); txErr(e); return null; }
   }
   // Unpack the contract's 15-symbol grid (4 bits each, cell = reel*3+row) into [5][3].
   function unpackSlotsGrid(packed) {
@@ -2041,6 +2125,7 @@
     dicePayoutCapBps = 10000n;
     demoPaint();
     if (pressureGame) try { pressureGame.setEthUsd(ethUsd); } catch (e) {}
+    if (planeGame) try { planeGame.setEthUsd(ethUsd); if (demoOn) planeGame.setBalance(demoUsd); } catch (e) {}
     try {
       setupSliders();
       if (currentGame === "dice") diceReadouts();
@@ -2060,12 +2145,16 @@
     { const sp = $("slots-panel"); if (sp) sp.hidden = false; }
     { const pp = $("pressure-panel"); if (pp) pp.hidden = false; }
     { const pc = $("ch-pressure"); if (pc) pc.hidden = false; } // Balloon Pop is play-money → demo only
+    { const pp = $("plane-panel"); if (pp) pp.hidden = false; }   // Plane shows in demo AND real
+    { const pc = $("ch-plane"); if (pc) pc.hidden = false; }
+    document.body.classList.remove("plane-real"); // demo → show the 2nd bet + feed + autobet
     { const bar = $("demo-bar"); if (bar) bar.classList.remove("hidden"); }
     { const below = $("demo-below"); if (below) below.classList.remove("hidden"); }
     { const bdg = $("demo-tv-badge"); if (bdg) bdg.classList.remove("hidden"); }
     if (window.TV && TV.setConnected) TV.setConnected(true); // show game-ready previews, not SIGNAL LOST
     const mh = $("maxbet-hint"); if (mh) mh.textContent = "· demo · $10–$" + HARD_MAX_USD;
     if (pressureGame) { pressureGame.setBalance(demoUsd); pressureGame.setEnabled(true); }
+    if (planeGame) { planeGame.setMode("demo"); planeGame.setBalance(demoUsd); planeGame.setEnabled(true); }
     demoSyncBalance();
   }
   function exitDemo() {
@@ -2082,10 +2171,14 @@
     // setEnabled(false) locks the game (which zeroes `pressing`).
     if (pressureGame) { pressureGame.setActive(false); pressureGame.setEnabled(false); }
     if (currentGame === "pressure") switchGame("flip");
+    // Plane DOES have a real-money mode → keep it, switch to single-shot real.
+    document.body.classList.add("plane-real");
+    if (planeGame) { planeGame.setMode("real"); planeGame.setBalance(weiToUsd(gameWei)); planeGame.setEnabled(!!(account && contract)); }
   }
   function demoReset() {
     demoUsd = DEMO_START_USD; demoSave(); demoSyncBalance();
     if (pressureGame) pressureGame.setBalance(demoUsd);
+    if (planeGame && demoOn) planeGame.setBalance(demoUsd);
     toast("Demo credits topped back up to " + usd(DEMO_START_USD) + " 🎮", "ok");
   }
   // Read + validate a demo stake from a slider. Returns 0 (and toasts) if invalid.
@@ -2187,15 +2280,16 @@
 
   // ── Game switcher ("change the channel") ──
   // Poker is temporarily disabled (hidden from the channel bar) — to be revisited.
-  const GAME_CHANNEL = { flip: 8, dice: 9, twodice: 10, crash: 11, slots: 12, pressure: 13 };
-  const GAME_TITLE = { flip: "CRYPTO TV FLIP", dice: "CRYPTO TV 0-100", twodice: "CRYPTO TV DICE #2", crash: "CRYPTO TV CRASH", slots: "CRYPTO REELS", pressure: "BALLOON POP" };
-  const GAME_ORDER = ["flip", "dice", "twodice", "crash", "slots", "pressure"];
+  const GAME_CHANNEL = { flip: 8, dice: 9, twodice: 10, crash: 11, slots: 12, pressure: 13, plane: 14 };
+  const GAME_TITLE = { flip: "CRYPTO TV FLIP", dice: "CRYPTO TV 0-100", twodice: "CRYPTO TV DICE #2", crash: "CRYPTO TV CRASH", slots: "CRYPTO REELS", pressure: "BALLOON POP", plane: "CRYPTO TV PLANE" };
+  const GAME_ORDER = ["flip", "dice", "twodice", "crash", "slots", "pressure", "plane"];
   function paintGameTabs(game) {
     document.body.classList.toggle("game-dice", game === "dice");
     document.body.classList.toggle("game-twodice", game === "twodice");
     document.body.classList.toggle("game-crash", game === "crash");
     document.body.classList.toggle("game-slots", game === "slots");
     document.body.classList.toggle("game-pressure", game === "pressure");
+    document.body.classList.toggle("game-plane", game === "plane");
     document.body.classList.toggle("game-poker", game === "poker"); // CSS hides the TV layout, shows #poker-view
     const bar = $("game-nav"); if (bar) bar.dataset.game = game;
     document.querySelectorAll("#game-nav .game-card").forEach((b) => {
@@ -2212,9 +2306,10 @@
     currentGame = game;
     paintGameTabs(game);
     try { localStorage.setItem("ctf_game", game); } catch {}
-    // leaving slots/pressure? pause its Pixi ticker so it doesn't burn CPU off-channel.
+    // leaving slots/pressure/plane? pause its Pixi ticker so it doesn't burn CPU off-channel.
     if (game !== "slots" && window.CryptoReels && CryptoReels.setActive) CryptoReels.setActive(false);
     if (game !== "pressure" && pressureGame) pressureGame.setActive(false);
+    if (game !== "plane" && planeGame) planeGame.setActive(false);
     // Poker is its own full-width view (no TV); everything else uses the TV channel.
     if (game === "poker") { if (window.PokerUI) PokerUI.show(); }
     else { if (window.PokerUI) PokerUI.hide(); if (window.TV && TV.changeChannel) TV.changeChannel(GAME_CHANNEL[game]); }
@@ -2223,6 +2318,7 @@
     else if (game === "crash") { refreshDiceHouse(); crashReadouts(); ensureCrashSupport(); }
     else if (game === "slots") { refreshDiceHouse(); slotsReadouts(); ensureSlotsSupport(); ensureSlotsLoaded().then(() => { if (window.CryptoReels) CryptoReels.setActive(true); }).catch(() => {}); }
     else if (game === "pressure") { ensurePressureReady(); }
+    else if (game === "plane") { refreshDiceHouse(); ensurePlaneReady(); }
   }
   // Poker chips are a session-local pool seeded from your in-game balance.
   // Phase 1 (vs house bots) plays out client-side; net results are NOT yet

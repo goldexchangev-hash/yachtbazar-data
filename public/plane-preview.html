@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#06091a" />
+    <title>✈️ PLANE — Crypto TV (preview)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Press+Start+2P&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✈️</text></svg>" />
+    <style>
+      :root{ --bg:#06091a; --panel:rgba(14,20,40,.74); --line:rgba(255,255,255,.09);
+        --ink:#eaf2ff; --muted:#9aa7c7; --cyan:#39e7ff; --magenta:#ff4d9d; --gold:#ffd23f; --green:#45f0a6; --red:#ff2a4a;
+        --pixel:"Press Start 2P",monospace; --font:"Space Grotesk",system-ui,sans-serif; }
+      *{box-sizing:border-box} html,body{margin:0;min-height:100%}
+      body{font-family:var(--font);color:var(--ink);background:radial-gradient(1100px 640px at 50% -10%,#1c2150 0%,transparent 60%),var(--bg);padding:14px 12px 70px}
+      .wrap{max-width:1040px;margin:0 auto}
+      .top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+      .brand{display:flex;align-items:center;gap:9px}.brand .be{font-size:24px}
+      .brand h1{font-family:var(--pixel);font-size:16px;letter-spacing:1px;margin:0;color:var(--cyan);text-shadow:2px 0 var(--magenta),-2px 0 var(--gold),3px 3px 0 #04060f}
+      .bal{font-family:var(--pixel);font-size:13px;color:var(--gold)} .bal small{display:block;font-family:ui-monospace,monospace;font-size:9px;color:var(--muted);text-align:right}
+      .top-actions{display:flex;gap:8px;align-items:center}
+      .icon-btn{background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:9px;color:var(--ink);font-size:14px;padding:7px 10px;cursor:pointer}
+      .chip{font-family:var(--font);font-weight:700;font-size:12px;cursor:pointer;color:var(--ink);background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:9px;padding:7px 10px}
+      .history{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-start;margin:6px 0 8px;min-height:22px}
+      .ph-pill{font-family:var(--pixel);font-size:9px;padding:5px 6px;border-radius:7px;background:rgba(10,16,30,.7);border:1px solid #223550;color:#9fb3cc}
+      .ph-pill.mid{color:var(--cyan);border-color:#1d5e72}.ph-pill.hi{color:var(--gold);border-color:#6a5a1a}.ph-pill.mega{color:var(--magenta);border-color:#7a2348}
+      .main{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(220px,.9fr);gap:12px}
+      .screen{position:relative;border-radius:14px;overflow:hidden;background:#05060f;box-shadow:inset 0 0 0 4px #0e1530, inset 0 0 36px #000}
+      .screen canvas{display:block;width:100%!important;height:auto!important}
+      .plane-msg{min-height:18px;text-align:center;font-weight:700;font-size:13px;margin:8px 2px;color:var(--ink)}
+      .plane-msg.win{color:var(--green)} .plane-msg.lose{color:var(--red)}
+      .panels{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px}
+      .bp{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px}
+      .bp.b{border-color:rgba(255,77,157,.3)} .bp.a{border-color:rgba(57,231,255,.3)}
+      .bp h3{margin:0 0 8px;font-family:var(--pixel);font-size:9px;letter-spacing:.5px}.bp.a h3{color:var(--cyan)}.bp.b h3{color:var(--magenta)}
+      .bp h3 .tag{color:var(--muted);font-size:8px}
+      .bet-stepper{display:flex;align-items:center;background:rgba(8,12,24,.6);border:1px solid var(--line);border-radius:9px;overflow:hidden}
+      .bet-stepper button{font-family:var(--pixel);font-size:13px;color:var(--ink);background:rgba(255,255,255,.06);border:none;width:34px;height:38px;cursor:pointer}
+      .bet-stepper input{width:100%;text-align:center;border:none;background:transparent;font-family:var(--pixel);font-size:12px;color:var(--gold)}
+      .bet-eth{display:block;font-size:9px;color:var(--muted);font-family:ui-monospace,monospace;text-align:center;margin:4px 0}
+      .qchips{display:flex;gap:5px;margin:5px 0}.qchips .chip{flex:1;text-align:center;padding:6px 0;font-size:11px}
+      .auto-row{display:flex;align-items:center;gap:6px;margin:6px 0 2px;font-size:10px;color:var(--muted)}
+      .auto-row b{color:var(--gold)}
+      .slider{-webkit-appearance:none;appearance:none;height:8px;border-radius:999px;flex:1;background:linear-gradient(90deg,var(--cyan),var(--gold) 60%,var(--magenta));cursor:pointer}
+      .slider::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:#fff;border:3px solid var(--gold);cursor:pointer}
+      .action{width:100%;font-family:var(--pixel);font-size:12px;letter-spacing:.5px;color:#04121a;border:none;border-radius:11px;padding:15px 6px;cursor:pointer;margin-top:6px;
+        background:linear-gradient(135deg,var(--cyan),var(--green));box-shadow:0 6px 18px rgba(57,231,255,.3);transition:transform .06s,filter .15s}
+      .action:active{transform:translateY(2px)} .action:disabled{cursor:not-allowed}
+      .action[data-kind="cashout"]{background:linear-gradient(135deg,var(--gold),#ff8a3d 60%,var(--magenta));color:#2a0a06;animation:pulse .6s ease-in-out infinite}
+      .action[data-kind="cancel"]{background:linear-gradient(135deg,#3a2560,#52407e);color:#fff}
+      .action[data-kind="auto"]{background:#241a3a;color:var(--gold);box-shadow:none;border:1px solid rgba(255,210,63,.4)}
+      .action[data-kind="wait"],.action[data-kind="done"]{background:#1a2238;color:#6f7ba0;box-shadow:none}
+      @keyframes pulse{50%{box-shadow:0 0 0 6px rgba(255,210,63,.18),0 6px 22px rgba(255,210,63,.6)}}
+      /* live feed */
+      .feed-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px;display:flex;flex-direction:column;min-height:0}
+      .feed-tabs{display:flex;gap:5px;margin-bottom:6px}
+      .feed-tabs .ftab{flex:1;font-family:var(--pixel);font-size:8px;padding:7px 0;text-align:center;border-radius:7px;background:rgba(8,12,24,.6);border:1px solid var(--line);color:var(--muted);cursor:pointer}
+      .feed-tabs .ftab.active{color:var(--cyan);border-color:var(--cyan)}
+      .feed{flex:1;overflow-y:auto;max-height:420px;font-size:12px}
+      .pf-head{font-size:10px;color:var(--muted);padding:4px 4px 6px;position:sticky;top:0;background:var(--panel)} .pf-head b{color:var(--gold)}
+      .pf-row{display:flex;align-items:center;gap:6px;padding:5px 6px;border-radius:7px}
+      .pf-row:nth-child(even){background:rgba(255,255,255,.025)} .pf-row.mine{background:rgba(57,231,255,.12);outline:1px solid rgba(57,231,255,.3)}
+      .pf-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;font-size:11px}
+      .pf-stake{color:var(--muted);font-size:11px} .pf-cashed{color:var(--green);font-weight:700;font-size:11px} .pf-row.big .pf-cashed{color:var(--gold)} .pf-lost{color:#6f7ba0;font-size:11px} .pf-pending{color:#5a6a86;font-size:10px}
+      .pf{margin-top:12px;border-top:1px dashed var(--line);padding-top:10px;font-size:11px;color:var(--muted);line-height:1.7}
+      .pf code{font-family:ui-monospace,monospace;color:var(--cyan)} .pf .pf-r{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+      .pf input{font-size:12px;padding:6px 8px;max-width:150px;background:rgba(8,12,24,.7);border:1px solid var(--line);border-radius:8px;color:var(--ink)}
+      .pf-verify{font-size:11px;font-weight:700;cursor:pointer;color:#06121a;background:var(--green);border:none;border-radius:8px;padding:7px 11px}
+      .pf-reveal{font-family:ui-monospace,monospace;font-size:10px;color:var(--green);word-break:break-all}
+      .how{text-align:center;font-size:12px;color:var(--muted);line-height:1.6;margin:14px auto 0;max-width:760px}.how b{color:var(--cyan)}
+      @media(max-width:780px){ .main{grid-template-columns:1fr} .feed{max-height:200px} }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="top">
+        <div class="brand"><span class="be">✈️</span><h1>PLANE</h1></div>
+        <div class="top-actions">
+          <div class="bal"><span id="balance">$0</span><small id="balance-eth"></small></div>
+          <button class="chip hidden" id="add-credits">+$1,000</button>
+          <button class="icon-btn" id="sound-btn" title="Sound">🔇</button>
+        </div>
+      </div>
+
+      <div class="history" id="history"></div>
+
+      <div class="main">
+        <div>
+          <div class="screen"><div id="plane-stage"></div></div>
+          <div class="plane-msg" id="message">Loading…</div>
+          <div class="panels">
+            <div class="bp a">
+              <h3>BET A <span class="tag">· safe</span></h3>
+              <div class="bet-stepper"><button id="a-down">−</button><input id="a-bet" type="number" min="10" step="10" value="10" /><button id="a-up">+</button></div>
+              <span class="bet-eth" id="a-eth"></span>
+              <div class="qchips"><button class="chip" id="a-half">½</button><button class="chip" id="a-double">2×</button><button class="chip" id="a-max">MAX</button></div>
+              <div class="auto-row">auto @ <b id="a-auto-val">1.50x</b><input id="a-auto-slider" class="slider" type="range" min="1.2" max="20" step="0.05" value="1.5" /><button class="chip" id="a-auto-toggle">AUTO</button></div>
+              <div class="auto-row"><button class="chip" id="a-autobet">⟳ AUTOBET</button><button class="chip" id="a-mart" title="double stake on a loss">×2 LOSS</button></div>
+              <button class="action" id="a-action" data-kind="bet">BET A</button>
+            </div>
+            <div class="bp b">
+              <h3>BET B <span class="tag">· risky</span></h3>
+              <div class="bet-stepper"><button id="b-down">−</button><input id="b-bet" type="number" min="10" step="10" value="10" /><button id="b-up">+</button></div>
+              <span class="bet-eth" id="b-eth"></span>
+              <div class="qchips"><button class="chip" id="b-half">½</button><button class="chip" id="b-double">2×</button><button class="chip" id="b-max">MAX</button></div>
+              <div class="auto-row">auto @ <b id="b-auto-val">10.00x</b><input id="b-auto-slider" class="slider" type="range" min="1.2" max="50" step="0.5" value="10" /><button class="chip" id="b-auto-toggle">AUTO</button></div>
+              <div class="auto-row"><button class="chip" id="b-autobet">⟳ AUTOBET</button><button class="chip" id="b-mart" title="double stake on a loss">×2 LOSS</button></div>
+              <button class="action" id="b-action" data-kind="bet">BET B</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="feed-card">
+          <div class="feed-tabs"><div class="ftab active" data-tab="all">ALL</div><div class="ftab" data-tab="top">TOP</div><div class="ftab" data-tab="mine">MINE</div></div>
+          <div class="feed" id="feed"></div>
+        </div>
+      </div>
+
+      <div class="pf">
+        <div class="pf-r"><b>Provably fair</b> · server hash <code id="pf-hash">—</code> · nonce <code id="pf-nonce">0</code></div>
+        <div class="pf-r">client seed <input id="pf-client" type="text" placeholder="(auto)" /><button class="pf-verify" id="pf-verify">Verify last round</button></div>
+        <div class="pf-reveal" id="pf-reveal"></div><div id="pf-last" style="margin-top:4px"></div>
+      </div>
+
+      <p class="how"><b>Two bets per round</b> (a safe A + a risky B) — place them in the window, the plane climbs, then <b>cash out</b> each anytime
+        (or let AUTO bank it). If the plane <b>flies away</b> before you cash, that bet is lost. USD value, settled in ETH · play money · provably fair.</p>
+    </div>
+
+    <script src="vendor/pixi.min.js"></script>
+    <script src="chiptune.js"></script>
+    <script src="plane-engine.js"></script>
+    <script src="plane-render.js"></script>
+    <script src="plane-feed.js"></script>
+    <script src="plane-ui.js"></script>
+    <script>
+      window.addEventListener("DOMContentLoaded", function () {
+        var id = function (x) { return document.getElementById(x); };
+        function panel(p) {
+          return { action: id(p + "-action"), betInput: id(p + "-bet"), betEth: id(p + "-eth"),
+            betUp: id(p + "-up"), betDown: id(p + "-down"), betHalf: id(p + "-half"), betDouble: id(p + "-double"), betMax: id(p + "-max"),
+            autoSlider: id(p + "-auto-slider"), autoVal: id(p + "-auto-val"), autoToggle: id(p + "-auto-toggle"),
+            autobet: id(p + "-autobet"), mart: id(p + "-mart") };
+        }
+        var els = {
+          balance: id("balance"), balanceEth: id("balance-eth"), addCredits: id("add-credits"),
+          history: id("history"), message: id("message"), soundBtn: id("sound-btn"), feed: id("feed"),
+          feedTabs: Array.prototype.slice.call(document.querySelectorAll(".ftab")),
+          pfHash: id("pf-hash"), pfClient: id("pf-client"), pfNonce: id("pf-nonce"), pfVerify: id("pf-verify"), pfReveal: id("pf-reveal"), pfLast: id("pf-last"),
+        };
+        window.PLANE = new PlaneGame({ mount: id("plane-stage"), els: els, panels: [panel("a"), panel("b")], width: 660, height: 412 });
+      });
+    </script>
+  </body>
+</html>
