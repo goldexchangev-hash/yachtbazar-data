@@ -27,7 +27,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=989" />
+    <link rel="stylesheet" href="styles.css?v=990" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -42,7 +42,7 @@
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.89</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.90</span>
       </div>
       <div class="topbar-right">
         <div class="music-wrap">
@@ -344,7 +344,7 @@
 
                 <!-- Promo intro reel — autoplays once (muted) on first load, then fades
                      to black and hands off to the game. Replay button under the TV. -->
-                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=989"></video>
+                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=990"></video>
 
                 <!-- Shown while a bet tx is being signed + mined (esp. slow on mobile) -->
                 <div id="tv-pending" class="tv-pending hidden">⏳ SENDING BET…<br />confirm in your wallet, then hold tight</div>
@@ -405,7 +405,7 @@
           <div class="muted dice-roll-hint" id="crash-roll-hint"></div>
         </div>
         <div class="action-dock" data-game="flip">
-          <button id="play-house-btn" class="btn btn-primary btn-block act-btn"><span class="ab-verb">🪙 FLIP</span><span class="ab-amt">BET $<b id="house-bet-hint">25</b> · WIN $<b id="house-win-hint">20.00</b></span></button>
+          <button id="play-house-btn" class="btn btn-primary btn-block act-btn"><span class="ab-verb">🪙 FLIP</span><span class="ab-amt">BET $<b id="house-bet-hint">25</b> · WIN $<b id="house-win-hint">23.50</b></span></button>
         </div>
         <div class="action-dock" data-game="dice">
           <button id="dice-roll-btn" class="btn btn-primary btn-block act-btn"><span class="ab-verb">🎲 ROLL</span><span class="ab-amt">BET $<b id="dice-bet-hint">25</b> · WIN $<b id="dice-payout-hint">0.00</b></span></button>
@@ -468,9 +468,9 @@
         <div class="card play-house" id="play-house" data-game="flip" hidden>
           <div class="ph-head">
             <h2 class="card-title">⚡ Quick play vs House</h2>
-            <span class="ph-bankroll muted">House: <strong id="house-bankroll">—</strong> · edge 10%</span>
+            <span class="ph-bankroll muted">House: <strong id="house-bankroll">—</strong> · edge 3%</span>
           </div>
-          <p class="muted ph-note">Drag to choose your stake. You're HEADS. Win pays <strong>1.8×</strong> (10% house edge).</p>
+          <p class="muted ph-note">Drag to choose your stake. You're HEADS. Win pays <strong>1.94×</strong> (3% house edge).</p>
           <div class="slider-wrap">
             <input id="house-bet" class="slider" type="range" min="10" max="500" step="5" value="25" />
             <div class="slider-val"><strong id="house-bet-val">$25</strong><span class="eth-sub" id="house-bet-eth"></span></div>
@@ -936,7 +936,7 @@
         <div class="card">
           <details class="dropdown">
             <summary class="card-title dd-summary"><span>🏦 Host your own table</span><span class="dd-arrow" aria-hidden="true">▾</span></summary>
-            <p class="muted ph-note">Share one link — <strong>many players</strong> can flip against <strong>your</strong> bank at once, each for any amount they pick (no wait line). You're the house: you keep <strong>half</strong> the 10% rake (5%), the platform takes the other 5%. Auto-refunds you if idle for 5 minutes.</p>
+            <p class="muted ph-note">Share one link — <strong>many players</strong> can flip against <strong>your</strong> bank at once, each for any amount they pick (no wait line). You're the house: you keep <strong>half</strong> the 3% rake (1.5%), the platform takes the other 1.5%. Auto-refunds you if idle for 5 minutes.</p>
             <label class="field-label" for="host-table-name">Table name</label>
             <input id="host-table-name" class="input" type="text" maxlength="24" placeholder="My Casino" />
             <label class="field-label">Bank you put up <span class="muted">· $10–$500</span></label>
@@ -1091,6 +1091,10 @@
       </div>
     </section>
 
+    <!-- Floating volume button (bottom-right): one tap restores game sound after
+         an app/tab switch killed it (esp. iOS), and toggles music on/off. -->
+    <button id="vol-fab" class="vol-fab" type="button" aria-label="Sound on/off" title="Sound on/off">🔊</button>
+
     <!-- Toast -->
     <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
@@ -1113,7 +1117,7 @@
           <li><b>Watch the TV.</b> When both bets are in: 3‑2‑1‑FLIP — the coin is
             decided on‑chain by the block's randomness (<span class="mono">prevrandao</span>),
             settled instantly inside your transaction, and your screen shows WINNER 😄 or LOSER 😢.</li>
-          <li><b>Winner takes the pot minus the 10% house fee.</b> Withdraw your balance
+          <li><b>Winner takes the pot minus the 3% house fee.</b> Withdraw your balance
             to your wallet anytime.</li>
         </ol>
         <p class="help-foot muted">
@@ -1221,17 +1225,17 @@
     </aside>
 
     <script defer src="vendor/ethers.umd.min.js"></script>
-    <script defer src="config.js?v=989"></script>
-    <script defer src="contract.js?v=989"></script>
-    <script defer src="chiptune.js?v=989"></script>
-    <script defer src="scenes.js?v=989"></script>
-    <script defer src="tv.js?v=989"></script>
-    <script defer src="poker-engine.js?v=989"></script>
-    <script defer src="poker-bots.js?v=989"></script>
-    <script defer src="poker-ui.js?v=989"></script>
-    <script defer src="crash-engine.js?v=989"></script>
-    <script defer src="crash-render.js?v=989"></script>
-    <script defer src="profile.js?v=989"></script>
-    <script defer src="app.js?v=989"></script>
+    <script defer src="config.js?v=990"></script>
+    <script defer src="contract.js?v=990"></script>
+    <script defer src="chiptune.js?v=990"></script>
+    <script defer src="scenes.js?v=990"></script>
+    <script defer src="tv.js?v=990"></script>
+    <script defer src="poker-engine.js?v=990"></script>
+    <script defer src="poker-bots.js?v=990"></script>
+    <script defer src="poker-ui.js?v=990"></script>
+    <script defer src="crash-engine.js?v=990"></script>
+    <script defer src="crash-render.js?v=990"></script>
+    <script defer src="profile.js?v=990"></script>
+    <script defer src="app.js?v=990"></script>
   </body>
 </html>

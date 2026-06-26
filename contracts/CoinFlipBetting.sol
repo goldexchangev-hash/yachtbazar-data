@@ -11,7 +11,7 @@ pragma solidity 0.8.24;
 ///         way Chainlink VRF is, so this is intended for a fun game on a test
 ///         network, not a high-stakes real-money casino.
 ///         Everything is pure ETH — no tokens, swaps, or conversion fees. The
-///         winner takes the pot minus a 10% house fee credited to the treasury.
+///         winner takes the pot minus a 3% house fee credited to the treasury.
 contract CoinFlipBetting {
     // --------------------------------------------------------------------- //
     //  Ownership (minimal, no external deps)
@@ -34,8 +34,10 @@ contract CoinFlipBetting {
     ///         Default 1 ETH so the UI's up-to-$500 slider always fits.
     uint256 public maxBet = 1 ether;
 
-    /// @notice House fee in basis points (1000 = 10%).
-    uint256 public constant HOUSE_FEE_BPS = 1000;
+    /// @notice House fee in basis points (300 = 3%). On a 50/50 flip this is the
+    ///         player's house edge. On host tables the fee is split 50/50, so the
+    ///         platform takes 1.5% and the table creator keeps 1.5%.
+    uint256 public constant HOUSE_FEE_BPS = 300;
     uint256 public constant BPS_DENOMINATOR = 10_000;
 
     // ---- Dice game (CH 09): roll 0..9999 (shown 0.00–99.99), roll under/over ----
@@ -102,7 +104,7 @@ contract CoinFlipBetting {
     uint256 public constant SLOTS_EDGE_BPS = 924;
     uint256 public nextSlotsGameId = 1;
 
-    /// @notice Wallet that receives the 10% fee (the host). Set at deploy.
+    /// @notice Wallet that receives the 3% fee (the host). Set at deploy.
     address public immutable treasury;
 
     // --------------------------------------------------------------------- //
@@ -154,7 +156,7 @@ contract CoinFlipBetting {
 
     /// @notice A personal "house" table: the creator escrows a bank, and anyone
     ///         with the link flips against it for any amount up to the bank. The
-    ///         creator is the house and collects the 10% rake. If a table sees no
+    ///         creator is the house and collects the 3% rake. If a table sees no
     ///         play for HOST_TIMEOUT it can be closed by anyone and the remaining
     ///         bank is refunded to the creator.
     struct HostRoom {
@@ -395,7 +397,7 @@ contract CoinFlipBetting {
     }
 
     /// @notice One-tap coin flip against the house. Your bet is matched from the
-    ///         house bankroll; winner takes the pot minus the 10% fee. You are
+    ///         house bankroll; winner takes the pot minus the 3% fee. You are
     ///         "heads" (player1). Settles instantly.
     function playHouse(uint256 betAmount, bool wantsHeads) external returns (uint256 roomId) {
         if (betAmount < MIN_BET) revert BetTooSmall();
@@ -493,7 +495,7 @@ contract CoinFlipBetting {
         uint256 fee = (pot * HOUSE_FEE_BPS) / BPS_DENOMINATOR;
         uint256 payout = pot - fee;
 
-        // The 10% rake flows back into the house bankroll (the pool players
+        // The 3% rake flows back into the house bankroll (the pool players
         // bet against), not the host's separate in-game balance.
         houseBankroll += fee;
 
@@ -564,7 +566,7 @@ contract CoinFlipBetting {
 
     /// @notice Flip against a host table for `betAmount`. You are "heads"; the table
     ///         creator (the house) is "tails" and matches your bet from their bank.
-    ///         The creator always collects the 10% rake. Settles instantly.
+    ///         The creator always collects the 3% rake. Settles instantly.
     function playHostRoom(uint256 roomId, uint256 betAmount, bool wantsHeads) external returns (bool playerWon) {
         HostRoom storage hr = hostRooms[roomId];
         if (hr.id == 0 || !hr.open) revert HostRoomNotOpen();
@@ -581,9 +583,9 @@ contract CoinFlipBetting {
         uint256 fee = (pot * HOUSE_FEE_BPS) / BPS_DENOMINATOR;
         uint256 payout = pot - fee;
 
-        // The 10% rake is split 50/50: half to the platform (treasury / the
+        // The 3% rake is split 50/50: half to the platform (treasury / the
         // original wallet), half to the table creator hosting this game — so the
-        // platform always takes ~5% of the pot and the host keeps ~5%.
+        // platform always takes ~1.5% of the pot and the host keeps ~1.5%.
         uint256 platformCut = fee / 2;
         houseBankroll += platformCut; // the platform's 5% flows into the house pool
         balances[hr.creator] += fee - platformCut;

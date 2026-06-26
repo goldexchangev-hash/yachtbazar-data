@@ -125,12 +125,12 @@
   const signedUsd = (wei) => (wei < 0n ? "−" : "+") + usdOf(wei < 0n ? -wei : wei);
 
   // Reveal numbers for a flip. We show the POT WON (the full payout that lands in
-  // your balance = pot − 10% house), not just the net profit, so a $50 bet win
-  // reads "+$90" not "+$40". A loss shows the stake you lost. `tier` escalates the
+  // your balance = pot − 3% house), not just the net profit, so a $50 bet win
+  // reads "+$97" not "+$47". A loss shows the stake you lost. `tier` escalates the
   // celebration by total pot size: big ($100+) and mega ($500+).
   function flipReveal(betWei, won) {
     const pot = betWei * 2n;
-    const payout = pot - pot / 10n; // pot minus the 10% house cut
+    const payout = pot - (pot * 3n) / 100n; // pot minus the 3% house cut → 1.94× stake
     const amountWei = won ? payout : betWei; // pot won / stake lost
     const netWei = won ? payout - betWei : -betWei; // true balance change (for the running total)
     const potUsd = weiToUsd(pot);
@@ -253,10 +253,10 @@
     const w = $(game + "-payout-hint") || $(game + "-win-hint");
     if (w) w.textContent = (winUsd > 0 ? winUsd : 0).toFixed(2);
   }
-  // Coin flip pays the pot minus the 10% house cut = 1.8× stake → +0.8× profit.
+  // Coin flip pays the pot minus the 3% house cut = 1.94× stake → +0.94× profit.
   function updateFlipButton() {
     const s = $("house-bet"); if (!s) return;
-    setBtnAmts("house", +s.value || 0, (+s.value || 0) * 0.8);
+    setBtnAmts("house", +s.value || 0, (+s.value || 0) * 0.94);
   }
 
   // Quick-bet: remember the last stake placed, then let one tap set ½×, 2× or the
@@ -541,8 +541,8 @@
           skip: eq(r.player1, hostTreasury) || (!r.isHouseGame && eq(r.player2, hostTreasury)),
           bet: r.betAmount,
           wagered: r.betAmount * 2n, // pot = both stakes
-          fees: (r.betAmount * 2n) / 10n, // 10% rake of the pot
-          table: r.isHouseGame ? (eq(r.winner, hostTreasury) ? (r.betAmount * 8n) / 10n : -r.betAmount) : 0n,
+          fees: (r.betAmount * 2n * 3n) / 100n, // 3% rake of the pot
+          table: r.isHouseGame ? (eq(r.winner, hostTreasury) ? (r.betAmount * 94n) / 100n : -r.betAmount) : 0n,
         })),
     },
     {
@@ -1913,14 +1913,14 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=989").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=990").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=989"))
+      .then(() => loadScriptOnce("slots.js?v=990"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -1930,9 +1930,9 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=989"))
-      .then(() => loadScriptOnce("pressure-render.js?v=989"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=989"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=990"))
+      .then(() => loadScriptOnce("pressure-render.js?v=990"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=990"))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -1985,10 +1985,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=989"))
-      .then(() => loadScriptOnce("plane-render.js?v=989"))
-      .then(() => loadScriptOnce("plane-feed.js?v=989"))
-      .then(() => loadScriptOnce("plane-ui.js?v=989"))
+      .then(() => loadScriptOnce("plane-engine.js?v=990"))
+      .then(() => loadScriptOnce("plane-render.js?v=990"))
+      .then(() => loadScriptOnce("plane-feed.js?v=990"))
+      .then(() => loadScriptOnce("plane-ui.js?v=990"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2207,9 +2207,9 @@
     const side = coinHeads ? "HEADS" : "TAILS";
     const betWei = usdToWei(v);
     const rv = flipReveal(betWei, won); // used for the TV display amounts only
-    // Win pays the pot minus the 10% house cut = 1.8× stake → +0.8× profit.
+    // Win pays the pot minus the 3% house cut = 1.94× stake → +0.94× profit.
     // Credit in plain USD to match the other demo games (no wei round-trip drift).
-    demoUsd += (won ? 0.8 * v : -v); demoSave();
+    demoUsd += (won ? 0.94 * v : -v); demoSave();
     demoFlipBusy = true;
     const fb = $("play-house-btn"); if (fb) fb.disabled = true;
     const release = () => { demoFlipBusy = false; if (fb) fb.disabled = false; };
@@ -3298,6 +3298,35 @@
       const now = $("music-now"); if (now) now.textContent = (on ? "♪ " : "") + (c ? c.name : "—");
       document.querySelectorAll("#music-tracks .mm-track").forEach((el, i) => el.classList.toggle("active", i === (c ? c.index : -1)));
     }
+    syncVolFab();
+  }
+  // The floating bottom-right volume button. Its #1 job: RESTORE sound after an
+  // app/tab switch silently suspended the AudioContext (iOS), which the topbar
+  // control couldn't fix. Decide intent from the state BEFORE we resume, so a tap
+  // that revives dead audio doesn't immediately mute it again.
+  function volFabTap() {
+    const C = window.Chiptune; if (!C) return;
+    const wasAudible = C.audible ? C.audible() : !!(C.isOn && C.isOn());
+    try { C.wake && C.wake(); } catch (e) {}       // resume the suspended context (this gesture is what iOS needs)
+    try { C.resync && C.resync(); } catch (e) {}   // realign the music scheduler
+    try { if (!audioUnlocked) unlockReelAudio(); } catch (e) {} // unlock reel/video audio too
+    if (wasAudible && !userMutedMusic) {           // it was genuinely playing → the user wants quiet
+      if (C.isOn && C.isOn() && C.toggle) C.toggle();
+      userMutedMusic = true;
+    } else {                                        // it was off or DEAD → bring it back
+      if (C.isOn && !C.isOn() && C.start) C.start();
+      userMutedMusic = false;
+    }
+    syncSoundBtn();
+  }
+  function syncVolFab() {
+    const fab = $("vol-fab"); if (!fab) return;
+    const C = window.Chiptune;
+    const on = !!(C && C.isOn && C.isOn()) && !userMutedMusic;
+    const audible = !!(C && C.audible && C.audible());
+    fab.textContent = on ? "🔊" : "🔇";
+    fab.classList.toggle("muted", !on);
+    fab.classList.toggle("suspended", on && !audible); // should be playing but context is dead → pulse "tap me"
   }
   // Build the track list once (from Chiptune.tracks()), then keep it in sync.
   function renderTrackList() {
@@ -3559,6 +3588,12 @@
     { const p = $("music-play"); if (p) p.onclick = (e) => { e.stopPropagation(); if (!window.Chiptune) return; const on = Chiptune.toggle(); userMutedMusic = !on; syncSoundBtn(); }; }
     { const n = $("music-next"); if (n) n.onclick = (e) => { e.stopPropagation(); musicSkip(1); }; }
     { const pv = $("music-prev"); if (pv) pv.onclick = (e) => { e.stopPropagation(); musicSkip(-1); }; }
+    // Floating bottom-right volume button → restore/toggle sound.
+    { const vf = $("vol-fab"); if (vf) vf.onclick = (e) => { e.stopPropagation(); volFabTap(); }; }
+    // Coming back from another app/tab: refresh the FAB so it pulses if iOS left
+    // the audio context suspended (so the player knows a tap brings sound back).
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") setTimeout(syncVolFab, 450); });
+    window.addEventListener("focus", () => setTimeout(syncVolFab, 450));
     document.addEventListener("click", (e) => {
       const menu = $("music-menu"); if (!menu || menu.classList.contains("hidden")) return;
       const wrap = menu.closest(".music-wrap");

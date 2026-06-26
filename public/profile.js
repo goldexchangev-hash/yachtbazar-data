@@ -46,7 +46,7 @@
       let wins = 0, losses = 0, wageredWei = 0n, biggestWinWei = 0n, netWei = 0n;
       let memberSinceSec = 0;
       const history = [];
-      const RAKE_DEN = 10n; // coin-flip 10% rake
+      const FLIP_RAKE_BPS = 300n; // coin-flip 3% rake (matches HOUSE_FEE_BPS)
 
       const note = (ts) => { if (ts && (!memberSinceSec || ts < memberSinceSec)) memberSinceSec = ts; };
       const record = (game, won, betWei, payoutWei, ts) => {
@@ -70,7 +70,7 @@
           const bet = BigInt(r.betAmount);
           const won = eq(addr, r.winner);
           const pot = bet * 2n;
-          const payout = pot - pot / RAKE_DEN; // winner takes pot minus 10%
+          const payout = pot - (pot * FLIP_RAKE_BPS) / 10000n; // winner takes pot minus 3%
           record("flip", won, bet, payout, Number(r.settledAt || r.createdAt || 0));
         } catch {}
       }

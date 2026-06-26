@@ -346,6 +346,10 @@
 
   const Chiptune = {
     isOn: () => on,
+    // True only if music is logically on AND the AudioContext is actually running.
+    // After an iOS app-switch the context is SUSPENDED while `on` stays true, so
+    // this returns false there — the cue the volume button uses to RESTORE sound.
+    audible: () => on && !!ctx && ctx.state === "running",
     start() {
       probeCustom();
       ensureCtx();
