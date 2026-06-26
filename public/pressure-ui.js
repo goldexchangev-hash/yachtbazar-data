@@ -112,10 +112,8 @@
     const press = (e) => { if (e && e.cancelable) e.preventDefault(); this._press(); };
     const release = () => this._release();
 
-    // canvas + hold pad: press-and-hold
-    const view = this.r.view;
-    view.style.touchAction = "none";
-    view.addEventListener("pointerdown", press);
+    // ONLY the HOLD button starts a pump — tapping the TV screen/canvas must NOT
+    // place a bet (the canvas is display-only; let touches there scroll normally).
     if (els.holdPad) { els.holdPad.style.touchAction = "none"; els.holdPad.addEventListener("pointerdown", press); }
     // release on ANY of these — never a pop
     window.addEventListener("pointerup", release);
