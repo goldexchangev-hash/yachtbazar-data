@@ -86,6 +86,7 @@
       broadcast(r, { type: "bj:event", kind: "roomClosing", id: r.id, reason });
       if (r.serverSeed) broadcast(r, { type: "bj:reveal", roomId: r.id, serverSeed: r.serverSeed, commit: r.commit });
       rooms.delete(r.id); pushLobby();
+      if (rooms.size === 0) createRoom(); // never leave the lobby empty — always keep one warm table
     }
 
     /* ---------------- broadcast / snapshot ---------------- */
@@ -365,7 +366,7 @@
       switch (m.type) {
         // Identity is the CONNECTION's trusted wallet (stamped by the transport), never
         // the client-supplied m.wallet — so the engine is self-enforcing if reused.
-        case "bj:lobby:subscribe": { lobbySubs.add(sock); send(sock, { type: "bj:lobby:list", rooms: lobbyList() }); const w = sock.wallet || m.wallet; if (w) pushWallet(sock, w); break; }
+        case "bj:lobby:subscribe": { lobbySubs.add(sock); if (rooms.size === 0) createRoom(); send(sock, { type: "bj:lobby:list", rooms: lobbyList() }); const w = sock.wallet || m.wallet; if (w) pushWallet(sock, w); break; }
         case "bj:lobby:unsubscribe": lobbySubs.delete(sock); break;
         case "bj:room:join": join(sock, sock.wallet || m.wallet || "anon", m.roomId, m.seatPref); break;
         case "bj:room:watch": watch(sock, m.roomId); break;
