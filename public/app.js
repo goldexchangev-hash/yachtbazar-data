@@ -981,12 +981,10 @@
   // outcomes; flipReveal returns true when it takes over. For Neon, only a WIN
   // triggers a celebration scene over the landed coin.
   function playOutcome(o) {
-    try {
-      // "Scarfblade Films" theme: play a full-motion win/loss reel on the TV.
-      if (window.WinScenes && WinScenes.getTheme && WinScenes.getTheme() === "cinematic" && videoReveal(o.won, o.netUsd)) return;
-      if (window.WinScenes && WinScenes.flipReveal && WinScenes.flipReveal({ won: o.won, netUsd: o.netUsd, betUsd: o.betUsd })) return;
-      if (o.won && window.WinScenes && WinScenes.play) WinScenes.play({ amountUsd: o.netUsd, side: o.side });
-    } catch (e) {}
+    // The Coin Flip reveal is now the on-TV coin TOSS (spins into the air, lands
+    // on HEADS/TAILS) plus the tiered green win celebration in tv.js — no video
+    // overlay. Left as a no-op so all the flip callers stay unchanged; the TV's
+    // _doReveal/_celebrate drive the whole show.
   }
   // Cinematic reels: one of four per outcome, picked at random. Muted so they
   // always autoplay (the chiptune fanfare carries the sound); on end the TV's
@@ -1915,14 +1913,14 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=988").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=989").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=988"))
+      .then(() => loadScriptOnce("slots.js?v=989"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -1932,9 +1930,9 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=988"))
-      .then(() => loadScriptOnce("pressure-render.js?v=988"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=988"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=989"))
+      .then(() => loadScriptOnce("pressure-render.js?v=989"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=989"))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -1987,10 +1985,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=988"))
-      .then(() => loadScriptOnce("plane-render.js?v=988"))
-      .then(() => loadScriptOnce("plane-feed.js?v=988"))
-      .then(() => loadScriptOnce("plane-ui.js?v=988"))
+      .then(() => loadScriptOnce("plane-engine.js?v=989"))
+      .then(() => loadScriptOnce("plane-render.js?v=989"))
+      .then(() => loadScriptOnce("plane-feed.js?v=989"))
+      .then(() => loadScriptOnce("plane-ui.js?v=989"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;

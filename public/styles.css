@@ -275,18 +275,44 @@ kbd { font-family: ui-monospace, monospace; font-size: 11px; background: rgba(25
 @keyframes countPop { 0% { transform: scale(2.4); opacity: 0; } 30% { opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
 
 /* Coin */
-#layer-flip { perspective: 760px; }
+#layer-flip { perspective: 900px; position: relative; }
+/* ── The TOSS: a wrapper does the vertical arc (launch up → hover/spin in the
+   air while we wait → drop + bounce on the reveal); the .coin inside owns the
+   rotateX flip-spin. Two concerns, two transforms, no conflict. ── */
+.coin-toss { position: relative; transform: translateY(0); transform-style: preserve-3d; will-change: transform; }
+.coin-toss.up   { animation: coinUp 0.5s cubic-bezier(.2,.7,.3,1) forwards, coinHover 1.7s ease-in-out 0.5s infinite; }
+.coin-toss.land { animation: coinDrop 0.92s cubic-bezier(.22,1.18,.42,1) forwards; }
+/* Rise + shrink (flies up & away into the distance), then fall + grow back and
+   bounce — keeps the toss inside the short TV screen and adds real depth. */
+@keyframes coinUp   { from { transform: translateY(0) scale(1); } to { transform: translateY(-40px) scale(0.72); } }
+@keyframes coinHover{ 0%,100% { transform: translateY(-40px) scale(0.72); } 50% { transform: translateY(-50px) scale(0.69); } }
+@keyframes coinDrop {
+  0%   { transform: translateY(-40px) scale(0.72); }
+  52%  { transform: translateY(0) scale(1); }            /* falls back & lands big */
+  66%  { transform: translateY(-22px) scale(0.97); }     /* big bounce */
+  80%  { transform: translateY(0) scale(1.03); }
+  90%  { transform: translateY(-7px) scale(0.99); }      /* little bounce */
+  100% { transform: translateY(0) scale(1); }
+}
+/* Ground shadow under the coin: tightens + dims while it's up in the air. */
+.coin-shadow {
+  position: absolute; bottom: 14%; left: 50%; width: clamp(90px, 24vw, 160px); height: 22px;
+  transform: translateX(-50%); border-radius: 50%; pointer-events: none; z-index: 0;
+  background: radial-gradient(ellipse at center, rgba(0,0,0,.55), rgba(0,0,0,0) 70%);
+  transition: transform .5s cubic-bezier(.2,.7,.3,1), opacity .5s ease;
+}
+#layer-flip.airborne .coin-shadow { transform: translateX(-50%) scale(.6); opacity: .45; }
 .coin {
   width: clamp(110px, 30vw, 200px); aspect-ratio: 1; position: relative; transform-style: preserve-3d;
   filter: drop-shadow(0 16px 22px rgba(0, 0, 0, 0.6)); will-change: transform;
   /* the decelerating "land" once the result is known */
-  transition: transform 0.7s cubic-bezier(0.15, 0.85, 0.25, 1);
+  transition: transform 0.85s cubic-bezier(0.15, 0.85, 0.25, 1);
 }
-.coin.spin { animation: coinSpin 0.45s linear infinite; transition: none; }
+.coin.spin { animation: coinSpin 0.42s linear infinite; transition: none; }
 /* Land on a forward multiple so the coin always rotates onward into its face:
    1440 ≡ 0  -> HEADS face up; 1620 ≡ 180 -> TAILS face up. */
-.coin.show-heads { transform: rotateX(1440deg); }
-.coin.show-tails { transform: rotateX(1620deg); }
+.coin.show-heads { transform: rotateX(2160deg); } /* 6 turns ≡ 0   → HEADS up */
+.coin.show-tails { transform: rotateX(2340deg); } /* 6½ turns ≡ 180 → TAILS up */
 @keyframes coinSpin { from { transform: rotateX(0); } to { transform: rotateX(360deg); } }
 .coin-face {
   position: absolute; inset: 0; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -363,6 +389,41 @@ kbd { font-family: ui-monospace, monospace; font-size: 11px; background: rgba(25
 @keyframes quake { 0%, 100% { transform: translate(0, 0); } 25% { transform: translate(-3px, 2px); } 50% { transform: translate(3px, -2px); } 75% { transform: translate(-2px, -2px); } }
 @keyframes quakeHard { 0%, 100% { transform: translate(0, 0); } 20% { transform: translate(-6px, 3px) rotate(-0.4deg); } 40% { transform: translate(6px, -3px) rotate(0.4deg); } 60% { transform: translate(-5px, -3px); } 80% { transform: translate(5px, 3px); } }
 
+/* ════════ Coin-flip WIN celebration: green burst + raining gold coins ════════ */
+/* A green shock-flash sweeps the result screen the instant a win lands. */
+#layer-result.win { animation: winGreenBurst 0.8s ease-out; }
+@keyframes winGreenBurst {
+  0%   { background: radial-gradient(circle at 50% 42%, rgba(43,255,136,0.9), rgba(43,255,136,0.25) 38%, transparent 66%); }
+  30%  { background: radial-gradient(circle at 50% 42%, rgba(43,255,136,0.55), rgba(43,255,136,0.18) 46%, transparent 68%); }
+  100% { background: radial-gradient(circle at 50% 40%, rgba(69,240,166,0.22), transparent 65%); }
+}
+#layer-result.win.tier-big  { animation: winGreenBurst 0.8s ease-out, bigPulse 1.1s ease-in-out 0.6s infinite; }
+#layer-result.win.tier-mega { animation: winGreenBurst 0.8s ease-out, megaStrobe 0.45s steps(1) 0.6s infinite; }
+/* the headline punches in bigger and greener, scaled by tier */
+#layer-result.win .result-headline { animation: winHeadlinePunch 0.6s cubic-bezier(.18,1.6,.4,1); }
+@keyframes winHeadlinePunch { 0% { transform: scale(.3); opacity: 0; } 60% { transform: scale(1.18); } 100% { transform: scale(1); opacity: 1; } }
+#layer-result.win.tier-big  .result-headline { text-shadow: 0 0 30px rgba(69,240,166,.95), 0 0 60px rgba(43,255,136,.6); }
+#layer-result.win.tier-mega .result-headline { text-shadow: 0 0 36px #fff, 0 0 64px rgba(43,255,136,.8); }
+
+/* Raining gold coins — JS spawns .scoin children and sets --fall (drop distance). */
+.coin-shower { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 6; }
+.coin-shower .scoin {
+  position: absolute; top: -7%; line-height: 1; will-change: transform, opacity;
+  font-size: clamp(18px, 4.4vw, 34px); filter: drop-shadow(0 2px 3px rgba(0,0,0,.45));
+  animation: scoinFall var(--dur, 1.5s) cubic-bezier(.35,.1,.7,1) forwards;
+}
+@keyframes scoinFall {
+  0%   { transform: translateY(-10%) rotate(0deg)   scale(var(--s,1)); opacity: 0; }
+  10%  { opacity: 1; }
+  88%  { opacity: 1; }
+  100% { transform: translateY(var(--fall, 560px)) rotate(var(--spin, 540deg)) scale(var(--s,1)); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #layer-result.win, #layer-result.win .result-headline { animation: none !important; }
+  .coin-shower { display: none !important; }
+  .coin-toss.up, .coin-toss.land { animation: none !important; }
+}
+
 .confetti-canvas { position: absolute; inset: 0; z-index: 4; width: 100%; height: 100%; pointer-events: none; }
 
 /* TV controls (speaker + dials) */
@@ -437,8 +498,8 @@ kbd { font-family: ui-monospace, monospace; font-size: 11px; background: rgba(25
 /* ─────────────── Full-motion win/loss video reel ─────────────── */
 .reveal-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: none; z-index: 30; background: #000; }
 .reveal-video.show { display: block; }
-/* Scarfblade Films replaces the coin: never twirl it before the reel plays. */
-.tv-screen.cine-theme #coin { display: none; }
+/* The Coin Flip reveal is the spinning coin toss again (no video reel), so the
+   coin must always show — the old cine-theme hide is intentionally dropped. */
 
 /* ─────────────── Win-animation theme switcher ─────────────── */
 .theme-switch { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 10px 14px; margin: 10px 0; }

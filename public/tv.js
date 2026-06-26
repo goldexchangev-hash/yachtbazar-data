@@ -53,6 +53,9 @@
       this.sbP1Who = $("sb-p1-who");
       this.sbP2Who = $("sb-p2-who");
       this.coin = $("coin");
+      this.coinToss = $("coin-toss");     // vertical-arc wrapper (the toss)
+      this.coinShower = $("coin-shower"); // raining-gold win FX layer
+      this.layerFlip = $("layer-flip");
       this.countNum = $("count-num");
       this.resultEmoji = $("result-emoji");
       this.resultHeadline = $("result-headline");
@@ -241,7 +244,8 @@
     },
     _flipPreview() {
       const L = this.layers.flip;
-      if (L) L.classList.remove("win", "lose", "tier-big", "tier-mega");
+      if (L) { L.classList.remove("win", "lose", "tier-big", "tier-mega"); L.classList.remove("airborne"); }
+      if (this.coinToss) this.coinToss.classList.remove("up", "land"); // coin resting on the table
       if (this.coin) { this.coin.classList.remove("spin", "show-tails"); this.coin.classList.add("show-heads"); }
       const cap = L && L.querySelector(".flip-caption"); if (cap) cap.textContent = "PLACE YOUR BET BELOW";
       if (this.scoreboard) this.scoreboard.classList.add("hidden");
@@ -669,12 +673,16 @@
       await sleep(620);
       if (seq !== this._seq) return;
 
-      // 3) Coin spins until a result is revealed
+      // 3) TOSS: the coin launches up, spins airborne, and waits there for the
+      //    result. The wrapper does the vertical arc; the coin does the flip-spin.
       this._setStatic(0.06);
       this._show("flip");
+      if (this.coinToss) { this.coinToss.classList.remove("land"); void this.coinToss.offsetWidth; this.coinToss.classList.add("up"); }
+      if (this.layerFlip) this.layerFlip.classList.add("airborne"); // shrink the ground shadow
       this.coin.classList.remove("show-heads", "show-tails");
       this.coin.classList.add("spin");
-      this._spinReadyAt = now() + 1500; // guarantee at least 1.5s of spin
+      if (window.Chiptune) window.Chiptune.coin(); // the "toss" chime
+      this._spinReadyAt = now() + 2300; // a satisfying airborne spin before it lands
 
       // If the result already arrived during the countdown, reveal it now.
       if (this._pendingReveal) {
@@ -698,13 +706,16 @@
       await sleep(wait);
       if (seq !== this._seq) { try { window.__onTvReveal && window.__onTvReveal(res); } catch (e) {} return; }
 
-      // Stop the coin on the winning side. Commit the base transform between
-      // removing .spin and adding the land class so the 0.7s transition fires
-      // smoothly (no one-frame snap) and decelerates onto the right face.
+      // DROP + LAND: the coin falls out of the air, decelerating onto the winning
+      // face with a bounce. The wrapper plays the vertical drop (coinDrop), the
+      // coin decelerates its flip-spin onto show-heads/show-tails simultaneously.
+      if (this.layerFlip) this.layerFlip.classList.remove("airborne"); // shadow grows back
+      if (this.coinToss) { this.coinToss.classList.remove("up"); void this.coinToss.offsetWidth; this.coinToss.classList.add("land"); }
       this.coin.classList.remove("spin");
       void this.coin.offsetWidth; // force reflow to commit the base rotation
       this.coin.classList.add(res.side === "HEADS" ? "show-heads" : "show-tails");
-      await sleep(720);
+      if (window.Chiptune) window.Chiptune.coin(); // the "catch" clink as it lands
+      await sleep(900); // matches the coinDrop arc
       if (seq !== this._seq) { try { window.__onTvReveal && window.__onTvReveal(res); } catch (e) {} return; }
 
       // Result screen (per-viewer). Clear any prior celebration state.
@@ -768,8 +779,9 @@
         if (tier === "big") this.screenEl.classList.add("quake");
         if (tier === "mega") this.screenEl.classList.add("quake-hard");
       }
-      // Confetti + sound, scaled to the tier
+      // Confetti + raining gold coins + sound, scaled to the tier
       this._burstConfetti(tier);
+      this._coinShower(tier);
       const C = window.Chiptune;
       if (C) {
         if (tier === "mega" && C.jackpot) C.jackpot();
@@ -778,10 +790,43 @@
       }
     },
 
+    // Rain gold coins down the result screen with a stream of coin clinks. The
+    // amount + duration scale with the win tier (normal → big → mega).
+    _coinShower(tier) {
+      const host = this.coinShower; if (!host) return;
+      host.innerHTML = "";
+      const n = tier === "mega" ? 64 : tier === "big" ? 34 : 16;
+      const rect = host.getBoundingClientRect();
+      const fall = (rect.height || 460) + 70;
+      for (let i = 0; i < n; i++) {
+        const c = document.createElement("span");
+        c.className = "scoin";
+        c.textContent = (i % 6 === 0) ? "💰" : "🪙";
+        c.style.left = (Math.random() * 98) + "%";
+        c.style.setProperty("--fall", fall + "px");
+        c.style.setProperty("--s", (0.7 + Math.random() * 0.85).toFixed(2));
+        c.style.setProperty("--spin", ((Math.random() < 0.5 ? -1 : 1) * (360 + Math.random() * 540)).toFixed(0) + "deg");
+        c.style.setProperty("--dur", (1.1 + Math.random() * 1.2).toFixed(2) + "s");
+        c.style.animationDelay = (Math.random() * (tier === "mega" ? 1.3 : tier === "big" ? 0.8 : 0.45)).toFixed(2) + "s";
+        host.appendChild(c);
+      }
+      // a stream of coin clinks raining alongside the shower
+      const C = window.Chiptune, seq = this._seq;
+      if (C && C.coin) {
+        const ticks = tier === "mega" ? 11 : tier === "big" ? 7 : 4;
+        for (let i = 0; i < ticks; i++) setTimeout(() => { if (seq === this._seq) try { C.coin(); } catch (e) {} }, 160 + i * 150);
+      }
+      // auto-clear so coins don't linger if the player stays on the screen
+      clearTimeout(this._coinShowerT);
+      this._coinShowerT = setTimeout(() => { if (host) host.innerHTML = ""; }, 4200);
+    },
+
     _clearCelebration() {
       if (this.winBanner) { this.winBanner.className = "win-banner"; this.winBanner.textContent = ""; }
       if (this.screenEl) this.screenEl.classList.remove("quake", "quake-hard");
       if (this.layers && this.layers.result) this.layers.result.classList.remove("tier-big", "tier-mega");
+      if (this.coinShower) this.coinShower.innerHTML = "";
+      clearTimeout(this._coinShowerT);
     },
 
     // Casino-style count-up: rises from $0 to the amount won (green +) or lost
@@ -818,6 +863,9 @@
       this._seq++;
       this._pendingReveal = null;
       this.coin.classList.remove("spin", "show-heads", "show-tails");
+      if (this.coinToss) this.coinToss.classList.remove("up", "land");
+      if (this.layerFlip) this.layerFlip.classList.remove("airborne");
+      if (this.coinShower) this.coinShower.innerHTML = "";
       if (this.resultMoney) { this.resultMoney.textContent = ""; this.resultMoney.className = "result-money"; }
       this._clearConfetti();
     },

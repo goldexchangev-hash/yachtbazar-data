@@ -27,7 +27,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=988" />
+    <link rel="stylesheet" href="styles.css?v=989" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -42,7 +42,7 @@
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.88</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.89</span>
       </div>
       <div class="topbar-right">
         <div class="music-wrap">
@@ -252,24 +252,28 @@
                 </div>
 
                 <div class="screen-layer hidden" id="layer-flip">
-                  <div class="coin" id="coin">
-                    <div class="coin-face coin-heads">
-                      <svg class="eth-logo" viewBox="0 0 256 417" aria-hidden="true">
-                        <polygon class="e1" points="127.96 0 125.17 9.5 125.17 285.17 127.96 287.96 255.92 212.32"/>
-                        <polygon class="e2" points="127.96 0 0 212.32 127.96 287.96 127.96 154.16"/>
-                        <polygon class="e3" points="127.96 312.19 126.39 314.11 126.39 412.31 127.96 416.91 256 236.59"/>
-                        <polygon class="e4" points="127.96 416.91 127.96 312.19 0 236.59"/>
-                        <polygon class="e5" points="127.96 287.96 255.92 212.32 127.96 154.16"/>
-                        <polygon class="e6" points="0 212.32 127.96 287.96 127.96 154.16"/>
-                      </svg>
-                      <small>HEADS</small>
+                  <div class="coin-shadow" id="coin-shadow" aria-hidden="true"></div>
+                  <div class="coin-toss" id="coin-toss">
+                    <div class="coin" id="coin">
+                      <div class="coin-face coin-heads">
+                        <svg class="eth-logo" viewBox="0 0 256 417" aria-hidden="true">
+                          <polygon class="e1" points="127.96 0 125.17 9.5 125.17 285.17 127.96 287.96 255.92 212.32"/>
+                          <polygon class="e2" points="127.96 0 0 212.32 127.96 287.96 127.96 154.16"/>
+                          <polygon class="e3" points="127.96 312.19 126.39 314.11 126.39 412.31 127.96 416.91 256 236.59"/>
+                          <polygon class="e4" points="127.96 416.91 127.96 312.19 0 236.59"/>
+                          <polygon class="e5" points="127.96 287.96 255.92 212.32 127.96 154.16"/>
+                          <polygon class="e6" points="0 212.32 127.96 287.96 127.96 154.16"/>
+                        </svg>
+                        <small>HEADS</small>
+                      </div>
+                      <div class="coin-face coin-tails">★<small>TAILS</small></div>
                     </div>
-                    <div class="coin-face coin-tails">★<small>TAILS</small></div>
                   </div>
-                  <div class="flip-caption">SCARFBLADE IS ON THE HUNT…</div>
+                  <div class="flip-caption">FLIPPING…</div>
                 </div>
 
                 <div class="screen-layer hidden" id="layer-result">
+                  <div class="coin-shower" id="coin-shower" aria-hidden="true"></div>
                   <div class="win-banner" id="win-banner"></div>
                   <div class="result-emoji" id="result-emoji">😄</div>
                   <div class="result-headline" id="result-headline">WINNER</div>
@@ -340,7 +344,7 @@
 
                 <!-- Promo intro reel — autoplays once (muted) on first load, then fades
                      to black and hands off to the game. Replay button under the TV. -->
-                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=988"></video>
+                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=989"></video>
 
                 <!-- Shown while a bet tx is being signed + mined (esp. slow on mobile) -->
                 <div id="tv-pending" class="tv-pending hidden">⏳ SENDING BET…<br />confirm in your wallet, then hold tight</div>
@@ -464,9 +468,9 @@
         <div class="card play-house" id="play-house" data-game="flip" hidden>
           <div class="ph-head">
             <h2 class="card-title">⚡ Quick play vs House</h2>
-            <span class="ph-bankroll muted">House: <strong id="house-bankroll">—</strong></span>
+            <span class="ph-bankroll muted">House: <strong id="house-bankroll">—</strong> · edge 10%</span>
           </div>
-          <p class="muted ph-note">Drag to choose your stake. You're HEADS. 10% house fee.</p>
+          <p class="muted ph-note">Drag to choose your stake. You're HEADS. Win pays <strong>1.8×</strong> (10% house edge).</p>
           <div class="slider-wrap">
             <input id="house-bet" class="slider" type="range" min="10" max="500" step="5" value="25" />
             <div class="slider-val"><strong id="house-bet-val">$25</strong><span class="eth-sub" id="house-bet-eth"></span></div>
@@ -1217,17 +1221,17 @@
     </aside>
 
     <script defer src="vendor/ethers.umd.min.js"></script>
-    <script defer src="config.js?v=988"></script>
-    <script defer src="contract.js?v=988"></script>
-    <script defer src="chiptune.js?v=988"></script>
-    <script defer src="scenes.js?v=988"></script>
-    <script defer src="tv.js?v=988"></script>
-    <script defer src="poker-engine.js?v=988"></script>
-    <script defer src="poker-bots.js?v=988"></script>
-    <script defer src="poker-ui.js?v=988"></script>
-    <script defer src="crash-engine.js?v=988"></script>
-    <script defer src="crash-render.js?v=988"></script>
-    <script defer src="profile.js?v=988"></script>
-    <script defer src="app.js?v=988"></script>
+    <script defer src="config.js?v=989"></script>
+    <script defer src="contract.js?v=989"></script>
+    <script defer src="chiptune.js?v=989"></script>
+    <script defer src="scenes.js?v=989"></script>
+    <script defer src="tv.js?v=989"></script>
+    <script defer src="poker-engine.js?v=989"></script>
+    <script defer src="poker-bots.js?v=989"></script>
+    <script defer src="poker-ui.js?v=989"></script>
+    <script defer src="crash-engine.js?v=989"></script>
+    <script defer src="crash-render.js?v=989"></script>
+    <script defer src="profile.js?v=989"></script>
+    <script defer src="app.js?v=989"></script>
   </body>
 </html>
