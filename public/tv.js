@@ -44,6 +44,7 @@
         crash: $("layer-crash"),
         slots: $("layer-slots"),
         pressure: $("layer-pressure"),
+        blackjack: $("layer-blackjack"),
       };
       this._activeChannel = 8; // 8 = Flip, 9 = Dice — so idle() advertises the active game
       this.scoreboard = $("scoreboard");
@@ -402,6 +403,13 @@
       this._show("pressure");
     },
 
+    // Blackjack (CH 14): the live felt runs over its own WebSocket (guest-friendly), so
+    // just reveal its layer — the BlackjackClient drives the table + dock itself.
+    _blackjackIdle() {
+      this._setStatic(0.03);
+      this._show("blackjack");
+    },
+
     // Turn the dial between Coin Flip (08) and Dice (09) with a CRT "tune" effect.
     async changeChannel(num) {
       const seq = ++this._seq;
@@ -415,6 +423,7 @@
       else if (num === 11) this._crashIdle();
       else if (num === 12) this._slotsIdle();
       else if (num === 13) this._pressureIdle();
+      else if (num === 14) this._blackjackIdle();
       else this._readyRoom();
       await sleep(160); if (seq !== this._seq) return;
       this.screenEl.classList.remove("ch-switch");

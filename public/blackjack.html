@@ -10,6 +10,19 @@
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Space+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🃏</text></svg>" />
     <link rel="stylesheet" href="blackjack.css" />
+    <style>
+      /* TV-embed mode (?tv=1): just the felt, scaled to fill the 4:3 screen. The
+         betting/action controls render in the PARENT page's dock under the TV, so the
+         in-iframe dock + page chrome are hidden here. */
+      body.tv-embed { padding: 0; margin: 0; height: 100vh; overflow: hidden; background: transparent; }
+      body.tv-embed .wrap { max-width: none; margin: 0; padding: 0; height: 100%; }
+      body.tv-embed .top, body.tv-embed #lobby, body.tv-embed .pf, body.tv-embed .toast, body.tv-embed .dock,
+      body.tv-embed .phase-banner, body.tv-embed .seat-timer { display: none !important; } /* betting prompt + ALL countdowns live UNDER the TV, not in the screen */
+      body.tv-embed #table { display: flex !important; flex-direction: column; position: absolute; top: 50%; left: 50%;
+        transform-origin: center center; width: 720px; height: 540px; padding: 0; } /* 4:3 */
+      body.tv-embed .felt-wrap { flex: 1; min-height: 0; }
+      body.tv-embed .felt { min-height: 0; height: 100%; }
+    </style>
   </head>
   <body>
     <div class="wrap">
@@ -97,11 +110,33 @@
           pfCommit: id("pf-commit"), pfClient: id("pf-client"), pfVerify: id("pf-verify"), pfReveal: id("pf-reveal"), pfOut: id("pf-out"),
           toast: id("toast"),
         };
-        // show/hide the Lobby button with the view
-        var origAdd = els.table.classList.add.bind(els.table.classList);
-        window.BJ = new BlackjackClient({ els: els });
-        // keep the back button visibility in sync with the table view
-        setInterval(function () { back.classList.toggle("hidden", window.BJ.view !== "table"); }, 200);
+        var tv = /[?&]tv=1/.test(location.search); // embedded inside the Crypto TV channel
+        if (tv) document.body.classList.add("tv-embed");
+        window.BJ = new BlackjackClient({ els: els, embed: tv });
+        if (tv) {
+          // scale the fixed-size felt+dock to fill the 4:3 TV screen
+          var table = id("table");
+          var fit = function () { var s = Math.min(window.innerWidth / 720, window.innerHeight / 540); table.style.transform = "translate(-50%,-50%) scale(" + s + ")"; };
+          window.addEventListener("resize", fit); fit(); setTimeout(fit, 100);
+          // messages from the TV page: mute toggle + control intents from the dock under the TV
+          window.addEventListener("message", function (e) {
+            if (e.source && e.source !== window.parent) return; // only honor commands from the host TV page
+            var d = e.data; if (!d) return;
+            if (d.type === "bj:active") {
+              if (window.BlackjackSFX) window.BlackjackSFX.muted = !d.active;
+              if (d.active && window.BJ && window.BJ.room) window.BJ._renderDock(); // re-sync the parent dock on channel re-entry
+            }
+            else if (d.type === "bj:cmd" && window.BJ) {
+              var bj = window.BJ;
+              if (d.cmd === "setBet") bj.bet = d.value;
+              else if (d.cmd === "placeBet") { if (d.value != null) bj.bet = d.value; bj.placeBet(); }
+              else if (d.cmd === "action") bj.act(d.action);
+              else if (d.cmd === "insurance") bj.sendInsurance(!!d.take);
+            }
+          });
+        } else {
+          setInterval(function () { back.classList.toggle("hidden", window.BJ.view !== "table"); }, 200);
+        }
       });
     </script>
   </body>

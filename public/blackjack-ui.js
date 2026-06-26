@@ -26,10 +26,11 @@
 
   function BlackjackClient(opts) {
     this.E = opts.els;
+    this.embed = !!opts.embed; // TV-channel mode: no lobby, auto-join one table, felt+dock pre-mounted
     this.wallet = opts.wallet || null;
     this.showEth = isWallet(this.wallet); // ETH amounts only matter once a real wallet is connected
     this.net = opts.net || new root.BJNet({ wallet: this.wallet });
-    this.view = "lobby";
+    this.view = this.embed ? "table" : "lobby";
     this.you = null; this.spectating = null;
     this.room = null; this.legal = []; this.activeHand = -1;
     this.balance = null; this.bet = 10;
@@ -38,16 +39,19 @@
     this.reveal = null; this._insuranceDone = false;
     this._connectedOnce = false; this._reconnectRoom = null; this._stagger = 0; this._sfxReady = false;
     this._bindNet(); this._wireStatic();
-    this.net.send({ type: "bj:lobby:subscribe" });
+    if (this.embed) { if (this.net._open) { this._connectedOnce = true; this._autoJoin(); } } // auto-seat at a live table
+    else this.net.send({ type: "bj:lobby:subscribe" });
     var self = this; this._timer = setInterval(function () { self._tick(); }, 200);
   }
+  // embed: drop straight into an open table (or a fresh one) — no lobby to pick from
+  BlackjackClient.prototype._autoJoin = function () { this._resetRoundVis(); this._sfxReady = false; this.net.send({ type: "bj:room:join" }); };
 
   /* ---------------- net ---------------- */
   BlackjackClient.prototype._bindNet = function () {
     var self = this;
     // a transient drop reconnects on a fresh socket (the server gave our seat away),
     // so on reconnect re-subscribe + try to rejoin the table instead of stranding.
-    this.net.on("bj:net", function (m) { if (m.state === "open") { if (self._connectedOnce) self._onReconnect(); self._connectedOnce = true; } });
+    this.net.on("bj:net", function (m) { if (m.state === "open") { if (self._connectedOnce) self._onReconnect(); else if (self.embed) self._autoJoin(); self._connectedOnce = true; } });
     this.net.on("bj:lobby:list", function (m) { self.renderLobby(m.rooms); });
     this.net.on("bj:wallet", function (m) { self.balance = m.balance; self._renderBalance(); });
     this.net.on("bj:room:snapshot", function (m) {
@@ -93,11 +97,12 @@
 
   /* ---------------- lobby ---------------- */
   BlackjackClient.prototype.showLobby = function () {
+    if (this.embed) { this.you = null; this.spectating = null; this.room = null; this.legal = []; this._autoJoin(); return; } // embed: no lobby — hop to another table
     this.view = "lobby"; this.you = null; this.spectating = null; this.room = null; this.legal = [];
     this.E.lobby.classList.remove("hidden"); this.E.table.classList.add("hidden");
     this.net.send({ type: "bj:lobby:subscribe" });
   };
-  BlackjackClient.prototype.showTable = function () { this.view = "table"; this.E.lobby.classList.add("hidden"); this.E.table.classList.remove("hidden"); this._tryGL(); };
+  BlackjackClient.prototype.showTable = function () { this.view = "table"; if (!this.embed) { this.E.lobby.classList.add("hidden"); this.E.table.classList.remove("hidden"); } this._tryGL(); };
   // tier gate: light up the ambient WebGL layer once the table is visible (graceful fallback to CSS felt)
   BlackjackClient.prototype._tryGL = function () {
     if (this._glStarted || !root.BlackjackGL || !this.E.glCanvas) return;
@@ -150,6 +155,7 @@
   };
   BlackjackClient.prototype._onReconnect = function () {
     this._sfxReady = false; // don't replay the whole hand's cards as sound on rejoin
+    if (this.embed) { this._autoJoin(); return; } // embed: just hop back onto a table
     this.net.send({ type: "bj:lobby:subscribe" });
     if (this.you) { this._reconnectRoom = this.you.roomId; this.toast("Reconnecting…"); this.net.send({ type: "bj:room:join", roomId: this._reconnectRoom }); }
     else if (this.spectating) { this.net.send({ type: "bj:room:watch", roomId: this.spectating }); }
@@ -228,10 +234,12 @@
       var seatTurn = m.phase === "turns" && m.turnIdx === i;
       if (mine) seat.classList.add("you");
       if (seatTurn) {
-        seat.classList.add("turn");
-        var stm = el("div", "seat-timer"); // countdown on whoever's turn it is (updated by _tick)
-        stm.setAttribute("data-sec", Math.max(0, Math.ceil((this.deadline - (Date.now() + this.skew)) / 1000)));
-        seat.appendChild(stm);
+        seat.classList.add("turn"); // spotlight the active seat (kept in the TV; the countdown is not)
+        if (!this.embed) { // TV channel: the turn countdown lives UNDER the TV, not on the felt
+          var stm = el("div", "seat-timer"); // countdown on whoever's turn it is (updated by _tick)
+          stm.setAttribute("data-sec", Math.max(0, Math.ceil((this.deadline - (Date.now() + this.skew)) / 1000)));
+          seat.appendChild(stm);
+        }
       }
       if (!s) {
         seat.classList.add("empty");
@@ -276,6 +284,7 @@
 
   /* ---------------- banner + countdown ---------------- */
   BlackjackClient.prototype._renderBanner = function (m) {
+    if (this.embed) return; // TV channel: no in-screen banner — the status lives under the TV
     var main = "", sub = "";
     switch (m.phase) {
       case "idle": main = "WAITING"; sub = "Place a bet to start the hand"; break;
@@ -295,6 +304,7 @@
     this.E.phaseBanner.style.top = "32%";
   };
   BlackjackClient.prototype._tick = function () {
+    if (this.embed) return; // TV channel: countdowns render under the TV (parent), not in the felt
     var m = this.room, E = this.E;
     var remaining = m ? Math.max(0, this.deadline - (Date.now() + this.skew)) : 0;
     // center ring — betting only (it has room up top; later phases place text low instead)
@@ -333,6 +343,7 @@
     else if (m.phase === "settle") msg = this._settleMsg(mySeat);
     else msg = "Waiting for the next hand…";
     E.dockMsg.innerHTML = msg;
+    if (this.embed) this._emitDock(m, seated, mySeat, isMyTurn, iBet, insurePhase, msg); // TV channel: controls live in the parent dock
 
     var sig = (seated ? "S" : "X") + "|" + m.phase + "|" + (isMyTurn ? 1 : 0) + "|" + (iBet ? 1 : 0) + "|" + (insurePhase ? 1 : 0) + "|" + this.legal.join(",");
     if (sig === this._dockSig) {
@@ -357,9 +368,31 @@
     }
     // LEAVE only while you can actually act on it — hidden during the dealer draw and
     // the win/lose result (use the top ↩ LOBBY button to step out there).
-    if (m.phase === "betting" || m.phase === "turns" || m.phase === "insurance" || m.phase === "idle") {
-      var leave = el("button", "btn danger", "LEAVE"); leave.onclick = function () { self.leaveTable(); }; row.appendChild(leave);
+    if (!this.embed && (m.phase === "betting" || m.phase === "turns" || m.phase === "insurance" || m.phase === "idle")) {
+      var leave = el("button", "btn danger", "LEAVE"); leave.onclick = function () { self.leaveTable(); }; row.appendChild(leave); // (no LEAVE in the TV channel — you switch channels)
     }
+  };
+  // EMBED (TV channel): the felt lives in the iframe, but the controls live in the
+  // parent page's action-dock — native site buttons, docked under the TV. Push a
+  // compact dock-state to the parent on every render; it builds the matching controls
+  // and posts intents back (bj:cmd), which the page forwards to this same client.
+  // One source of truth (the server-driven client) + controls that match the site.
+  BlackjackClient.prototype._emitDock = function (m, seated, mySeat, isMyTurn, iBet, insurePhase, msg) {
+    var self = this, mode = "waiting";
+    if (!seated) mode = "spectating";
+    else if (m.phase === "betting" && !iBet) mode = "betting";
+    else if (insurePhase) mode = "insurance";
+    else if (isMyTurn) mode = "turn";
+    else if (m.phase === "dealing" || m.phase === "dealer") mode = "dealing";
+    else if (m.phase === "settle") mode = "settle";
+    var maxBet = Math.max(50, Math.floor((this.balance || 1000) / 5) * 5); // floor to the $5 step so both ends agree
+    this.bet = Math.min(Math.max(10, Math.round(this.bet / 5) * 5), maxBet); // mirror _betUI normalization
+    var legal = []; ["hit", "stand", "double", "split", "surrender"].forEach(function (a) { if (self.legal.indexOf(a) >= 0) legal.push(a); });
+    // one countdown for the controls under the TV: the whole betting window (pre- AND post-bet), or YOUR turn
+    var countMsLeft = (this.deadline && (m.phase === "betting" || mode === "turn")) ? Math.max(0, this.deadline - (Date.now() + this.skew)) : null;
+    var state = { type: "bj:dock", mode: mode, msg: msg, balance: this.balance, showEth: this.showEth,
+      bet: this.bet, betMin: 10, betMax: maxBet, betStep: 5, legal: legal, countMsLeft: countMsLeft };
+    try { if (root.parent && root.parent !== root) root.parent.postMessage(state, "*"); } catch (e) {}
   };
   BlackjackClient.prototype._settleMsg = function (mySeat) {
     if (!mySeat || !mySeat.hands || !mySeat.hands.length) return "Round over";

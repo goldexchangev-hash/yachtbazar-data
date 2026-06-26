@@ -62,18 +62,21 @@
 
   function celebrate(outcome, delta) {
     ensure();
+    // In the TV channel the win AMOUNT shows under the TV (dock status), so skip the in-screen
+    // text banner — keep only the confetti/flash so the screen stays table-only but still celebrates.
+    var embed = typeof document !== "undefined" && document.body && document.body.classList.contains("tv-embed");
     var amt = delta > 0 ? "+$" + (Math.round(delta * 100) / 100).toLocaleString() : "";
     var tier = outcome === "blackjack" ? "blackjack" : (delta >= 250 ? "big" : "win");
     if (root.BlackjackSFX) root.BlackjackSFX.win(tier); // tiered fanfare
     if (tier === "blackjack") {
       burst(190, GOLD, 1.7); flash("rgba(255,210,63,.45)");
-      showBanner('<span style="color:#ffd23f">BLACKJACK!</span><br><span style="font-size:16px;color:#fff">' + amt + "</span>", "#ffd23f");
+      if (!embed) showBanner('<span style="color:#ffd23f">BLACKJACK!</span><br><span style="font-size:16px;color:#fff">' + amt + "</span>", "#ffd23f");
     } else if (tier === "big") {
       burst(150, COLORS, 1.45); flash("rgba(69,240,166,.35)");
-      showBanner('<span style="color:#ffd23f">BIG WIN</span><br><span style="font-size:16px;color:#fff">' + amt + "</span>", "#ffd23f");
+      if (!embed) showBanner('<span style="color:#ffd23f">BIG WIN</span><br><span style="font-size:16px;color:#fff">' + amt + "</span>", "#ffd23f");
     } else {
       burst(90, COLORS, 1.1);
-      showBanner('<span style="color:#45f0a6">YOU WIN</span><br><span style="font-size:16px;color:#fff">' + amt + "</span>", "#45f0a6");
+      if (!embed) showBanner('<span style="color:#45f0a6">YOU WIN</span><br><span style="font-size:16px;color:#fff">' + amt + "</span>", "#45f0a6");
     }
   }
   function flash(color) {
