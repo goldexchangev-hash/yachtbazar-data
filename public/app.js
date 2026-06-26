@@ -2587,12 +2587,16 @@
   function ensureBlackjackReady() {
     const f = $("bj-frame");
     if (f && !f.src) {
-      let src = "blackjack.html?tv=1&v=1118&guest=" + encodeURIComponent(bjGuestId());
+      let src = "blackjack.html?tv=1&v=1119&guest=" + encodeURIComponent(bjGuestId());
+      if (demoOn) src += "&bal=" + encodeURIComponent(Math.max(0, Math.round((demoUsd || 0) * 100) / 100)); // seed the table from the demo balance
       if (bjPendingTable) { src += "&table=" + encodeURIComponent(bjPendingTable); bjPendingTable = null; }
       f.src = src; // loads the felt + scripts inside the TV
     }
-    setTimeout(() => bjFramePost(true), 50);
+    setTimeout(() => { bjFramePost(true); bjSeed(); }, 50);
   }
+  // Keep the blackjack table balance in lock-step with the site demo balance: re-seed
+  // the table from the demo balance whenever we (re)enter the channel.
+  function bjSeed() { if (!demoOn) return; const f = $("bj-frame"); if (f && f.contentWindow) try { f.contentWindow.postMessage({ type: "bj:seed", balance: Math.max(0, Math.round((demoUsd || 0) * 100) / 100) }, "*"); } catch (e) {} }
   window.BJ_MUTE = (mute) => bjFramePost(!mute); // hush the iframe's audio when off-channel
   function bjShareLink() { return location.origin + location.pathname + "?game=blackjack" + (bjRoomId ? "&bjtable=" + encodeURIComponent(bjRoomId) : ""); }
   function bjShareTable() {
@@ -2610,7 +2614,7 @@
   function bjPaintCount() {
     const el = $("bj-count"); if (!el) { bjStopCount(); return; }
     const s = Math.max(0, Math.ceil((bjBetEndAt - Date.now()) / 1000));
-    el.textContent = "⏱ " + s + "s"; el.classList.toggle("crit", s <= 3);
+    el.textContent = "⏱ " + s + " sec"; el.classList.toggle("crit", s <= 3);
     if (bjBetEndAt - Date.now() <= 0) bjStopCount();
   }
   function bjCmd(cmd, extra) { const f = $("bj-frame"); if (f && f.contentWindow) try { f.contentWindow.postMessage(Object.assign({ type: "bj:cmd", cmd }, extra || {}), "*"); } catch (e) {} }
@@ -2661,8 +2665,14 @@
   function renderBjDock(s) {
     const status = $("bj-status"), ctr = $("bj-controls"); if (!ctr) return;
     if (status) status.innerHTML = s.msg || "Taking a seat at a live table…";
+    // live balance under the TV so wins/losses are visible (the felt's own HUD is hidden in embed mode)
+    const balEl = $("bj-bal");
+    if (balEl) balEl.textContent = s.balance != null ? "💰 $" + Number(s.balance).toLocaleString() : "";
+    // countdown: only reset the local timer when it moves by more than a tick, so smoothed
+    // jitter from the felt never makes the seconds bounce around.
     if (s.countMsLeft != null && s.countMsLeft > 0) {
-      bjBetEndAt = Date.now() + s.countMsLeft; bjPaintCount();
+      const next = Date.now() + s.countMsLeft;
+      if (Math.abs(next - bjBetEndAt) > 900) { bjBetEndAt = next; bjPaintCount(); }
       if (!bjCountTimer) bjCountTimer = setInterval(bjPaintCount, 250);
     } else { bjStopCount(); const cEl = $("bj-count"); if (cEl) cEl.textContent = ""; }
     if (s.mode === "betting") {
@@ -2671,14 +2681,30 @@
       return;
     }
     bjBetSig = ""; ctr.innerHTML = ""; // turn/insurance rebuild every emit so a rejected action re-enables its buttons
-    if (s.mode === "turn") buildBjActions(ctr, s);
+    if (s.mode === "betplaced") buildBjPlaced(ctr, s);
+    else if (s.mode === "turn") buildBjActions(ctr, s);
     else if (s.mode === "insurance") buildBjInsurance(ctr);
     // waiting / dealing / settle / spectating → status line only
   }
+  // After a bet is locked in (chips are on the table): confirm the amount + a Remove
+  // button to take it back before the deal starts.
+  function buildBjPlaced(ctr, s) {
+    const wrap = document.createElement("div"); wrap.className = "bj-placed";
+    const lbl = document.createElement("div"); lbl.className = "bj-placed-lbl";
+    lbl.innerHTML = '🃏 Bet locked in <b>$' + Number(s.placed || s.bet).toLocaleString() + "</b> — chips are on the table";
+    const rm = document.createElement("button"); rm.className = "btn btn-ghost bj-remove"; rm.textContent = "✕ Remove bet";
+    rm.onclick = () => { rm.disabled = true; bjCmd("cancelBet"); };
+    wrap.append(lbl, rm); ctr.appendChild(wrap);
+  }
   window.addEventListener("message", (e) => {
     const f = $("bj-frame"); if (!f || e.source !== f.contentWindow) return; // only accept dock-state from our felt iframe
-    const d = e.data; if (!d || d.type !== "bj:dock") return;
+    const d = e.data; if (!d) return;
+    if (d.type === "bj:ready") { bjSeed(); return; } // felt booted → seed its balance from the demo balance
+    if (d.type !== "bj:dock") return;
     if (d.roomId) { bjRoomId = d.roomId; const sb = $("bj-share"); if (sb) sb.disabled = false; } // enable the Share button once we're at a table
+    // unify the balances: the blackjack table balance IS the demo balance (only while
+    // on the channel, so playing another game off-channel can't get clobbered).
+    if (d.balance != null && demoOn && currentGame === "blackjack") { const v = Math.round(d.balance * 100) / 100; if (Math.abs(v - demoUsd) > 0.001) { demoUsd = v; demoSave(); demoPaint(); } }
     if (currentGame === "blackjack") renderBjDock(d);
   });
   // Poker chips are a session-local pool seeded from your in-game balance.

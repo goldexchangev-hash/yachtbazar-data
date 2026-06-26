@@ -46,6 +46,15 @@
     this.ws.onerror = function () { try { self.ws.close(); } catch (e) {} };
   };
 
+  // Force an immediate reconnect if the socket is dead/closing (e.g. the OS froze it
+  // while the tab was backgrounded on mobile). No-op if open or already connecting.
+  BJNet.prototype.ensureConnected = function () {
+    if (this._closedByUs) return;
+    var rs = this.ws ? this.ws.readyState : 3;
+    if (rs === 1 || rs === 0) return; // OPEN or CONNECTING → leave it
+    this._backoff = 600; this.connect();
+  };
+
   BJNet.prototype._scheduleReconnect = function () {
     var self = this;
     this._backoff = Math.min(this._backoff * 1.6, 8000);

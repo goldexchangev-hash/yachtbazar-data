@@ -117,9 +117,12 @@
         var tv = params.get("tv") === "1"; // embedded inside the Crypto TV channel
         var guest = params.get("guest") || null; // temp identity handed in by the host page
         var table = params.get("table") || null; // a specific shared table to sit at
+        var bal = params.get("bal"); // demo balance to seed the table with
         if (tv) document.body.classList.add("tv-embed");
-        window.BJ = new BlackjackClient({ els: els, embed: tv, wallet: guest, joinTable: table });
+        window.BJ = new BlackjackClient({ els: els, embed: tv, wallet: guest, joinTable: table, seedBalance: bal != null ? +bal : null });
         if (tv) {
+          // tell the host page we're alive so it can seed our demo balance
+          try { window.parent.postMessage({ type: "bj:ready" }, "*"); } catch (e) {}
           // scale the fixed-size felt+dock to fill the 4:3 TV screen
           var table = id("table");
           var fit = function () { var s = Math.min(window.innerWidth / 720, window.innerHeight / 540); table.style.transform = "translate(-50%,-50%) scale(" + s + ")"; };
@@ -132,15 +135,23 @@
               if (window.BlackjackSFX) window.BlackjackSFX.muted = !d.active;
               if (d.active && window.BJ && window.BJ.room) window.BJ._renderDock(); // re-sync the parent dock on channel re-entry
             }
+            else if (d.type === "bj:seed" && window.BJ && window.BJ.net) {
+              window.BJ.net.send({ type: "bj:seed", balance: d.balance }); // sync our table balance to the site demo balance
+            }
             else if (d.type === "bj:cmd" && window.BJ) {
               var bj = window.BJ;
               if (d.cmd === "setBet") bj.bet = d.value;
               else if (d.cmd === "placeBet") { if (d.value != null) bj.bet = d.value; bj.placeBet(); }
+              else if (d.cmd === "cancelBet") bj.cancelBet();
               else if (d.cmd === "action") bj.act(d.action);
               else if (d.cmd === "insurance") bj.sendInsurance(!!d.take);
             }
           });
-        } else {
+        }
+        // Mobile: coming back from another app can freeze the socket — resync on resume.
+        document.addEventListener("visibilitychange", function () { if (!document.hidden && window.BJ && window.BJ.resume) window.BJ.resume(); });
+        window.addEventListener("pageshow", function () { if (window.BJ && window.BJ.resume) window.BJ.resume(); });
+        if (!tv) {
           setInterval(function () { back.classList.toggle("hidden", window.BJ.view !== "table"); }, 200);
         }
       });

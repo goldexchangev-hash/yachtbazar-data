@@ -28,6 +28,7 @@
     this.E = opts.els;
     this.embed = !!opts.embed; // TV-channel mode: no lobby, auto-join one table, felt+dock pre-mounted
     this.joinTable = opts.joinTable || null; // a specific shared table to sit at (from a share link)
+    this._seedBalance = (opts.seedBalance != null && isFinite(opts.seedBalance)) ? opts.seedBalance : null; // demo balance to sync the table to
     this.wallet = opts.wallet || null;
     this.showEth = isWallet(this.wallet); // ETH amounts only matter once a real wallet is connected
     this.net = opts.net || new root.BJNet({ wallet: this.wallet });
@@ -49,8 +50,19 @@
   // friends land together); after that, fall back to any open table.
   BlackjackClient.prototype._autoJoin = function () {
     this._resetRoundVis(); this._sfxReady = false;
+    // seed our demo table balance BEFORE taking a seat so betMax is right from the start
+    if (this._seedBalance != null) { this.net.send({ type: "bj:seed", balance: this._seedBalance }); }
     var room = this.joinTable; this.joinTable = null;
     this.net.send({ type: "bj:room:join", roomId: room || undefined });
+  };
+  // Cancel a placed bet before the deal (refunds it to your balance).
+  BlackjackClient.prototype.cancelBet = function () { this.net.send({ type: "bj:bet:cancel" }); };
+  // Mobile resume: when the tab comes back, make sure the socket is alive and pull a
+  // fresh table snapshot so a stale (frozen-while-backgrounded) state can't block betting.
+  BlackjackClient.prototype.resume = function () {
+    if (!this.net) return;
+    this.net.ensureConnected();
+    if (this.embed && this.net._open) { if (this.you) this.net.send({ type: "bj:room:join", roomId: this.you.roomId }); else this._autoJoin(); }
   };
 
   /* ---------------- net ---------------- */
@@ -60,7 +72,7 @@
     // so on reconnect re-subscribe + try to rejoin the table instead of stranding.
     this.net.on("bj:net", function (m) { if (m.state === "open") { if (self._connectedOnce) self._onReconnect(); else if (self.embed) self._autoJoin(); self._connectedOnce = true; } });
     this.net.on("bj:lobby:list", function (m) { self.renderLobby(m.rooms); });
-    this.net.on("bj:wallet", function (m) { self.balance = m.balance; self._renderBalance(); });
+    this.net.on("bj:wallet", function (m) { self.balance = m.balance; self._renderBalance(); self._renderDock(); }); // push the new balance to the dock immediately
     this.net.on("bj:room:snapshot", function (m) {
       if (m.you) { self.you = { roomId: m.you.roomId, seat: m.you.seat }; self.spectating = null; if (m.you.balance != null) { self.balance = m.you.balance; self._renderBalance(); } }
       self._onSnapshot(m);
@@ -181,7 +193,12 @@
     if (this.view !== "table") this.showTable();
     this._reconnectRoom = null; // a snapshot means we're live again
     if (m.handNumber !== this.handNo) { this.handNo = m.handNumber; this._resetRoundVis(); this.reveal = null; }
-    this.room = m; this.skew = (m.serverNow || Date.now()) - Date.now(); this.deadline = m.deadline || 0;
+    this.room = m;
+    // EMA-smooth the client/server clock skew so the countdown can't jitter from
+    // per-snapshot network noise (recomputing it raw every snapshot made it twitch).
+    var rawSkew = (m.serverNow || Date.now()) - Date.now();
+    this.skew = this._skewSet ? Math.round(this.skew * 0.8 + rawSkew * 0.2) : rawSkew; this._skewSet = true;
+    this.deadline = m.deadline || 0;
     this.phaseTotal = PHASE_TOTAL[m.phase] || 0;
     this._stagger = 0; // stagger newly-dealt cards within THIS snapshot for a one-at-a-time reveal
     this._renderDealer(m); this._renderSeats(m); this._renderBanner(m); this._renderDock(); this._renderPF();
@@ -388,6 +405,7 @@
     var self = this, mode = "waiting";
     if (!seated) mode = "spectating";
     else if (m.phase === "betting" && !iBet) mode = "betting";
+    else if (m.phase === "betting" && iBet) mode = "betplaced"; // bet locked in — offer a Remove until the deal
     else if (insurePhase) mode = "insurance";
     else if (isMyTurn) mode = "turn";
     else if (m.phase === "dealing" || m.phase === "dealer") mode = "dealing";
@@ -399,7 +417,8 @@
     var countMsLeft = (this.deadline && (m.phase === "betting" || mode === "turn")) ? Math.max(0, this.deadline - (Date.now() + this.skew)) : null;
     var roomId = this.you ? this.you.roomId : (this.spectating || (this.room ? this.room.roomId : null));
     var state = { type: "bj:dock", mode: mode, msg: msg, balance: this.balance, showEth: this.showEth,
-      bet: this.bet, betMin: 10, betMax: maxBet, betStep: 5, legal: legal, countMsLeft: countMsLeft, roomId: roomId };
+      bet: this.bet, betMin: 10, betMax: maxBet, betStep: 5, legal: legal, countMsLeft: countMsLeft, roomId: roomId,
+      placed: (mySeat && mySeat.baseBet > 0) ? mySeat.baseBet : 0 };
     try { if (root.parent && root.parent !== root) root.parent.postMessage(state, "*"); } catch (e) {}
   };
   BlackjackClient.prototype._settleMsg = function (mySeat) {

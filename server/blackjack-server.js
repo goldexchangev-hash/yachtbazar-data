@@ -363,12 +363,45 @@
         if (bank.get(s.wallet) + (s.baseBet || 0) < amt) return err(sock, "insufficient", "Not enough balance", "bet");
         if (s.baseBet > 0) bank.credit(s.wallet, s.baseBet); // re-bet replaces
         bank.debit(s.wallet, amt); s.baseBet = amt; s.clientSeed = clientSeed || Shuffle.randomSeed(8);
-        touch(r); pushWallet(sock, s.wallet); broadcastState(r);
+        touch(r);
         const seated = r.seats.filter(Boolean);
-        if (seated.length && seated.every((x) => x.baseBet > 0)) { clrT(r.timers.betting); endBetting(r); }
+        if (seated.length && seated.every((x) => x.baseBet > 0)) {
+          // everyone's in — hold a short "no more bets" grace so a misclick can be
+          // removed before the deal, then deal automatically.
+          clrT(r.timers.betting);
+          r.deadline = now() + 3000;
+          r.timers.betting = setT(() => endBetting(r), 3000);
+        }
+        pushWallet(sock, s.wallet); broadcastState(r);
         return;
       }
       err(sock, "no_seat", "Take a seat first", "bet");
+    }
+    function cancelBet(sock) {
+      for (const r of rooms.values()) { const i = seatOf(r, sock); if (i < 0) continue;
+        if (r.phase !== "betting") return err(sock, "not_betting", "Too late to remove the bet", "bet");
+        const s = r.seats[i];
+        if (s.baseBet > 0) {
+          bank.credit(s.wallet, s.baseBet); s.baseBet = 0;
+          clrT(r.timers.betting); r.deadline = now() + T.betting; r.timers.betting = setT(() => endBetting(r), T.betting); // fresh window
+          touch(r); pushWallet(s.sock, s.wallet); broadcastState(r);
+        }
+        return;
+      }
+    }
+    // DEMO ONLY: keep a guest's table balance in sync with the site's play-money demo
+    // balance (the single balance the player sees). Never applies to real (0x) wallets
+    // — their funds live on-chain — and never mid-hand (only when idle or pre-bet).
+    function seedGuest(sock, amount) {
+      const w = sock.wallet || "";
+      if (!/^guest:/.test(w) || typeof amount !== "number" || !isFinite(amount) || amount < 0) return;
+      for (const r of rooms.values()) {
+        const i = seatOf(r, sock);
+        if (i >= 0) { const s = r.seats[i]; if (s && (s.baseBet > 0 || r.phase !== "betting")) return; } // not mid-hand
+      }
+      bank.all.set(w, r2(amount));
+      pushWallet(sock, w);
+      for (const r of rooms.values()) { if (seatOf(r, sock) >= 0) { broadcastState(r); break; } } // refresh betMax
     }
     function action(sock, act) {
       for (const r of rooms.values()) { const i = seatOf(r, sock); if (i < 0) continue;
@@ -396,6 +429,8 @@
         case "bj:room:watch": watch(sock, m.roomId); break;
         case "bj:room:leave": leave(sock); break;
         case "bj:bet:place": placeBet(sock, m.amountUsd, m.clientSeed); break;
+        case "bj:bet:cancel": cancelBet(sock); break;
+        case "bj:seed": seedGuest(sock, +m.balance); break;
         case "bj:action": action(sock, m.action); break;
         case "bj:insurance": insurance(sock, m.take); break;
         default: break;
