@@ -243,7 +243,7 @@
         for (var hi = 0; hi < hands.length; hi++) {
           var h = hands[hi], hb = el("div", "hand-box" + (seatTurn && s.active === hi ? " active" : "") + (h.result && (h.result.outcome === "win" || h.result.outcome === "blackjack") ? " won" : ""));
           var stack = el("div", "stack");
-          for (var c = 0; c < (h.cards || []).length; c++) stack.appendChild(this._cardEl(h.cards[c], "p" + i + ":" + hi + ":" + c, true));
+          for (var c = 0; c < (h.cards || []).length; c++) stack.appendChild(this._cardEl(h.cards[c], "p" + i + ":" + hi + ":" + c, false)); // full-size; splits shrink via .multi CSS
           hb.appendChild(stack);
           var pill = this._totalPill(h); if (pill) hb.appendChild(pill);
           if (h.result) {
@@ -351,23 +351,22 @@
   };
   BlackjackClient.prototype._betUI = function (row) {
     var self = this; row.innerHTML = "";
-    var stepper = el("div", "bet-stepper");
-    var minus = el("button", null, "−"), plus = el("button", null, "+");
-    var input = document.createElement("input"); input.type = "number"; input.min = "10"; input.step = "10"; input.value = String(this.bet);
-    var ethSpan = this.showEth ? el("span", "bet-eth", eth(this.bet)) : null; // ETH only with a wallet connected
-    function sync() { self.bet = Math.max(10, Math.round(+input.value || 10)); input.value = self.bet; if (ethSpan) ethSpan.textContent = eth(self.bet); }
-    minus.onclick = function () { self.bet = Math.max(10, self.bet - 10); input.value = self.bet; sync(); };
-    plus.onclick = function () { self.bet = self.bet + 10; input.value = self.bet; sync(); };
-    input.oninput = sync;
-    stepper.appendChild(minus); stepper.appendChild(input); stepper.appendChild(plus);
-    row.appendChild(stepper); if (ethSpan) row.appendChild(ethSpan);
+    var maxBet = Math.max(50, Math.floor(self.balance || 1000));
+    self.bet = Math.min(Math.max(10, Math.round(self.bet / 5) * 5), maxBet);
+    var wrap = el("div", "bet-ui");
+    var val = el("div", "bet-val");
+    function renderVal() { val.innerHTML = '<span class="bv">' + money(self.bet) + "</span>" + (self.showEth ? '<span class="bv-eth">' + eth(self.bet) + "</span>" : ""); }
+    renderVal();
+    var slider = document.createElement("input"); slider.type = "range"; slider.className = "bet-slider";
+    slider.min = "10"; slider.max = String(maxBet); slider.step = "5"; slider.value = String(self.bet);
+    slider.oninput = function () { self.bet = Math.max(10, Math.round(+slider.value / 5) * 5); renderVal(); };
     var chips = el("div", "qchips");
-    [["MIN", function () { return 10; }], ["+50", function () { return self.bet + 50; }], ["2×", function () { return self.bet * 2; }],
-      ["MAX", function () { return Math.max(10, Math.floor(self.balance || 0)); }]].forEach(function (c) {
-      var b = el("button", "chip", c[0]); b.onclick = function () { self.bet = Math.max(10, Math.round(c[1]())); input.value = self.bet; sync(); }; chips.appendChild(b);
+    [["MIN", function () { return 10; }], ["+$50", function () { return self.bet + 50; }], ["2×", function () { return self.bet * 2; }], ["MAX", function () { return maxBet; }]].forEach(function (c) {
+      var b = el("button", "chip", c[0]); b.onclick = function () { self.bet = Math.min(maxBet, Math.max(10, Math.round(c[1]() / 5) * 5)); slider.value = self.bet; renderVal(); }; chips.appendChild(b);
     });
-    row.appendChild(chips);
-    var place = el("button", "btn primary", "PLACE BET"); place.onclick = function () { sync(); self.placeBet(); }; row.appendChild(place);
+    var place = el("button", "btn primary wide", "PLACE BET"); place.onclick = function () { self.placeBet(); };
+    wrap.appendChild(val); wrap.appendChild(slider); wrap.appendChild(chips); wrap.appendChild(place);
+    row.appendChild(wrap);
   };
 
   /* ---------------- settle / fx ---------------- */
