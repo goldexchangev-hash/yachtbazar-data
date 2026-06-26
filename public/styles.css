@@ -2184,12 +2184,20 @@ body.demo-mode #bankroll { display: none !important; }
 .bj-share { margin: 12px auto 0; display: block; width: 100%; font-size: 13px; letter-spacing: .3px; }
 .bj-share:disabled { opacity: .5; cursor: default; }
 /* top row: live balance (left) + countdown (right) */
+/* standalone blackjack server wallet + balance (independent of demo credits) */
+.bj-walletrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+.bj-wallet { font-family: var(--mono, monospace); font-size: 12px; color: var(--s-text-2); letter-spacing: .2px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
+.bj-bal { font-family: var(--display); font-size: 16px; color: var(--s-gold); font-weight: 700; white-space: nowrap; }
+.bj-bal:empty { display: none; }
 .bj-toprow { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 20px; margin-bottom: 6px; }
 .bj-reload { font-family: var(--display); font-size: 13px; color: var(--s-text-2); background: var(--s-surface);
   border: 1px solid var(--s-border); border-radius: 999px; padding: 4px 12px; cursor: pointer; transition: color .15s, border-color .15s, background .15s; }
 .bj-reload:hover { color: var(--s-gold); border-color: var(--s-gold); background: rgba(255,210,63,.08); }
 .bj-reload:active { transform: scale(.96); }
 .bj-toprow .bj-count { position: static; }
+/* on the blackjack channel the demo credits are irrelevant (blackjack has its own balance) → hide them */
+body.bj-channel #demo-below, body.bj-channel #demo-bar { display: none !important; }
 /* bet-locked-in confirmation + remove button */
 .bj-placed { display: flex; flex-direction: column; gap: 8px; align-items: center; }
 .bj-placed-lbl { color: var(--s-text-2); font-size: 13px; }

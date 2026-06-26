@@ -2176,7 +2176,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1122"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1123"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -2414,7 +2414,6 @@
     if (pressureGame) pressureGame.setBalance(demoUsd);
     if (planeGame && demoOn) planeGame.setBalance(demoUsd);
     if (slots3dGame && demoOn) slots3dGame.setBalance(demoUsd);
-    bjReseed(); // push the topped-up balance to the blackjack table too (else its bank stays stuck at the old value)
     toast("Demo credits topped back up to " + usd(DEMO_START_USD) + " 🎮", "ok");
   }
   // Read + validate a demo stake from a slider. Returns 0 (and toasts) if invalid.
@@ -2558,6 +2557,9 @@
     if (game !== "dice" && rail3d) rail3d.setActive(false);
     if (game !== "twodice" && d2_3d) d2_3d.setActive(false);
     if (game !== "blackjack" && window.BJ_MUTE) { window.BJ_MUTE(true); bjStopCount(); } // hush blackjack + stop its countdown off-channel
+    // Blackjack uses its OWN standalone server balance — hide the demo credits on this channel.
+    document.body.classList.toggle("bj-channel", game === "blackjack");
+    if (game === "blackjack") { const wl = $("bj-wallet"); if (wl) wl.textContent = "🪪 " + bjGuestId(); }
     // Poker is its own full-width view (no TV); everything else uses the TV channel.
     if (game === "poker") { if (window.PokerUI) PokerUI.show(); }
     else { if (window.PokerUI) PokerUI.hide(); if (window.TV && TV.changeChannel) TV.changeChannel(GAME_CHANNEL[game]); }
@@ -2585,33 +2587,22 @@
   let bjPendingTable = null; // a specific table id arrived via a share link (?bjtable=…)
   try { bjPendingTable = new URLSearchParams(location.search).get("bjtable"); } catch (e) {}
   let bjRoomId = null; // latest table id the felt reports (for the Share button)
-  let bjSeededDemo = null; // the demo value the table currently knows; guards against re-seeding over an off-channel settle
+  const BJ_START = 1000; // blackjack has its OWN standalone play-chip balance, independent of the demo credits
   function ensureBlackjackReady() {
     const f = $("bj-frame");
     if (f && !f.src) {
-      let src = "blackjack.html?tv=1&v=1122&guest=" + encodeURIComponent(bjGuestId());
-      if (demoOn) src += "&bal=" + encodeURIComponent(Math.max(0, Math.round((demoUsd || 0) * 100) / 100)); // seed the table from the demo balance
+      // No &bal= seed — the table starts from its own server default ($1,000), NOT the demo balance.
+      let src = "blackjack.html?tv=1&v=1123&guest=" + encodeURIComponent(bjGuestId());
       if (bjPendingTable) { src += "&table=" + encodeURIComponent(bjPendingTable); bjPendingTable = null; }
       f.src = src; // loads the felt + scripts inside the TV
     }
-    setTimeout(() => { bjFramePost(true); bjSeed(); }, 50);
+    setTimeout(() => { bjFramePost(true); }, 50);
   }
-  // Keep the blackjack table balance in lock-step with the site demo balance. Re-seed the
-  // table from the demo balance on (re)entry — but ONLY when the demo balance actually moved
-  // since the table last knew it (e.g. another game changed it). If it's unchanged, the table
-  // may have advanced off-channel (a hand settled while we were on another channel); re-seeding
-  // then would wipe that result, so we leave the server balance authoritative and let the next
-  // dock update sync it back into demoUsd.
-  function bjSeed() {
-    if (!demoOn) return;
-    const target = Math.max(0, Math.round((demoUsd || 0) * 100) / 100);
-    if (bjSeededDemo !== null && Math.abs(target - bjSeededDemo) < 0.001) return; // table already authoritative
-    const f = $("bj-frame"); if (f && f.contentWindow) try { f.contentWindow.postMessage({ type: "bj:seed", balance: target }, "*"); bjSeededDemo = target; } catch (e) {}
-  }
-  // Force the blackjack table balance back in lock-step with the demo balance, bypassing the
-  // "table is authoritative" guard. Used by the Reset-credits action and the manual Reload
-  // button. The server refuses a reseed mid-hand, so it can never wipe a live bet/hand.
-  function bjReseed() { bjSeededDemo = null; bjSeed(); }
+  // Blackjack chips are a self-contained play-money balance held by the server, separate from
+  // the site demo credits (those were getting tangled up with the table). The ⟳ Reload button
+  // tops the table back up to $1,000. The server refuses a re-seed mid-hand, so reload can
+  // never wipe a live bet/hand.
+  function bjReload() { const f = $("bj-frame"); if (f && f.contentWindow) try { f.contentWindow.postMessage({ type: "bj:seed", balance: BJ_START }, "*"); } catch (e) {} }
   window.BJ_MUTE = (mute) => bjFramePost(!mute); // hush the iframe's audio when off-channel
   function bjShareLink() { return location.origin + location.pathname + "?game=blackjack" + (bjRoomId ? "&bjtable=" + encodeURIComponent(bjRoomId) : ""); }
   function bjShareTable() {
@@ -2680,8 +2671,9 @@
   function renderBjDock(s) {
     const status = $("bj-status"), ctr = $("bj-controls"); if (!ctr) return;
     if (status) status.innerHTML = s.msg || "Taking a seat at a live table…";
-    // Balance is shown ONCE — the site demo bar above the TV (the table balance is kept in
-    // lock-step with it). No separate dock balance here; the ⟳ Reload button re-syncs them.
+    // Blackjack's own standalone balance (separate from the demo credits, which are hidden here).
+    const balEl = $("bj-bal");
+    if (balEl) balEl.textContent = s.balance != null ? "💰 $" + Number(s.balance).toLocaleString() : "";
     // countdown: only reset the local timer when it moves by more than a tick, so smoothed
     // jitter from the felt never makes the seconds bounce around.
     if (s.countMsLeft != null && s.countMsLeft > 0) {
@@ -2713,12 +2705,12 @@
   window.addEventListener("message", (e) => {
     const f = $("bj-frame"); if (!f || e.source !== f.contentWindow) return; // only accept dock-state from our felt iframe
     const d = e.data; if (!d) return;
-    if (d.type === "bj:ready") { bjSeed(); return; } // felt booted → seed its balance from the demo balance
+    if (d.type === "bj:ready") { return; } // felt booted — it uses its own standalone $1,000 balance, nothing to seed
     if (d.type !== "bj:dock") return;
     if (d.roomId) { bjRoomId = d.roomId; const sb = $("bj-share"); if (sb) sb.disabled = false; } // enable the Share button once we're at a table
     // unify the balances: the blackjack table balance IS the demo balance (only while
     // on the channel, so playing another game off-channel can't get clobbered).
-    if (d.balance != null && demoOn && currentGame === "blackjack") { const v = Math.round(d.balance * 100) / 100; if (Math.abs(v - demoUsd) > 0.001) { demoUsd = v; demoSave(); demoPaint(); } bjSeededDemo = v; } // server table is authoritative on-channel; remember it so re-entry won't clobber it
+    // Blackjack balance is standalone (server-held) — it does NOT touch the demo credits.
     if (currentGame === "blackjack") renderBjDock(d);
   });
   // Poker chips are a session-local pool seeded from your in-game balance.
@@ -2821,7 +2813,7 @@
     if (saved === "flip") ensureCoinFlip3dReady(); // build the 3D coin on reload too
     if (saved === "dice") ensureDice3dReady();     // build the 0-100 neon rail on reload too
     if (saved === "twodice") ensureDice2_3dReady(); // build the 3D dice on reload too
-    if (saved === "blackjack") { ensureBlackjackReady(); if (window.TV && TV._blackjackIdle) try { TV._blackjackIdle(); } catch (e) {} } // restore + show the CH 16 felt on reload
+    if (saved === "blackjack") { document.body.classList.add("bj-channel"); { const wl = $("bj-wallet"); if (wl) wl.textContent = "🪪 " + bjGuestId(); } ensureBlackjackReady(); if (window.TV && TV._blackjackIdle) try { TV._blackjackIdle(); } catch (e) {} } // restore + show the CH 16 felt on reload (hide demo credits, show table wallet)
   }
 
   // My open tables: show bank + idle countdown, auto-close (refund) when stale.
@@ -3788,7 +3780,7 @@
     { const dr = $("demo-reset"); if (dr) dr.onclick = demoReset; }
     { const dc = $("demo-connect"); if (dc) dc.onclick = connect; }
     { const bs = $("bj-share"); if (bs) bs.onclick = bjShareTable; } // copy a link to the current blackjack table
-    { const br = $("bj-reload"); if (br) br.onclick = () => { bjReseed(); toast("Table balance re-synced with your demo balance 💰", "ok"); }; } // manual desync rescue
+    { const br = $("bj-reload"); if (br) br.onclick = () => { bjReload(); toast("Table chips topped back up to $1,000 💰", "ok"); }; } // standalone blackjack top-up
     $("raise-max-btn").onclick = raiseMaxBet;
     $("fund-house-btn").onclick = fundHouseTool;
     $("cashout-house-btn").onclick = cashOutHouse;
