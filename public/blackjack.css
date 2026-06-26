@@ -123,7 +123,7 @@ body {
 
 /* phase banner + countdown */
 .phase-banner {
-  position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; z-index: 4;
+  position: absolute; top: 37%; left: 50%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; z-index: 4;
 }
 .phase-banner .pb-main { font-family: var(--pixel); font-size: 13px; color: var(--gold); text-shadow: 0 2px 8px rgba(0, 0, 0, .6); }
 .phase-banner .pb-sub { font-size: 12px; color: rgba(255, 255, 255, .7); margin-top: 6px; }
@@ -144,7 +144,7 @@ body {
 @keyframes stPulse { 50% { transform: translateX(-50%) scale(1.13); } }
 
 /* seats row */
-.seats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 14px; align-items: end; }
+.seats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 56px; align-items: end; }
 .seat {
   position: relative; border-radius: 14px; padding: 10px 8px 8px; min-height: 150px;
   background: linear-gradient(180deg, rgba(0, 0, 0, .12), rgba(0, 0, 0, .28));
