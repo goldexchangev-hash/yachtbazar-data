@@ -208,11 +208,17 @@
       try { await navigator.share({ files: [file], text }); return; }
       catch (e) { if (e && e.name === "AbortError") return; }
     }
+    // Fallback (no native share): open the card in a NEW tab so the game page is
+    // never navigated away — on iOS that navigation triggers a fresh reload that
+    // would wipe the in-game balance back to the default.
+    demoSave(); // flush the balance first, just in case
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = "crypto-tv-win.png"; a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
-    try { await navigator.clipboard.writeText(text); toast("Win card saved 📸 + caption copied", "ok"); }
-    catch { toast("Win card saved 📸", "ok"); }
+    const a = document.createElement("a");
+    a.href = url; a.download = "crypto-tv-win.png"; a.target = "_blank"; a.rel = "noopener";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 8000);
+    try { await navigator.clipboard.writeText(text); toast("Win card opened 📸 + caption copied", "ok"); }
+    catch { toast("Win card opened 📸", "ok"); }
   }
 
   // Auto-size the gas LIMIT to the actual transaction (eth_estimateGas + 30%),
@@ -1896,14 +1902,14 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=978").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=979").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=978"))
+      .then(() => loadScriptOnce("slots.js?v=979"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -1913,9 +1919,9 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=978"))
-      .then(() => loadScriptOnce("pressure-render.js?v=978"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=978"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=979"))
+      .then(() => loadScriptOnce("pressure-render.js?v=979"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=979"))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -3525,6 +3531,11 @@
     document.addEventListener("selectstart", (e) => { if (!inField(e.target)) stop(e); }, { passive: false });
     document.addEventListener("contextmenu", (e) => { if (!inField(e.target)) stop(e); }, { passive: false });
   }
+
+  // Always flush the play balance before the page is hidden/backgrounded (iOS may
+  // reload the tab after a share/app-switch) so it's never lost.
+  window.addEventListener("pagehide", () => { try { if (demoOn) demoSave(); } catch (e) {} });
+  document.addEventListener("visibilitychange", () => { if (document.hidden) { try { if (demoOn) demoSave(); } catch (e) {} } });
 
   window.addEventListener("DOMContentLoaded", () => {
     lockZoom();
