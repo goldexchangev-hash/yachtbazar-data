@@ -147,6 +147,7 @@ wss.on("connection", (ws) => {
   });
 
   ws.on("close", () => {
+    blackjack.onClose(ws); // free any blackjack seat / spectator slot on disconnect
     clients.delete(ws);
     broadcastPlayers();
   });
