@@ -669,31 +669,14 @@
       this._pendingReveal = null;
       this._clearConfetti();
       this._setScoreboard(opts.p1, opts.p2, opts.p1Heads);
-      this.setChannel(2);
-
-      // 1) BETS ARE IN — tuning static
-      this._setStatic(0.95);
-      this._show("tuning");
-      await sleep(1100);
-      if (seq !== this._seq) return;
-
-      // 2) Countdown 3 · 2 · 1 · FLIP!
       this.setChannel(8);
-      this._setStatic(0.12);
-      this._show("countdown");
-      for (const step of ["3", "2", "1"]) {
-        if (seq !== this._seq) return;
-        this._countPop(step, false);
-        if (window.Chiptune) window.Chiptune.blip();
-        await sleep(820);
-      }
-      if (seq !== this._seq) return;
-      this._countPop("FLIP!", true);
-      if (window.Chiptune) window.Chiptune.coin();
-      await sleep(620);
-      if (seq !== this._seq) return;
 
-      // 3) TOSS: the coin launches up, spins airborne, and waits there for the
+      // Straight into the flip — no tuning static / "BETS ARE IN" / countdown.
+      // The coin's own anticipation crouch is the wind-up; on a real round it
+      // spins airborne and waits there for the on-chain result.
+      if (window.Chiptune) window.Chiptune.coin();
+
+      // TOSS: the coin launches up, spins airborne, and waits there for the
       //    result. The wrapper does the vertical arc; the coin does the flip-spin.
       this._setStatic(0.06);
       this._show("flip");

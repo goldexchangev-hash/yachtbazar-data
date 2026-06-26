@@ -235,7 +235,7 @@ kbd { font-family: ui-monospace, monospace; font-size: 11px; background: rgba(25
 .static-canvas { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0.55; z-index: 1; mix-blend-mode: screen; }
 .scanlines {
   position: absolute; inset: 0; z-index: 3; pointer-events: none;
-  background: repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.16) 0 1px, transparent 1px 3px);
+  background: repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.045) 0 1px, transparent 1px 4px);
   animation: roll 8s linear infinite;
 }
 @keyframes roll { to { background-position: 0 12px; } }

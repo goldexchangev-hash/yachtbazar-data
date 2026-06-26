@@ -3,7 +3,7 @@
    are picked up immediately and users never get a stale build online), caching
    each response, and falls back to cache only when offline. Cross-origin
    requests (RPC node, fonts, price API, MetaMask) are left untouched. */
-const CACHE = "ctf-v10.6";
+const CACHE = "ctf-v10.7";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png"];
 
 self.addEventListener("install", (e) => {

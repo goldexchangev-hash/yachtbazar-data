@@ -531,6 +531,23 @@
       src.start(t); src.stop(t + dur + 0.05);
       lfo.start(t); lfo.stop(t + dur + 0.05);
     },
+    // Balloon BURST — the bigger the balloon (intensity 0→1), the lower, louder
+    // and gnarlier the pop: a sharp filtered-noise crack + a descending whoomp body.
+    balloonPop(intensity) {
+      if (!this._sfx() || !noiseBuf) return;
+      const i = Math.max(0, Math.min(1, intensity == null ? 0.5 : intensity)), t = ctx.currentTime;
+      // the crack — bandpass noise, lower cutoff (deeper) for bigger balloons
+      const src = ctx.createBufferSource(); src.buffer = noiseBuf;
+      const bp = ctx.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 1900 - 1300 * i; bp.Q.value = 0.5 + i;
+      const g = ctx.createGain(); const peak = 0.28 + 0.5 * i;
+      g.gain.setValueAtTime(peak, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.1 + 0.2 * i);
+      src.connect(bp); bp.connect(g); g.connect(master); src.start(t); src.stop(t + 0.4);
+      // the whoomp — a quick descending sine body, bigger/longer for fuller balloons
+      const osc = ctx.createOscillator(), og = ctx.createGain(); osc.type = "sine";
+      osc.frequency.setValueAtTime(260 - 150 * i, t); osc.frequency.exponentialRampToValueAtTime(42, t + 0.12 + 0.12 * i);
+      og.gain.setValueAtTime(0.0001, t); og.gain.linearRampToValueAtTime(0.1 + 0.18 * i, t + 0.008); og.gain.exponentialRampToValueAtTime(0.0001, t + 0.22 + 0.12 * i);
+      osc.connect(og); og.connect(master); osc.start(t); osc.stop(t + 0.45);
+    },
     // Which win-scene theme is active, so the fanfare matches the visuals.
     _theme() { try { return (window.WinScenes && window.WinScenes.getTheme && window.WinScenes.getTheme()) || "neon"; } catch (e) { return "neon"; } },
     // Original melodic run: lead voice (+ optional lower-octave triangle harmony).
