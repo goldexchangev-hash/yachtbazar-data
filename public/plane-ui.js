@@ -135,7 +135,7 @@
     b.cashed = true; b._cashedAt = mult;
     const res = E.resolveRound({ stake: b.stake, crash: this.crash, cashOutMult: mult });
     this.balance = Math.round((this.balance + res.payout) * 100) / 100; this._save();
-    this.r.cashOut(res.profit);
+    this.r.cashOut(res.profit, mult, b.stake);
     if (root.PlaneFeed && b.id === "A") root.PlaneFeed.setMine({ cashed: true, at: mult });
     this._msg("💰 " + b.id + " " + (auto ? "auto-" : "") + "cashed " + mult.toFixed(2) + "x  →  " + this._usd(res.payout) + "  (+" + this._usd(res.profit) + ")", "win");
     this._sfx("coin"); this._sfx(res.profit >= 300 ? "jackpot" : res.profit >= 100 ? "bigwin" : "win");
