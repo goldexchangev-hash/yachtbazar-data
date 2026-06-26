@@ -89,9 +89,9 @@ body {
     0 0 0 3px var(--felt-edge), 0 0 0 6px rgba(57, 231, 255, .18), 0 22px 60px rgba(0, 0, 0, .5);
   overflow: hidden;
 }
-.felt .arc-text { position: absolute; top: 96px; left: 0; right: 0; text-align: center; color: rgba(255, 255, 255, .5);
+.felt .arc-text { position: absolute; top: 72px; left: 0; right: 0; text-align: center; color: rgba(255, 255, 255, .5);
   font-family: var(--pixel); font-size: 8px; letter-spacing: 2px; pointer-events: none; }
-.felt .arc-text.lo { top: auto; bottom: 122px; color: rgba(255, 255, 255, .28); }
+.felt .arc-text.lo { top: auto; bottom: 16px; color: rgba(255, 255, 255, .28); }
 
 /* dealer */
 .dealer { position: relative; display: flex; flex-direction: column; align-items: center; gap: 8px; margin-top: 6px; min-height: 132px; }
@@ -101,14 +101,14 @@ body {
 
 /* phase banner + countdown */
 .phase-banner {
-  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; z-index: 4;
+  position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; z-index: 4;
 }
 .phase-banner .pb-main { font-family: var(--pixel); font-size: 13px; color: var(--gold); text-shadow: 0 2px 8px rgba(0, 0, 0, .6); }
 .phase-banner .pb-sub { font-size: 12px; color: rgba(255, 255, 255, .7); margin-top: 6px; }
-.ring { --p: 0; width: 56px; height: 56px; margin: 0 auto 8px; border-radius: 50%;
+.ring { --p: 0; width: 46px; height: 46px; margin: 0 auto 6px; border-radius: 50%;
   background: conic-gradient(var(--cyan) calc(var(--p) * 1%), rgba(255, 255, 255, .12) 0);
   display: grid; place-items: center; transition: background .2s linear; }
-.ring::after { content: attr(data-sec); width: 44px; height: 44px; border-radius: 50%; background: #06140f;
+.ring::after { content: attr(data-sec); width: 36px; height: 36px; border-radius: 50%; background: #06140f;
   display: grid; place-items: center; font-family: var(--pixel); font-size: 12px; color: var(--ink); }
 .ring.warn { background: conic-gradient(var(--gold) calc(var(--p) * 1%), rgba(255, 255, 255, .12) 0); }
 .ring.crit { background: conic-gradient(var(--red) calc(var(--p) * 1%), rgba(255, 255, 255, .12) 0); }
