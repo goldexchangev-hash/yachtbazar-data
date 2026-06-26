@@ -178,6 +178,9 @@ body {
 .hand { display: flex; justify-content: center; min-height: 96px; }
 .hand .stack { display: flex; }
 .hand .stack .card:not(:first-child) { margin-left: -34px; }
+/* only the top (fully visible) card shows its center pip — covered cards show just
+   the corner index, so a center suit never pokes out at the overlap seam */
+.stack .card:not(:last-child) .pip, .stack .card:not(:last-child) .corner.br { display: none; }
 
 /* per-seat hands (1..4 after splits) */
 .hands { display: flex; gap: 6px; justify-content: center; align-items: flex-end; width: 100%; }
