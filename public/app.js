@@ -1913,14 +1913,14 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=993").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=994").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=993"))
+      .then(() => loadScriptOnce("slots.js?v=994"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -1930,9 +1930,9 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=993"))
-      .then(() => loadScriptOnce("pressure-render.js?v=993"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=993"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=994"))
+      .then(() => loadScriptOnce("pressure-render.js?v=994"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=994"))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -1985,10 +1985,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=993"))
-      .then(() => loadScriptOnce("plane-render.js?v=993"))
-      .then(() => loadScriptOnce("plane-feed.js?v=993"))
-      .then(() => loadScriptOnce("plane-ui.js?v=993"))
+      .then(() => loadScriptOnce("plane-engine.js?v=994"))
+      .then(() => loadScriptOnce("plane-render.js?v=994"))
+      .then(() => loadScriptOnce("plane-feed.js?v=994"))
+      .then(() => loadScriptOnce("plane-ui.js?v=994"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -3298,35 +3298,6 @@
       const now = $("music-now"); if (now) now.textContent = (on ? "♪ " : "") + (c ? c.name : "—");
       document.querySelectorAll("#music-tracks .mm-track").forEach((el, i) => el.classList.toggle("active", i === (c ? c.index : -1)));
     }
-    syncVolFab();
-  }
-  // The floating bottom-right volume button. Its #1 job: RESTORE sound after an
-  // app/tab switch silently suspended the AudioContext (iOS), which the topbar
-  // control couldn't fix. Decide intent from the state BEFORE we resume, so a tap
-  // that revives dead audio doesn't immediately mute it again.
-  function volFabTap() {
-    const C = window.Chiptune; if (!C) return;
-    const wasAudible = C.audible ? C.audible() : !!(C.isOn && C.isOn());
-    try { C.wake && C.wake(); } catch (e) {}       // resume the suspended context (this gesture is what iOS needs)
-    try { C.resync && C.resync(); } catch (e) {}   // realign the music scheduler
-    try { if (!audioUnlocked) unlockReelAudio(); } catch (e) {} // unlock reel/video audio too
-    if (wasAudible && !userMutedMusic) {           // it was genuinely playing → the user wants quiet
-      if (C.isOn && C.isOn() && C.toggle) C.toggle();
-      userMutedMusic = true;
-    } else {                                        // it was off or DEAD → bring it back
-      if (C.isOn && !C.isOn() && C.start) C.start();
-      userMutedMusic = false;
-    }
-    syncSoundBtn();
-  }
-  function syncVolFab() {
-    const fab = $("vol-knob"); if (!fab) return;
-    const C = window.Chiptune;
-    const on = !!(C && C.isOn && C.isOn()) && !userMutedMusic;
-    const audible = !!(C && C.audible && C.audible());
-    fab.textContent = on ? "🔊" : "🔇";
-    fab.classList.toggle("muted", !on);
-    fab.classList.toggle("suspended", on && !audible); // should be playing but context is dead → pulse "tap me"
   }
   // Build the track list once (from Chiptune.tracks()), then keep it in sync.
   function renderTrackList() {
@@ -3545,11 +3516,9 @@
     //    The only control is the Replay button under the TV (plays back WITH sound). ──
     window.__onPromoEnded = startMusicAfterPromo; // random track after the intro's first run
     // Play the intro on EVERY page load / refresh (not remembered) — but it never
-    // replays on channel switches within the same load. The Replay button under
-    // the TV plays it again on demand.
+    // replays on channel switches within the same load.
     try { localStorage.removeItem("ctf_promo_seen"); } catch (e) {} // clear any old "seen" flag
     if (window.TV && TV.playPromo) { try { TV.playPromo(); } catch (e) {} }
-    { const r = $("promo-replay"); if (r) r.onclick = (e) => { e.stopPropagation(); if (window.TV && TV.playPromo) TV.playPromo(); }; }
     // Hitting any bet/play button mid-intro skips the promo instantly so you can
     // bet right away. Capture phase → runs BEFORE the button's own handler (covers
     // clicks AND the Balloon Pop hold-to-pump pointerdown).
@@ -3588,12 +3557,6 @@
     { const p = $("music-play"); if (p) p.onclick = (e) => { e.stopPropagation(); if (!window.Chiptune) return; const on = Chiptune.toggle(); userMutedMusic = !on; syncSoundBtn(); }; }
     { const n = $("music-next"); if (n) n.onclick = (e) => { e.stopPropagation(); musicSkip(1); }; }
     { const pv = $("music-prev"); if (pv) pv.onclick = (e) => { e.stopPropagation(); musicSkip(-1); }; }
-    // Floating bottom-right volume button → restore/toggle sound.
-    { const vf = $("vol-knob"); if (vf) vf.onclick = (e) => { e.stopPropagation(); volFabTap(); }; }
-    // Coming back from another app/tab: refresh the FAB so it pulses if iOS left
-    // the audio context suspended (so the player knows a tap brings sound back).
-    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") setTimeout(syncVolFab, 450); });
-    window.addEventListener("focus", () => setTimeout(syncVolFab, 450));
     document.addEventListener("click", (e) => {
       const menu = $("music-menu"); if (!menu || menu.classList.contains("hidden")) return;
       const wrap = menu.closest(".music-wrap");

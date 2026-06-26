@@ -27,7 +27,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=993" />
+    <link rel="stylesheet" href="styles.css?v=994" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -42,7 +42,7 @@
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.93</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v9.94</span>
       </div>
       <div class="topbar-right">
         <div class="music-wrap">
@@ -344,7 +344,7 @@
 
                 <!-- Promo intro reel — autoplays once (muted) on first load, then fades
                      to black and hands off to the game. Replay button under the TV. -->
-                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=993"></video>
+                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=994"></video>
 
                 <!-- Shown while a bet tx is being signed + mined (esp. slow on mobile) -->
                 <div id="tv-pending" class="tv-pending hidden">⏳ SENDING BET…<br />confirm in your wallet, then hold tight</div>
@@ -360,13 +360,10 @@
             <div class="tv-controls">
               <div class="tv-knobs">
                 <div class="knob"></div>
-                <button id="vol-knob" class="knob vol-knob" type="button" aria-label="Sound on/off" title="Sound on/off — tap to bring audio back after switching apps">🔊</button>
+                <div class="knob"></div>
               </div>
               <div class="tv-speaker" aria-hidden="true">
                 <span></span><span></span><span></span><span></span><span></span><span></span>
-              </div>
-              <div class="tv-promo-controls">
-                <button id="promo-replay" class="tv-promo-btn" title="Replay the intro video">🔁&nbsp;Replay intro</button>
               </div>
               <!-- right cluster: share-win (on a win) sits just left of the channel badge -->
               <div class="tv-right">
@@ -1221,17 +1218,17 @@
     </aside>
 
     <script defer src="vendor/ethers.umd.min.js"></script>
-    <script defer src="config.js?v=993"></script>
-    <script defer src="contract.js?v=993"></script>
-    <script defer src="chiptune.js?v=993"></script>
-    <script defer src="scenes.js?v=993"></script>
-    <script defer src="tv.js?v=993"></script>
-    <script defer src="poker-engine.js?v=993"></script>
-    <script defer src="poker-bots.js?v=993"></script>
-    <script defer src="poker-ui.js?v=993"></script>
-    <script defer src="crash-engine.js?v=993"></script>
-    <script defer src="crash-render.js?v=993"></script>
-    <script defer src="profile.js?v=993"></script>
-    <script defer src="app.js?v=993"></script>
+    <script defer src="config.js?v=994"></script>
+    <script defer src="contract.js?v=994"></script>
+    <script defer src="chiptune.js?v=994"></script>
+    <script defer src="scenes.js?v=994"></script>
+    <script defer src="tv.js?v=994"></script>
+    <script defer src="poker-engine.js?v=994"></script>
+    <script defer src="poker-bots.js?v=994"></script>
+    <script defer src="poker-ui.js?v=994"></script>
+    <script defer src="crash-engine.js?v=994"></script>
+    <script defer src="crash-render.js?v=994"></script>
+    <script defer src="profile.js?v=994"></script>
+    <script defer src="app.js?v=994"></script>
   </body>
 </html>

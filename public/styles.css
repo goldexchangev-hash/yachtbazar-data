@@ -1805,13 +1805,6 @@ body.connected .wallet-cluster #disconnect-btn { border-radius: var(--r-full); p
 /* fade the intro to black before handing off to the game screen */
 .promo-video.promo-fade { opacity: 0; }
 .tv-controls { flex-wrap: wrap; }
-.tv-promo-controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.tv-promo-btn {
-  background: var(--s-surface); border: 1px solid var(--s-border); color: var(--s-text-2);
-  border-radius: var(--r-sm); font: 600 11px/1 var(--s-font); padding: 6px 9px; cursor: pointer;
-  white-space: nowrap;
-}
-.tv-promo-btn:hover { color: var(--s-text); background: var(--s-border); }
 
 /* ════════════════════════════════════════════════════════════════════════
    DEMO MODE — play-money try-before-you-connect. Amber accent so it reads as
@@ -2046,32 +2039,3 @@ body.plane-real .plane-bets { grid-template-columns: 1fr; }
   .plane-bp { padding: 8px; }
   .plane-feed { max-height: 130px; }
 }
-
-/* ════════ Volume button — lives on the right TV knob (restore sound after an
-   app/tab switch, esp. iOS). Sized to fit the 28px CRT dial. ════════ */
-.vol-knob {
-  position: relative; padding: 0; cursor: pointer; line-height: 1;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 15px; color: #eafff4;
-  /* a live green dial so it reads as the interactive one, vs the dead black knob */
-  background: radial-gradient(circle at 35% 30%, #2bdc7e, #0c7a45 70%);
-  box-shadow: inset 0 2px 3px rgba(255,255,255,0.3), 0 2px 4px rgba(0,0,0,0.5), 0 0 8px rgba(43,220,126,.45);
-  /* burned-in glyph so a tap never selects / blue-highlights it on mobile */
-  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
-  transition: transform .12s ease, filter .2s ease, box-shadow .2s ease;
-}
-.vol-knob:hover { filter: brightness(1.08); }
-.vol-knob:active { transform: scale(.9); }
-.vol-knob.muted { /* sound off → dim, dead dial */
-  color: #8da0b8;
-  background: radial-gradient(circle at 35% 30%, #2a2a2a, #0a0a0a);
-  box-shadow: inset 0 2px 3px rgba(255,255,255,0.2), 0 2px 4px rgba(0,0,0,0.5);
-}
-/* Sound is logically on but the context is suspended (iOS came back from a swipe)
-   → pulse the dial to invite a tap that restores audio. */
-.vol-knob.suspended { animation: volPulse 1.2s ease-in-out infinite; }
-@keyframes volPulse {
-  0%, 100% { box-shadow: inset 0 2px 3px rgba(255,255,255,0.3), 0 2px 4px rgba(0,0,0,0.5), 0 0 0 0 rgba(43,220,126,.6); }
-  50%      { box-shadow: inset 0 2px 3px rgba(255,255,255,0.3), 0 2px 4px rgba(0,0,0,0.5), 0 0 0 7px rgba(43,220,126,0); }
-}
-@media (prefers-reduced-motion: reduce) { .vol-knob.suspended { animation: none; } }
