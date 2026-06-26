@@ -1913,14 +1913,14 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=992").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=993").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=992"))
+      .then(() => loadScriptOnce("slots.js?v=993"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -1930,9 +1930,9 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=992"))
-      .then(() => loadScriptOnce("pressure-render.js?v=992"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=992"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=993"))
+      .then(() => loadScriptOnce("pressure-render.js?v=993"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=993"))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -1985,10 +1985,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=992"))
-      .then(() => loadScriptOnce("plane-render.js?v=992"))
-      .then(() => loadScriptOnce("plane-feed.js?v=992"))
-      .then(() => loadScriptOnce("plane-ui.js?v=992"))
+      .then(() => loadScriptOnce("plane-engine.js?v=993"))
+      .then(() => loadScriptOnce("plane-render.js?v=993"))
+      .then(() => loadScriptOnce("plane-feed.js?v=993"))
+      .then(() => loadScriptOnce("plane-ui.js?v=993"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -3320,7 +3320,7 @@
     syncSoundBtn();
   }
   function syncVolFab() {
-    const fab = $("vol-fab"); if (!fab) return;
+    const fab = $("vol-knob"); if (!fab) return;
     const C = window.Chiptune;
     const on = !!(C && C.isOn && C.isOn()) && !userMutedMusic;
     const audible = !!(C && C.audible && C.audible());
@@ -3589,7 +3589,7 @@
     { const n = $("music-next"); if (n) n.onclick = (e) => { e.stopPropagation(); musicSkip(1); }; }
     { const pv = $("music-prev"); if (pv) pv.onclick = (e) => { e.stopPropagation(); musicSkip(-1); }; }
     // Floating bottom-right volume button → restore/toggle sound.
-    { const vf = $("vol-fab"); if (vf) vf.onclick = (e) => { e.stopPropagation(); volFabTap(); }; }
+    { const vf = $("vol-knob"); if (vf) vf.onclick = (e) => { e.stopPropagation(); volFabTap(); }; }
     // Coming back from another app/tab: refresh the FAB so it pulses if iOS left
     // the audio context suspended (so the player knows a tap brings sound back).
     document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") setTimeout(syncVolFab, 450); });
