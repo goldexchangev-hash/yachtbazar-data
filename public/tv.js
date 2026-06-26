@@ -595,7 +595,7 @@
           if (el >= revealMs) { if (multEl) multEl.textContent = endpoint.toFixed(2) + "×"; if (R) R.setMult(endpoint); return resolve(); }
           const m = Eng ? Eng.multiplierAtMs(el, k) : Math.exp(k * el);
           const shown = Math.min(endpoint, m);
-          if (multEl) multEl.textContent = shown.toFixed(2) + "×";
+          if (multEl) { multEl.textContent = shown.toFixed(2) + "×"; const d = Math.max(0, Math.min(1, (shown - 2) / 23)); const c = d < 0.33 ? "#39e7ff" : d < 0.66 ? "#ff4d9d" : d < 0.85 ? "#ffd23f" : "#ff3b22"; multEl.style.color = c; multEl.style.textShadow = "0 0 16px " + c; } // climb color escalates cyan→red
           if (R) R.setMult(shown);
           if (window.Chiptune && Math.random() < 0.1) window.Chiptune.blip();
           requestAnimationFrame(tick);
@@ -607,6 +607,7 @@
       if (seq !== this._seq) { try { window.__onTvReveal && window.__onTvReveal(res); } catch (e) {} return; }
       // 2) settle: cash out (win) or bust (loss)
       const tier = res.won ? (res.tier || "normal") : "normal";
+      if (multEl) { multEl.style.color = ""; multEl.style.textShadow = ""; } // hand color back to the win/bust CSS class
       if (res.won) {
         L.classList.add("win");
         if (multEl) { multEl.classList.add("win"); multEl.textContent = res.targetX.toFixed(2) + "×"; }

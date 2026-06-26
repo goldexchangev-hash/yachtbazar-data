@@ -40,7 +40,14 @@
   const fx = [];
   const trail = [];
   let STARS = [], gridScroll = 0;
+  let shakeMag = 0, lastTier = 1; // impact shake + tier-crossing tracker
   const flame = new (FlameEmitterCtor())();
+  // danger color by tier: cyan (calm) → magenta → gold → red (critical)
+  function dangerColor(d) {
+    if (d < 0.33) return [57, 231, 255];
+    if (d < 0.66) { const k = (d - 0.33) / 0.33; return [lerp(57, 255, k) | 0, lerp(231, 77, k) | 0, lerp(255, 157, k) | 0]; }
+    const k = (d - 0.66) / 0.34; return [255, lerp(77, 40, k) | 0, lerp(157, 30, k) | 0];
+  }
 
   // ---- canvas sizing (to the element's CSS box, DPR-aware, crisp pixels) ----
   function resize() {
@@ -279,6 +286,15 @@
     g.addColorStop(0, "rgba(0,0,0,0)"); g.addColorStop(1, "rgba(0,0,0,0.55)");
     ctx.fillStyle = g; ctx.fillRect(0, 0, VW, VH);
   }
+  // edge glow that warms from cyan → red as the multiplier climbs (danger 0→1)
+  function drawDanger(d) {
+    const c = dangerColor(d);
+    ctx.save(); ctx.globalCompositeOperation = "lighter";
+    const g = ctx.createRadialGradient(VW / 2, VH * 0.55, VH * 0.22, VW / 2, VH * 0.55, VH * 0.8);
+    g.addColorStop(0, "rgba(0,0,0,0)"); g.addColorStop(0.6, "rgba(" + c[0] + "," + c[1] + "," + c[2] + "," + (d * 0.06).toFixed(3) + ")"); g.addColorStop(1, "rgba(" + c[0] + "," + c[1] + "," + c[2] + "," + (0.06 + d * 0.3).toFixed(3) + ")");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, VW, VH);
+    ctx.restore();
+  }
   function frame(now) {
     if (!running) return;
     // Keep the loop alive but skip all drawing when the canvas isn't on screen
@@ -290,14 +306,23 @@
     const m = Math.max(1, scene.mult), t = now / 1000;
     const speed = clamp(Math.log(m) * 0.35, 0, 2.2);
     const progress = clamp(Math.log(m) / Math.log(25), 0, 1);
+    const danger = clamp((m - 2) / 23, 0, 1); // 0 at 2x → 1 near 25x: drives shake/tint
+    const flying = scene.state === "flying";
+    // tier-crossing impulse: a little kick each whole-number multiplier you pass
+    const tier = Math.floor(m); if (flying && tier > lastTier) { shakeMag = Math.max(shakeMag, 3.5); } lastTier = tier;
+    shakeMag *= 0.86; if (shakeMag < 0.05) shakeMag = 0;
+    const sh = Math.max(flying ? danger * 5.5 : 0, shakeMag); // continuous tremble at high tiers + impacts
     const pos = rocketPath(progress);
     rocket.x = pos.x; rocket.y = pos.y;
     rocket.angle = lerp(-Math.PI * 0.2, -Math.PI * 0.42, progress);
     rocket.scale = lerp(3.0, 4.4, progress) * (VH / 800);
-    const thrust = scene.state === "flying" ? clamp(0.7 + speed * 0.5, 0.4, 1.4) + Math.sin(t * 30) * 0.05 : 0;
+    const thrust = flying ? clamp(0.7 + speed * 0.5, 0.4, 1.4) + Math.sin(t * 30) * 0.05 + danger * 0.4 : 0;
 
     ctx.clearRect(0, 0, VW, VH);
+    ctx.save();
+    if (sh > 0.1) ctx.translate((Math.random() - 0.5) * sh, (Math.random() - 0.5) * sh);
     drawBackground(t, speed);
+    if (danger > 0.02) drawDanger(danger); // edge glow that hots up cyan→red as you climb
     if (scene.state === "flying" || scene.state === "cashed") drawTrajectory();
     if (scene.state !== "crashed" && scene.state !== "idle") {
       const anchor = tailAnchor(rocket.x, rocket.y, rocket.angle, rocket.scale, Math.sin(t * 2.2) * 0.025 + Math.sin(t * 5.7) * 0.012);
@@ -306,6 +331,7 @@
     }
     for (let i = fx.length - 1; i >= 0; i--) { fx[i].update(dt); fx[i].render(); if (fx[i].dead) fx.splice(i, 1); }
     for (const f of fx) if (f.renderFlash) f.renderFlash();
+    ctx.restore();
     drawVignette();
     requestAnimationFrame(frame);
   }
@@ -323,9 +349,9 @@
     getMult() { return scene.mult; },
     setState(s) { scene.state = s; },
     state() { return scene.state; },
-    explode() { fx.push(new ExplosionFX(rocket.x, rocket.y)); },
-    cashout() { fx.push(new CashOutFX(rocket.x, rocket.y)); },
+    explode() { fx.push(new ExplosionFX(rocket.x, rocket.y)); shakeMag = 18; }, // hard BUST kick
+    cashout() { fx.push(new CashOutFX(rocket.x, rocket.y)); shakeMag = 6; },     // win pop
     rocketPos() { return { x: rocket.x, y: rocket.y }; },
-    reset() { fx.length = 0; trail.length = 0; flame.parts.length = 0; scene.mult = 1; scene.state = "idle"; },
+    reset() { fx.length = 0; trail.length = 0; flame.parts.length = 0; scene.mult = 1; scene.state = "idle"; shakeMag = 0; lastTier = 1; },
   };
 })(typeof window !== "undefined" ? window : this);
