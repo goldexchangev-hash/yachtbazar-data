@@ -1,7 +1,27 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v11.43**.
+Last updated at build **v11.44**.
+
+> **🆕 NOTE FOR CHATGPT (v11.44):** (1) **Music no longer auto-starts** after the
+> promo intro — `window.__onPromoEnded` no longer calls `startMusicAfterPromo`;
+> music plays ONLY when the user taps the Music button. (2) **Reef no longer hangs
+> on the loading screen after the promo.** `__onPromoEnded` now re-kicks
+> `ensureFishReady()` when `currentGame==="fish"`, and the load watchdog no longer
+> spends its retry budget while `TV._promoPlaying` (a long promo used to exhaust it,
+> leaving Reef stuck until a channel switch). (3) **Deposit/withdraw confirmation
+> modal** (`#xfer-modal`, `confirmTransfer()` in app.js) — every wallet↔credits
+> move now shows the exact $ + ETH and direction BEFORE the MetaMask popup.
+>
+> **⚠️ REAL-MONEY CREDITS BLOCKER:** The owner wants real-money credits for the
+> off-chain games (Blackjack, Reef, Royal Riches, Balloon Pop) via the generic
+> `blackjackBuyIn`/`settleBlackjack` lock-and-signed-settle mechanism. Those
+> functions EXIST in `contracts/CoinFlipBetting.sol` but are **NOT in the deployed
+> artifact** (`public/contract.js` ABI lacks them) — the live contract is the older
+> build. **This feature is blocked on the owner redeploying the updated contract**
+> (then update `contract.js` ABI+address, `fundHouse`, `setBlackjackSigner`, set
+> `HOUSE_SIGNER_KEY` in Render env). Until then blackjack/arcade games stay
+> play-money (blackjack seeds its server bank from the demo balance).
 
 > **🆕 NOTE FOR CHATGPT (v11.43):** **Reef Raiders** gameplay/feel fixes —
 > (1) **Shots never expire.** In `fishtable.js` `_frame()` bullet loop, the

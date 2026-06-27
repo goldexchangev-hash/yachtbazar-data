@@ -1388,6 +1388,30 @@
     return true;
   }
 
+  // A small "are you sure?" step before any wallet↔credits transfer, so the
+  // player always sees exactly how much is moving (and which way) BEFORE the
+  // MetaMask popup. Returns a Promise<boolean>.
+  let _xferResolve = null;
+  function confirmTransfer(o) {
+    return new Promise((resolve) => {
+      _xferResolve = resolve;
+      $("xfer-title").textContent = o.title;
+      $("xfer-sub").textContent = o.sub || "";
+      $("xfer-usd").textContent = o.usd;
+      $("xfer-eth").textContent = o.eth || "";
+      $("xfer-from").textContent = o.from;
+      $("xfer-to").textContent = o.to;
+      const cb = $("xfer-confirm"); if (cb) cb.textContent = o.confirmLabel || "✓ Confirm";
+      const nt = $("xfer-note"); if (nt) nt.textContent = o.note || "You'll still approve the transaction in your wallet on the next step.";
+      $("xfer-modal").classList.remove("hidden");
+    });
+  }
+  function closeXfer(result) {
+    const m = $("xfer-modal"); if (m) m.classList.add("hidden");
+    const r = _xferResolve; _xferResolve = null;
+    if (r) r(!!result);
+  }
+
   async function deposit() {
     if (!ready()) return;
     const s = $("deposit-input");
@@ -1399,6 +1423,14 @@
     let value = (+s.value >= +s.max) ? cap : usdToWei(v);
     if (value > cap) value = cap;
     if (value <= 0n) return toast("Not enough ETH to deposit after leaving gas. Top up your wallet first.", "err");
+    // Confirm the exact amount + direction before opening MetaMask.
+    const ethStr = (() => { try { return (+E.formatEther(value)).toFixed(4); } catch { return ethApprox(weiToUsd(value)); } })();
+    const ok = await confirmTransfer({
+      title: "Add game credits", sub: "Move money from your wallet into the game so you can play.",
+      usd: usd(weiToUsd(value)), eth: "≈ " + ethStr + " ETH", from: "Your wallet", to: "Game credits",
+      confirmLabel: "✓ Add " + usd(weiToUsd(value)),
+    });
+    if (!ok) return;
     const btn = $("deposit-btn");
     setBtnBusy(btn, "Depositing Funds…");
     try {
@@ -1421,12 +1453,20 @@
     delete btn.dataset.busy; btn.disabled = false; btn.classList.remove("is-busy");
   }
   // Withdraw the slider amount; full slider = withdrawAll (avoids dust).
-  function withdrawClick() {
+  async function withdrawClick() {
     if (!ready()) return;
     const s = $("withdraw-input");
     const v = s ? +s.value : 0, max = s ? (+s.max || 0) : 0;
     if (!(v > 0)) return toast("Slide to choose how much to withdraw", "err");
-    doWithdraw(v >= max ? null : usdToWei(v));
+    const all = v >= max;
+    const amtUsd = all ? (gameWei > 0n ? weiToUsd(gameWei) : v) : v;
+    const ok = await confirmTransfer({
+      title: "Cash out to wallet", sub: "Move credits out of the game and back into your wallet.",
+      usd: usd(amtUsd), eth: "≈ " + ethApprox(amtUsd) + " ETH", from: "Game credits", to: "Your wallet",
+      confirmLabel: all ? "✓ Cash out everything" : "✓ Cash out " + usd(amtUsd),
+    });
+    if (!ok) return;
+    doWithdraw(all ? null : usdToWei(v));
   }
   async function doWithdraw(weiAmtOrNull) {
     const btn = $("withdraw-btn");
@@ -2238,7 +2278,7 @@
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
       .then(() => loadScriptOnce("slots3d-engine.js?v=1100"))
-      .then(() => loadScriptOnce("slots3d.js?v=1143"))
+      .then(() => loadScriptOnce("slots3d.js?v=1144"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2280,8 +2320,8 @@
     if (window.FishTable) return Promise.resolve(true);
     if (fishLoadPromise) return fishLoadPromise;
     fishLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishtable-engine.js?v=1143"))
-      .then(() => loadScriptOnce("fishtable.js?v=1143"))
+      .then(() => loadScriptOnce("fishtable-engine.js?v=1144"))
+      .then(() => loadScriptOnce("fishtable.js?v=1144"))
       .then(() => true)
       .catch((e) => { fishLoadPromise = null; throw e; });
     return fishLoadPromise;
@@ -2323,12 +2363,17 @@
     let tries = 0;
     const settle = () => {
       if (currentGame !== "fish") return; // user navigated away — stop
+      const promo = !!(window.TV && TV._promoPlaying);
       const canvas = document.querySelector("#fish-stage canvas");
-      if (window.TV && !TV._promoPlaying) { try { TV.idle(); } catch (e) {} }
-      if (canvas && window.TV && TV._phase === "fish") return; // revealed — done
-      tries++;
-      if (!canvas && tries === 12 && kicked < 2) { kicked++; fishLoadPromise = null; boot(); } // loader stalled — retry
-      if (tries >= 44 && kicked >= 2 && !canvas) { toast("Couldn't load Reef Raiders — tap the channel again", "err"); return; }
+      if (window.TV && !promo) { try { TV.idle(); } catch (e) {} } // never fight the promo reveal
+      if (canvas && window.TV && TV._phase === "fish") return;     // revealed — done
+      // Don't spend the retry budget while the promo intro is still playing — it can
+      // run longer than the budget, which used to leave Reef stuck after the promo.
+      if (!promo) {
+        tries++;
+        if (!canvas && tries === 12 && kicked < 2) { kicked++; fishLoadPromise = null; boot(); } // loader stalled — retry
+        if (tries >= 44 && kicked >= 2 && !canvas) { toast("Couldn't load Reef Raiders — tap the channel again", "err"); return; }
+      }
       if (tries < 48) setTimeout(settle, 200);
     };
     settle();
@@ -2340,7 +2385,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1143"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1144"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -2771,7 +2816,7 @@
     const f = $("bj-frame");
     if (f && !f.src) {
       // No &bal= seed — the table starts from its own server default ($1,000), NOT the demo balance.
-      let src = "blackjack.html?tv=1&v=1143&guest=" + encodeURIComponent(bjGuestId());
+      let src = "blackjack.html?tv=1&v=1144&guest=" + encodeURIComponent(bjGuestId());
       if (bjPendingTable) { src += "&table=" + encodeURIComponent(bjPendingTable); bjPendingTable = null; }
       f.src = src; // loads the felt + scripts inside the TV
     }
@@ -4017,6 +4062,10 @@
     });
     $("deposit-btn").onclick = deposit;
     $("withdraw-btn").onclick = withdrawClick;
+    { const c = $("xfer-confirm"); if (c) c.onclick = () => closeXfer(true); }
+    { const c = $("xfer-cancel"); if (c) c.onclick = () => closeXfer(false); }
+    { const c = $("xfer-close"); if (c) c.onclick = () => closeXfer(false); }
+    { const m = $("xfer-modal"); if (m) m.onclick = (e) => { if (e.target === m) closeXfer(false); }; }
     { const wi = $("withdraw-input"); if (wi) wi.oninput = () => { withdrawTouched = true; setSliderUsd("withdraw-input"); updateWithdrawBtn(); }; }
     $("create-room-btn").onclick = createRoom;
     $("play-house-btn").onclick = playHouse;
@@ -4170,7 +4219,14 @@
 
     // ── Promo intro reel: autoplays (muted) ONCE on load, then fades to the game.
     //    The only control is the Replay button under the TV (plays back WITH sound). ──
-    window.__onPromoEnded = startMusicAfterPromo; // random track after the intro's first run
+    // Music NEVER auto-starts after the promo — it only plays when the user taps the
+    // Music button (the auto-start felt intrusive). We DO use the promo-end hook to
+    // re-assert the active channel's reveal: a game that lazy-loaded UNDER the promo
+    // (especially Reef Raiders) otherwise gets stuck on its loading screen, because
+    // _endPromo's single idle() can fire before the Pixi canvas finishes mounting.
+    window.__onPromoEnded = function () {
+      try { if (currentGame === "fish") ensureFishReady(); } catch (e) {}
+    };
     // The intro reel plays ONCE per deployed build, then is remembered — it only
     // replays after a NEW website push (the build tag changes), never on plain
     // refreshes or channel switches within the same build.

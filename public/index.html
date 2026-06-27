@@ -27,7 +27,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=1143" />
+    <link rel="stylesheet" href="styles.css?v=1144" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -37,13 +37,13 @@
     <!-- ───────────────────────── Header ───────────────────────── -->
     <header class="topbar">
       <button id="rail-toggle" class="rail-toggle" aria-label="Open menu" title="Menu">☰</button>
-      <span class="build-tag-m" id="build-tag-m" title="Live build version — confirms the deploy is up to date">v11.43</span>
+      <span class="build-tag-m" id="build-tag-m" title="Live build version — confirms the deploy is up to date">v11.44</span>
       <div class="brand">
         <span class="brand-tv">📺</span>
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v11.43</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v11.44</span>
       </div>
       <div class="topbar-right">
         <div class="tb-tools">
@@ -417,7 +417,7 @@
 
                 <!-- Promo intro reel — autoplays once (muted) on first load, then fades
                      to black and hands off to the game. Replay button under the TV. -->
-                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=1143"></video>
+                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=1144"></video>
 
                 <!-- Shown while a bet tx is being signed + mined (esp. slow on mobile) -->
                 <div id="tv-pending" class="tv-pending hidden">⏳ SENDING BET…<br />confirm in your wallet, then hold tight</div>
@@ -1366,6 +1366,27 @@
       </div>
     </div>
 
+    <!-- Confirm moving money between wallet and in-game credits -->
+    <div id="xfer-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Confirm transfer">
+      <div class="modal-card xfer-card">
+        <button id="xfer-close" class="modal-close" aria-label="Close">✕</button>
+        <h2 id="xfer-title">Add game credits</h2>
+        <p id="xfer-sub" class="muted xfer-sub">Move money from your wallet into the game so you can play.</p>
+        <div class="xfer-amount">
+          <strong id="xfer-usd">$0</strong>
+          <span id="xfer-eth" class="xfer-eth">≈ 0 ETH</span>
+        </div>
+        <div class="xfer-flow">
+          <div class="xfer-end"><span class="muted">From</span><strong id="xfer-from">Your wallet</strong></div>
+          <span class="xfer-arrow">→</span>
+          <div class="xfer-end"><span class="muted">To</span><strong id="xfer-to">Game credits</strong></div>
+        </div>
+        <button id="xfer-confirm" class="btn btn-primary btn-block">✓ Confirm</button>
+        <button id="xfer-cancel" class="btn btn-ghost btn-block">Cancel</button>
+        <p class="muted xfer-note" id="xfer-note">You'll still approve the transaction in your wallet on the next step.</p>
+      </div>
+    </div>
+
     <!-- Host approval of a raised bet proposed by a joiner -->
     <div id="nego-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Bet proposal">
       <div class="modal-card">
@@ -1414,17 +1435,17 @@
     </aside>
 
     <script defer src="vendor/ethers.umd.min.js"></script>
-    <script defer src="config.js?v=1143"></script>
-    <script defer src="contract.js?v=1143"></script>
-    <script defer src="chiptune.js?v=1143"></script>
-    <script defer src="scenes.js?v=1143"></script>
-    <script defer src="tv.js?v=1143"></script>
-    <script defer src="poker-engine.js?v=1143"></script>
-    <script defer src="poker-bots.js?v=1143"></script>
-    <script defer src="poker-ui.js?v=1143"></script>
-    <script defer src="crash-engine.js?v=1143"></script>
-    <script defer src="crash-render.js?v=1143"></script>
-    <script defer src="profile.js?v=1143"></script>
-    <script defer src="app.js?v=1143"></script>
+    <script defer src="config.js?v=1144"></script>
+    <script defer src="contract.js?v=1144"></script>
+    <script defer src="chiptune.js?v=1144"></script>
+    <script defer src="scenes.js?v=1144"></script>
+    <script defer src="tv.js?v=1144"></script>
+    <script defer src="poker-engine.js?v=1144"></script>
+    <script defer src="poker-bots.js?v=1144"></script>
+    <script defer src="poker-ui.js?v=1144"></script>
+    <script defer src="crash-engine.js?v=1144"></script>
+    <script defer src="crash-render.js?v=1144"></script>
+    <script defer src="profile.js?v=1144"></script>
+    <script defer src="app.js?v=1144"></script>
   </body>
 </html>

@@ -738,6 +738,19 @@ body.coin3d-on #coin-toss, body.coin3d-on #coin-shadow { display: none; }
 .modal-card { position: relative; max-width: 560px; width: 100%; max-height: 86vh; overflow-y: auto; background: var(--bg-2); border: 1px solid var(--panel-line); border-radius: 20px; padding: 26px; box-shadow: var(--shadow); }
 .modal-card h2 { margin: 0 0 14px; font-family: var(--display); font-size: 22px; }
 .modal-close { position: absolute; top: 14px; right: 14px; background: rgba(255, 255, 255, 0.08); border: none; color: var(--ink); width: 34px; height: 34px; border-radius: 50%; cursor: pointer; font-size: 15px; }
+/* wallet ↔ credits transfer confirmation */
+.xfer-card { max-width: 420px; text-align: center; }
+.xfer-sub { margin: 0 0 16px; }
+.xfer-amount { display: flex; flex-direction: column; gap: 2px; margin: 6px 0 16px; }
+.xfer-amount #xfer-usd { font-family: var(--display); font-size: 40px; line-height: 1; color: var(--ink); }
+.xfer-amount .xfer-eth { font-size: 14px; color: var(--muted); }
+.xfer-flow { display: flex; align-items: center; justify-content: center; gap: 14px; margin: 0 0 20px; padding: 14px; border: 1px solid var(--panel-line); border-radius: 14px; background: rgba(255,255,255,0.03); }
+.xfer-flow .xfer-end { display: flex; flex-direction: column; gap: 3px; min-width: 92px; }
+.xfer-flow .xfer-end .muted { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.xfer-flow .xfer-end strong { font-size: 15px; }
+.xfer-flow .xfer-arrow { font-size: 22px; color: var(--accent, #45f0a6); }
+.xfer-card .btn-block { width: 100%; margin-top: 8px; }
+.xfer-note { margin: 12px 0 0; font-size: 12px; }
 .help-steps { padding-left: 20px; display: flex; flex-direction: column; gap: 9px; line-height: 1.5; }
 .help-steps b { color: var(--cyan); }
 .help-foot { margin-top: 16px; font-size: 13px; line-height: 1.5; }
