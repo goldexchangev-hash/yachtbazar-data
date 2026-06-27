@@ -1,0 +1,48 @@
+<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Reef Raiders — preview</title>
+<style>
+  html,body{margin:0;background:#020912;font-family:Arial,sans-serif;color:#cfe2ff}
+  #wrap{width:960px;margin:12px auto}
+  #stage{position:relative;width:960px;height:600px;border-radius:14px;overflow:hidden;background:#020912}
+  #stage:fullscreen{width:100vw;height:100vh;border-radius:0}
+  .bar{display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap;margin-top:10px}
+  button{background:#123a5c;color:#9be8ff;border:1px solid #39e7ff;border-radius:8px;padding:8px 12px;font-weight:800;cursor:pointer}
+  button.on{background:#39e7ff;color:#041326}
+  #fs{background:#ffd23f;color:#041326;border-color:#ffd23f}
+  input[type=range]{width:160px}
+  .hint{opacity:.7;font-size:12px;text-align:center;margin-top:6px}
+</style></head>
+<body>
+<div id="wrap">
+  <div id="stage"></div>
+  <div class="bar">
+    <button id="fs">⛶ Fullscreen</button>
+    <label>Bet <input id="bet" type="range" min="1" max="20" step="1" value="1"></label>
+    <button id="pdn">– PWR</button><button id="pup">PWR +</button>
+    <button id="auto">🔥 Auto</button>
+    <button id="lock">🎯 Lock</button>
+    <button id="wheel">🎡 Wheel bonus</button>
+    <button id="frenzy">🌊 Frenzy bonus</button>
+  </div>
+  <div class="hint">Aim with mouse · click/hold to shoot · ↑/↓ power · Space autofire · L lock · the gold CRAB = Fortune Wheel, the pink CLAM = Feeding Frenzy</div>
+</div>
+<script src="vendor/pixi.min.js"></script>
+<script src="fishtable-engine.js"></script>
+<script src="fishtable.js"></script>
+<script>
+  const stage = document.getElementById('stage');
+  const els = { betSlider: document.getElementById('bet') };
+  const g = new FishTable({ mount: stage, els, width: 960, height: 600, ethUsd: 3400, initialBalance: 5000 });
+  g.setFullscreenTarget(stage);
+  window.__g = g;
+  g.setActive(true);
+  document.getElementById('fs').onclick = () => g.toggleFullscreen(stage);
+  document.getElementById('pup').onclick = () => g.setPower(g.power + 1);
+  document.getElementById('pdn').onclick = () => g.setPower(g.power - 1);
+  const ab = document.getElementById('auto'); ab.onclick = () => { g.toggleAuto(); ab.classList.toggle('on', g.auto); };
+  const lb = document.getElementById('lock'); lb.onclick = () => { g.toggleLock(); lb.classList.toggle('on', g.lock); };
+  document.getElementById('wheel').onclick = () => g._fortuneWheel();
+  document.getElementById('frenzy').onclick = () => g._startFrenzy(9);
+</script>
+</body></html>

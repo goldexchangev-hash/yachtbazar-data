@@ -38,7 +38,8 @@
     { id: 5, key: "squid",    name: "Squid",         mult: 16,  tier: "medium",  weight: 6,  r: 28, color: 0xff5d9e, accent: 0x6e0440 },
     { id: 6, key: "eel",      name: "Electric Eel",  mult: 20,  tier: "special", weight: 4,  r: 26, color: 0xfff15a, accent: 0x39e7ff, special: "chain" },
     { id: 7, key: "bomb",     name: "Bomb Fish",     mult: 14,  tier: "special", weight: 4,  r: 26, color: 0xff4d4d, accent: 0x2a0606, special: "bomb" },
-    { id: 8, key: "crab",     name: "Gold Crab",     mult: 28,  tier: "special", weight: 3,  r: 30, color: 0xffd23f, accent: 0x7a4a00, special: "gold" },
+    { id: 8, key: "crab",     name: "Gold Crab",     mult: 28,  tier: "special", weight: 3,  r: 30, color: 0xffd23f, accent: 0x7a4a00, special: "gold", bonus: "wheel" },
+    { id: 11, key: "clam",    name: "Treasure Clam", mult: 8,   tier: "special", weight: 2.6, r: 30, color: 0xff8ad0, accent: 0x6e1f56, special: "clam", bonus: "frenzy" },
     { id: 9, key: "shark",    name: "Gold Shark",    mult: 80,  tier: "boss",    weight: 1.3, r: 52, color: 0xcfe2ff, accent: 0x33507a, special: "boss" },
     { id: 10, key: "kraken",  name: "Kraken Boss",   mult: 160, tier: "boss",    weight: 0.5, r: 70, color: 0xb14dff, accent: 0x2b0b54, special: "boss" },
   ];
