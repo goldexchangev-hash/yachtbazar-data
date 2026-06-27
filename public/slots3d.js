@@ -595,7 +595,7 @@
     this._betThisSpin = bet; this._landedGrid = grid;
     this.state = "spinning"; this._spinning = true;
     this._setChase(true, 0.6, 0x39e7ff);
-    this._msg("Spinning…", "");
+    this._msg("", ""); // button already shows SPINNING… — no redundant line below it
     if (root.Chiptune && root.Chiptune.blip) try { root.Chiptune.blip(); } catch (e) {}
     this._launchReels(grid, false);
     this._renderSpinBtn();
@@ -673,7 +673,7 @@
 
     if (res.winUsd > 0 && this.onWin) { const profit = res.winUsd - bet; if (profit > 0) try { this.onWin({ profitUsd: profit, mult: res.winUsd / bet }); } catch (e) {} }
     if (res.scatter && res.scatter.count >= 3 && E.freeSpinsFor(res.scatter.count) > 0) { this._beginBonus(res.scatter.count); return; }
-    clearTimeout(this._idleT); this._idleT = setTimeout(() => { if (!this._spinning && !this._bonus) { this.state = "idle"; this._msg("Tap SPIN", ""); this._renderSpinBtn(); } }, 1600);
+    clearTimeout(this._idleT); this._idleT = setTimeout(() => { if (!this._spinning && !this._bonus) { this.state = "idle"; this._msg("", ""); this._renderSpinBtn(); } }, 1600);
     this._renderSpinBtn();
   };
 
@@ -699,7 +699,7 @@
   /* ---------- FREE SPINS bonus round ---------- */
   Slots3D.prototype._beginBonus = function (scatterCount) {
     const plan = E.deriveBonus(this.serverSeed, this.clientSeed, this.nonce, this._betThisSpin, scatterCount);
-    if (!plan.spins) { clearTimeout(this._idleT); this._idleT = setTimeout(() => { this.state = "idle"; this._msg("Tap SPIN", ""); this._renderSpinBtn(); }, 1600); return; }
+    if (!plan.spins) { clearTimeout(this._idleT); this._idleT = setTimeout(() => { this.state = "idle"; this._msg("", ""); this._renderSpinBtn(); }, 1600); return; }
     this._bonus = { plan: plan, i: 0, total: 0, count: scatterCount };
     this._renderSpinBtn();
     this._punch(0.6); this.flash.material.color.set(0xffd23f); this.flash.material.opacity = 0.65;

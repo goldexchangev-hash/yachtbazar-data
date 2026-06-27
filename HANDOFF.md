@@ -1,7 +1,24 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v11.38**.
+Last updated at build **v11.43**.
+
+> **🆕 NOTE FOR CHATGPT (v11.43):** **Reef Raiders** gameplay/feel fixes —
+> (1) **Shots never expire.** In `fishtable.js` `_frame()` bullet loop, the
+> `bounces/life` retirement caps were removed: a shot ricochets off all four
+> walls **forever until it catches a fish** (so a paid shot is never wasted).
+> Memory stays bounded by the 38-bullet FIFO cap in `_fire()`. (2) **Fish fill
+> the whole field.** `_spawnFish` now picks an entry edge: ~78% horizontal
+> swimmers spanning the **full height incl. the very bottom band** (`rand(30,
+> H-40)`), ~22% **vertical swimmers entering from the top/bottom edges** (new
+> `mode:"v"`, `vx/vy`, `baseX`). The `_frame` fish-move + despawn loop branches
+> on `f.mode`. Net effect: flat/horizontal/straight-up shots always meet a target.
+> (3) **HUD overlap fixed** — session readout moved to a centered top line
+> (`sesText` y=9), jackpot label/meter pushed below it (`jpText` y=30, bar y=52).
+> (4) **Loading watchdog** — `ensureFishReady()` in `app.js` now polls
+> `TV.idle()` every 200ms until `#fish-stage canvas` exists AND `TV._phase==="fish"`,
+> re-kicking the lazy loader up to 2× if the canvas never mounts (fixes the
+> "loads but keeps the loading screen on" hang).
 
 > **🆕 NOTE FOR CHATGPT (v11.37):** NEW GAME — **Reef Raiders** (CH **17**, key
 > **`fish`**), an arcade fish-shooter, is now LIVE (demo/play-money). Files:

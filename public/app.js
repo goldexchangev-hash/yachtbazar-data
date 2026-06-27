@@ -304,21 +304,28 @@
   let lastBetUsd = 0;
   try { lastBetUsd = +localStorage.getItem("ctf_last_bet") || 0; } catch {}
   function rememberBet(usdVal) { if (!(usdVal > 0)) return; lastBetUsd = usdVal; try { localStorage.setItem("ctf_last_bet", String(usdVal)); } catch {} }
+  // Spendable balance for the CURRENT game. The play-money games (Royal Riches,
+  // Balloon Pop, Reef Raiders) run on the demo/play balance — NOT the on-chain
+  // deposit — so "max" must clamp to that, never to the raw slider cap.
+  function spendableUsd() {
+    if (currentGame === "slots3d" || currentGame === "pressure" || currentGame === "fish") return demoUsd;
+    return gameWei > 0n ? weiToUsd(gameWei) : 0;
+  }
   function quickBet(id, mode) {
     const s = $(id); if (!s) return;
     const min = +s.min || 10, step = +s.step || 5;
-    // The true ceiling RIGHT NOW = the slider cap (house/table cover + maxBet) AND
-    // your in-game balance — you can't stake more than you've actually deposited.
-    let max = +s.max || 500;
-    const balUsd = gameWei > 0n ? Math.floor(weiToUsd(gameWei) / step) * step : max;
-    max = Math.min(max, balUsd);
+    // The true ceiling RIGHT NOW = the slider cap AND your spendable balance —
+    // you can't stake more than you actually have.
+    const cap = +s.max || 500;
+    const balUsd = spendableUsd();
+    let max = Math.max(min, Math.min(cap, Math.floor(balUsd / step) * step));
     const base = lastBetUsd > 0 ? lastBetUsd : (+s.value || min);
     let v = mode === "half" ? base / 2 : mode === "double" ? base * 2 : max;
     v = Math.round(v / step) * step;
     v = Math.max(min, Math.min(max, v));
     s.value = String(v);
     setSliderUsd(id);
-    try { s.dispatchEvent(new Event("input")); } catch (e) {} // let per-game handlers (dice readouts) refresh
+    try { s.dispatchEvent(new Event("input", { bubbles: true })); } catch (e) {} // refresh per-game handlers + the floating bet bar
     if (mode === "max") toast("Max you can bet now: " + usd(max), "ok");
     else if (mode === "double" && base * 2 > max) toast("Capped at the max available (" + usd(max) + ")", "ok");
     else if (mode === "half" && base / 2 < min) toast("Min bet is " + usd(min), "ok");
@@ -2231,7 +2238,7 @@
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
       .then(() => loadScriptOnce("slots3d-engine.js?v=1100"))
-      .then(() => loadScriptOnce("slots3d.js?v=1142"))
+      .then(() => loadScriptOnce("slots3d.js?v=1143"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2273,8 +2280,8 @@
     if (window.FishTable) return Promise.resolve(true);
     if (fishLoadPromise) return fishLoadPromise;
     fishLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishtable-engine.js?v=1142"))
-      .then(() => loadScriptOnce("fishtable.js?v=1142"))
+      .then(() => loadScriptOnce("fishtable-engine.js?v=1143"))
+      .then(() => loadScriptOnce("fishtable.js?v=1143"))
       .then(() => true)
       .catch((e) => { fishLoadPromise = null; throw e; });
     return fishLoadPromise;
@@ -2291,6 +2298,7 @@
         balance: el("fish-balance"), win: el("fish-win"), message: el("fish-message"),
         betSlider: el("fish-bet"), betVal: el("fish-bet-val"), cost: el("fish-cost"), power: el("fish-power"),
         powerUp: el("fish-pup"), powerDown: el("fish-pdn"), autoBtn: el("fish-auto"), lockBtn: el("fish-lock"), fsBtn: el("fish-fs"),
+        sesSpent: el("fish-ses-spent"), sesWon: el("fish-ses-won"), sesNet: el("fish-ses-net"),
       },
     });
     try { fishGame.setFullscreenTarget($("layer-fish")); } catch (e) {}
@@ -2300,17 +2308,30 @@
     return fishGame;
   }
   function ensureFishReady() {
-    ensureFishLoaded().then(() => {
+    let kicked = 0;
+    const boot = () => ensureFishLoaded().then(() => {
       const g = buildFish(); if (!g) return;
       g.setActive(true); g.setEthUsd(ethUsd);
       if (demoOn) { g.setBalance(demoUsd); } g.setEnabled(true); // play-money: always enabled (kept on wallet connect)
       try { if (g._sesSpent === 0 && g._sesWon === 0) g.newSession(); } catch (e) {} // fresh money-flow session on first entry
-      // Refresh the TV reveal a few times — the canvas mounts synchronously but a
-      // single idle() can race the lazy build and leave the LOADING screen stuck
-      // (the "have to refresh" bug). Re-poke it until the canvas is showing.
-      const refresh = () => { if (window.TV && currentGame === "fish" && !TV._promoPlaying) try { TV.idle(); } catch (e) {} };
-      refresh(); setTimeout(refresh, 120); setTimeout(refresh, 450); setTimeout(refresh, 1000);
-    }).catch(() => { fishLoadPromise = null; toast("Couldn't load Reef Raiders — tap the channel again", "err"); });
+    }).catch(() => { fishLoadPromise = null; });
+    boot();
+    // Watchdog: keep re-poking TV.idle() until the Pixi canvas is actually mounted AND
+    // the TV is showing the fish phase. The lazy build can race the first idle() and
+    // leave the LOADING layer stuck on (the "loads but keeps the loading screen" bug).
+    // If the canvas never appears, re-kick the loader a couple of times before giving up.
+    let tries = 0;
+    const settle = () => {
+      if (currentGame !== "fish") return; // user navigated away — stop
+      const canvas = document.querySelector("#fish-stage canvas");
+      if (window.TV && !TV._promoPlaying) { try { TV.idle(); } catch (e) {} }
+      if (canvas && window.TV && TV._phase === "fish") return; // revealed — done
+      tries++;
+      if (!canvas && tries === 12 && kicked < 2) { kicked++; fishLoadPromise = null; boot(); } // loader stalled — retry
+      if (tries >= 44 && kicked >= 2 && !canvas) { toast("Couldn't load Reef Raiders — tap the channel again", "err"); return; }
+      if (tries < 48) setTimeout(settle, 200);
+    };
+    settle();
   }
 
   // ── Coin Flip (CH 8): premium Three.js 3D coin. Lazy-loaded; the CSS coin is
@@ -2319,7 +2340,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1142"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1143"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -2750,7 +2771,7 @@
     const f = $("bj-frame");
     if (f && !f.src) {
       // No &bal= seed — the table starts from its own server default ($1,000), NOT the demo balance.
-      let src = "blackjack.html?tv=1&v=1142&guest=" + encodeURIComponent(bjGuestId());
+      let src = "blackjack.html?tv=1&v=1143&guest=" + encodeURIComponent(bjGuestId());
       if (bjPendingTable) { src += "&table=" + encodeURIComponent(bjPendingTable); bjPendingTable = null; }
       f.src = src; // loads the felt + scripts inside the TV
     }

@@ -255,9 +255,9 @@
     const mk = (size, fill, weight) => new PIXI.Text("", { fontFamily: "Bungee, Arial", fontSize: size, fontWeight: weight || "700", fill: fill, stroke: 0x041326, strokeThickness: size * 0.14 });
     // jackpot meter (top center)
     this.jpBar = new PIXI.Graphics(); this.hud.addChild(this.jpBar);
-    this.jpText = mk(16, 0xffd23f); this.jpText.anchor.set(0.5, 0); this.jpText.x = W / 2; this.jpText.y = 8; this.hud.addChild(this.jpText);
-    // session money-flow readout (top-left): makes the credits flow visible
-    this.sesText = mk(12, 0xbfe0ff); this.sesText.x = 12; this.sesText.y = 10; this.hud.addChild(this.sesText);
+    this.jpText = mk(16, 0xffd23f); this.jpText.anchor.set(0.5, 0); this.jpText.x = W / 2; this.jpText.y = 30; this.hud.addChild(this.jpText);
+    // session money-flow readout (top, own line above the meter): makes the credits flow visible
+    this.sesText = mk(12, 0xbfe0ff); this.sesText.anchor.set(0.5, 0); this.sesText.x = W / 2; this.sesText.y = 9; this.hud.addChild(this.sesText);
     // balance (bottom-left) + win (bottom-right)
     this.balText = mk(20, 0x9be8ff); this.balText.x = 14; this.balText.y = H - 30; this.hud.addChild(this.balText);
     this.winText = mk(20, 0x45f0a6); this.winText.anchor.set(1, 0); this.winText.x = W - 14; this.winText.y = H - 30; this.hud.addChild(this.winText);
@@ -280,19 +280,37 @@
   FishTable.prototype._spawnFish = function (forceType) {
     if (this.fish.length > 18) return;
     const def = forceType || this.engine.pickFish();
-    const fromLeft = Math.random() < 0.5, dir = fromLeft ? 1 : -1;
-    const y = rand(60, this.H - 120);
+    const slow = def.tier === "boss" ? 0.55 : 1;
+    // Choose an entry edge. Most fish swim horizontally but now span the FULL height
+    // (right down to the very bottom) so even flat/low shots meet a target. ~22% enter
+    // from the top or bottom edge and swim vertically across the field, so shots fired
+    // straight up — or skimming the floor — always have something to hit.
     const c = new PIXI.Container();
-    const sp = new PIXI.Sprite(this.tex.fish(def)); sp.anchor.set(0.46, 0.5); sp.scale.x = dir; c.addChild(sp);
-    // soft glow for specials/boss
+    const sp = new PIXI.Sprite(this.tex.fish(def)); sp.anchor.set(0.46, 0.5); c.addChild(sp);
     if (def.special) { const gl = new PIXI.Sprite(this.tex.glow(def.key, def.color, def.r * 5)); gl.anchor.set(0.5); gl.alpha = 0.5; gl.blendMode = PIXI.BLEND_MODES.ADD; c.addChildAt(gl, 0); }
-    // value label
     const lbl = new PIXI.Text("x" + def.mult, { fontFamily: "Bungee, Arial", fontSize: Math.max(12, def.r * 0.6), fontWeight: "700", fill: 0xffffff, stroke: 0x041326, strokeThickness: 3 });
     lbl.anchor.set(0.5); lbl.y = def.r * 1.05; lbl.alpha = 0.85; c.addChild(lbl);
-    c.x = fromLeft ? -def.r * 2 : this.W + def.r * 2; c.y = y;
+
+    const roll = Math.random();
+    let f;
+    if (roll < 0.78) {
+      // horizontal swimmer — full vertical span, including the very bottom band
+      const fromLeft = Math.random() < 0.5, dir = fromLeft ? 1 : -1;
+      const y = rand(30, this.H - 40);
+      sp.scale.x = dir;
+      c.x = fromLeft ? -def.r * 2 : this.W + def.r * 2; c.y = y;
+      f = { def, c, sp, mode: "h", dir, vx: dir * rand(40, 90) * slow, vy: 0, baseY: y, bobAmp: rand(6, 20), bobSpd: rand(0.6, 1.6), ph: rand(0, 6.28), r: def.r, alive: true, flinch: 0 };
+    } else {
+      // vertical swimmer — enters from the top or bottom edge, drifts sideways slightly
+      const fromTop = Math.random() < 0.5, vdir = fromTop ? 1 : -1;
+      const x = rand(48, this.W - 48);
+      sp.scale.x = 1;
+      c.x = x; c.y = fromTop ? -def.r * 2 : this.H + def.r * 2;
+      const drift = rand(-28, 28);
+      f = { def, c, sp, mode: "v", dir: drift >= 0 ? 1 : -1, vx: drift, vy: vdir * rand(45, 80) * slow, baseX: x, bobAmp: rand(6, 18), bobSpd: rand(0.6, 1.5), ph: rand(0, 6.28), r: def.r, alive: true, flinch: 0 };
+    }
     this.fishLayer.addChild(c);
-    const hp = def.tier === "boss" ? 1 : 1; // death is probabilistic, hp just gates flinch
-    this.fish.push({ def, c, sp, dir, vx: dir * rand(40, 90) * (def.tier === "boss" ? 0.55 : 1), baseY: y, bobAmp: rand(6, 20), bobSpd: rand(0.6, 1.6), ph: rand(0, 6.28), r: def.r, alive: true, flinch: 0 });
+    this.fish.push(f);
   };
 
   /* ---------- firing ---------- */
@@ -311,6 +329,8 @@
     const sc = 0.8 + this.power * 0.12; sp.scale.set(sc, sc * 1.7); // streak along travel
     this.bulletLayer.addChild(sp);
     const speed = 620 + this.power * 30;
+    // cap live bullets so the now-long-lived ricochets can't pile up
+    while (this.bullets.length > 38) { const old = this.bullets.shift(); this.bulletLayer.removeChild(old.s); old.s.destroy(); }
     this.bullets.push({ s: sp, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed, r: 7 * sc, col, hit: false, bounces: 0, life: 0 });
     // recoil + muzzle flash
     this._recoil = 8; this._muzzle(tipX, tipY, col);
@@ -353,10 +373,13 @@
     const C = root.Chiptune; if (C) try { if (fish.def.special === "boss" && C.jackpot) C.jackpot(); else if (fish.def.mult >= 20 && C.bigwin) C.bigwin(); else if (C.coin) C.coin(); } catch (e) {}
     // onWin (profit) callback for big catches
     if (this.onWin && payout >= this.cost() * 8) { try { this.onWin({ profitUsd: payout - this.cost(), mult: fish.def.mult }); } catch (e) {} }
-    // jackpot meter + roll
-    this._jackpot = clamp(this._jackpot + 0.012 * power, 0, 1);
-    const jp = this.engine.rollJackpot(power);
-    if (jp > 0) this._awardJackpot(jp);
+    // JACKPOT METER — fills as you catch (faster at higher power); when it FILLS,
+    // the jackpot fires. (Plus a rare surprise roll on any catch.)
+    if (!this._jpFx && !this._chest) {
+      this._jackpot = clamp(this._jackpot + 0.012 * power, 0, 1);
+      if (this._jackpot >= 1) { this._awardJackpot(300 + (Math.random() * 600 | 0)); } // meter full → JACKPOT! (resets the meter)
+      else { const jp = this.engine.rollJackpot(power); if (jp > 0) this._awardJackpot(jp); }
+    }
     // specials AoE
     if (!isSplash) {
       if (fish.def.special === "bomb") this._bombSplash(fish);
@@ -602,14 +625,24 @@
         if (k >= 1) { this.fishLayer.removeChild(f.c); f.c.destroy({ children: true }); this.fish.splice(i, 1); }
         continue;
       }
-      f.c.x += f.vx * dt;
-      f.c.y = f.baseY + Math.sin(this._t * f.bobSpd + f.ph) * f.bobAmp;
+      if (f.mode === "v") {
+        // vertical swimmer: travel up/down, drift sideways with a gentle bob around its lane
+        f.c.y += f.vy * dt;
+        f.baseX += f.vx * dt;
+        f.c.x = f.baseX + Math.sin(this._t * f.bobSpd + f.ph) * f.bobAmp;
+      } else {
+        f.c.x += f.vx * dt;
+        f.c.y = f.baseY + Math.sin(this._t * f.bobSpd + f.ph) * f.bobAmp;
+      }
       // swim wiggle (body squash + tail sway via rotation)
       f.sp.scale.y = 1 + Math.sin(this._t * 9 + f.ph) * 0.06;
       f.sp.rotation = Math.sin(this._t * 6 + f.ph) * 0.06 * f.dir;
       if (f.flinch > 0) { f.flinch -= dt; if (f.flinch <= 0) f.sp.tint = 0xffffff; }
-      // despawn off opposite edge
-      if ((f.dir > 0 && f.c.x > this.W + f.r * 2) || (f.dir < 0 && f.c.x < -f.r * 2)) { this.fishLayer.removeChild(f.c); f.c.destroy({ children: true }); this.fish.splice(i, 1); }
+      // despawn once fully off the far edge (horizontal: left/right; vertical: top/bottom)
+      const off = f.mode === "v"
+        ? (f.vy > 0 ? f.c.y > this.H + f.r * 2 : f.c.y < -f.r * 2)
+        : (f.dir > 0 ? f.c.x > this.W + f.r * 2 : f.c.x < -f.r * 2);
+      if (off) { this.fishLayer.removeChild(f.c); f.c.destroy({ children: true }); this.fish.splice(i, 1); }
     }
 
     // bullets — RICOCHET off the walls so shots rarely go to waste
@@ -621,12 +654,14 @@
       else if (b.s.x > this.W - b.r) { b.s.x = this.W - b.r; b.vx = -Math.abs(b.vx); bounced = true; }
       if (b.s.y < b.r) { b.s.y = b.r; b.vy = Math.abs(b.vy); bounced = true; }
       else if (b.s.y > this.H - b.r) { b.s.y = this.H - b.r; b.vy = -Math.abs(b.vy); bounced = true; }
-      if (bounced) { b.bounces++; b.s.rotation = Math.atan2(b.vy, b.vx) + Math.PI / 2; this._net(b.s.x, b.s.y, b.col); } // little spark on bounce
+      if (bounced) { b.bounces++; b.s.rotation = Math.atan2(b.vy, b.vx) + Math.PI / 2; } // keep ricocheting until it catches a fish
       let hitFish = null;
       for (const f of this.fish) { if (!f.alive) continue; const d = Math.hypot(b.s.x - f.c.x, b.s.y - f.c.y); if (d < f.r + b.r) { hitFish = f; break; } }
       if (hitFish) { this._resolveBulletFish(b, hitFish); }
-      // retire only when it hits a fish, runs out of bounces, or times out (never just for leaving the screen)
-      if (b.hit || b.bounces > 6 || b.life > 3.2) { this.bulletLayer.removeChild(b.s); b.s.destroy(); this.bullets.splice(i, 1); }
+      // A shot NEVER expires on its own — it ricochets forever until it catches a fish,
+      // so the player never feels a paid shot was wasted. (Memory stays bounded by the
+      // 38-bullet FIFO cap in _fire(); fish now fill the whole field so hits come fast.)
+      if (b.hit) { this.bulletLayer.removeChild(b.s); b.s.destroy(); this.bullets.splice(i, 1); }
     }
 
     // coins fly to balance HUD
@@ -692,13 +727,13 @@
 
   FishTable.prototype._drawJackpotMeter = function () {
     const g = this.jpBar, W = this.W; g.clear();
-    const bw = 220, bh = 12, x = W / 2 - bw / 2, y = 30;
+    const bw = 220, bh = 12, x = W / 2 - bw / 2, y = 52;
     const frenzy = this._frenzy > 0;
     g.beginFill(0x041326, 0.7); g.drawRoundedRect(x - 3, y - 3, bw + 6, bh + 6, 6); g.endFill();
     g.beginFill(0x0c2840); g.drawRoundedRect(x, y, bw, bh, 5); g.endFill();
     const frac = frenzy ? (this._frenzy / this._frenzyMax) : this._jackpot;
     g.beginFill(frenzy ? 0x45f0a6 : 0xffd23f); g.drawRoundedRect(x, y, bw * frac, bh, 5); g.endFill();
-    this.jpText.text = frenzy ? ("🌊 FREE-FIRE FRENZY  " + this._frenzy.toFixed(1) + "s  +$" + this._frenzyWon.toFixed(0)) : "★ JACKPOT METER ★";
+    this.jpText.text = frenzy ? ("🌊 FREE-FIRE FRENZY  " + this._frenzy.toFixed(1) + "s  +$" + this._frenzyWon.toFixed(0)) : ("★ JACKPOT  " + Math.floor(this._jackpot * 100) + "%  — fill to win ★");
   };
 
   /* ---------- aim / input ---------- */
@@ -712,7 +747,12 @@
   FishTable.prototype._pointAt = function (gx, gy) {
     const r = this.app.view.getBoundingClientRect();
     const x = (gx - r.left) / r.width * this.W, y = (gy - r.top) / r.height * this.H;
-    if (!this.lock) this._aim = Math.atan2(y - this.cannon.y, x - this.cannon.x);
+    if (this.lock) return;
+    let dx = x - this.cannon.x, dy = y - this.cannon.y;
+    if (dy > -40) dy = -40;                                   // never aim flat or downward — always up into the field
+    let a = Math.atan2(dy, dx);                               // dy<0 ⇒ a in (-π, 0) = upper hemisphere
+    a = Math.max(-(Math.PI - 0.12), Math.min(-0.12, a));      // keep it ~7° off perfectly horizontal (no stuck shots)
+    this._aim = a;
   };
 
   FishTable.prototype._wire = function () {
@@ -754,7 +794,7 @@
     if (e.win) e.win.textContent = this._usd(this._won);
     if (e.sesSpent) e.sesSpent.textContent = this._usd(this._sesSpent);
     if (e.sesWon) e.sesWon.textContent = this._usd(this._sesWon);
-    if (e.sesNet) { const n = Math.round((this._sesWon - this._sesSpent) * 100) / 100; e.sesNet.textContent = (n >= 0 ? "+" : "−") + this._usd(Math.abs(n)); }
+    if (e.sesNet) { const n = Math.round((this._sesWon - this._sesSpent) * 100) / 100; e.sesNet.textContent = (n >= 0 ? "+" : "−") + this._usd(Math.abs(n)); e.sesNet.classList.toggle("up", n >= 0); e.sesNet.classList.toggle("down", n < 0); }
   };
   // Start a fresh money-flow session (called on buy-in / entering the channel).
   FishTable.prototype.newSession = function (buyIn) { this._sesSpent = 0; this._sesWon = 0; this._sesBuyIn = +buyIn || 0; this._renderHud(); };
