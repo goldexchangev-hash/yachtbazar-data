@@ -1,7 +1,17 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v11.50**.
+Last updated at build **v11.51**.
+
+> **NOTE FOR CLAUDE/CHATGPT (v11.51):** Reverted the CH-15 slot ART back to the ORIGINAL
+> **Gem Vault** at the owner's request. v11.50 ("Restore Gem Vault channel") re-enabled the
+> channel + renamed it to "Gem Vault" but kept the **Royal Riches renderer** (`slots3d.js` =
+> gold vault-dials / ruby cherries / emerald grapes / amethyst WILD), so the owner still saw
+> the wrong art. Now `public/slots3d.js` is restored to the pre-Royal-Riches commit
+> `f1945b4` (flat neon symbols: cherry/bell/star/7/BAR/diamond/WILD/vault) and the emoji is
+> back to 💎. Channel id (15), key (`slots3d`), and the engine (`slots3d-engine.js`) are
+> unchanged. The Royal Riches renderer is preserved in git history (`c2c6b31`..`180d11d`) if
+> it's ever wanted again. **Do NOT swap this back to Royal Riches without owner approval.**
 
 > **📒 PER-GAME LIVING SPECS:** Detailed, always-current handoff docs live alongside this
 > file. **`REEF-RAIDERS.md`** is the full spec for the Reef Raiders fish-shooter (CH 17) —
