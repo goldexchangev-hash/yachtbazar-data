@@ -1,7 +1,15 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v11.44**.
+Last updated at build **v11.45**.
+
+> **📒 PER-GAME LIVING SPECS:** Detailed, always-current handoff docs live alongside this
+> file. **`REEF-RAIDERS.md`** is the full spec for the Reef Raiders fish-shooter (CH 17) —
+> read it before touching that game. Its **§0 "House rules for ANY AI"** applies to the
+> WHOLE site: after every change, update the relevant doc + Changelog, bump the build
+> version, leave a note for the other AI, protect/verify the house edge, and test before
+> pushing. If you do non-trivial work on a game that has no spec file yet, create one in the
+> same format and link it here.
 
 > **🆕 NOTE FOR CHATGPT (v11.44):** (1) **Music no longer auto-starts** after the
 > promo intro — `window.__onPromoEnded` no longer calls `startMusicAfterPromo`;
