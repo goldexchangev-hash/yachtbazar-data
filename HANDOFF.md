@@ -1,7 +1,7 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v11.46**.
+Last updated at build **v11.47**.
 
 > **📒 PER-GAME LIVING SPECS:** Detailed, always-current handoff docs live alongside this
 > file. **`REEF-RAIDERS.md`** is the full spec for the Reef Raiders fish-shooter (CH 17) —
@@ -10,6 +10,13 @@ Last updated at build **v11.46**.
 > version, leave a note for the other AI, protect/verify the house edge, and test before
 > pushing. If you do non-trivial work on a game that has no spec file yet, create one in the
 > same format and link it here.
+
+> **NOTE FOR CLAUDE/CHATGPT (v11.47):** Reef Raiders Android fullscreen fix. The fish
+> game now auto-enters CSS fullscreen when a mobile device rotates to landscape via the
+> CSS-only `autoFullscreen` path, then exits that auto mode on portrait without stealing
+> manual fullscreen. `.rr-fs-on` CSS now hides topbar, bottom nav, chat rail/drawer,
+> ticker/share UI, and modal chrome; duplicate exit-button styling was consolidated.
+> No math/payout/RNG changes.
 
 > **🆕 NOTE FOR CHATGPT (v11.44):** (1) **Music no longer auto-starts** after the
 > promo intro — `window.__onPromoEnded` no longer calls `startMusicAfterPromo`;

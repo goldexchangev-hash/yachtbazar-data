@@ -847,10 +847,27 @@
   // pins the layer to the whole viewport (works everywhere), AND additionally
   // request the real API where supported (desktop/Android) for browser-chrome hiding.
   FishTable.prototype.isFullscreen = function () { const t = this._fsTarget || this.mount; return !!(document.fullscreenElement || document.webkitFullscreenElement || (t && t.classList && t.classList.contains("rr-fs"))); };
+  FishTable.prototype.enterFullscreen = function (el, opts) {
+    const target = el || this._fsTarget || this.mount || this.app.view;
+    opts = opts || {};
+    if (!target || !target.classList) return;
+    if (!this._fsHome) this._fsHome = { parent: target.parentNode, next: target.nextSibling };
+    if (target.parentNode !== document.body) document.body.appendChild(target);
+    target.classList.add("rr-fs");
+    document.documentElement.classList.add("rr-fs-on");
+    document.body.classList.add("rr-fs-on");
+    this._fsAuto = !!opts.auto;
+    if (!opts.skipNative) {
+      try { const req = target.requestFullscreen || target.webkitRequestFullscreen || target.webkitRequestFullScreen || target.msRequestFullscreen; if (req) req.call(target); } catch (e) {}
+    }
+    if (this.els.fsBtn) this.els.fsBtn.classList.add("on");
+  };
   FishTable.prototype.toggleFullscreen = function (el) {
     const target = el || this._fsTarget || this.mount || this.app.view;
     const turningOn = !(target.classList && target.classList.contains("rr-fs"));
     if (turningOn) {
+      this.enterFullscreen(target, { auto: false });
+      return;
       // REPARENT the game layer to <body> so it escapes the TV's stacking context.
       // Then a single CSS rule (`body.rr-fs-on > *:not(#layer-fish){display:none}`)
       // hides EVERYTHING else — top bar, bottom nav, the landscape side menu, the ETH
@@ -870,10 +887,21 @@
     target = target || this._fsTarget || this.mount; if (!target) return;
     if (!target.classList || !target.classList.contains("rr-fs")) return; // not in fullscreen
     target.classList.remove("rr-fs");
+    document.documentElement.classList.remove("rr-fs-on");
     document.body.classList.remove("rr-fs-on");
+    this._fsAuto = false;
     if (this._fsHome && this._fsHome.parent) { try { this._fsHome.parent.insertBefore(target, this._fsHome.next || null); } catch (e) {} this._fsHome = null; }
     try { if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen(); else if (document.webkitFullscreenElement && document.webkitExitFullscreen) document.webkitExitFullscreen(); } catch (e) {}
     if (this.els.fsBtn) this.els.fsBtn.classList.remove("on");
+  };
+  FishTable.prototype.exitFullscreen = function () { this._fsExit(this._fsTarget || this.mount); };
+  FishTable.prototype.autoFullscreen = function (on, el) {
+    const target = el || this._fsTarget || this.mount || this.app.view;
+    if (on) {
+      if (!this.isFullscreen()) this.enterFullscreen(target, { auto: true, skipNative: true });
+    } else if (this._fsAuto) {
+      this._fsExit(target);
+    }
   };
   FishTable.prototype.setFullscreenTarget = function (el) {
     this._fsTarget = el;

@@ -5,7 +5,7 @@
 > **update it with every change** so it never goes stale. Keep the Changelog at the
 > bottom current and bump the "Last updated" build below.
 
-**Last updated: build v11.46.** Live at https://tv-crypto-flip.onrender.com (Render
+**Last updated: build v11.47.** Live at https://tv-crypto-flip.onrender.com (Render
 auto-deploys the `claude/ethereum-betting-game-vrf-2dq50k` branch on push).
 
 ---
@@ -202,6 +202,11 @@ resets it (called on first channel entry).
   fullscreen, the ONLY rendered things are `#layer-fish` and `#fish-fs-exit`.
 - **Aspect:** `#layer-fish.rr-fs .fish-stage canvas { object-fit: contain }` so the 3:2
   render is letterboxed, not stretched. Rotate the phone to landscape to fill the screen.
+- **Android tilt-to-fill:** `app.js` listens for mobile orientation/resize events. When the
+  current game is Reef and the phone is landscape, it calls `fishGame.autoFullscreen(true,
+  #layer-fish)`. That path uses CSS fullscreen only (`skipNative`) because browsers require
+  a user gesture for the real Fullscreen API. Rotating back to portrait exits only if the
+  tilt handler opened fullscreen (`_fsAuto`), so manual fullscreen is not stolen.
 - **Exit:** `#fish-fs-exit` ("✕ Exit fullscreen") lives INSIDE `#layer-fish` (so it moves
   with the reparent and stays clickable) — big, `position:fixed`, max z-index, shown only
   in `.rr-fs`. The dock fullscreen button and this exit button both call `toggleFullscreen`.
@@ -293,6 +298,12 @@ caps live in the renderer, so for a full check also reason about those (see §4)
 ---
 
 ## Changelog (newest first)
+- **v11.47** - Android fullscreen/tilt fix. Reef now auto-enters CSS fullscreen when a
+  mobile device rotates to landscape, exits that auto mode on portrait, and keeps manual
+  fullscreen behavior unchanged. Tightened `.rr-fs-on` CSS to hide the topbar, bottom nav,
+  chat tab/drawer, rail, ticker/share UI, and modal chrome; fixed the duplicate
+  `#fish-fs-exit` rule so the exit button stays fixed at max z-index. No math/payout/RNG
+  changes.
 
 - **v11.46** — Bug-hunt pass (auto-fire stuck / not deducting). ROOT CAUSE: the Frenzy
   winnings cap set `_frenzy = 0.0001`, which re-pinned every frame so Frenzy never ended →

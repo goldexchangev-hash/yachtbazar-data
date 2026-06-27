@@ -2320,8 +2320,8 @@
     if (window.FishTable) return Promise.resolve(true);
     if (fishLoadPromise) return fishLoadPromise;
     fishLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishtable-engine.js?v=1146"))
-      .then(() => loadScriptOnce("fishtable.js?v=1146"))
+      .then(() => loadScriptOnce("fishtable-engine.js?v=1147"))
+      .then(() => loadScriptOnce("fishtable.js?v=1147"))
       .then(() => true)
       .catch((e) => { fishLoadPromise = null; throw e; });
     return fishLoadPromise;
@@ -2344,8 +2344,23 @@
     try { fishGame.setFullscreenTarget($("layer-fish")); } catch (e) {}
     { const fb = $("fish-fs"); if (fb) fb.addEventListener("click", () => { try { fishGame.toggleFullscreen($("layer-fish")); } catch (e) {} }); }
     { const fx = $("fish-fs-exit"); if (fx) fx.addEventListener("click", () => { try { fishGame.toggleFullscreen($("layer-fish")); } catch (e) {} }); }
+    setupFishTiltFullscreen();
     try { window.__fish = fishGame; } catch (e) {} // debug/support handle
     return fishGame;
+  }
+  function setupFishTiltFullscreen() {
+    if (setupFishTiltFullscreen.done) return;
+    setupFishTiltFullscreen.done = true;
+    const isMobile = () => /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (window.matchMedia && window.matchMedia("(max-width: 900px)").matches);
+    const isLandscape = () => window.matchMedia ? window.matchMedia("(orientation: landscape)").matches : window.innerWidth > window.innerHeight;
+    const sync = () => {
+      if (!fishGame || currentGame !== "fish" || !isMobile()) return;
+      try { fishGame.autoFullscreen(isLandscape(), $("layer-fish")); } catch (e) {}
+    };
+    window.addEventListener("orientationchange", () => setTimeout(sync, 180), { passive: true });
+    window.addEventListener("resize", () => setTimeout(sync, 80), { passive: true });
+    document.addEventListener("visibilitychange", sync);
+    setTimeout(sync, 0);
   }
   function ensureFishReady() {
     let kicked = 0;
@@ -2354,6 +2369,7 @@
       g.setActive(true); g.setEthUsd(ethUsd);
       if (demoOn) { g.setBalance(demoUsd); } g.setEnabled(true); // play-money: always enabled (kept on wallet connect)
       try { if (g._sesSpent === 0 && g._sesWon === 0) g.newSession(); } catch (e) {} // fresh money-flow session on first entry
+      setupFishTiltFullscreen();
     }).catch(() => { fishLoadPromise = null; });
     boot();
     // Watchdog: keep re-poking TV.idle() until the Pixi canvas is actually mounted AND

@@ -2222,13 +2222,24 @@ body.demo-mode #bankroll { display: none !important; }
    letterboxes it; rotating to landscape (turn the phone) then fills the screen. */
 #layer-fish.rr-fs .fish-stage canvas { object-fit: contain; }
 /* fullscreen: CSS-pinned (works on iOS too) — fills the whole viewport */
-#layer-fish.rr-fs { position: fixed; inset: 0; width: 100vw; height: 100dvh; z-index: 99999; background: #041326; }
+#layer-fish.rr-fs { display: block !important; position: fixed !important; inset: 0 !important; width: 100vw !important; height: 100dvh !important; z-index: 2147483646 !important; background: #041326; }
 /* Reef fullscreen: toggleFullscreen() REPARENTS #layer-fish to be a direct child of
    <body>, so this single rule hides ALL other page chrome (top bar, bottom nav, the
    landscape side menu, the ETH ticker, the Share-win button, modals, everything) in
    every layout/orientation. The game layer is the only thing left visible. */
+html.rr-fs-on, body.rr-fs-on { width: 100vw !important; height: 100dvh !important; overflow: hidden !important; overscroll-behavior: none !important; background: #041326 !important; }
 body.rr-fs-on > *:not(#layer-fish) { display: none !important; }
-body.rr-fs-on { overflow: hidden !important; }
+body.rr-fs-on .topbar,
+body.rr-fs-on .bottom-nav,
+body.rr-fs-on .chat-tab,
+body.rr-fs-on .channels,
+body.rr-fs-on .ticker,
+body.rr-fs-on .share-win-btn,
+body.rr-fs-on #chat-drawer,
+body.rr-fs-on #xfer-modal,
+body.rr-fs-on #help-modal { display: none !important; visibility: hidden !important; pointer-events: none !important; }
+body.rr-fs-on #layer-fish,
+body.rr-fs-on #layer-fish * { visibility: visible !important; }
 /* The "back to normal view" button — large, fixed, always on top of the game. */
 #layer-fish.rr-fs .fish-fs-exit {
   display: block; position: fixed;
@@ -2240,7 +2251,7 @@ body.rr-fs-on { overflow: hidden !important; }
 }
 #layer-fish:fullscreen, #layer-fish:-webkit-full-screen { width: 100vw; height: 100vh; background: #041326; }
 .fish-fs-exit { display: none; }
-#layer-fish.rr-fs .fish-fs-exit { display: block; position: absolute; top: max(10px, env(safe-area-inset-top)); right: 12px; z-index: 100000; background: rgba(4,19,38,.72); color: #fff; border: 1px solid rgba(255,255,255,.4); border-radius: 10px; padding: 9px 14px; font-weight: 800; cursor: pointer; }
+#layer-fish.rr-fs .fish-fs-exit { display: block; position: fixed; top: max(10px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); z-index: 2147483647; background: rgba(4,19,38,.82); color: #fff; border: 1px solid rgba(255,255,255,.5); border-radius: 10px; padding: 9px 14px; font-weight: 800; cursor: pointer; }
 .fish-dock { display: flex; flex-direction: column; gap: 8px; }
 .fish-betrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .fish-cost { font-weight: 800; color: var(--s-gold, #ffd23f); }
