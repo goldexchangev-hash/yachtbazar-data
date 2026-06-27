@@ -128,6 +128,13 @@
   TexFactory.prototype.ring = function () {
     return this._bake("ring", 64, 64, (g) => { g.lineStyle(6, 0xffffff, 1); g.drawCircle(32, 32, 26); });
   };
+  // rotating god-ray burst for the jackpot takeover
+  TexFactory.prototype.rays = function () {
+    return this._bake("rays", 600, 600, (g) => {
+      const c = 300, N = 18;
+      for (let i = 0; i < N; i++) { const a = (i / N) * Math.PI * 2; g.beginFill(0xffe89a, i % 2 ? 0.2 : 0.1); g.moveTo(c, c); g.lineTo(c + Math.cos(a - 0.05) * 300, c + Math.sin(a - 0.05) * 300); g.lineTo(c + Math.cos(a + 0.05) * 300, c + Math.sin(a + 0.05) * 300); g.closePath(); g.endFill(); }
+    });
+  };
   // an actual catch-net: radial spokes crossed by concentric arcs
   TexFactory.prototype.net = function () {
     return this._bake("net", 100, 100, (g) => {
@@ -154,7 +161,7 @@
 
     this.fish = []; this.bullets = []; this.coins = []; this.bubbles = []; this.fx = [];
     this._spawnT = 0; this._fireCd = 0; this._t = 0; this._shake = 0; this._jackpot = 0; this._won = 0; this._combo = 0; this._comboT = 0;
-    this._frenzy = 0; this._frenzyMax = 0; this._frenzyWon = 0; this._chest = null;
+    this._frenzy = 0; this._frenzyMax = 0; this._frenzyWon = 0; this._chest = null; this._jpFx = null;
     this._aim = -Math.PI / 2; this._barrelAng = -Math.PI / 2;
 
     this._initPixi();
@@ -374,12 +381,53 @@
   };
   FishTable.prototype._awardJackpot = function (jpMult) {
     const amt = Math.round(jpMult * this.unitBet * 100) / 100;
-    this.balance = Math.round((this.balance + amt) * 100) / 100; this._save(); this._renderHud();
-    this._jackpot = 0; this._shake = Math.max(this._shake, 22);
-    this._flashBanner("💰 JACKPOT!", "+$" + amt.toFixed(2), 0xffd23f);
-    for (let i = 0; i < 80; i++) this._spawnCoin(this.W / 2, this.H * 0.4);
-    const C = root.Chiptune; if (C && C.jackpot) try { C.jackpot(); } catch (e) {}
+    this.balance = Math.round((this.balance + amt) * 100) / 100; this._won = amt; this._save(); this._renderHud();
+    this._jackpot = 0;
+    this._startJackpotShow(amt);
     if (this.onWin) try { this.onWin({ profitUsd: amt, mult: jpMult, bonus: true }); } catch (e) {}
+  };
+  // ── BIG JACKPOT SPECTACLE: a multi-second screen takeover — rotating god-rays,
+  //    a full-screen coin downpour, slam-in banner, count-up, flashes + shakes. ──
+  FishTable.prototype._startJackpotShow = function (amt) {
+    if (this._jpFx) return;
+    const W = this.W, H = this.H;
+    const cont = new PIXI.Container(); this.hud.addChild(cont);
+    const dim = new PIXI.Graphics(); dim.beginFill(0x06122a, 0.5); dim.drawRect(0, 0, W, H); dim.endFill(); cont.addChild(dim);
+    const rays = new PIXI.Sprite(this.tex.rays()); rays.anchor.set(0.5); rays.x = W / 2; rays.y = H * 0.4; rays.blendMode = PIXI.BLEND_MODES.ADD; rays.alpha = 0; cont.addChild(rays);
+    const rays2 = new PIXI.Sprite(this.tex.rays()); rays2.anchor.set(0.5); rays2.x = W / 2; rays2.y = H * 0.4; rays2.blendMode = PIXI.BLEND_MODES.ADD; rays2.alpha = 0; rays2.scale.set(1.5); cont.addChild(rays2);
+    const halo = new PIXI.Sprite(this.tex.glow("jp", 0xffe89a, 520)); halo.anchor.set(0.5); halo.x = W / 2; halo.y = H * 0.4; halo.blendMode = PIXI.BLEND_MODES.ADD; halo.alpha = 0; cont.addChild(halo);
+    const big = new PIXI.Text("💰 JACKPOT! 💰", { fontFamily: "Bungee, Arial", fontSize: Math.min(56, W * 0.07), fontWeight: "700", fill: 0xffd23f, stroke: 0x5e3d12, strokeThickness: 9 }); big.anchor.set(0.5); big.x = W / 2; big.y = H * 0.34; big.alpha = 0; cont.addChild(big);
+    const amtT = new PIXI.Text("$0.00", { fontFamily: "Bungee, Arial", fontSize: Math.min(50, W * 0.06), fontWeight: "700", fill: 0xfff3c0, stroke: 0x7a4a00, strokeThickness: 8 }); amtT.anchor.set(0.5); amtT.x = W / 2; amtT.y = H * 0.5; cont.addChild(amtT);
+    this._jpFx = { cont, rays, rays2, halo, big, amtT, t: 0, dur: 6.5, amt, shown: 0, coinT: 0, flashAcc: 0 };
+    const C = root.Chiptune; if (C && C.jackpot) try { C.jackpot(); } catch (e) {}
+  };
+  FishTable.prototype._updateJackpotShow = function (dt) {
+    const j = this._jpFx; if (!j) return; j.t += dt;
+    const inK = Math.min(1, j.t / 0.5), outK = j.t > j.dur - 0.9 ? Math.max(0, (j.dur - j.t) / 0.9) : 1;
+    j.rays.rotation += dt * 0.5; j.rays2.rotation -= dt * 0.36;
+    j.rays.alpha = 0.55 * inK * outK * (0.7 + 0.3 * Math.sin(j.t * 6));
+    j.rays2.alpha = 0.34 * inK * outK * (0.7 + 0.3 * Math.cos(j.t * 5));
+    j.halo.alpha = 0.5 * inK * outK; j.halo.scale.set(1 + 0.15 * Math.sin(j.t * 3));
+    // banner slam-in (easeOutBack) + color cycle + gentle bob
+    const sk = Math.min(1, j.t / 0.34), eb = 1 + 2.70158 * Math.pow(sk - 1, 3) + 1.70158 * Math.pow(sk - 1, 2);
+    j.big.scale.set(2.5 + (1 - 2.5) * eb);
+    j.big.alpha = inK * outK; j.big.y = this.H * 0.34 + Math.sin(j.t * 2.5) * 6;
+    j.big.style.fill = (Math.sin(j.t * 9) > 0) ? 0xfff3c0 : 0xffd23f;
+    j.amtT.alpha = outK;
+    // count up the amount, then keep it punchy
+    const ck = Math.min(1, j.t / 2.6); j.shown = j.amt * (1 - Math.pow(1 - ck, 3)); j.amtT.text = this._usd(j.shown);
+    j.amtT.scale.set(1 + 0.09 * Math.abs(Math.sin(j.t * 9)));
+    // full-screen coin downpour for most of the show
+    if (j.t < j.dur - 1.0) { j.coinT -= dt; if (j.coinT <= 0) { j.coinT = 0.028; const n = 2 + (Math.random() * 3 | 0); for (let i = 0; i < n; i++) this._rainCoin(); } }
+    // repeated flashes + shake kicks ~3/s
+    j.flashAcc += dt; if (j.flashAcc >= 0.33) { j.flashAcc = 0; this._screenFlash(0xffe89a, 0.28); this._shake = Math.max(this._shake || 0, 11); const C = root.Chiptune; if (C && C.coin) try { C.coin(); } catch (e) {} }
+    j.cont.alpha = outK;
+    if (j.t >= j.dur) { this.hud.removeChild(j.cont); j.cont.destroy({ children: true }); this._jpFx = null; }
+  };
+  // a coin that pours from the top of the screen and falls (the jackpot downpour)
+  FishTable.prototype._rainCoin = function () {
+    const s = new PIXI.Sprite(this.tex.coin()); s.anchor.set(0.5); s.x = rand(0, this.W); s.y = -20; const sc = rand(0.6, 1.3); s.scale.set(sc); this.fxLayer.addChild(s);
+    this.coins.push({ s, vx: rand(-30, 30), vy: rand(150, 340), t: 0, life: rand(1.7, 2.8), rain: true, sc });
   };
 
   /* ---------- BONUS ROUND 1: TREASURE CHEST (Gold Crab) ----------
@@ -516,10 +564,11 @@
     this._t += dt;
     // bonus rounds take over
     if (this._chest) this._updateChest(dt);
+    if (this._jpFx) this._updateJackpotShow(dt);
     if (this._frenzy > 0) this._updateFrenzy(dt);
 
-    // spawn cadence (suspended during the treasure chest)
-    if (!this._chest) {
+    // spawn cadence (suspended during the treasure chest / jackpot show)
+    if (!this._chest && !this._jpFx) {
       this._spawnT -= dt;
       if (this._spawnT <= 0) {
         this._spawnT = this._frenzy > 0 ? rand(0.15, 0.4) : rand(0.5, 1.3);
@@ -532,7 +581,7 @@
     // autofire / lock (frenzy auto-fires for non-stop action; wheel pauses firing)
     this._fireCd -= dt;
     if (this.lock) this._autoAim();
-    if (!this._chest && (this.auto || this._holding || this._frenzy > 0) && this._fireCd <= 0) this._fire();
+    if (!this._chest && !this._jpFx && (this.auto || this._holding || this._frenzy > 0) && this._fireCd <= 0) this._fire();
 
     // barrel aim easing + recoil
     let da = this._aim - this._barrelAng; da = Math.atan2(Math.sin(da), Math.cos(da));
@@ -578,6 +627,13 @@
     // coins fly to balance HUD
     for (let i = this.coins.length - 1; i >= 0; i--) {
       const c = this.coins[i]; c.t += dt; const k = c.t / c.life;
+      if (c.rain) { // jackpot downpour — fall + spin + fade, no wallet magnet
+        c.vy += 240 * dt; c.s.x += c.vx * dt; c.s.y += c.vy * dt; c.s.rotation += dt * 9;
+        c.s.scale.x = c.sc * Math.max(0.18, Math.abs(Math.cos(c.t * 11))); // edge-on flip
+        if (k > 0.8) c.s.alpha = (1 - k) / 0.2;
+        if (k >= 1 || c.s.y > this.H + 40) { this.fxLayer.removeChild(c.s); c.s.destroy(); this.coins.splice(i, 1); }
+        continue;
+      }
       if (k < 0.4) { c.vy += 520 * dt; c.s.x += c.vx * dt; c.s.y += c.vy * dt; }
       else { const kk = (k - 0.4) / 0.6; c.s.x = lerp(c.s.x, c.targetX, kk * 0.3); c.s.y = lerp(c.s.y, c.targetY, kk * 0.3); c.s.alpha = 1 - kk; c.s.scale.set(c.s.scale.x * (1 - dt)); }
       c.s.rotation += dt * 8;
