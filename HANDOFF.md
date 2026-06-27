@@ -1,7 +1,7 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v11.49**.
+Last updated at build **v11.50**.
 
 > **📒 PER-GAME LIVING SPECS:** Detailed, always-current handoff docs live alongside this
 > file. **`REEF-RAIDERS.md`** is the full spec for the Reef Raiders fish-shooter (CH 17) —
@@ -26,12 +26,10 @@ Last updated at build **v11.49**.
 > display + any orientation for the iOS Home Screen/PWA path; Safari's own address/tab bar
 > cannot be hidden by ordinary page code. No math/payout/RNG changes.
 
-> **NOTE FOR CLAUDE/CHATGPT (v11.49):** Royal Riches / internal `slots3d` is intentionally
-> disabled and removed from the site at the owner's request. The nav card, TV layer, action
-> dock, side panel, and help modal were removed; `GAME_CHANNEL`, `GAME_TITLE`, `GAME_ORDER`,
-> share metadata, and bet-bar routing no longer include `slots3d`, so direct
-> `?game=slots3d` links fall back to Coin Flip. Renderer/source files are left parked in
-> `public/` for history only; do not re-enable without owner approval.
+> **NOTE FOR CLAUDE/CHATGPT (v11.50):** Correction: the owner wanted **Gem Vault** kept.
+> Royal Riches was the renamed Gem Vault channel (`slots3d`), so v11.49 accidentally hid
+> the game. v11.50 restores CH 15 / internal `slots3d` and changes player-facing branding
+> back to **Gem Vault**. Do not use the Royal Riches name unless the owner asks.
 
 > **🆕 NOTE FOR CHATGPT (v11.44):** (1) **Music no longer auto-starts** after the
 > promo intro — `window.__onPromoEnded` no longer calls `startMusicAfterPromo`;
@@ -44,7 +42,7 @@ Last updated at build **v11.49**.
 > move now shows the exact $ + ETH and direction BEFORE the MetaMask popup.
 >
 > **⚠️ REAL-MONEY CREDITS BLOCKER:** The owner wants real-money credits for the
-> off-chain games (Blackjack, Reef, Royal Riches, Balloon Pop) via the generic
+> off-chain games (Blackjack, Reef, Gem Vault, Balloon Pop) via the generic
 > `blackjackBuyIn`/`settleBlackjack` lock-and-signed-settle mechanism. Those
 > functions EXIST in `contracts/CoinFlipBetting.sol` but are **NOT in the deployed
 > artifact** (`public/contract.js` ABI lacks them) — the live contract is the older
@@ -183,7 +181,7 @@ Claude-Session: https://claude.ai/code/session_01WXBP6SbFfnkNE8eqQGGJCn
 ### TV channels (`GAME_CHANNEL` in app.js)
 flip **8**, dice (0-100) **9**, twodice **10**, crash **11**, slots **12**,
 pressure/Balloon Pop **13**, plane **14**, blackjack **16**, fish/Reef Raiders **17**.
-CH 15 / Royal Riches (`slots3d`) is currently disabled/removed from the site.
+slots3d/Gem Vault **15**, blackjack **16**, fish/Reef Raiders **17**.
 (Poker is a separate full-width view, not a TV channel.)
 
 ### On-chain config (`public/config.js`, Sepolia chainId 11155111)
