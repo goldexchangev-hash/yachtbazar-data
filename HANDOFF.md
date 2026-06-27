@@ -1,7 +1,7 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v11.48**.
+Last updated at build **v11.49**.
 
 > **📒 PER-GAME LIVING SPECS:** Detailed, always-current handoff docs live alongside this
 > file. **`REEF-RAIDERS.md`** is the full spec for the Reef Raiders fish-shooter (CH 17) —
@@ -25,6 +25,13 @@ Last updated at build **v11.48**.
 > This keeps site chrome from returning over the game. The manifest now uses fullscreen
 > display + any orientation for the iOS Home Screen/PWA path; Safari's own address/tab bar
 > cannot be hidden by ordinary page code. No math/payout/RNG changes.
+
+> **NOTE FOR CLAUDE/CHATGPT (v11.49):** Royal Riches / internal `slots3d` is intentionally
+> disabled and removed from the site at the owner's request. The nav card, TV layer, action
+> dock, side panel, and help modal were removed; `GAME_CHANNEL`, `GAME_TITLE`, `GAME_ORDER`,
+> share metadata, and bet-bar routing no longer include `slots3d`, so direct
+> `?game=slots3d` links fall back to Coin Flip. Renderer/source files are left parked in
+> `public/` for history only; do not re-enable without owner approval.
 
 > **🆕 NOTE FOR CHATGPT (v11.44):** (1) **Music no longer auto-starts** after the
 > promo intro — `window.__onPromoEnded` no longer calls `startMusicAfterPromo`;
@@ -175,7 +182,8 @@ Claude-Session: https://claude.ai/code/session_01WXBP6SbFfnkNE8eqQGGJCn
 
 ### TV channels (`GAME_CHANNEL` in app.js)
 flip **8**, dice (0-100) **9**, twodice **10**, crash **11**, slots **12**,
-pressure/Balloon Pop **13**, plane **14**, slots3d/Royal Riches **15**, blackjack **16**, fish/Reef Raiders **17**.
+pressure/Balloon Pop **13**, plane **14**, blackjack **16**, fish/Reef Raiders **17**.
+CH 15 / Royal Riches (`slots3d`) is currently disabled/removed from the site.
 (Poker is a separate full-width view, not a TV channel.)
 
 ### On-chain config (`public/config.js`, Sepolia chainId 11155111)

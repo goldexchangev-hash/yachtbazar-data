@@ -45,7 +45,6 @@
         slots: $("layer-slots"),
         pressure: $("layer-pressure"),
         plane: $("layer-plane"),
-        slots3d: $("layer-slots3d"),
         fish: $("layer-fish"),
         blackjack: $("layer-blackjack"),
         loading: $("layer-loading"),
@@ -206,7 +205,6 @@
       if (this._activeChannel === 12) return this._slotsIdle();  // reels room
       if (this._activeChannel === 13) return this._pressureIdle(); // balloon room
       if (this._activeChannel === 14) return this._planeIdle();  // plane room
-      if (this._activeChannel === 15) return this._slots3dIdle(); // gem vault 3d
       if (this._activeChannel === 17) return this._fishIdle();   // reef raiders
       this._readyRoom(subtext);                                  // flip / 0-100 / dice #2 ready room
     },
@@ -218,7 +216,7 @@
       if (c === this._connected) return;
       this._connected = c;
       const p = this._phase;
-      if (p === "idle" || p === "crash" || p === "slots" || p === "pressure" || p === "fish" || p === "plane" || p === "slots3d" || p === "blackjack") this.idle(); // only refresh a resting screen
+      if (p === "idle" || p === "crash" || p === "slots" || p === "pressure" || p === "fish" || p === "plane" || p === "blackjack") this.idle(); // only refresh a resting screen
     },
 
     // app.js sets the channel's title here; the TV shows it in the ready room
@@ -442,16 +440,6 @@
       this._show("plane");
     },
 
-    /* ---------------- Gem Vault 3D (CH 15) ---------------- */
-    // The Three.js slot renders itself (slots3d.js); app.js lazy-builds it.
-    _slots3dIdle() {
-      if (!this._connected) return this._staticIdle();
-      const stage = $("slots3d-stage");
-      if (!stage || !stage.querySelector("canvas")) return this._loadingScreen();
-      this._setStatic(0.03);
-      this._show("slots3d");
-    },
-
     /* ---------------- Reef Raiders (CH 17) ---------------- */
     // The PixiJS fish-shooter renders itself (fishtable.js); app.js lazy-builds it.
     _fishIdle() {
@@ -490,7 +478,6 @@
       else if (num === 12) this._slotsIdle();
       else if (num === 13) this._pressureIdle();
       else if (num === 14) this._planeIdle();
-      else if (num === 15) this._slots3dIdle();
       else if (num === 16) this._blackjackIdle();
       else if (num === 17) this._fishIdle();
       else this._readyRoom();

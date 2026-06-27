@@ -152,7 +152,7 @@
   // ---- shareable win/loss card (canvas -> PNG -> Web Share / download) ----
   let lastResult = null;
   // Active TV channel → friendly game name + emoji for the share card.
-  const SHARE_GAME = { 8: ["Coin Flip", "🪙"], 9: ["0-100", "🎲"], 10: ["Dice #2", "🎲"], 11: ["Crash", "🚀"], 12: ["Crypto Reels", "🎰"], 13: ["Balloon Pop", "🎈"], 14: ["Plane", "✈️"], 15: ["Royal Riches", "👑"] };
+  const SHARE_GAME = { 8: ["Coin Flip", "🪙"], 9: ["0-100", "🎲"], 10: ["Dice #2", "🎲"], 11: ["Crash", "🚀"], 12: ["Crypto Reels", "🎰"], 13: ["Balloon Pop", "🎈"], 14: ["Plane", "✈️"] };
   function hideShareBtn() { const b = $("share-result-btn"); if (b) b.classList.add("hidden"); }
   function setLastResult(r) {
     r = r || {};
@@ -304,11 +304,11 @@
   let lastBetUsd = 0;
   try { lastBetUsd = +localStorage.getItem("ctf_last_bet") || 0; } catch {}
   function rememberBet(usdVal) { if (!(usdVal > 0)) return; lastBetUsd = usdVal; try { localStorage.setItem("ctf_last_bet", String(usdVal)); } catch {} }
-  // Spendable balance for the CURRENT game. The play-money games (Royal Riches,
+  // Spendable balance for the CURRENT game. The play-money games
   // Balloon Pop, Reef Raiders) run on the demo/play balance — NOT the on-chain
   // deposit — so "max" must clamp to that, never to the raw slider cap.
   function spendableUsd() {
-    if (currentGame === "slots3d" || currentGame === "pressure" || currentGame === "fish") return demoUsd;
+    if (currentGame === "pressure" || currentGame === "fish") return demoUsd;
     return gameWei > 0n ? weiToUsd(gameWei) : 0;
   }
   function quickBet(id, mode) {
@@ -342,8 +342,8 @@
   // mirrors/drives the current game's REAL stake slider so you can change the
   // bet without scrolling. No game logic is duplicated — every change funnels
   // through the same <input> + "input" event the panel already listens to.
-  const BETBAR_GAMES = new Set(["flip", "dice", "twodice", "crash", "slots", "pressure", "plane", "slots3d"]);
-  const BETBAR_SL = { flip: "house-bet", dice: "dice-stake", twodice: "td-stake", crash: "crash-stake", slots: "slots-stake", pressure: "pr-bet-slider", slots3d: "s3d-bet-slider", plane: "plane-a-bet" };
+  const BETBAR_GAMES = new Set(["flip", "dice", "twodice", "crash", "slots", "pressure", "plane"]);
+  const BETBAR_SL = { flip: "house-bet", dice: "dice-stake", twodice: "td-stake", crash: "crash-stake", slots: "slots-stake", pressure: "pr-bet-slider", plane: "plane-a-bet" };
   function curStakeSlider() { return $(BETBAR_SL[currentGame]); }
   // Measure the active game's pinned action dock and lift the stake strip above it.
   // Docks vary in height — Plane has TWO buttons, others one — so a fixed offset
@@ -2600,8 +2600,6 @@
     { const pc = $("ch-pressure"); if (pc) pc.hidden = false; } // Balloon Pop is play-money → demo only
     { const pp = $("plane-panel"); if (pp) pp.hidden = false; }   // Plane shows in demo AND real
     { const pc = $("ch-plane"); if (pc) pc.hidden = false; }
-    { const pp = $("slots3d-panel"); if (pp) pp.hidden = false; }  // Gem Vault 3D is play-money → demo only
-    { const pc = $("ch-slots3d"); if (pc) pc.hidden = false; }
     { const pp = $("fish-panel"); if (pp) pp.hidden = false; }     // Reef Raiders is play-money → demo only
     { const pc = $("ch-fish"); if (pc) pc.hidden = false; }
     document.body.classList.remove("plane-real"); // demo → show the 2nd bet + feed + autobet
@@ -2623,15 +2621,13 @@
     { const bar = $("demo-bar"); if (bar) bar.classList.add("hidden"); }
     { const below = $("demo-below"); if (below) below.classList.add("hidden"); }
     { const bdg = $("demo-tv-badge"); if (bdg) bdg.classList.add("hidden"); }
-    // Balloon Pop, Royal Riches & Reef Raiders are PLAY-MONEY games. Connecting a
+    // Balloon Pop & Reef Raiders are PLAY-MONEY games. Connecting a
     // wallet used to hide them — but players want them to stay. Keep the channels
     // visible and the games playable on their own play-money balance even with a
     // wallet connected (they never touch real ETH).
     { const pc = $("ch-pressure"); if (pc) pc.hidden = false; }
-    { const pc = $("ch-slots3d"); if (pc) pc.hidden = false; }
     { const pc = $("ch-fish"); if (pc) pc.hidden = false; }
     { const pp = $("pressure-panel"); if (pp) pp.hidden = false; }
-    { const pp = $("slots3d-panel"); if (pp) pp.hidden = false; }
     { const pp = $("fish-panel"); if (pp) pp.hidden = false; }
     if (pressureGame) { pressureGame.setBalance(demoUsd); pressureGame.setEnabled(true); }
     if (slots3dGame) { slots3dGame.setBalance(demoUsd); slots3dGame.setEnabled(true); }
@@ -2755,9 +2751,9 @@
 
   // ── Game switcher ("change the channel") ──
   // Poker is temporarily disabled (hidden from the channel bar) — to be revisited.
-  const GAME_CHANNEL = { flip: 8, dice: 9, twodice: 10, crash: 11, slots: 12, pressure: 13, plane: 14, slots3d: 15, blackjack: 16, fish: 17 };
-  const GAME_TITLE = { flip: "CRYPTO TV FLIP", dice: "CRYPTO TV 0-100", twodice: "CRYPTO TV DICE #2", crash: "CRYPTO TV CRASH", slots: "CRYPTO REELS", pressure: "BALLOON POP", plane: "CRYPTO TV PLANE", slots3d: "ROYAL RICHES", blackjack: "BLACKJACK", fish: "REEF RAIDERS" };
-  const GAME_ORDER = ["flip", "dice", "twodice", "crash", "slots", "pressure", "plane", "slots3d", "fish", "blackjack"];
+  const GAME_CHANNEL = { flip: 8, dice: 9, twodice: 10, crash: 11, slots: 12, pressure: 13, plane: 14, blackjack: 16, fish: 17 };
+  const GAME_TITLE = { flip: "CRYPTO TV FLIP", dice: "CRYPTO TV 0-100", twodice: "CRYPTO TV DICE #2", crash: "CRYPTO TV CRASH", slots: "CRYPTO REELS", pressure: "BALLOON POP", plane: "CRYPTO TV PLANE", blackjack: "BLACKJACK", fish: "REEF RAIDERS" };
+  const GAME_ORDER = ["flip", "dice", "twodice", "crash", "slots", "pressure", "plane", "fish", "blackjack"];
   function paintGameTabs(game) {
     document.body.classList.toggle("game-dice", game === "dice");
     document.body.classList.toggle("game-twodice", game === "twodice");
@@ -2765,7 +2761,7 @@
     document.body.classList.toggle("game-slots", game === "slots");
     document.body.classList.toggle("game-pressure", game === "pressure");
     document.body.classList.toggle("game-plane", game === "plane");
-    document.body.classList.toggle("game-slots3d", game === "slots3d");
+    document.body.classList.remove("game-slots3d");
     document.body.classList.toggle("game-fish", game === "fish");
     document.body.classList.toggle("game-blackjack", game === "blackjack");
     document.body.classList.toggle("game-poker", game === "poker"); // CSS hides the TV layout, shows #poker-view
@@ -2791,7 +2787,7 @@
     if (game !== "slots" && window.CryptoReels && CryptoReels.setActive) CryptoReels.setActive(false);
     if (game !== "pressure" && pressureGame) pressureGame.setActive(false);
     if (game !== "plane" && planeGame) planeGame.setActive(false);
-    if (game !== "slots3d" && slots3dGame) slots3dGame.setActive(false);
+    if (slots3dGame) slots3dGame.setActive(false);
     if (game !== "fish" && fishGame) fishGame.setActive(false);
     if (game !== "flip" && coinFlip3d) coinFlip3d.setActive(false);
     if (game !== "dice" && rail3d) rail3d.setActive(false);
@@ -2810,7 +2806,6 @@
     else if (game === "slots") { refreshDiceHouse(); slotsReadouts(); ensureSlotsSupport(); ensureSlotsLoaded().then(() => { if (window.CryptoReels) CryptoReels.setActive(true); }).catch(() => {}); }
     else if (game === "pressure") { ensurePressureReady(); }
     else if (game === "plane") { refreshDiceHouse(); ensurePlaneReady(); }
-    else if (game === "slots3d") { ensureSlots3dReady(); }
     else if (game === "fish") { ensureFishReady(); }
     else if (game === "blackjack") { ensureBlackjackReady(); }
   }
@@ -3056,8 +3051,6 @@
     }
     // Gem Vault paytable / free-spins explainer
     { const b = $("s3d-help-btn"); if (b) b.onclick = openSlots3dHelp; }
-    { const c = $("s3d-help-close"); if (c) c.onclick = () => $("s3d-help-modal").classList.add("hidden"); }
-    { const m = $("s3d-help-modal"); if (m) m.addEventListener("click", (e) => { if (e.target === m) m.classList.add("hidden"); }); }
     document.querySelectorAll("#game-nav .game-card").forEach((b) => { b.onclick = () => switchGame(b.dataset.game); });
     // keyboard: ←/→ to cycle channels through every game. SPACE is swallowed here
     // too (belt-and-suspenders) so a focused nav card can never switch on Space —
@@ -3089,7 +3082,6 @@
     // Plane (CH 14) is lazy-loaded too — build it on reload so the TV shows the
     // game instead of an empty black layer once the promo intro ends.
     if (saved === "plane") ensurePlaneReady();
-    if (saved === "slots3d") ensureSlots3dReady();
     // Reef Raiders (CH 17) is lazy-loaded too. WITHOUT this branch a manual page
     // refresh on the fish channel never calls ensureFishReady(), so the canvas is
     // never built and the loading screen hangs forever — the only recovery was
