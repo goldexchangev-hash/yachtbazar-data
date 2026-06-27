@@ -62,24 +62,40 @@
         g.beginFill(0xfff3c0, 0.9); g.drawCircle(cx - R * 0.2, cy - R * 0.3, R * 0.05); g.drawCircle(cx + R * 0.3, cy - R * 0.45, R * 0.04); g.endFill();
         return;
       }
-      // tail
-      g.beginFill(dark); g.moveTo(cx - R * 1.05, cy); g.lineTo(cx - R * 1.7, cy - R * 0.7); g.lineTo(cx - R * 1.55, cy); g.lineTo(cx - R * 1.7, cy + R * 0.7); g.closePath(); g.endFill();
-      // top + bottom fins
-      g.beginFill(dark, 0.95); g.moveTo(cx - R * 0.2, cy - R * 0.75); g.lineTo(cx + R * 0.4, cy - R * 1.25); g.lineTo(cx + R * 0.55, cy - R * 0.6); g.closePath(); g.endFill();
-      g.beginFill(dark, 0.9); g.moveTo(cx - R * 0.1, cy + R * 0.7); g.lineTo(cx + R * 0.3, cy + R * 1.15); g.lineTo(cx + R * 0.5, cy + R * 0.55); g.closePath(); g.endFill();
-      // body (rounded)
-      g.lineStyle(0); g.beginFill(body); g.drawEllipse(cx, cy, R * 1.15, R * 0.82); g.endFill();
-      // belly shade + top sheen
-      g.beginFill(lite, 0.5); g.drawEllipse(cx + R * 0.15, cy - R * 0.28, R * 0.85, R * 0.4); g.endFill();
-      g.beginFill(dark, 0.35); g.drawEllipse(cx, cy + R * 0.38, R * 0.95, R * 0.32); g.endFill();
-      // accent stripe
-      g.lineStyle(Math.max(2, R * 0.16), f.accent, 0.9); g.moveTo(cx - R * 0.2, cy - R * 0.5); g.quadraticCurveTo(cx + R * 0.1, cy, cx - R * 0.2, cy + R * 0.5); g.lineStyle(0);
-      // eye
-      g.beginFill(0xffffff); g.drawCircle(cx + R * 0.72, cy - R * 0.12, R * 0.2); g.endFill();
-      g.beginFill(0x101018); g.drawCircle(cx + R * 0.78, cy - R * 0.12, R * 0.1); g.endFill();
-      g.beginFill(0xffffff, 0.9); g.drawCircle(cx + R * 0.74, cy - R * 0.18, R * 0.04); g.endFill();
-      // boss/special crown markers
-      if (f.special === "boss") { g.lineStyle(R * 0.1, 0xffd23f, 0.9); g.drawEllipse(cx, cy, R * 1.25, R * 0.92); g.lineStyle(0); }
+      const eye = (ex, ey, er) => { g.lineStyle(0); g.beginFill(0xffffff); g.drawCircle(ex, ey, er); g.endFill(); g.beginFill(0x101018); g.drawCircle(ex + er * 0.25, ey, er * 0.5); g.endFill(); g.beginFill(0xffffff, 0.9); g.drawCircle(ex - er * 0.2, ey - er * 0.3, er * 0.22); g.endFill(); };
+      if (f.key === "shark" || f.key === "kraken") {
+        // ── SHARK / boss: torpedo body, tall dorsal, crescent tail, teeth ──
+        g.beginFill(dark); g.moveTo(cx - R * 0.95, cy); g.lineTo(cx - R * 1.85, cy - R * 0.95); g.quadraticCurveTo(cx - R * 1.2, cy, cx - R * 1.85, cy + R * 0.95); g.closePath(); g.endFill(); // crescent tail
+        g.beginFill(dark, 0.95); g.moveTo(cx - R * 0.1, cy + R * 0.35); g.lineTo(cx + R * 0.15, cy + R * 1.2); g.lineTo(cx + R * 0.6, cy + R * 0.5); g.closePath(); g.endFill(); // pectoral
+        g.beginFill(dark); g.moveTo(cx - R * 0.35, cy - R * 0.5); g.lineTo(cx + R * 0.1, cy - R * 1.45); g.lineTo(cx + R * 0.5, cy - R * 0.45); g.closePath(); g.endFill(); // dorsal
+        g.beginFill(body); g.moveTo(cx - R * 0.9, cy - R * 0.5); g.quadraticCurveTo(cx + R * 1.0, cy - R * 0.62, cx + R * 1.45, cy); g.quadraticCurveTo(cx + R * 1.0, cy + R * 0.62, cx - R * 0.9, cy + R * 0.5); g.quadraticCurveTo(cx - R * 1.12, cy, cx - R * 0.9, cy - R * 0.5); g.endFill();
+        g.beginFill(lite, 0.5); g.moveTo(cx - R * 0.8, cy + R * 0.12); g.quadraticCurveTo(cx + R * 0.9, cy + R * 0.5, cx + R * 1.3, cy + R * 0.12); g.quadraticCurveTo(cx + R * 0.4, cy + R * 0.62, cx - R * 0.8, cy + R * 0.4); g.closePath(); g.endFill();
+        g.lineStyle(R * 0.05, dark, 0.5); for (let i = 0; i < 3; i++) { g.moveTo(cx + R * (0.45 - i * 0.16), cy - R * 0.28); g.lineTo(cx + R * (0.5 - i * 0.16), cy + R * 0.28); } g.lineStyle(0);
+        g.lineStyle(R * 0.06, 0x10202c, 0.85); g.moveTo(cx + R * 0.65, cy + R * 0.3); g.lineTo(cx + R * 1.32, cy + R * 0.18); g.lineStyle(0);
+        g.beginFill(0xffffff); for (let i = 0; i < 4; i++) { const tx = cx + R * (0.78 + i * 0.13); g.moveTo(tx, cy + R * 0.27); g.lineTo(tx + R * 0.06, cy + R * 0.42); g.lineTo(tx + R * 0.12, cy + R * 0.27); g.closePath(); } g.endFill();
+        eye(cx + R * 0.85, cy - R * 0.16, R * 0.15); g.beginFill(0xe23b3b, 0.45); g.drawCircle(cx + R * 0.85, cy - R * 0.16, R * 0.16); g.endFill();
+        return;
+      }
+      if (f.key === "turtle") {
+        // ── TURTLE: domed hex shell + four flippers + head ──
+        g.beginFill(darkenHex(body, 40)); for (const s of [[-0.75, 0.45], [0.75, 0.45], [-0.55, -0.45], [0.85, -0.3]]) g.drawEllipse(cx + s[0] * R, cy + s[1] * R, R * 0.42, R * 0.26); g.endFill();
+        g.beginFill(lightenHex(body, 20)); g.drawEllipse(cx + R * 1.12, cy, R * 0.34, R * 0.28); g.endFill();
+        g.beginFill(0x10202c); g.drawCircle(cx + R * 1.22, cy - R * 0.05, R * 0.07); g.endFill();
+        g.beginFill(darkenHex(body, 35)); g.drawEllipse(cx, cy, R * 1.06, R * 0.86); g.endFill();
+        g.beginFill(body); g.drawEllipse(cx, cy - R * 0.04, R * 0.92, R * 0.72); g.endFill();
+        g.lineStyle(R * 0.05, darkenHex(body, 65), 0.7); g.drawCircle(cx, cy, R * 0.32); for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3; g.drawCircle(cx + Math.cos(a) * R * 0.58, cy + Math.sin(a) * R * 0.46, R * 0.2); } g.lineStyle(0);
+        g.beginFill(lite, 0.4); g.drawEllipse(cx - R * 0.22, cy - R * 0.3, R * 0.4, R * 0.2); g.endFill();
+        return;
+      }
+      // ── GENERIC FISH: tail + dorsal/pelvic fins + three-zone body ──
+      g.beginFill(dark); g.moveTo(cx - R * 1.0, cy); g.lineTo(cx - R * 1.7, cy - R * 0.72); g.quadraticCurveTo(cx - R * 1.28, cy, cx - R * 1.7, cy + R * 0.72); g.closePath(); g.endFill();
+      g.beginFill(dark, 0.95); g.moveTo(cx - R * 0.2, cy - R * 0.72); g.lineTo(cx + R * 0.45, cy - R * 1.2); g.lineTo(cx + R * 0.55, cy - R * 0.55); g.closePath(); g.endFill();
+      g.beginFill(dark, 0.9); g.moveTo(cx - R * 0.1, cy + R * 0.68); g.lineTo(cx + R * 0.35, cy + R * 1.1); g.lineTo(cx + R * 0.5, cy + R * 0.52); g.closePath(); g.endFill();
+      g.beginFill(body); g.drawEllipse(cx, cy, R * 1.18, R * 0.84); g.endFill();
+      g.beginFill(lite, 0.55); g.drawEllipse(cx + R * 0.2, cy - R * 0.3, R * 0.85, R * 0.36); g.endFill();
+      g.beginFill(dark, 0.35); g.drawEllipse(cx, cy + R * 0.4, R * 0.98, R * 0.3); g.endFill();
+      g.lineStyle(Math.max(2, R * 0.13), f.accent, 0.8); for (const o of [-0.35, 0, 0.35]) { g.moveTo(cx + o * R - R * 0.1, cy - R * 0.52); g.quadraticCurveTo(cx + o * R + R * 0.14, cy, cx + o * R - R * 0.1, cy + R * 0.52); } g.lineStyle(0);
+      eye(cx + R * 0.74, cy - R * 0.12, R * 0.2);
     });
   };
   TexFactory.prototype.glow = function (key, color, size) {
