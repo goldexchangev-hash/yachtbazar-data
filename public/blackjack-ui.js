@@ -236,7 +236,11 @@
     host.appendChild(stack);
     if (holeNow && d.cards.length > 1) this.holeShown = true;
     this.E.dealerTotal.innerHTML = "";
-    if (d.total != null) this.E.dealerTotal.appendChild(el("span", "total-pill" + (d.total > 21 ? " bust" : ""), String(d.total)));
+    if (d.total != null) this.E.dealerTotal.appendChild(el("span", "total-pill dealer-total-pill" + (d.total > 21 ? " bust" : ""), "Dealer " + String(d.total)));
+    else if (d.cards && d.cards.length) {
+      var up = BlackjackRules.handValue([d.cards[0]]);
+      this.E.dealerTotal.appendChild(el("span", "total-pill dealer-total-pill upcard", "Showing " + String(up.total)));
+    }
     this.E.shoe.innerHTML = "Hand <code>#" + (m.handNumber || 0) + "</code><br>commit <code>" + shortHash(m.commit) + "</code>";
   };
   var CHIP_DENOMS = [[1000, "#eaf2ff"], [500, "#ffd23f"], [100, "#ff4d9d"], [25, "#45f0a6"], [10, "#39e7ff"]];
@@ -253,11 +257,16 @@
   };
   BlackjackClient.prototype._renderSeats = function (m) {
     var host = this.E.seats; host.innerHTML = "";
+    var occupied = 0;
+    for (var oi = 0; oi < 4; oi++) if (m.seats[oi]) occupied++;
+    host.className = "seats seat-count-" + occupied;
     for (var i = 0; i < 4; i++) {
       var s = m.seats[i], seat = el("div", "seat");
       var mine = this.you && this.you.seat === i;
       var seatTurn = m.phase === "turns" && m.turnIdx === i;
+      seat.setAttribute("data-seat", String(i + 1));
       if (mine) seat.classList.add("you");
+      if (s) seat.classList.add("occupied");
       if (seatTurn) {
         seat.classList.add("turn"); // spotlight the active seat (kept in the TV; the countdown is not)
         if (!this.embed) { // TV channel: the turn countdown lives UNDER the TV, not on the felt

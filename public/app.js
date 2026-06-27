@@ -152,7 +152,7 @@
   // ---- shareable win/loss card (canvas -> PNG -> Web Share / download) ----
   let lastResult = null;
   // Active TV channel → friendly game name + emoji for the share card.
-  const SHARE_GAME = { 8: ["Coin Flip", "🪙"], 9: ["0-100", "🎲"], 10: ["Dice #2", "🎲"], 11: ["Crash", "🚀"], 12: ["Crypto Reels", "🎰"], 13: ["Balloon Pop", "🎈"], 14: ["Plane", "✈️"], 15: ["Gem Vault", "💎"] };
+  const SHARE_GAME = { 8: ["Coin Flip", "🪙"], 9: ["0-100", "🎲"], 10: ["Dice #2", "🎲"], 11: ["Crash", "🚀"], 13: ["Balloon Pop", "🎈"], 14: ["Plane", "✈️"], 15: ["Gem Vault", "💎"] };
   function hideShareBtn() { const b = $("share-result-btn"); if (b) b.classList.add("hidden"); }
   function setLastResult(r) {
     r = r || {};
@@ -342,8 +342,8 @@
   // mirrors/drives the current game's REAL stake slider so you can change the
   // bet without scrolling. No game logic is duplicated — every change funnels
   // through the same <input> + "input" event the panel already listens to.
-  const BETBAR_GAMES = new Set(["flip", "dice", "twodice", "crash", "slots", "pressure", "plane", "slots3d"]);
-  const BETBAR_SL = { flip: "house-bet", dice: "dice-stake", twodice: "td-stake", crash: "crash-stake", slots: "slots-stake", pressure: "pr-bet-slider", slots3d: "s3d-bet-slider", plane: "plane-a-bet" };
+  const BETBAR_GAMES = new Set(["flip", "dice", "twodice", "crash", "pressure", "plane", "slots3d"]);
+  const BETBAR_SL = { flip: "house-bet", dice: "dice-stake", twodice: "td-stake", crash: "crash-stake", pressure: "pr-bet-slider", slots3d: "s3d-bet-slider", plane: "plane-a-bet" };
   function curStakeSlider() { return $(BETBAR_SL[currentGame]); }
   // Measure the active game's pinned action dock and lift the stake strip above it.
   // Docks vary in height — Plane has TWO buttons, others one — so a fixed offset
@@ -821,7 +821,6 @@
     $("dice-panel").hidden = false;
     { const td = $("twodice-panel"); if (td) td.hidden = false; }
     { const cp = $("crash-panel"); if (cp) cp.hidden = false; }
-    { const sp = $("slots-panel"); if (sp) sp.hidden = false; }
     { const pp = $("plane-panel"); if (pp) pp.hidden = false; }     // Plane plays for real (single-shot)
     { const pc = $("ch-plane"); if (pc) pc.hidden = false; }
     document.body.classList.add("plane-real");
@@ -2107,14 +2106,14 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1152").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1153").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=1152"))
+      .then(() => loadScriptOnce("slots.js?v=1153"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -2124,11 +2123,11 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=1152"))
-      .then(() => loadScriptOnce("pressure-render.js?v=1152"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=1152"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=1153"))
+      .then(() => loadScriptOnce("pressure-render.js?v=1153"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=1153"))
       // optional 3D red balloon (Three.js) — falls back to the 2D balloon if it can't load
-      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1152")).catch(() => {}))
+      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1153")).catch(() => {}))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -2186,10 +2185,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=1152"))
-      .then(() => loadScriptOnce("plane-render.js?v=1152"))
-      .then(() => loadScriptOnce("plane-feed.js?v=1152"))
-      .then(() => loadScriptOnce("plane-ui.js?v=1152"))
+      .then(() => loadScriptOnce("plane-engine.js?v=1153"))
+      .then(() => loadScriptOnce("plane-render.js?v=1153"))
+      .then(() => loadScriptOnce("plane-feed.js?v=1153"))
+      .then(() => loadScriptOnce("plane-ui.js?v=1153"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2270,15 +2269,15 @@
   function loadThreeOnce() {
     if (window.THREE) return Promise.resolve();
     if (threeLoadPromise) return threeLoadPromise;
-    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1152").catch((e) => { threeLoadPromise = null; throw e; });
+    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1153").catch((e) => { threeLoadPromise = null; throw e; });
     return threeLoadPromise;
   }
   function ensureSlots3dLoaded() {
     if (window.Slots3D) return Promise.resolve(true);
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("slots3d-engine.js?v=1152"))
-      .then(() => loadScriptOnce("slots3d.js?v=1152"))
+      .then(() => loadScriptOnce("slots3d-engine.js?v=1153"))
+      .then(() => loadScriptOnce("slots3d.js?v=1153"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2320,8 +2319,8 @@
     if (window.FishTable) return Promise.resolve(true);
     if (fishLoadPromise) return fishLoadPromise;
     fishLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishtable-engine.js?v=1152"))
-      .then(() => loadScriptOnce("fishtable.js?v=1152"))
+      .then(() => loadScriptOnce("fishtable-engine.js?v=1153"))
+      .then(() => loadScriptOnce("fishtable.js?v=1153"))
       .then(() => true)
       .catch((e) => { fishLoadPromise = null; throw e; });
     return fishLoadPromise;
@@ -2402,7 +2401,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1152"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1153"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -2429,7 +2428,7 @@
   function loadRail3dOnce() {
     if (window.Rail3D) return Promise.resolve(true);
     if (rail3dLoadPromise) return rail3dLoadPromise;
-    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1152")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
+    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1153")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
     return rail3dLoadPromise;
   }
   function buildRail3d() {
@@ -2450,7 +2449,7 @@
   function loadDice2_3dOnce() {
     if (window.TwoDice3D) return Promise.resolve(true);
     if (d2_3dLoadPromise) return d2_3dLoadPromise;
-    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1152")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
+    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1153")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
     return d2_3dLoadPromise;
   }
   function buildDice2_3d() {
@@ -2584,7 +2583,6 @@
       if (currentGame === "dice") diceReadouts();
       else if (currentGame === "twodice") twoDiceReadouts();
       else if (currentGame === "crash") crashReadouts();
-      else if (currentGame === "slots") slotsReadouts();
     } catch (e) {}
   }
   function enterDemo() {
@@ -2595,7 +2593,6 @@
     $("dice-panel").hidden = false;
     { const td = $("twodice-panel"); if (td) td.hidden = false; }
     { const cp = $("crash-panel"); if (cp) cp.hidden = false; }
-    { const sp = $("slots-panel"); if (sp) sp.hidden = false; }
     { const pp = $("pressure-panel"); if (pp) pp.hidden = false; }
     { const pc = $("ch-pressure"); if (pc) pc.hidden = false; } // Balloon Pop is play-money → demo only
     { const pp = $("plane-panel"); if (pp) pp.hidden = false; }   // Plane shows in demo AND real
@@ -2755,9 +2752,9 @@
 
   // ── Game switcher ("change the channel") ──
   // Poker is temporarily disabled (hidden from the channel bar) — to be revisited.
-  const GAME_CHANNEL = { flip: 8, dice: 9, twodice: 10, crash: 11, slots: 12, pressure: 13, plane: 14, slots3d: 15, blackjack: 16, fish: 17 };
-  const GAME_TITLE = { flip: "CRYPTO TV FLIP", dice: "CRYPTO TV 0-100", twodice: "CRYPTO TV DICE #2", crash: "CRYPTO TV CRASH", slots: "CRYPTO REELS", pressure: "BALLOON POP", plane: "CRYPTO TV PLANE", slots3d: "GEM VAULT", blackjack: "BLACKJACK", fish: "REEF RAIDERS" };
-  const GAME_ORDER = ["flip", "dice", "twodice", "crash", "slots", "pressure", "plane", "slots3d", "fish", "blackjack"];
+  const GAME_CHANNEL = { flip: 8, dice: 9, twodice: 10, crash: 11, pressure: 13, plane: 14, slots3d: 15, blackjack: 16, fish: 17 };
+  const GAME_TITLE = { flip: "CRYPTO TV FLIP", dice: "CRYPTO TV 0-100", twodice: "CRYPTO TV DICE #2", crash: "CRYPTO TV CRASH", pressure: "BALLOON POP", plane: "CRYPTO TV PLANE", slots3d: "GEM VAULT", blackjack: "BLACKJACK", fish: "REEF RAIDERS" };
+  const GAME_ORDER = ["flip", "dice", "twodice", "crash", "pressure", "plane", "slots3d", "fish", "blackjack"];
   function paintGameTabs(game) {
     document.body.classList.toggle("game-dice", game === "dice");
     document.body.classList.toggle("game-twodice", game === "twodice");
@@ -2787,7 +2784,7 @@
     currentGame = game;
     paintGameTabs(game);
     try { localStorage.setItem("ctf_game", game); } catch {}
-    // leaving slots/pressure/plane? pause its Pixi ticker so it doesn't burn CPU off-channel.
+    // leaving canvas-heavy channels? pause their tickers so they don't burn CPU off-channel.
     if (game !== "slots" && window.CryptoReels && CryptoReels.setActive) CryptoReels.setActive(false);
     if (game !== "pressure" && pressureGame) pressureGame.setActive(false);
     if (game !== "plane" && planeGame) planeGame.setActive(false);
@@ -2807,7 +2804,6 @@
     else if (game === "dice") { refreshDiceHouse(); diceReadouts(); ensureDice3dReady(); }
     else if (game === "twodice") { refreshDiceHouse(); twoDiceReadouts(); ensureTwoDiceSupport(); ensureDice2_3dReady(); }
     else if (game === "crash") { refreshDiceHouse(); crashReadouts(); ensureCrashSupport(); }
-    else if (game === "slots") { refreshDiceHouse(); slotsReadouts(); ensureSlotsSupport(); ensureSlotsLoaded().then(() => { if (window.CryptoReels) CryptoReels.setActive(true); }).catch(() => {}); }
     else if (game === "pressure") { ensurePressureReady(); }
     else if (game === "plane") { refreshDiceHouse(); ensurePlaneReady(); }
     else if (game === "slots3d") { ensureSlots3dReady(); }
@@ -2833,7 +2829,7 @@
     const f = $("bj-frame");
     if (f && !f.src) {
       // No &bal= seed — the table starts from its own server default ($1,000), NOT the demo balance.
-      let src = "blackjack.html?tv=1&v=1146&guest=" + encodeURIComponent(bjGuestId());
+      let src = "blackjack.html?tv=1&v=1153&guest=" + encodeURIComponent(bjGuestId());
       if (bjPendingTable) { src += "&table=" + encodeURIComponent(bjPendingTable); bjPendingTable = null; }
       f.src = src; // loads the felt + scripts inside the TV
     }
@@ -3047,13 +3043,6 @@
       setSliderUsd("crash-stake");
       crashReadouts();
     }
-    // Crypto Reels controls (CH 12)
-    if ($("slots-stake")) {
-      $("slots-stake").oninput = () => slotsReadouts();
-      $("slots-spin").onclick = playSlotsClick;
-      setSliderUsd("slots-stake");
-      slotsReadouts();
-    }
     // Gem Vault paytable / free-spins explainer
     { const b = $("s3d-help-btn"); if (b) b.onclick = openSlots3dHelp; }
     { const c = $("s3d-help-close"); if (c) c.onclick = () => $("s3d-help-modal").classList.add("hidden"); }
@@ -3075,14 +3064,20 @@
     // restore the last-played game silently (no CRT animation on load)
     let saved = "flip"; try { saved = localStorage.getItem("ctf_game") || "flip"; } catch {}
     // A shared link (?game=blackjack[&bjtable=…]) drops you straight onto that channel/table.
-    try { const qp = new URLSearchParams(location.search); const qg = qp.get("game"); if (qg && GAME_CHANNEL[qg]) saved = qg; else if (qp.get("bjtable")) saved = "blackjack"; } catch (e) {}
+    try {
+      const qp = new URLSearchParams(location.search);
+      const qg = qp.get("game");
+      if (qg === "slots") saved = "slots3d";
+      else if (qg && GAME_CHANNEL[qg]) saved = qg;
+      else if (qp.get("bjtable")) saved = "blackjack";
+    } catch (e) {}
+    if (saved === "slots") saved = "slots3d";
     if (!GAME_CHANNEL[saved]) saved = "flip";
     currentGame = saved;
     paintGameTabs(saved);
     if (saved === "poker" && window.PokerUI) PokerUI.show();
     if (window.TV) TV._activeChannel = GAME_CHANNEL[saved] || 8;
     if (saved === "crash" && window.TV && TV._crashIdle) { try { TV._crashIdle(); } catch (e) {} }
-    if (saved === "slots") { ensureSlotsLoaded().then(() => { if (window.TV && TV._slotsIdle) TV._slotsIdle(); }).catch(() => {}); }
     // Balloon Pop needs its engine built + activated on reload too (enterDemo,
     // which runs just after, flips it to enabled once it exists).
     if (saved === "pressure") ensurePressureReady();
@@ -4186,7 +4181,7 @@
         // Canvas games own SPACE through their OWN handlers (pump / launch / spin) —
         // bail so we don't double-fire; do NOT fall back to the flip button.
         if (currentGame === "pressure" || currentGame === "plane" || currentGame === "slots3d") return;
-        const BTN = { flip: "play-house-btn", dice: "dice-roll-btn", twodice: "td-roll-btn", crash: "crash-launch", slots: "slots-spin" };
+        const BTN = { flip: "play-house-btn", dice: "dice-roll-btn", twodice: "td-roll-btn", crash: "crash-launch" };
         const btn = $(BTN[currentGame]); // no default → an unknown channel (e.g. poker) does nothing
         if (btn && !btn.disabled) btn.click();
         return;

@@ -1,7 +1,16 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v11.52**.
+Last updated at build **v11.53**.
+
+> **NOTE FOR CLAUDE/CHATGPT (v11.53):** Blackjack mobile/TV layout pass + Crypto
+> Reels removal. CH-16 now tags occupied seats and uses an adaptive TV layout:
+> one occupied seat hides empty seats and gives the player/dealer larger readable
+> cards; as seats fill it compresses toward the four-seat table. Dealer total is
+> now explicit (`Showing X` before the hole card reveal, `Dealer Y` after). The old
+> CH-12 Crypto Reels slot was removed from visible nav/TV/dock/panel routing and
+> old `?game=slots` links fall through to Gem Vault (`slots3d`). **Gem Vault gameplay
+> and renderer were intentionally not changed.**
 
 > **NOTE FOR CLAUDE/CHATGPT (v11.52):** Gem Vault RTP fix. Independent audit found
 > `slots3d-engine.js` was ~95% on **base spins only** but ~129-130% RTP after the
