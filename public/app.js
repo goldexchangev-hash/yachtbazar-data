@@ -328,6 +328,41 @@
     });
   }
 
+  // ── Floating bet bar (phones) ────────────────────────────────────────────
+  // The pinned action dock is the real per-game button (CSS-only). This strip
+  // mirrors/drives the current game's REAL stake slider so you can change the
+  // bet without scrolling. No game logic is duplicated — every change funnels
+  // through the same <input> + "input" event the panel already listens to.
+  const BETBAR_GAMES = new Set(["flip", "dice", "twodice", "crash", "slots", "pressure", "plane", "slots3d"]);
+  const BETBAR_SL = { flip: "house-bet", dice: "dice-stake", twodice: "td-stake", crash: "crash-stake", slots: "slots-stake", pressure: "pr-bet-slider", slots3d: "s3d-bet-slider", plane: "plane-a-bet" };
+  function curStakeSlider() { return $(BETBAR_SL[currentGame]); }
+  function syncBetbarStake() {
+    const bar = $("betbar-stake"); if (!bar) return;
+    const s = curStakeSlider();
+    const show = !!(s && BETBAR_GAMES.has(currentGame));
+    if (show) bar.removeAttribute("hidden"); else bar.setAttribute("hidden", "");
+    const amt = $("bbs-amt"); if (show && amt) amt.textContent = usd(+s.value || 0);
+  }
+  function betbarStep(dir) {
+    const s = curStakeSlider(); if (!s) return;
+    const step = (+s.step || 5) * (dir > 0 ? 1 : -1);
+    const v = Math.max(+s.min || 0, Math.min(+s.max || 1e9, (+s.value || 0) + step));
+    if (String(v) !== s.value) { s.value = String(v); setSliderUsd(s.id); try { s.dispatchEvent(new Event("input", { bubbles: true })); } catch (e) {} }
+  }
+  function wireBetbar() {
+    const bar = $("betbar-stake"); if (!bar) return;
+    bar.addEventListener("click", (e) => {
+      const s = curStakeSlider(); if (!s) return;
+      const step = e.target.closest(".bbs-step"), preset = e.target.closest(".bbs-preset");
+      if (step) betbarStep(+step.dataset.dir);
+      else if (preset) quickBet(s.id, preset.dataset.mode);
+      else if (e.target.closest(".bbs-amt")) { try { s.scrollIntoView({ behavior: "smooth", block: "center" }); s.focus(); } catch (e2) {} }
+      syncBetbarStake();
+    });
+    // keep the floating amount in lock-step when the panel slider (or quickBet/keys) moves it
+    document.addEventListener("input", (e) => { if (e.target === curStakeSlider()) syncBetbarStake(); }, true);
+  }
+
   // Win-animation theme switcher (Neon Nights vs Magic Cliffs side-scroller).
   function initThemeSwitch() {
     if (!window.WinScenes || !WinScenes.getTheme) return;
@@ -2177,7 +2212,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1130"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1131"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -2542,6 +2577,8 @@
     // The TV owns the idle title now (it shows SIGNAL LOST when disconnected).
     if (window.TV && TV.setChannelTitle) TV.setChannelTitle(GAME_TITLE[game] || GAME_TITLE.flip);
     else { const title = $("idle-title"); if (title) title.textContent = GAME_TITLE[game] || GAME_TITLE.flip; }
+    document.body.classList.toggle("has-betbar", BETBAR_GAMES.has(game)); // pin the floating bet bar (phones)
+    syncBetbarStake();
   }
   function switchGame(game) {
     if (game === currentGame || !GAME_CHANNEL[game]) return;
@@ -2594,7 +2631,7 @@
     const f = $("bj-frame");
     if (f && !f.src) {
       // No &bal= seed — the table starts from its own server default ($1,000), NOT the demo balance.
-      let src = "blackjack.html?tv=1&v=1130&guest=" + encodeURIComponent(bjGuestId());
+      let src = "blackjack.html?tv=1&v=1131&guest=" + encodeURIComponent(bjGuestId());
       if (bjPendingTable) { src += "&table=" + encodeURIComponent(bjPendingTable); bjPendingTable = null; }
       f.src = src; // loads the felt + scripts inside the TV
     }
@@ -3858,6 +3895,7 @@
     $("host-bank").oninput = () => setSliderUsd("host-bank");
     $("table-bet").oninput = () => setSliderUsd("table-bet");
     wireQuickBet();
+    wireBetbar();
     initThemeSwitch();
     initDice();
     setupRevealAudioUnlock();

@@ -1833,6 +1833,45 @@ body.chat-open .chat-tab { transform: translate(120%, -50%); opacity: 0; pointer
   .toast { bottom: calc(78px + env(safe-area-inset-bottom)); }       /* lift toasts above the bar */
 }
 
+/* ── Floating bet bar (phones) ──────────────────────────────────────────────
+   Pin the active game's REAL action dock + a quick stake stepper to the bottom
+   of the viewport so you never scroll to change or place a bet. CSS-only for the
+   button (so Plane's live CASH-OUT swap etc. comes for free); the stepper drives
+   the same per-game slider the panel uses. Phones only; not blackjack/poker. */
+.betbar-stake { display: none; }
+@media (max-width: 900px) {
+  body.has-betbar { --betbar-action-h: 80px; }
+  body.has-betbar #betbar-stake,
+  body.has-betbar .stage > .action-dock:not(.bj-dock) {
+    position: fixed; left: 0; right: 0; z-index: 62; margin: 0;
+    background: var(--s-panel); border-top: 1px solid var(--s-border);
+    box-shadow: 0 -8px 24px rgba(0,0,0,.45);
+    padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right));
+  }
+  body.has-betbar .stage > .action-dock:not(.bj-dock) {
+    bottom: calc(58px + env(safe-area-inset-bottom)); /* sit just above the bottom-nav */
+    padding-top: 8px; padding-bottom: 8px;
+  }
+  body.has-betbar #betbar-stake:not([hidden]) {
+    display: flex; gap: 7px; align-items: center;
+    bottom: calc(58px + env(safe-area-inset-bottom) + var(--betbar-action-h));
+    padding: 7px 12px;
+  }
+  body.has-betbar #betbar-stake[hidden] { display: none; }
+  .bbs-step { flex: 0 0 auto; width: 44px; height: 44px; font-size: 24px; font-weight: 800; line-height: 1;
+    border-radius: 12px; background: var(--s-surface); color: var(--s-text); border: 1px solid var(--s-border); cursor: pointer; }
+  .bbs-amt { flex: 1 1 auto; min-width: 0; height: 44px; font-family: var(--display); font-weight: 800;
+    font-size: clamp(16px, 5.4vw, 22px); color: var(--s-green); background: var(--s-surface);
+    border: 1px solid var(--s-border); border-radius: 12px; cursor: pointer; padding: 0 8px; }
+  .bbs-preset { flex: 0 0 auto; min-width: 42px; padding: 0 9px; height: 44px; border-radius: 12px;
+    background: var(--s-surface); color: var(--s-text-2); border: 1px solid var(--s-border); font-weight: 700; font-size: 13px; cursor: pointer; }
+  .bbs-step:active, .bbs-preset:active, .bbs-amt:active { transform: scale(.95); }
+  .bbs-preset:hover, .bbs-step:hover { border-color: var(--s-green); color: var(--s-green); }
+  @media (max-width: 360px) { .bbs-preset[data-mode="half"] { display: none; } } /* shed ½ first when cramped */
+  /* clear BOTH pinned rows + the nav so page content / #demo-below never hide behind them */
+  body.has-betbar { padding-bottom: calc(58px + var(--betbar-action-h) + 56px + env(safe-area-inset-bottom)); }
+}
+
 /* ════════ Music dropdown (top bar) ════════ */
 .music-wrap { position: relative; }
 .music-menu {
