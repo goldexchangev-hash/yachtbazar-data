@@ -62,6 +62,8 @@
   let planeGame = null;           // the Plane instance, built on first visit to CH 14
   let slots3dLoadPromise = null;  // lazy-load guard for the Gem Vault 3D slot (Three.js)
   let slots3dGame = null;         // the Gem Vault 3D instance, built on first visit to CH 15
+  let fishLoadPromise = null;     // lazy-load guard for Reef Raiders (PixiJS fish-shooter)
+  let fishGame = null;            // the Reef Raiders instance, built on first visit to CH 17
   let coinFlip3dLoadPromise = null; // lazy-load guard for the 3D coin (Three.js)
   let coinFlip3d = null;          // the CoinFlip3D instance, built on first visit to CH 8
   let rail3dLoadPromise = null;   // lazy-load guard for the 0-100 neon rail (Three.js)
@@ -2229,7 +2231,7 @@
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
       .then(() => loadScriptOnce("slots3d-engine.js?v=1100"))
-      .then(() => loadScriptOnce("slots3d.js?v=1136"))
+      .then(() => loadScriptOnce("slots3d.js?v=1137"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2263,13 +2265,55 @@
     }).catch(() => toast("Couldn't load Royal Riches — check your connection", "err"));
   }
 
+  // ── Reef Raiders (CH 17, key "fish"): PixiJS arcade fish-shooter, play-money/demo.
+  //    NOTE FOR CHATGPT (v11.37): new channel. Renderer fishtable.js + money engine
+  //    fishtable-engine.js (92% RTP). Demo-only for now (real-money/wallet parked,
+  //    same buy-in→credits→settle model as blackjack). ──
+  function ensureFishLoaded() {
+    if (window.FishTable) return Promise.resolve(true);
+    if (fishLoadPromise) return fishLoadPromise;
+    fishLoadPromise = loadPixiOnce()
+      .then(() => loadScriptOnce("fishtable-engine.js?v=1137"))
+      .then(() => loadScriptOnce("fishtable.js?v=1137"))
+      .then(() => true)
+      .catch((e) => { fishLoadPromise = null; throw e; });
+    return fishLoadPromise;
+  }
+  function buildFish() {
+    if (fishGame || !window.FishTable) return fishGame;
+    const el = (id) => $(id);
+    const mount = $("fish-stage"); if (!mount) return null;
+    fishGame = new window.FishTable({
+      mount, width: 900, height: 600, ethUsd: ethUsd, initialBalance: demoUsd,
+      onBalance: (b) => { demoUsd = Math.round(b * 100) / 100; demoSave(); demoPaint(); }, // demo play-money
+      onWin: (i) => setLastResult({ won: true, game: "Reef Raiders", emoji: "🐟", amountUsd: i.profitUsd, detail: i.bonus ? "bonus catch" : (i.mult ? Math.round(i.mult) + "× catch" : "big catch") }),
+      els: {
+        balance: el("fish-balance"), win: el("fish-win"), message: el("fish-message"),
+        betSlider: el("fish-bet"), betVal: el("fish-bet-val"), cost: el("fish-cost"), power: el("fish-power"),
+        powerUp: el("fish-pup"), powerDown: el("fish-pdn"), autoBtn: el("fish-auto"), lockBtn: el("fish-lock"),
+      },
+    });
+    try { fishGame.setFullscreenTarget($("layer-fish")); } catch (e) {}
+    { const fb = $("fish-fs"); if (fb) fb.addEventListener("click", () => { try { fishGame.toggleFullscreen($("layer-fish")); } catch (e) {} }); }
+    try { window.__fish = fishGame; } catch (e) {} // debug/support handle
+    return fishGame;
+  }
+  function ensureFishReady() {
+    ensureFishLoaded().then(() => {
+      const g = buildFish(); if (!g) return;
+      g.setActive(true); g.setEthUsd(ethUsd);
+      if (demoOn) { g.setBalance(demoUsd); g.setEnabled(true); } else { g.setEnabled(false); }
+      if (window.TV && currentGame === "fish" && !TV._promoPlaying) try { TV.idle(); } catch (e) {}
+    }).catch(() => toast("Couldn't load Reef Raiders — check your connection", "err"));
+  }
+
   // ── Coin Flip (CH 8): premium Three.js 3D coin. Lazy-loaded; the CSS coin is
   //    the fallback if WebGL/Three isn't available. tv.js drives it via TV._coin3d.
   function loadCoinFlip3dOnce() {
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1136"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1137"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -2445,6 +2489,7 @@
     if (pressureGame) try { pressureGame.setEthUsd(ethUsd); } catch (e) {}
     if (planeGame) try { planeGame.setEthUsd(ethUsd); if (demoOn) planeGame.setBalance(demoUsd); } catch (e) {}
     if (slots3dGame) try { slots3dGame.setEthUsd(ethUsd); if (demoOn) slots3dGame.setBalance(demoUsd); } catch (e) {}
+    if (fishGame) try { fishGame.setEthUsd(ethUsd); if (demoOn) fishGame.setBalance(demoUsd); } catch (e) {}
     try {
       setupSliders();
       if (currentGame === "dice") diceReadouts();
@@ -2468,6 +2513,8 @@
     { const pc = $("ch-plane"); if (pc) pc.hidden = false; }
     { const pp = $("slots3d-panel"); if (pp) pp.hidden = false; }  // Gem Vault 3D is play-money → demo only
     { const pc = $("ch-slots3d"); if (pc) pc.hidden = false; }
+    { const pp = $("fish-panel"); if (pp) pp.hidden = false; }     // Reef Raiders is play-money → demo only
+    { const pc = $("ch-fish"); if (pc) pc.hidden = false; }
     document.body.classList.remove("plane-real"); // demo → show the 2nd bet + feed + autobet
     { const bar = $("demo-bar"); if (bar) bar.classList.remove("hidden"); }
     { const below = $("demo-below"); if (below) below.classList.remove("hidden"); }
@@ -2477,6 +2524,7 @@
     if (pressureGame) { pressureGame.setBalance(demoUsd); pressureGame.setEnabled(true); }
     if (planeGame) { planeGame.setMode("demo"); planeGame.setBalance(demoUsd); planeGame.setEnabled(true); }
     if (slots3dGame) { slots3dGame.setBalance(demoUsd); slots3dGame.setEnabled(true); }
+    if (fishGame) { fishGame.setBalance(demoUsd); fishGame.setEnabled(true); }
     demoSyncBalance();
   }
   function exitDemo() {
@@ -2490,11 +2538,13 @@
     // is real money, so hide it and bounce off the channel if they're on it.
     { const pc = $("ch-pressure"); if (pc) pc.hidden = true; }
     { const pc = $("ch-slots3d"); if (pc) pc.hidden = true; } // Gem Vault 3D is play-money → demo only
+    { const pc = $("ch-fish"); if (pc) pc.hidden = true; }    // Reef Raiders is play-money → demo only
     // setActive(false) first so any held round is released/refunded before
     // setEnabled(false) locks the game (which zeroes `pressing`).
     if (pressureGame) { pressureGame.setActive(false); pressureGame.setEnabled(false); }
     if (slots3dGame) { slots3dGame.setActive(false); slots3dGame.setEnabled(false); }
-    if (currentGame === "pressure" || currentGame === "slots3d") switchGame("flip");
+    if (fishGame) { fishGame.setActive(false); fishGame.setEnabled(false); }
+    if (currentGame === "pressure" || currentGame === "slots3d" || currentGame === "fish") switchGame("flip");
     // Plane DOES have a real-money mode → keep it, switch to single-shot real.
     document.body.classList.add("plane-real");
     if (planeGame) { planeGame.setMode("real"); planeGame.setBalance(weiToUsd(gameWei)); planeGame.setEnabled(!!(account && contract)); }
@@ -2507,6 +2557,7 @@
     if (pressureGame) pressureGame.setBalance(demoUsd);
     if (planeGame && demoOn) planeGame.setBalance(demoUsd);
     if (slots3dGame && demoOn) slots3dGame.setBalance(demoUsd);
+    if (fishGame && demoOn) fishGame.setBalance(demoUsd);
     toast("Demo credits topped back up to " + usd(DEMO_START_USD) + " 🎮", "ok");
   }
   // Read + validate a demo stake from a slider. Returns 0 (and toasts) if invalid.
@@ -2613,9 +2664,9 @@
 
   // ── Game switcher ("change the channel") ──
   // Poker is temporarily disabled (hidden from the channel bar) — to be revisited.
-  const GAME_CHANNEL = { flip: 8, dice: 9, twodice: 10, crash: 11, slots: 12, pressure: 13, plane: 14, slots3d: 15, blackjack: 16 };
-  const GAME_TITLE = { flip: "CRYPTO TV FLIP", dice: "CRYPTO TV 0-100", twodice: "CRYPTO TV DICE #2", crash: "CRYPTO TV CRASH", slots: "CRYPTO REELS", pressure: "BALLOON POP", plane: "CRYPTO TV PLANE", slots3d: "ROYAL RICHES", blackjack: "BLACKJACK" };
-  const GAME_ORDER = ["flip", "dice", "twodice", "crash", "slots", "pressure", "plane", "slots3d", "blackjack"];
+  const GAME_CHANNEL = { flip: 8, dice: 9, twodice: 10, crash: 11, slots: 12, pressure: 13, plane: 14, slots3d: 15, blackjack: 16, fish: 17 };
+  const GAME_TITLE = { flip: "CRYPTO TV FLIP", dice: "CRYPTO TV 0-100", twodice: "CRYPTO TV DICE #2", crash: "CRYPTO TV CRASH", slots: "CRYPTO REELS", pressure: "BALLOON POP", plane: "CRYPTO TV PLANE", slots3d: "ROYAL RICHES", blackjack: "BLACKJACK", fish: "REEF RAIDERS" };
+  const GAME_ORDER = ["flip", "dice", "twodice", "crash", "slots", "pressure", "plane", "slots3d", "fish", "blackjack"];
   function paintGameTabs(game) {
     document.body.classList.toggle("game-dice", game === "dice");
     document.body.classList.toggle("game-twodice", game === "twodice");
@@ -2624,6 +2675,7 @@
     document.body.classList.toggle("game-pressure", game === "pressure");
     document.body.classList.toggle("game-plane", game === "plane");
     document.body.classList.toggle("game-slots3d", game === "slots3d");
+    document.body.classList.toggle("game-fish", game === "fish");
     document.body.classList.toggle("game-blackjack", game === "blackjack");
     document.body.classList.toggle("game-poker", game === "poker"); // CSS hides the TV layout, shows #poker-view
     const bar = $("game-nav"); if (bar) bar.dataset.game = game;
@@ -2649,6 +2701,7 @@
     if (game !== "pressure" && pressureGame) pressureGame.setActive(false);
     if (game !== "plane" && planeGame) planeGame.setActive(false);
     if (game !== "slots3d" && slots3dGame) slots3dGame.setActive(false);
+    if (game !== "fish" && fishGame) fishGame.setActive(false);
     if (game !== "flip" && coinFlip3d) coinFlip3d.setActive(false);
     if (game !== "dice" && rail3d) rail3d.setActive(false);
     if (game !== "twodice" && d2_3d) d2_3d.setActive(false);
@@ -2667,6 +2720,7 @@
     else if (game === "pressure") { ensurePressureReady(); }
     else if (game === "plane") { refreshDiceHouse(); ensurePlaneReady(); }
     else if (game === "slots3d") { ensureSlots3dReady(); }
+    else if (game === "fish") { ensureFishReady(); }
     else if (game === "blackjack") { ensureBlackjackReady(); }
   }
   // ── Blackjack channel (CH 16): the live felt runs in an isolated iframe (its own
@@ -2688,7 +2742,7 @@
     const f = $("bj-frame");
     if (f && !f.src) {
       // No &bal= seed — the table starts from its own server default ($1,000), NOT the demo balance.
-      let src = "blackjack.html?tv=1&v=1136&guest=" + encodeURIComponent(bjGuestId());
+      let src = "blackjack.html?tv=1&v=1137&guest=" + encodeURIComponent(bjGuestId());
       if (bjPendingTable) { src += "&table=" + encodeURIComponent(bjPendingTable); bjPendingTable = null; }
       f.src = src; // loads the felt + scripts inside the TV
     }

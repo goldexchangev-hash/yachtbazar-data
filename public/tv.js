@@ -46,6 +46,7 @@
         pressure: $("layer-pressure"),
         plane: $("layer-plane"),
         slots3d: $("layer-slots3d"),
+        fish: $("layer-fish"),
         blackjack: $("layer-blackjack"),
         loading: $("layer-loading"),
       };
@@ -206,6 +207,7 @@
       if (this._activeChannel === 13) return this._pressureIdle(); // balloon room
       if (this._activeChannel === 14) return this._planeIdle();  // plane room
       if (this._activeChannel === 15) return this._slots3dIdle(); // gem vault 3d
+      if (this._activeChannel === 17) return this._fishIdle();   // reef raiders
       this._readyRoom(subtext);                                  // flip / 0-100 / dice #2 ready room
     },
 
@@ -448,6 +450,16 @@
       if (!stage || !stage.querySelector("canvas")) return this._loadingScreen();
       this._setStatic(0.03);
       this._show("slots3d");
+    },
+
+    /* ---------------- Reef Raiders (CH 17) ---------------- */
+    // The PixiJS fish-shooter renders itself (fishtable.js); app.js lazy-builds it.
+    _fishIdle() {
+      if (!this._connected) return this._staticIdle();
+      const stage = $("fish-stage");
+      if (!stage || !stage.querySelector("canvas")) return this._loadingScreen();
+      this._setStatic(0.03);
+      this._show("fish");
     },
 
     // Blackjack (CH 16): the live felt runs in its own iframe over its own WebSocket

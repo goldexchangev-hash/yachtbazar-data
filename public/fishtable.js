@@ -696,8 +696,8 @@
   FishTable.prototype.setMode = function () { /* demo-only for now; kept for API symmetry */ };
   FishTable.prototype.setBet = function (v) { this.unitBet = Math.max(MIN_BET, Math.round((+v || MIN_BET) * 100) / 100); this._renderHud(); };
   FishTable.prototype.setPower = function (p) { this.power = clamp(p | 0, 1, MAX_POWER); this._renderHud(); };
-  FishTable.prototype.toggleAuto = function () { this.auto = !this.auto; this._renderHud(); };
-  FishTable.prototype.toggleLock = function () { this.lock = !this.lock; if (!this.lock) this.reticle.visible = false; this._renderHud(); };
+  FishTable.prototype.toggleAuto = function () { this.auto = !this.auto; if (this.els.autoBtn) this.els.autoBtn.classList.toggle("on", this.auto); this._renderHud(); };
+  FishTable.prototype.toggleLock = function () { this.lock = !this.lock; if (!this.lock) this.reticle.visible = false; if (this.els.lockBtn) this.els.lockBtn.classList.toggle("on", this.lock); this._renderHud(); };
   // Fullscreen the game's container (immersive arcade mode). Works on the mount
   // element so the whole TV/stage goes edge-to-edge; falls back to the canvas.
   FishTable.prototype.isFullscreen = function () { return !!(document.fullscreenElement || document.webkitFullscreenElement); };

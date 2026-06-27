@@ -1,9 +1,24 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v11.36**.
+Last updated at build **v11.37**.
 
-> **🆕 NOTE FOR CHATGPT (v11.36):** The CH-15 slot was given a **brand-new
+> **🆕 NOTE FOR CHATGPT (v11.37):** NEW GAME — **Reef Raiders** (CH **17**, key
+> **`fish`**), an arcade fish-shooter, is now LIVE (demo/play-money). Files:
+> `public/fishtable.js` (PixiJS renderer + host bridge `setActive/setEnabled/
+> setBalance/setEthUsd/setMode/setBet/setPower/toggleAuto/toggleLock/
+> toggleFullscreen`) and `public/fishtable-engine.js` (92% RTP, per-fish
+> kill-probability `p=power*RTP/mult`, seeded provably-fair stream). Wired exactly
+> like the slots3d channel: `GAME_CHANNEL/TITLE/ORDER`, `ensureFishLoaded/
+> buildFish/ensureFishReady`, demo-only show/hide (hidden in real mode),
+> `tv.js _fishIdle`+`layers.fish`, `index.html` `#ch-fish`/`#layer-fish`/`.fish-dock`/
+> `#fish-panel`, `styles.css` `.fish-stage`/`.fish-*`. Bonus rounds: **Gold Crab →
+> Treasure Chest** (prizes pop out + add up), **Treasure Clam → Feeding Frenzy**
+> (timed fish flood). **Fullscreen** via `#fish-fs` → `toggleFullscreen(#layer-fish)`.
+> Real-money/wallet PARKED (buy-in→credits→cash-out, same model as blackjack — do
+> NOT build until owner says go). Standalone preview: `public/_reef_preview.html`.
+
+> **NOTE FOR CHATGPT (v11.36):** The CH-15 slot was given a **brand-new
 > premium renderer** and **renamed "Gem Vault" → "Royal Riches"** (player-facing
 > only). The internal channel id (**15**) and key (**`slots3d`**) are unchanged,
 > the provably-fair math (`slots3d-engine.js`) and the host-bridge API are
@@ -62,16 +77,16 @@ are served as-is by a small Node server. Edit a file → bump the version → de
 
 ## 4. ⚠️ Versioning convention (DO THIS ON EVERY USER-FACING CHANGE)
 Cache-busting is manual and **must** be bumped or users keep the old build. Current =
-**v11.36 / v=1136 / ctf-v11.36**. To ship `v11.37`:
-1. `public/index.html` — bump every `?v=1136` → `?v=1137` (≈14 occurrences) AND the
-   two build-tag chips `>v11.36<` → `>v11.37<` (brand tag + the mobile pill by ☰).
-2. `public/app.js` — bump `coinflip3d.js?v=1136`, the blackjack iframe
-   `blackjack.html?tv=1&v=1136`, AND `slots3d.js?v=` (currently `1136`) → `…1137`.
+**v11.37 / v=1137 / ctf-v11.37**. To ship `v11.38`:
+1. `public/index.html` — bump every `?v=1137` → `?v=1138` (≈14 occurrences) AND the
+   two build-tag chips `>v11.37<` → `>v11.38<` (brand tag + the mobile pill by ☰).
+2. `public/app.js` — bump `coinflip3d.js?v=1137`, the blackjack iframe
+   `blackjack.html?tv=1&v=1137`, AND `slots3d.js?v=`+`fishtable*.js?v=` (currently `1137`) → `…1138`.
    ⚠️ `slots3d.js` has its OWN version (was `1109`, now `1136`) — bump it whenever
    you change the slot renderer, or users keep the stale build.
-3. `public/sw.js` — bump `const CACHE = "ctf-v11.36"` → `"ctf-v11.37"`.
-- Quick recipe (sed): `sed -i 's/v=1136/v=1137/g' public/index.html`,
-  `sed -i 's/>v11.36</>v11.37</g' public/index.html`, plus the app.js + sw.js lines.
+3. `public/sw.js` — bump `const CACHE = "ctf-v11.37"` → `"ctf-v11.38"`.
+- Quick recipe (sed): `sed -i 's/v=1137/v=1138/g' public/index.html`,
+  `sed -i 's/>v11.37</>v11.38</g' public/index.html`, plus the app.js + sw.js lines.
 - The service worker (`sw.js`) is network-first for HTML, cache-first for `?v=`/`/vendor/`
   assets, and calls `skipWaiting()`+`clients.claim()` so updates apply on next load.
 - **Server-only changes** (e.g. `server/blackjack-server.js`) do NOT need a version
@@ -100,7 +115,7 @@ Claude-Session: https://claude.ai/code/session_01WXBP6SbFfnkNE8eqQGGJCn
 
 ### TV channels (`GAME_CHANNEL` in app.js)
 flip **8**, dice (0-100) **9**, twodice **10**, crash **11**, slots **12**,
-pressure/Balloon Pop **13**, plane **14**, slots3d/Royal Riches (was Gem Vault) **15**, blackjack **16**.
+pressure/Balloon Pop **13**, plane **14**, slots3d/Royal Riches **15**, blackjack **16**, fish/Reef Raiders **17**.
 (Poker is a separate full-width view, not a TV channel.)
 
 ### On-chain config (`public/config.js`, Sepolia chainId 11155111)
@@ -193,6 +208,13 @@ pressure/Balloon Pop **13**, plane **14**, slots3d/Royal Riches (was Gem Vault) 
 ---
 
 ## 10. Recent history (most recent first)
+- **v11.37 — NEW GAME "Reef Raiders" (CH 17, key `fish`) shipped LIVE** (demo). PixiJS
+  arcade fish-shooter: aim cannon, shoot fish, catch for coins; 92% RTP engine
+  (`fishtable-engine.js`), specials (bomb AoE, eel chain, gold/boss), progressive
+  jackpot, autofire + target-lock + power 1–7, **fullscreen**. Two bonus rounds:
+  Gold Crab → Treasure Chest, Treasure Clam → Feeding Frenzy. Built from 4 research
+  agents' specs. Real-money parked. Files `fishtable.js`/`fishtable-engine.js`;
+  preview `_reef_preview.html`.
 - **v11.36 — CH-15 slot RENAMED "Gem Vault" → "Royal Riches" + brand-new premium
   renderer** (`public/slots3d.js` fully replaced). Procedural PMREM env-mapped ornate
   gold cabinet, baked 512px faceted-gem symbols (sparkle/glint/caustic), gold-ingot BAR,

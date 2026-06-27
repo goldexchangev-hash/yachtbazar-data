@@ -27,7 +27,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=1136" />
+    <link rel="stylesheet" href="styles.css?v=1137" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -37,13 +37,13 @@
     <!-- ───────────────────────── Header ───────────────────────── -->
     <header class="topbar">
       <button id="rail-toggle" class="rail-toggle" aria-label="Open menu" title="Menu">☰</button>
-      <span class="build-tag-m" id="build-tag-m" title="Live build version — confirms the deploy is up to date">v11.36</span>
+      <span class="build-tag-m" id="build-tag-m" title="Live build version — confirms the deploy is up to date">v11.37</span>
       <div class="brand">
         <span class="brand-tv">📺</span>
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v11.36</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v11.37</span>
       </div>
       <div class="topbar-right">
         <div class="tb-tools">
@@ -177,6 +177,17 @@
             </svg>
           </span>
           <span class="gc-name">Royal Riches</span>
+        </button>
+
+        <button type="button" class="game-card fish" id="ch-fish" role="tab" aria-selected="false" data-game="fish">
+          <span class="gc-tile">
+            <svg class="gc-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 12c3-4 7-6 11-6 3 0 5 2 6 6-1 4-3 6-6 6-4 0-8-2-11-6z"/>
+              <path d="M14 9.5h.01"/>
+              <path d="M3 12c-1-1-1.5-2.2-1.5-3.4M3 12c-1 1-1.5 2.2-1.5 3.4"/>
+            </svg>
+          </span>
+          <span class="gc-name">Reef Raiders</span>
         </button>
 
         <button type="button" class="game-card blackjack" id="ch-blackjack" role="tab" aria-selected="false" data-game="blackjack">
@@ -377,6 +388,11 @@
                   <div id="slots3d-stage" class="slots3d-stage"></div>
                 </div>
 
+                <!-- Reef Raiders (CH 17): PixiJS arcade fish-shooter plays on the TV -->
+                <div class="screen-layer hidden" id="layer-fish">
+                  <div id="fish-stage" class="fish-stage"></div>
+                </div>
+
                 <!-- Blackjack (CH 16): live multiplayer felt runs in an isolated iframe
                      (its own CSS/scripts can't collide with the site). The felt fills
                      the 4:3 screen; the betting + action controls dock UNDER the TV. -->
@@ -400,7 +416,7 @@
 
                 <!-- Promo intro reel — autoplays once (muted) on first load, then fades
                      to black and hands off to the game. Replay button under the TV. -->
-                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=1136"></video>
+                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=1137"></video>
 
                 <!-- Shown while a bet tx is being signed + mined (esp. slow on mobile) -->
                 <div id="tv-pending" class="tv-pending hidden">⏳ SENDING BET…<br />confirm in your wallet, then hold tight</div>
@@ -467,6 +483,25 @@
         <div class="action-dock" data-game="slots3d">
           <button id="s3d-spin" class="s3d-spin" data-kind="spin">🎰 SPIN $10.00</button>
           <div class="muted dice-roll-hint s3d-msg" id="s3d-message">Tap SPIN</div>
+        </div>
+        <!-- Reef Raiders (CH 17): aim & shoot on the TV; these control bet/power/modes -->
+        <div class="action-dock fish-dock" data-game="fish">
+          <div class="fish-betrow">
+            <span class="fish-cost" id="fish-cost">$1.00 / shot</span>
+            <button type="button" class="fish-fs" id="fish-fs" title="Fullscreen">⛶ Fullscreen</button>
+          </div>
+          <div class="slider-wrap">
+            <input id="fish-bet" class="slider" type="range" min="1" max="50" step="1" value="1" />
+            <div class="slider-val"><strong id="fish-bet-val">$1</strong><span class="muted"> base bet</span></div>
+          </div>
+          <div class="fish-ctrls">
+            <button type="button" class="fish-btn fish-pwr" id="fish-pdn">– PWR</button>
+            <span class="fish-power" id="fish-power">Power 1</span>
+            <button type="button" class="fish-btn fish-pwr" id="fish-pup">PWR +</button>
+            <button type="button" class="fish-btn" id="fish-auto">🔥 Auto-fire</button>
+            <button type="button" class="fish-btn" id="fish-lock">🎯 Lock-on</button>
+          </div>
+          <div class="muted dice-roll-hint" id="fish-message">Aim & tap the tank to shoot · catch the Gold Crab or Treasure Clam for a bonus</div>
         </div>
         <div class="action-dock" data-game="plane">
           <div class="plane-actions">
@@ -935,6 +970,17 @@
           </details>
         </div>
 
+        <!-- Reef Raiders (CH 17): arcade fish-shooter, play-money / demo only -->
+        <div class="card dice-panel fish-panel" id="fish-panel" data-game="fish" hidden>
+          <div class="ph-head">
+            <h2 class="card-title">🐟 Reef Raiders <span class="ch-tag">CH 17</span></h2>
+            <span class="ph-bankroll muted">Balance: <strong id="fish-balance">$0</strong> · 92% RTP</span>
+          </div>
+          <p class="muted td-intro">Aim the cannon and <strong>shoot fish to catch them for coins</strong>. Each shot costs <em>power × bet</em>; bigger fish pay more but are harder to land. Catch the <strong>Gold Crab</strong> for a Treasure Chest, or the <strong>Treasure Clam</strong> for a Feeding Frenzy. <strong>92% RTP</strong> · provably fair.</p>
+          <div class="side-row"><span class="side-label">Last catch</span><strong class="fish-winval" id="fish-win">$0.00</strong></div>
+          <p class="muted" style="font-size:.82rem">Tip: ⛶ Fullscreen for the full arcade feel · 🔥 Auto-fire holds the trigger · 🎯 Lock-on tracks the best target.</p>
+        </div>
+
         <!-- Host tools (owner only): adjust limits, fund house, redeploy -->
         <div class="card host-tools" id="host-tools" hidden>
           <details class="dropdown">
@@ -1361,17 +1407,17 @@
     </aside>
 
     <script defer src="vendor/ethers.umd.min.js"></script>
-    <script defer src="config.js?v=1136"></script>
-    <script defer src="contract.js?v=1136"></script>
-    <script defer src="chiptune.js?v=1136"></script>
-    <script defer src="scenes.js?v=1136"></script>
-    <script defer src="tv.js?v=1136"></script>
-    <script defer src="poker-engine.js?v=1136"></script>
-    <script defer src="poker-bots.js?v=1136"></script>
-    <script defer src="poker-ui.js?v=1136"></script>
-    <script defer src="crash-engine.js?v=1136"></script>
-    <script defer src="crash-render.js?v=1136"></script>
-    <script defer src="profile.js?v=1136"></script>
-    <script defer src="app.js?v=1136"></script>
+    <script defer src="config.js?v=1137"></script>
+    <script defer src="contract.js?v=1137"></script>
+    <script defer src="chiptune.js?v=1137"></script>
+    <script defer src="scenes.js?v=1137"></script>
+    <script defer src="tv.js?v=1137"></script>
+    <script defer src="poker-engine.js?v=1137"></script>
+    <script defer src="poker-bots.js?v=1137"></script>
+    <script defer src="poker-ui.js?v=1137"></script>
+    <script defer src="crash-engine.js?v=1137"></script>
+    <script defer src="crash-render.js?v=1137"></script>
+    <script defer src="profile.js?v=1137"></script>
+    <script defer src="app.js?v=1137"></script>
   </body>
 </html>
