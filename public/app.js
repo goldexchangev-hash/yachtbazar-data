@@ -346,7 +346,7 @@
     const h = Math.ceil(dock.getBoundingClientRect().height);
     if (h > 0) document.body.style.setProperty("--betbar-action-h", h + "px");
   }
-  let _betbarRO = null;
+  let _betbarRO = null, _betbarDragging = false;
   // Keep re-measuring the active dock while it's pinned — Plane swaps button labels
   // (BET → CASH OUT) mid-round which can change its height; an observer keeps the
   // stake strip lifted clear of it at all times.
@@ -390,9 +390,29 @@
     });
     // drag the floating slider → drive the real game slider
     const sl = $("bbs-slider");
-    if (sl) sl.addEventListener("input", () => { betbarSet(+sl.value); const amt = $("bbs-amt"); if (amt) { const s = curStakeSlider(); if (s) amt.textContent = usd(+s.value || 0); } });
+    if (sl) {
+      sl.addEventListener("pointerdown", () => { _betbarDragging = true; });
+      const endDrag = () => { _betbarDragging = false; };
+      sl.addEventListener("pointerup", endDrag); sl.addEventListener("pointercancel", endDrag); sl.addEventListener("change", endDrag);
+      sl.addEventListener("input", () => { betbarSet(+sl.value); const amt = $("bbs-amt"); if (amt) { const s = curStakeSlider(); if (s) amt.textContent = usd(+s.value || 0); } });
+    }
     // keep the floating bar in lock-step when the panel slider (or quickBet/keys) moves it
     document.addEventListener("input", (e) => { if (e.target === curStakeSlider()) syncBetbarStake(); }, true);
+    // Some games change stake/range PROGRAMMATICALLY without firing 'input' (Balloon Pop
+    // raises its max to the full balance after lazy-load; Plane martingale doubles the
+    // stake). Poll the live slider so the floating bar's range + amount never go stale —
+    // critically so dragging "to the max" can actually reach the real ceiling.
+    setInterval(() => {
+      if (!document.body.classList.contains("has-betbar")) return;
+      const s = curStakeSlider(), f = $("bbs-slider"); if (!s || !f) return;
+      if (f.min !== String(s.min)) f.min = s.min;
+      if (f.max !== String(s.max)) f.max = s.max;
+      if (f.step !== String(s.step)) f.step = s.step;
+      if (!_betbarDragging) {
+        if (f.value !== s.value) f.value = s.value;
+        const amt = $("bbs-amt"); if (amt) { const t = usd(+s.value || 0); if (amt.textContent !== t) amt.textContent = t; }
+      }
+    }, 350);
     // re-measure the dock height on rotate/resize and shortly after first paint
     window.addEventListener("resize", syncBetbarHeights);
     setTimeout(syncBetbarHeights, 400);
@@ -2247,7 +2267,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1134"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1135"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -2497,7 +2517,7 @@
   const demoTier = (profitUsd) => (profitUsd >= 500 ? "mega" : profitUsd >= 100 ? "big" : "normal");
 
   function demoFlip() {
-    if (demoFlipBusy) return; // a flip is still settling → ignore the spam tap/key
+    if (demoFlipBusy || revealLock) return; // settling OR still in the TV reveal HOLD → ignore the spam tap/key so a re-bet can't swallow the result screen
     const v = demoStake("house-bet"); if (!v) return;
     const wantsHeads = sideOf("house-side");
     rememberBet(v);
@@ -2666,7 +2686,7 @@
     const f = $("bj-frame");
     if (f && !f.src) {
       // No &bal= seed — the table starts from its own server default ($1,000), NOT the demo balance.
-      let src = "blackjack.html?tv=1&v=1134&guest=" + encodeURIComponent(bjGuestId());
+      let src = "blackjack.html?tv=1&v=1135&guest=" + encodeURIComponent(bjGuestId());
       if (bjPendingTable) { src += "&table=" + encodeURIComponent(bjPendingTable); bjPendingTable = null; }
       f.src = src; // loads the felt + scripts inside the TV
     }

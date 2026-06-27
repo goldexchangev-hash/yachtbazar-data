@@ -377,9 +377,14 @@
       // FLAT face — the in-flight result face if a drop was happening, else the rest face —
       // and paint one final frame so it's unmistakable when the player returns.
       try {
+        // If a result has arrived but the aligned drop hasn't started yet (_wantDrop), snap
+        // to the RESULT face — otherwise we'd show the pre-toss rest face, i.e. possibly the
+        // OPPOSITE side from what the player actually got. Then in-flight drop, then rest.
+        const pending = this._wantDrop && this._landSide;
+        const resultFace = pending ? (this._landSide === TAILS ? Math.PI : 0) : null;
         const inDrop = (this.phase === "drop" || this.phase === "landed") && this._spinEnd != null;
-        const rest = inDrop ? this._spinEnd : (this._side === TAILS ? Math.PI : 0);
-        this._spin = rest; this.phase = "landed"; this._landT = 999;
+        const rest = resultFace != null ? resultFace : (inDrop ? this._spinEnd : (this._side === TAILS ? Math.PI : 0));
+        this._spin = this._spinEnd = rest; this.phase = "landed"; this._landT = 999; this._wantDrop = false;
         this.coin.rotation.set(rest, 0, 0); this.coin.scale.set(1, 1, 1); this.coin.position.set(0, 0.4, 0);
         this.renderer.render(this.scene, this.cam);
       } catch (e) {}
