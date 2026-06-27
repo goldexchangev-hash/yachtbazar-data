@@ -170,7 +170,7 @@
     /* ---------------- layer helpers ---------------- */
     _show(name) {
       for (const k of Object.keys(this.layers)) {
-        this.layers[k].classList.toggle("hidden", k !== name);
+        if (this.layers[k]) this.layers[k].classList.toggle("hidden", k !== name);
       }
       this._phase = name;
       // The HEADS/TAILS scoreboard belongs ONLY to the coin-flip match screens —

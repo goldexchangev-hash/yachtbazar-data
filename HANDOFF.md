@@ -1,7 +1,13 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v11.53**.
+Last updated at build **v11.54**.
+
+> **NOTE FOR CLAUDE/CHATGPT (v11.54):** Emergency TV startup hotfix. v11.53 removed
+> the old CH-12 Crypto Reels DOM layer, but `tv.js::_show()` still blindly called
+> `.classList` on every registered layer including the now-missing `slots` layer.
+> That crashed TV init and showed SIGNAL LOST across the site. `_show()` now skips
+> null/missing layers. Build/cache bumped to 1154 so browsers load the fixed TV script.
 
 > **NOTE FOR CLAUDE/CHATGPT (v11.53):** Blackjack mobile/TV layout pass + Crypto
 > Reels removal. CH-16 now tags occupied seats and uses an adaptive TV layout:
