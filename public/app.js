@@ -1655,7 +1655,7 @@
         picked: wantsHeads ? "HEADS" : "TAILS",
         amountUsd: playerWon ? weiToUsd(rv.netWei) : rv.amountUsd,
         tier: rv.tier,
-        sub: playerWon ? "YOU WON! Net profit shown — your stake came back too (10% to host)" : "You lost your stake — it went to the host",
+        sub: playerWon ? "YOU WON! Net profit shown — your stake came back too (3% fee)" : "You lost your stake — it went to the host",
       });
       addHostGame({ label: "Host table", won: playerWon, amount: rv.amountWei.toString(), net: rv.netWei.toString(), ts: Math.floor(Date.now() / 1000), tx: rcpt.hash });
       refreshBalances(); refreshTableInfo(); refreshPlayers(); refreshMyHistory();
@@ -2247,7 +2247,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1133"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1134"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -2666,7 +2666,7 @@
     const f = $("bj-frame");
     if (f && !f.src) {
       // No &bal= seed — the table starts from its own server default ($1,000), NOT the demo balance.
-      let src = "blackjack.html?tv=1&v=1133&guest=" + encodeURIComponent(bjGuestId());
+      let src = "blackjack.html?tv=1&v=1134&guest=" + encodeURIComponent(bjGuestId());
       if (bjPendingTable) { src += "&table=" + encodeURIComponent(bjPendingTable); bjPendingTable = null; }
       f.src = src; // loads the felt + scripts inside the TV
     }
@@ -3017,7 +3017,7 @@
 
   function breakdown(bet) {
     const pot = bet * 2n;
-    const fee = (pot * 1000n) / 10000n;
+    const fee = (pot * 300n) / 10000n; // 3% house fee — matches the contract (HOUSE_FEE_BPS=300) and flipReveal()
     return { pot, fee, win: pot - fee };
   }
 
@@ -3170,7 +3170,7 @@
           picked: youWon ? side : (side === "HEADS" ? "TAILS" : "HEADS"), // your side won iff you won
           amountUsd: youWon ? weiToUsd(rv.netWei) : rv.amountUsd,
           tier: rv.tier,
-          sub: youWon ? "YOU WON! Net profit shown — your stake came back too (10% to house)" : "You lost your stake — the pot went to the other side",
+          sub: youWon ? "YOU WON! Net profit shown — your stake came back too (3% to house)" : "You lost your stake — the pot went to the other side",
         });
         activeRoomId = null;
         refreshBalances(); refreshHouse(); refreshStats(); refreshRooms(); refreshPlayers(); refreshMyHistory();
@@ -3971,8 +3971,7 @@
     };
     // Step the CURRENT game's stake slider (not just the flip one) and refresh it.
     function stepCurrentStake(dir) {
-      const SL = { flip: "house-bet", dice: "dice-stake", twodice: "td-stake", crash: "crash-stake", slots: "slots-stake", pressure: "pr-bet-slider" };
-      const s = $(SL[currentGame]); if (!s) return false;
+      const s = $(BETBAR_SL[currentGame]); if (!s) return false; // shared map (incl. plane/slots3d)
       const step = (+s.step || 5) * (dir > 0 ? 1 : -1);
       const v = Math.max(+s.min || 0, Math.min(+s.max || 1e9, (+s.value || 0) + step));
       if (String(v) === s.value) return true;
@@ -4247,7 +4246,12 @@
   // Always flush the play balance before the page is hidden/backgrounded (iOS may
   // reload the tab after a share/app-switch) so it's never lost.
   window.addEventListener("pagehide", () => { try { if (demoOn) demoSave(); } catch (e) {} });
-  document.addEventListener("visibilitychange", () => { if (document.hidden) { try { if (demoOn) demoSave(); } catch (e) {} } });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) { try { if (demoOn) demoSave(); } catch (e) {} return; }
+    // Back in view: a real-money settle event can drop while the tab is hidden (and the
+    // poll is paused), leaving an in-flight round without its TV reveal. Catch it up.
+    try { if (activeRoomId && read && chainOK) reconcile(); } catch (e) {}
+  });
 
   window.addEventListener("DOMContentLoaded", () => {
     lockZoom();
