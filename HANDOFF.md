@@ -1,7 +1,7 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v11.47**.
+Last updated at build **v11.48**.
 
 > **📒 PER-GAME LIVING SPECS:** Detailed, always-current handoff docs live alongside this
 > file. **`REEF-RAIDERS.md`** is the full spec for the Reef Raiders fish-shooter (CH 17) —
@@ -17,6 +17,14 @@ Last updated at build **v11.47**.
 > manual fullscreen. `.rr-fs-on` CSS now hides topbar, bottom nav, chat rail/drawer,
 > ticker/share UI, and modal chrome; duplicate exit-button styling was consolidated.
 > No math/payout/RNG changes.
+
+> **NOTE FOR CLAUDE/CHATGPT (v11.48):** Follow-up Android fix for the owner's exact repro:
+> tap Reef fullscreen, then tilt to landscape. Android may drop native fullscreen during
+> rotation; `FishTable.setFullscreenTarget()` now preserves/reasserts the CSS `.rr-fs`
+> shell instead of calling `_fsExit`, and the tilt listener runs repeated delayed syncs.
+> This keeps site chrome from returning over the game. The manifest now uses fullscreen
+> display + any orientation for the iOS Home Screen/PWA path; Safari's own address/tab bar
+> cannot be hidden by ordinary page code. No math/payout/RNG changes.
 
 > **🆕 NOTE FOR CHATGPT (v11.44):** (1) **Music no longer auto-starts** after the
 > promo intro — `window.__onPromoEnded` no longer calls `startMusicAfterPromo`;

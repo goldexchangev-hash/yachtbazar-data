@@ -2320,8 +2320,8 @@
     if (window.FishTable) return Promise.resolve(true);
     if (fishLoadPromise) return fishLoadPromise;
     fishLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishtable-engine.js?v=1147"))
-      .then(() => loadScriptOnce("fishtable.js?v=1147"))
+      .then(() => loadScriptOnce("fishtable-engine.js?v=1148"))
+      .then(() => loadScriptOnce("fishtable.js?v=1148"))
       .then(() => true)
       .catch((e) => { fishLoadPromise = null; throw e; });
     return fishLoadPromise;
@@ -2357,8 +2357,9 @@
       if (!fishGame || currentGame !== "fish" || !isMobile()) return;
       try { fishGame.autoFullscreen(isLandscape(), $("layer-fish")); } catch (e) {}
     };
-    window.addEventListener("orientationchange", () => setTimeout(sync, 180), { passive: true });
-    window.addEventListener("resize", () => setTimeout(sync, 80), { passive: true });
+    const afterTilt = () => [80, 220, 520, 900].forEach((ms) => setTimeout(sync, ms));
+    window.addEventListener("orientationchange", afterTilt, { passive: true });
+    window.addEventListener("resize", afterTilt, { passive: true });
     document.addEventListener("visibilitychange", sync);
     setTimeout(sync, 0);
   }

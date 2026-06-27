@@ -4,8 +4,8 @@
   "description": "Retro 16-bit ETH coin-flip on the Sepolia testnet — play money.",
   "start_url": "./?pwa=1",
   "scope": "./",
-  "display": "standalone",
-  "orientation": "portrait",
+  "display": "fullscreen",
+  "orientation": "any",
   "background_color": "#0c0d16",
   "theme_color": "#0c0d16",
   "icons": [

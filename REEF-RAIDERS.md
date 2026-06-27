@@ -5,7 +5,7 @@
 > **update it with every change** so it never goes stale. Keep the Changelog at the
 > bottom current and bump the "Last updated" build below.
 
-**Last updated: build v11.47.** Live at https://tv-crypto-flip.onrender.com (Render
+**Last updated: build v11.48.** Live at https://tv-crypto-flip.onrender.com (Render
 auto-deploys the `claude/ethereum-betting-game-vrf-2dq50k` branch on push).
 
 ---
@@ -298,6 +298,13 @@ caps live in the renderer, so for a full check also reason about those (see §4)
 ---
 
 ## Changelog (newest first)
+- **v11.48** - Android manual-fullscreen rotation hardening. If Android drops the native
+  Fullscreen API state while the player tilts the phone, `setFullscreenTarget` now keeps
+  the CSS `.rr-fs` shell alive instead of calling `_fsExit`, so the site header/bottom nav
+  cannot return over the Reef tank. The tilt listener also rechecks several times during
+  rotation to survive Android's resize/orientation event ordering. Manifest updated to
+  `display:"fullscreen"` + `orientation:"any"` for the Home Screen/PWA path on iOS, where
+  Safari's own browser bar cannot be hidden by page code. No math/payout/RNG changes.
 - **v11.47** - Android fullscreen/tilt fix. Reef now auto-enters CSS fullscreen when a
   mobile device rotates to landscape, exits that auto mode on portrait, and keeps manual
   fullscreen behavior unchanged. Tightened `.rr-fs-on` CSS to hide the topbar, bottom nav,

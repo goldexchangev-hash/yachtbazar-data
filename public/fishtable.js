@@ -905,8 +905,15 @@
   };
   FishTable.prototype.setFullscreenTarget = function (el) {
     this._fsTarget = el;
-    // keep state in sync if the user exits real fullscreen via Esc/swipe
-    const sync = () => { const real = !!(document.fullscreenElement || document.webkitFullscreenElement); if (!real && el.classList.contains("rr-fs") && this._fsWasReal) { this._fsExit(el); this._fsWasReal = false; } this._fsWasReal = real; };
+    // Android can drop native fullscreen while rotating. Keep the CSS fullscreen
+    // shell alive so the site header/nav cannot reappear over the tank.
+    const sync = () => {
+      const real = !!(document.fullscreenElement || document.webkitFullscreenElement);
+      if (!real && el.classList.contains("rr-fs") && this._fsWasReal) {
+        this.enterFullscreen(el, { auto: this._fsAuto, skipNative: true });
+      }
+      this._fsWasReal = real;
+    };
     document.addEventListener("fullscreenchange", sync); document.addEventListener("webkitfullscreenchange", sync);
   };
 
