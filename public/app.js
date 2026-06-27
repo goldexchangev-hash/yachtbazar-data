@@ -336,12 +336,35 @@
   const BETBAR_GAMES = new Set(["flip", "dice", "twodice", "crash", "slots", "pressure", "plane", "slots3d"]);
   const BETBAR_SL = { flip: "house-bet", dice: "dice-stake", twodice: "td-stake", crash: "crash-stake", slots: "slots-stake", pressure: "pr-bet-slider", slots3d: "s3d-bet-slider", plane: "plane-a-bet" };
   function curStakeSlider() { return $(BETBAR_SL[currentGame]); }
+  // Measure the active game's pinned action dock and lift the stake strip above it.
+  // Docks vary in height — Plane has TWO buttons, others one — so a fixed offset
+  // would let a tall dock hide the strip's ½/2×/Max row. Measure after layout.
+  function syncBetbarHeights() {
+    if (!document.body.classList.contains("has-betbar")) return;
+    const dock = document.querySelector('.stage > .action-dock[data-game="' + currentGame + '"]');
+    if (!dock) return;
+    const h = Math.ceil(dock.getBoundingClientRect().height);
+    if (h > 0) document.body.style.setProperty("--betbar-action-h", h + "px");
+  }
+  let _betbarRO = null;
+  // Keep re-measuring the active dock while it's pinned — Plane swaps button labels
+  // (BET → CASH OUT) mid-round which can change its height; an observer keeps the
+  // stake strip lifted clear of it at all times.
+  function observeBetbarDock() {
+    if (!window.ResizeObserver) { syncBetbarHeights(); return; }
+    if (!_betbarRO) _betbarRO = new ResizeObserver(() => syncBetbarHeights());
+    _betbarRO.disconnect();
+    const dock = document.querySelector('.stage > .action-dock[data-game="' + currentGame + '"]');
+    if (dock && document.body.classList.contains("has-betbar")) _betbarRO.observe(dock);
+  }
   function syncBetbarStake() {
     const bar = $("betbar-stake"); if (!bar) return;
     const s = curStakeSlider();
     const show = !!(s && BETBAR_GAMES.has(currentGame));
     if (show) bar.removeAttribute("hidden"); else bar.setAttribute("hidden", "");
     if (!show) return;
+    requestAnimationFrame(syncBetbarHeights); // re-measure the dock once it's laid out
+    observeBetbarDock();                       // and keep it measured as the dock changes
     const amt = $("bbs-amt"); if (amt) amt.textContent = usd(+s.value || 0);
     // mirror the active game's slider range + value onto the floating slider
     const sl = $("bbs-slider");
@@ -370,6 +393,9 @@
     if (sl) sl.addEventListener("input", () => { betbarSet(+sl.value); const amt = $("bbs-amt"); if (amt) { const s = curStakeSlider(); if (s) amt.textContent = usd(+s.value || 0); } });
     // keep the floating bar in lock-step when the panel slider (or quickBet/keys) moves it
     document.addEventListener("input", (e) => { if (e.target === curStakeSlider()) syncBetbarStake(); }, true);
+    // re-measure the dock height on rotate/resize and shortly after first paint
+    window.addEventListener("resize", syncBetbarHeights);
+    setTimeout(syncBetbarHeights, 400);
   }
 
   // Win-animation theme switcher (Neon Nights vs Magic Cliffs side-scroller).
@@ -2221,7 +2247,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1132"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1133"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -2640,7 +2666,7 @@
     const f = $("bj-frame");
     if (f && !f.src) {
       // No &bal= seed — the table starts from its own server default ($1,000), NOT the demo balance.
-      let src = "blackjack.html?tv=1&v=1132&guest=" + encodeURIComponent(bjGuestId());
+      let src = "blackjack.html?tv=1&v=1133&guest=" + encodeURIComponent(bjGuestId());
       if (bjPendingTable) { src += "&table=" + encodeURIComponent(bjPendingTable); bjPendingTable = null; }
       f.src = src; // loads the felt + scripts inside the TV
     }
