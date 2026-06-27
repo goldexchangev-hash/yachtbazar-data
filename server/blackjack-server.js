@@ -245,7 +245,13 @@
       bank.credit(w, amt); pushWallet(sock, w);
       for (const r of rooms.values()) {
         const i = seatOf(r, sock); if (i < 0) continue;
-        if (r.phase === "turns" && r.turnIdx === i) emitTurn(r); else broadcastState(r);
+        if (r.phase === "turns" && r.turnIdx === i) {
+          // Re-arm the turn clock so a top-up tapped near the buzzer doesn't get
+          // auto-stood before you can use the now-affordable double/split.
+          clrT(r.timers.turn); r.deadline = now() + T.turn;
+          r.timers.turn = setT(() => applyAction(r, r.turnIdx, "stand", true), T.turn);
+          emitTurn(r);
+        } else broadcastState(r);
         break;
       }
     }
@@ -363,6 +369,10 @@
         }
       }
       for (const rr of rooms.values()) if (seatOf(rr, sock) >= 0) return err(sock, "already_seated", "Leave your current table first", "join"); // one seat per connection, across all tables
+      // One seat per WALLET across all tables too — without this a guest could open a
+      // second connection (two tabs / stale socket) and sit at another table at once.
+      // (Runs after the reconnect-reclaim block above, so genuine reconnects still work.)
+      for (const rr of rooms.values()) for (const st of rr.seats) if (st && st.wallet === wallet) return err(sock, "already_seated", "You're already at a table", "join");
       let r = roomId ? rooms.get(roomId) : openRoom(); if (!r) r = openRoom(); if (!r) return err(sock, "lobby_full", "No tables available");
       if (r.seats.some((s) => s && s.wallet === wallet)) return err(sock, "already_seated", "One seat per table", "join");
       let idx = -1;
