@@ -1,7 +1,7 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v11.37**.
+Last updated at build **v11.38**.
 
 > **🆕 NOTE FOR CHATGPT (v11.37):** NEW GAME — **Reef Raiders** (CH **17**, key
 > **`fish`**), an arcade fish-shooter, is now LIVE (demo/play-money). Files:

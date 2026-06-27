@@ -1078,8 +1078,9 @@ body:not(.game-slots) [data-game="slots"] { display: none !important; }
 body:not(.game-pressure) [data-game="pressure"] { display: none !important; }
 body:not(.game-plane) [data-game="plane"] { display: none !important; }
 body:not(.game-slots3d) [data-game="slots3d"] { display: none !important; }
+body:not(.game-fish) [data-game="fish"] { display: none !important; }
 body:not(.game-blackjack) [data-game="blackjack"] { display: none !important; }
-body.game-dice [data-game="flip"], body.game-twodice [data-game="flip"], body.game-crash [data-game="flip"], body.game-slots [data-game="flip"], body.game-pressure [data-game="flip"], body.game-plane [data-game="flip"], body.game-slots3d [data-game="flip"], body.game-blackjack [data-game="flip"] { display: none !important; }
+body.game-dice [data-game="flip"], body.game-twodice [data-game="flip"], body.game-crash [data-game="flip"], body.game-slots [data-game="flip"], body.game-pressure [data-game="flip"], body.game-plane [data-game="flip"], body.game-slots3d [data-game="flip"], body.game-fish [data-game="flip"], body.game-blackjack [data-game="flip"] { display: none !important; }
 /* …but the channel selector tiles are always visible (they're how you switch) */
 #game-nav .game-card { display: flex !important; }
 #game-nav .game-card[hidden] { display: none !important; } /* hidden channels (e.g. poker) stay hidden */
