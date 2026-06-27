@@ -161,6 +161,7 @@
 
     this.fish = []; this.bullets = []; this.coins = []; this.bubbles = []; this.fx = [];
     this._spawnT = 0; this._fireCd = 0; this._t = 0; this._shake = 0; this._jackpot = 0; this._won = 0; this._combo = 0; this._comboT = 0;
+    this._sesSpent = 0; this._sesWon = 0; this._sesBuyIn = 0; // session money-flow tracker (so the credits flow is visible)
     this._frenzy = 0; this._frenzyMax = 0; this._frenzyWon = 0; this._chest = null; this._jpFx = null;
     this._aim = -Math.PI / 2; this._barrelAng = -Math.PI / 2;
 
@@ -255,6 +256,8 @@
     // jackpot meter (top center)
     this.jpBar = new PIXI.Graphics(); this.hud.addChild(this.jpBar);
     this.jpText = mk(16, 0xffd23f); this.jpText.anchor.set(0.5, 0); this.jpText.x = W / 2; this.jpText.y = 8; this.hud.addChild(this.jpText);
+    // session money-flow readout (top-left): makes the credits flow visible
+    this.sesText = mk(12, 0xbfe0ff); this.sesText.x = 12; this.sesText.y = 10; this.hud.addChild(this.sesText);
     // balance (bottom-left) + win (bottom-right)
     this.balText = mk(20, 0x9be8ff); this.balText.x = 14; this.balText.y = H - 30; this.hud.addChild(this.balText);
     this.winText = mk(20, 0x45f0a6); this.winText.anchor.set(1, 0); this.winText.x = W - 14; this.winText.y = H - 30; this.hud.addChild(this.winText);
@@ -300,7 +303,7 @@
     const free = this._frenzy > 0;
     const cost = free ? 0 : this.cost();
     if (!free && this.balance < cost) { this._flashBanner("INSUFFICIENT", "add funds 👇", 0xff5d72); return; }
-    if (cost > 0) { this.balance = Math.round((this.balance - cost) * 100) / 100; this._save(); this._renderHud(); }
+    if (cost > 0) { this.balance = Math.round((this.balance - cost) * 100) / 100; this._sesSpent = Math.round((this._sesSpent + cost) * 100) / 100; this._save(); this._renderHud(); }
     const ang = this._aim;
     const tipX = this.cannon.x + Math.cos(ang) * 54, tipY = this.cannon.y + Math.sin(ang) * 54;
     const col = this.power >= 5 ? 0xff4d9d : this.power >= 3 ? 0xffd23f : 0x39e7ff;
@@ -331,7 +334,7 @@
   FishTable.prototype._catchFish = function (fish, power, isSplash) {
     if (!fish.alive) return; fish.alive = false;
     const payout = Math.round(fish.def.mult * this.unitBet * 100) / 100;
-    this.balance = Math.round((this.balance + payout) * 100) / 100; this._won = payout; this._save(); this._renderHud();
+    this.balance = Math.round((this.balance + payout) * 100) / 100; this._won = payout; this._sesWon = Math.round((this._sesWon + payout) * 100) / 100; this._save(); this._renderHud();
     if (this._frenzy > 0) this._frenzyWon = Math.round((this._frenzyWon + payout) * 100) / 100;
     // combo
     this._combo++; this._comboT = 1.2;
@@ -383,7 +386,7 @@
   };
   FishTable.prototype._awardJackpot = function (jpMult) {
     const amt = Math.round(jpMult * this.unitBet * 100) / 100;
-    this.balance = Math.round((this.balance + amt) * 100) / 100; this._won = amt; this._save(); this._renderHud();
+    this.balance = Math.round((this.balance + amt) * 100) / 100; this._won = amt; this._sesWon = Math.round((this._sesWon + amt) * 100) / 100; this._save(); this._renderHud();
     this._jackpot = 0;
     this._startJackpotShow(amt);
     if (this.onWin) try { this.onWin({ profitUsd: amt, mult: jpMult, bonus: true }); } catch (e) {}
@@ -486,7 +489,7 @@
         w.popT = 0.34;
         const mult = w.prizes[w.idx++]; const amt = Math.round(mult * this.unitBet * 100) / 100;
         w.total = Math.round((w.total + amt) * 100) / 100;
-        this.balance = Math.round((this.balance + amt) * 100) / 100; this._won = w.total; this._save(); this._renderHud();
+        this.balance = Math.round((this.balance + amt) * 100) / 100; this._won = w.total; this._sesWon = Math.round((this._sesWon + amt) * 100) / 100; this._save(); this._renderHud();
         w.totalText.text = "+$" + w.total.toFixed(2);
         // a coin/gem leaps out of the chest with a floating value
         const px = this.W / 2 + rand(-30, 30), py = this.H * 0.46 - 10;
@@ -742,13 +745,19 @@
     if (this.winText) this.winText.text = this._won > 0 ? "WIN " + this._usd(this._won) : "";
     if (this.powText) this.powText.text = "PWR " + this.power + "  ·  $" + this.cost().toFixed(2) + "/shot";
     if (this.modeText) this.modeText.text = (this.auto ? "🔥AUTO " : "") + (this.lock ? "🎯LOCK" : "") || "tap to shoot";
+    if (this.sesText) { const net = Math.round((this._sesWon - this._sesSpent) * 100) / 100; this.sesText.text = "SESSION   shots −$" + this._sesSpent.toFixed(2) + "   ·   caught +$" + this._sesWon.toFixed(2) + "   ·   net " + (net >= 0 ? "+" : "−") + "$" + Math.abs(net).toFixed(2); this.sesText.style.fill = net >= 0 ? 0x9be8ff : 0xffb4c0; }
     const e = this.els;
     if (e.balance) e.balance.textContent = this._usd(this.balance);
     if (e.betVal) e.betVal.textContent = this._usd(this.unitBet);
     if (e.power) e.power.textContent = "Power " + this.power;
     if (e.cost) e.cost.textContent = this._usd(this.cost()) + "/shot";
     if (e.win) e.win.textContent = this._usd(this._won);
+    if (e.sesSpent) e.sesSpent.textContent = this._usd(this._sesSpent);
+    if (e.sesWon) e.sesWon.textContent = this._usd(this._sesWon);
+    if (e.sesNet) { const n = Math.round((this._sesWon - this._sesSpent) * 100) / 100; e.sesNet.textContent = (n >= 0 ? "+" : "−") + this._usd(Math.abs(n)); }
   };
+  // Start a fresh money-flow session (called on buy-in / entering the channel).
+  FishTable.prototype.newSession = function (buyIn) { this._sesSpent = 0; this._sesWon = 0; this._sesBuyIn = +buyIn || 0; this._renderHud(); };
   FishTable.prototype._save = function () { if (this.onBalance) try { this.onBalance(this.balance); } catch (e) {} };
 
   /* ---------- host bridge ---------- */

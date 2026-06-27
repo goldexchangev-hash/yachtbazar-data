@@ -2231,7 +2231,7 @@
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
       .then(() => loadScriptOnce("slots3d-engine.js?v=1100"))
-      .then(() => loadScriptOnce("slots3d.js?v=1141"))
+      .then(() => loadScriptOnce("slots3d.js?v=1142"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2273,8 +2273,8 @@
     if (window.FishTable) return Promise.resolve(true);
     if (fishLoadPromise) return fishLoadPromise;
     fishLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishtable-engine.js?v=1141"))
-      .then(() => loadScriptOnce("fishtable.js?v=1141"))
+      .then(() => loadScriptOnce("fishtable-engine.js?v=1142"))
+      .then(() => loadScriptOnce("fishtable.js?v=1142"))
       .then(() => true)
       .catch((e) => { fishLoadPromise = null; throw e; });
     return fishLoadPromise;
@@ -2304,6 +2304,7 @@
       const g = buildFish(); if (!g) return;
       g.setActive(true); g.setEthUsd(ethUsd);
       if (demoOn) { g.setBalance(demoUsd); } g.setEnabled(true); // play-money: always enabled (kept on wallet connect)
+      try { if (g._sesSpent === 0 && g._sesWon === 0) g.newSession(); } catch (e) {} // fresh money-flow session on first entry
       // Refresh the TV reveal a few times — the canvas mounts synchronously but a
       // single idle() can race the lazy build and leave the LOADING screen stuck
       // (the "have to refresh" bug). Re-poke it until the canvas is showing.
@@ -2318,7 +2319,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1141"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1142"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -2749,7 +2750,7 @@
     const f = $("bj-frame");
     if (f && !f.src) {
       // No &bal= seed — the table starts from its own server default ($1,000), NOT the demo balance.
-      let src = "blackjack.html?tv=1&v=1141&guest=" + encodeURIComponent(bjGuestId());
+      let src = "blackjack.html?tv=1&v=1142&guest=" + encodeURIComponent(bjGuestId());
       if (bjPendingTable) { src += "&table=" + encodeURIComponent(bjPendingTable); bjPendingTable = null; }
       f.src = src; // loads the felt + scripts inside the TV
     }
