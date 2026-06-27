@@ -1,0 +1,43 @@
+<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gem Vault — preview</title>
+<style>
+  html,body{margin:0;background:#05060f;font-family:Arial,sans-serif;color:#cfe2ff}
+  #stage{position:relative;width:900px;height:600px;margin:14px auto;border-radius:14px;overflow:hidden;background:#05060f}
+  .s3d-bonus,.s3d-winbanner{position:absolute;left:50%;transform:translateX(-50%);text-align:center;pointer-events:none}
+  .s3d-bonus{top:30%;color:#ffd23f;font-weight:900;text-shadow:0 0 18px rgba(255,210,63,.7)}
+  .s3d-bonus.hidden{display:none}
+  .s3d-bonus-title{font-size:30px}.s3d-bonus-big{font-size:46px}.s3d-bonus-sub{font-size:18px;color:#fff}
+  .s3d-winbanner{bottom:6%;background:rgba(8,10,22,.7);padding:8px 22px;border-radius:30px;border:2px solid #ffd23f;font-weight:900;font-size:26px}
+  .s3d-winbanner.hidden{display:none}.s3d-winbanner.miss{border-color:#445;color:#89a;font-size:18px}
+  .s3d-wb-label{color:#ffd23f;margin-right:10px}.s3d-wb-amt{color:#fff}
+  .bar{width:900px;margin:0 auto;display:flex;gap:10px;align-items:center;justify-content:center}
+  button{background:#ffd23f;border:0;border-radius:8px;padding:10px 16px;font-weight:900;cursor:pointer}
+</style></head>
+<body>
+  <div id="stage"></div>
+  <div class="bar">
+    <button id="spin">🎰 SPIN</button>
+    <span id="msg" class="s3d-msg"></span>
+    <span>bal <b id="bal"></b></span><span>win <b id="win"></b></span>
+  </div>
+<script src="vendor/three.min.js"></script>
+<script src="slots3d-engine.js"></script>
+<script src="slots3d.gemvault.js"></script>
+<script>
+  const els={ spinBtn:document.getElementById('spin'), message:document.getElementById('msg'),
+    balance:document.getElementById('bal'), win:document.getElementById('win') };
+  const g = new Slots3D({ mount:document.getElementById('stage'), els, width:900, height:600,
+    ethUsd:3400, initialBalance:5000 });
+  window.__g = g;
+  g.setActive(true);
+  // force a specific symbol grid for a clean static screenshot when ?grid=1
+  if (location.search.indexOf('still')>=0){
+    // paint a hand-picked spread of premium symbols, no spin
+    const layout = [[5,6,3],[1,5,4],[7,3,6],[4,1,5],[3,6,0]];
+    for(let r=0;r<5;r++){ for(let s=1;s<=3;s++){ const t=g.reels[r].tiles[s]; const sym=layout[r][s-1];
+      t.userData.sym=sym; const tex=g._texCache[sym]; t.userData.mat.map=tex; t.userData.mat.emissiveMap=tex; t.userData.mat.needsUpdate=true; } }
+    g.renderer.render(g.scene,g.cam);
+  }
+</script>
+</body></html>
