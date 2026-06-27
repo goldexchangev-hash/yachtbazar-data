@@ -296,9 +296,11 @@
   FishTable.prototype.cost = function () { return Math.round(this.unitBet * this.power * 100) / 100; };
   FishTable.prototype._fire = function () {
     if (!this._active || !this._enabled) return;
-    const cost = this.cost();
-    if (this.balance < cost) { this._flashBanner("INSUFFICIENT", "add funds 👇", 0xff5d72); return; }
-    this.balance = Math.round((this.balance - cost) * 100) / 100; this._save(); this._renderHud();
+    // Feeding Frenzy = FREE shots (it's a bonus reward) — never charge during it.
+    const free = this._frenzy > 0;
+    const cost = free ? 0 : this.cost();
+    if (!free && this.balance < cost) { this._flashBanner("INSUFFICIENT", "add funds 👇", 0xff5d72); return; }
+    if (cost > 0) { this.balance = Math.round((this.balance - cost) * 100) / 100; this._save(); this._renderHud(); }
     const ang = this._aim;
     const tipX = this.cannon.x + Math.cos(ang) * 54, tipY = this.cannon.y + Math.sin(ang) * 54;
     const col = this.power >= 5 ? 0xff4d9d : this.power >= 3 ? 0xffd23f : 0x39e7ff;
@@ -507,7 +509,7 @@
   /* ---------- BONUS ROUND 2: FEEDING FRENZY (Treasure Clam) ---------- */
   FishTable.prototype._startFrenzy = function (dur) {
     this._frenzy = dur; this._frenzyMax = dur; this._frenzyWon = 0;
-    this._flashBanner("🌊 FEEDING FRENZY!", "shoot everything! ×2 spawns", 0x45f0a6);
+    this._flashBanner("🌊 FEEDING FRENZY!", "FREE SHOTS — catch everything!", 0x45f0a6);
     // flood the tank with a formation of catchable fish
     const small = E.FISH.filter((f) => f.tier !== "boss" && !f.bonus);
     for (let i = 0; i < 10; i++) setTimeout(() => { if (this._active && this._frenzy > 0) this._spawnFish(small[(Math.random() * small.length) | 0]); }, i * 120);
@@ -693,7 +695,7 @@
     g.beginFill(0x0c2840); g.drawRoundedRect(x, y, bw, bh, 5); g.endFill();
     const frac = frenzy ? (this._frenzy / this._frenzyMax) : this._jackpot;
     g.beginFill(frenzy ? 0x45f0a6 : 0xffd23f); g.drawRoundedRect(x, y, bw * frac, bh, 5); g.endFill();
-    this.jpText.text = frenzy ? ("🌊 FRENZY  " + this._frenzy.toFixed(1) + "s  +$" + this._frenzyWon.toFixed(0)) : "★ JACKPOT METER ★";
+    this.jpText.text = frenzy ? ("🌊 FREE-FIRE FRENZY  " + this._frenzy.toFixed(1) + "s  +$" + this._frenzyWon.toFixed(0)) : "★ JACKPOT METER ★";
   };
 
   /* ---------- aim / input ---------- */
@@ -762,21 +764,28 @@
   FishTable.prototype.setPower = function (p) { this.power = clamp(p | 0, 1, MAX_POWER); this._renderHud(); };
   FishTable.prototype.toggleAuto = function () { this.auto = !this.auto; if (this.els.autoBtn) this.els.autoBtn.classList.toggle("on", this.auto); this._renderHud(); };
   FishTable.prototype.toggleLock = function () { this.lock = !this.lock; if (!this.lock) this.reticle.visible = false; if (this.els.lockBtn) this.els.lockBtn.classList.toggle("on", this.lock); this._renderHud(); };
-  // Fullscreen the game's container (immersive arcade mode). Works on the mount
-  // element so the whole TV/stage goes edge-to-edge; falls back to the canvas.
-  FishTable.prototype.isFullscreen = function () { return !!(document.fullscreenElement || document.webkitFullscreenElement); };
+  // Fullscreen (immersive arcade mode). The real Fullscreen API does NOT work on
+  // iPhone Safari for non-video elements, so we ALWAYS toggle a CSS class that
+  // pins the layer to the whole viewport (works everywhere), AND additionally
+  // request the real API where supported (desktop/Android) for browser-chrome hiding.
+  FishTable.prototype.isFullscreen = function () { const t = this._fsTarget || this.mount; return !!(document.fullscreenElement || document.webkitFullscreenElement || (t && t.classList && t.classList.contains("rr-fs"))); };
   FishTable.prototype.toggleFullscreen = function (el) {
     const target = el || this._fsTarget || this.mount || this.app.view;
+    const turningOn = !(target.classList && target.classList.contains("rr-fs"));
+    if (target.classList) target.classList.toggle("rr-fs", turningOn);
+    document.body.classList.toggle("rr-fs-on", turningOn);
     try {
-      if (this.isFullscreen()) {
-        (document.exitFullscreen || document.webkitExitFullscreen || function () {}).call(document);
-      } else {
-        const req = target.requestFullscreen || target.webkitRequestFullscreen || target.webkitRequestFullScreen || target.msRequestFullscreen;
-        if (req) req.call(target);
-      }
+      if (turningOn) { const req = target.requestFullscreen || target.webkitRequestFullscreen || target.webkitRequestFullScreen || target.msRequestFullscreen; if (req) req.call(target); }
+      else { if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen(); else if (document.webkitFullscreenElement && document.webkitExitFullscreen) document.webkitExitFullscreen(); }
     } catch (e) {}
+    if (this.els.fsBtn) this.els.fsBtn.classList.toggle("on", turningOn);
   };
-  FishTable.prototype.setFullscreenTarget = function (el) { this._fsTarget = el; };
+  FishTable.prototype.setFullscreenTarget = function (el) {
+    this._fsTarget = el;
+    // keep the CSS class in sync if the user exits real fullscreen via Esc/swipe
+    const sync = () => { const real = !!(document.fullscreenElement || document.webkitFullscreenElement); if (!real && el.classList.contains("rr-fs") && this._fsWasReal) { el.classList.remove("rr-fs"); document.body.classList.remove("rr-fs-on"); this._fsWasReal = false; if (this.els.fsBtn) this.els.fsBtn.classList.remove("on"); } this._fsWasReal = real; };
+    document.addEventListener("fullscreenchange", sync); document.addEventListener("webkitfullscreenchange", sync);
+  };
 
   root.FishTable = FishTable;
 })(typeof globalThis !== "undefined" ? globalThis : this);

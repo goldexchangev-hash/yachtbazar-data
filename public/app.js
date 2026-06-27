@@ -2231,7 +2231,7 @@
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
       .then(() => loadScriptOnce("slots3d-engine.js?v=1100"))
-      .then(() => loadScriptOnce("slots3d.js?v=1140"))
+      .then(() => loadScriptOnce("slots3d.js?v=1141"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2273,8 +2273,8 @@
     if (window.FishTable) return Promise.resolve(true);
     if (fishLoadPromise) return fishLoadPromise;
     fishLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishtable-engine.js?v=1140"))
-      .then(() => loadScriptOnce("fishtable.js?v=1140"))
+      .then(() => loadScriptOnce("fishtable-engine.js?v=1141"))
+      .then(() => loadScriptOnce("fishtable.js?v=1141"))
       .then(() => true)
       .catch((e) => { fishLoadPromise = null; throw e; });
     return fishLoadPromise;
@@ -2290,11 +2290,12 @@
       els: {
         balance: el("fish-balance"), win: el("fish-win"), message: el("fish-message"),
         betSlider: el("fish-bet"), betVal: el("fish-bet-val"), cost: el("fish-cost"), power: el("fish-power"),
-        powerUp: el("fish-pup"), powerDown: el("fish-pdn"), autoBtn: el("fish-auto"), lockBtn: el("fish-lock"),
+        powerUp: el("fish-pup"), powerDown: el("fish-pdn"), autoBtn: el("fish-auto"), lockBtn: el("fish-lock"), fsBtn: el("fish-fs"),
       },
     });
     try { fishGame.setFullscreenTarget($("layer-fish")); } catch (e) {}
     { const fb = $("fish-fs"); if (fb) fb.addEventListener("click", () => { try { fishGame.toggleFullscreen($("layer-fish")); } catch (e) {} }); }
+    { const fx = $("fish-fs-exit"); if (fx) fx.addEventListener("click", () => { try { fishGame.toggleFullscreen($("layer-fish")); } catch (e) {} }); }
     try { window.__fish = fishGame; } catch (e) {} // debug/support handle
     return fishGame;
   }
@@ -2302,9 +2303,13 @@
     ensureFishLoaded().then(() => {
       const g = buildFish(); if (!g) return;
       g.setActive(true); g.setEthUsd(ethUsd);
-      if (demoOn) { g.setBalance(demoUsd); g.setEnabled(true); } else { g.setEnabled(false); }
-      if (window.TV && currentGame === "fish" && !TV._promoPlaying) try { TV.idle(); } catch (e) {}
-    }).catch(() => toast("Couldn't load Reef Raiders — check your connection", "err"));
+      if (demoOn) { g.setBalance(demoUsd); } g.setEnabled(true); // play-money: always enabled (kept on wallet connect)
+      // Refresh the TV reveal a few times — the canvas mounts synchronously but a
+      // single idle() can race the lazy build and leave the LOADING screen stuck
+      // (the "have to refresh" bug). Re-poke it until the canvas is showing.
+      const refresh = () => { if (window.TV && currentGame === "fish" && !TV._promoPlaying) try { TV.idle(); } catch (e) {} };
+      refresh(); setTimeout(refresh, 120); setTimeout(refresh, 450); setTimeout(refresh, 1000);
+    }).catch(() => { fishLoadPromise = null; toast("Couldn't load Reef Raiders — tap the channel again", "err"); });
   }
 
   // ── Coin Flip (CH 8): premium Three.js 3D coin. Lazy-loaded; the CSS coin is
@@ -2313,7 +2318,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1140"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1141"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -2534,17 +2539,19 @@
     { const bar = $("demo-bar"); if (bar) bar.classList.add("hidden"); }
     { const below = $("demo-below"); if (below) below.classList.add("hidden"); }
     { const bdg = $("demo-tv-badge"); if (bdg) bdg.classList.add("hidden"); }
-    // Balloon Pop is play-money only — once a real wallet connects the whole site
-    // is real money, so hide it and bounce off the channel if they're on it.
-    { const pc = $("ch-pressure"); if (pc) pc.hidden = true; }
-    { const pc = $("ch-slots3d"); if (pc) pc.hidden = true; } // Gem Vault 3D is play-money → demo only
-    { const pc = $("ch-fish"); if (pc) pc.hidden = true; }    // Reef Raiders is play-money → demo only
-    // setActive(false) first so any held round is released/refunded before
-    // setEnabled(false) locks the game (which zeroes `pressing`).
-    if (pressureGame) { pressureGame.setActive(false); pressureGame.setEnabled(false); }
-    if (slots3dGame) { slots3dGame.setActive(false); slots3dGame.setEnabled(false); }
-    if (fishGame) { fishGame.setActive(false); fishGame.setEnabled(false); }
-    if (currentGame === "pressure" || currentGame === "slots3d" || currentGame === "fish") switchGame("flip");
+    // Balloon Pop, Royal Riches & Reef Raiders are PLAY-MONEY games. Connecting a
+    // wallet used to hide them — but players want them to stay. Keep the channels
+    // visible and the games playable on their own play-money balance even with a
+    // wallet connected (they never touch real ETH).
+    { const pc = $("ch-pressure"); if (pc) pc.hidden = false; }
+    { const pc = $("ch-slots3d"); if (pc) pc.hidden = false; }
+    { const pc = $("ch-fish"); if (pc) pc.hidden = false; }
+    { const pp = $("pressure-panel"); if (pp) pp.hidden = false; }
+    { const pp = $("slots3d-panel"); if (pp) pp.hidden = false; }
+    { const pp = $("fish-panel"); if (pp) pp.hidden = false; }
+    if (pressureGame) { pressureGame.setBalance(demoUsd); pressureGame.setEnabled(true); }
+    if (slots3dGame) { slots3dGame.setBalance(demoUsd); slots3dGame.setEnabled(true); }
+    if (fishGame) { fishGame.setBalance(demoUsd); fishGame.setEnabled(true); }
     // Plane DOES have a real-money mode → keep it, switch to single-shot real.
     document.body.classList.add("plane-real");
     if (planeGame) { planeGame.setMode("real"); planeGame.setBalance(weiToUsd(gameWei)); planeGame.setEnabled(!!(account && contract)); }
@@ -2742,7 +2749,7 @@
     const f = $("bj-frame");
     if (f && !f.src) {
       // No &bal= seed — the table starts from its own server default ($1,000), NOT the demo balance.
-      let src = "blackjack.html?tv=1&v=1140&guest=" + encodeURIComponent(bjGuestId());
+      let src = "blackjack.html?tv=1&v=1141&guest=" + encodeURIComponent(bjGuestId());
       if (bjPendingTable) { src += "&table=" + encodeURIComponent(bjPendingTable); bjPendingTable = null; }
       f.src = src; // loads the felt + scripts inside the TV
     }
