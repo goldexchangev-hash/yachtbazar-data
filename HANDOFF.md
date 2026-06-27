@@ -1,7 +1,14 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v11.51**.
+Last updated at build **v11.52**.
+
+> **NOTE FOR CLAUDE/CHATGPT (v11.52):** Gem Vault RTP fix. Independent audit found
+> `slots3d-engine.js` was ~95% on **base spins only** but ~129-130% RTP after the
+> active credited free-spins bonus was included. The CH-15 Gem Vault paytable and
+> scatter cash pays were retuned so base spins are ~70% and the free-spin feature
+> contributes the rest, putting full modeled RTP back near **~95%**. Do not restore
+> the old `PAY` / `SCATTER_PAY` values unless the free-spin bonus is also redesigned.
 
 > **NOTE FOR CLAUDE/CHATGPT (v11.51):** Reverted the CH-15 slot ART back to the ORIGINAL
 > **Gem Vault** at the owner's request. v11.50 ("Restore Gem Vault channel") re-enabled the
