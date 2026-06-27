@@ -2231,7 +2231,7 @@
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
       .then(() => loadScriptOnce("slots3d-engine.js?v=1100"))
-      .then(() => loadScriptOnce("slots3d.js?v=1138"))
+      .then(() => loadScriptOnce("slots3d.js?v=1139"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2273,8 +2273,8 @@
     if (window.FishTable) return Promise.resolve(true);
     if (fishLoadPromise) return fishLoadPromise;
     fishLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishtable-engine.js?v=1138"))
-      .then(() => loadScriptOnce("fishtable.js?v=1138"))
+      .then(() => loadScriptOnce("fishtable-engine.js?v=1139"))
+      .then(() => loadScriptOnce("fishtable.js?v=1139"))
       .then(() => true)
       .catch((e) => { fishLoadPromise = null; throw e; });
     return fishLoadPromise;
@@ -2313,7 +2313,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1138"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1139"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -2742,7 +2742,7 @@
     const f = $("bj-frame");
     if (f && !f.src) {
       // No &bal= seed — the table starts from its own server default ($1,000), NOT the demo balance.
-      let src = "blackjack.html?tv=1&v=1138&guest=" + encodeURIComponent(bjGuestId());
+      let src = "blackjack.html?tv=1&v=1139&guest=" + encodeURIComponent(bjGuestId());
       if (bjPendingTable) { src += "&table=" + encodeURIComponent(bjPendingTable); bjPendingTable = null; }
       f.src = src; // loads the felt + scripts inside the TV
     }

@@ -299,7 +299,7 @@
     const sc = 0.8 + this.power * 0.12; sp.scale.set(sc, sc * 1.7); // streak along travel
     this.bulletLayer.addChild(sp);
     const speed = 620 + this.power * 30;
-    this.bullets.push({ s: sp, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed, r: 7 * sc, col, hit: false });
+    this.bullets.push({ s: sp, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed, r: 7 * sc, col, hit: false, bounces: 0, life: 0 });
     // recoil + muzzle flash
     this._recoil = 8; this._muzzle(tipX, tipY, col);
     if (root.Chiptune && root.Chiptune.blip) try { root.Chiptune.blip(); } catch (e) {}
@@ -558,13 +558,21 @@
       if ((f.dir > 0 && f.c.x > this.W + f.r * 2) || (f.dir < 0 && f.c.x < -f.r * 2)) { this.fishLayer.removeChild(f.c); f.c.destroy({ children: true }); this.fish.splice(i, 1); }
     }
 
-    // bullets
+    // bullets — RICOCHET off the walls so shots rarely go to waste
     for (let i = this.bullets.length - 1; i >= 0; i--) {
-      const b = this.bullets[i]; b.s.x += b.vx * dt; b.s.y += b.vy * dt;
+      const b = this.bullets[i]; b.life += dt; b.s.x += b.vx * dt; b.s.y += b.vy * dt;
+      // bounce off left / right / top / bottom edges (reflect the velocity component)
+      let bounced = false;
+      if (b.s.x < b.r) { b.s.x = b.r; b.vx = Math.abs(b.vx); bounced = true; }
+      else if (b.s.x > this.W - b.r) { b.s.x = this.W - b.r; b.vx = -Math.abs(b.vx); bounced = true; }
+      if (b.s.y < b.r) { b.s.y = b.r; b.vy = Math.abs(b.vy); bounced = true; }
+      else if (b.s.y > this.H - b.r) { b.s.y = this.H - b.r; b.vy = -Math.abs(b.vy); bounced = true; }
+      if (bounced) { b.bounces++; b.s.rotation = Math.atan2(b.vy, b.vx) + Math.PI / 2; this._net(b.s.x, b.s.y, b.col); } // little spark on bounce
       let hitFish = null;
       for (const f of this.fish) { if (!f.alive) continue; const d = Math.hypot(b.s.x - f.c.x, b.s.y - f.c.y); if (d < f.r + b.r) { hitFish = f; break; } }
       if (hitFish) { this._resolveBulletFish(b, hitFish); }
-      if (b.hit || b.s.y < -20 || b.s.x < -20 || b.s.x > this.W + 20) { this.bulletLayer.removeChild(b.s); b.s.destroy(); this.bullets.splice(i, 1); }
+      // retire only when it hits a fish, runs out of bounces, or times out (never just for leaving the screen)
+      if (b.hit || b.bounces > 6 || b.life > 3.2) { this.bulletLayer.removeChild(b.s); b.s.destroy(); this.bullets.splice(i, 1); }
     }
 
     // coins fly to balance HUD
