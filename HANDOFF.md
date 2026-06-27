@@ -1,7 +1,17 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v11.35**.
+Last updated at build **v11.36**.
+
+> **🆕 NOTE FOR CHATGPT (v11.36):** The CH-15 slot was given a **brand-new
+> premium renderer** and **renamed "Gem Vault" → "Royal Riches"** (player-facing
+> only). The internal channel id (**15**) and key (**`slots3d`**) are unchanged,
+> the provably-fair math (`slots3d-engine.js`) and the host-bridge API are
+> byte-for-byte identical — only `public/slots3d.js` (visuals) and the displayed
+> name/emoji changed. New name + 👑 emoji live in `index.html` + `app.js`
+> (search `Royal Riches`). The new renderer uses a procedural PMREM env-mapped
+> gold cabinet + baked 512px faceted-gem symbols; no full-screen bloom (keeps
+> symbols crisp). Preview harness: `public/_gemvault_preview.html`.
 
 > **Security note:** No passwords, private keys, or secrets are stored in this repo
 > (and must never be). "Access" below describes *how* access works, not credentials.
@@ -52,14 +62,16 @@ are served as-is by a small Node server. Edit a file → bump the version → de
 
 ## 4. ⚠️ Versioning convention (DO THIS ON EVERY USER-FACING CHANGE)
 Cache-busting is manual and **must** be bumped or users keep the old build. Current =
-**v11.35 / v=1135 / ctf-v11.35**. To ship `v11.36`:
-1. `public/index.html` — bump every `?v=1135` → `?v=1136` (≈14 occurrences) AND the
-   two build-tag chips `>v11.35<` → `>v11.36<` (brand tag + the mobile pill by ☰).
-2. `public/app.js` — bump `coinflip3d.js?v=1135` and the blackjack iframe
-   `blackjack.html?tv=1&v=1135` → `…1136`.
-3. `public/sw.js` — bump `const CACHE = "ctf-v11.35"` → `"ctf-v11.36"`.
-- Quick recipe (sed): `sed -i 's/v=1135/v=1136/g' public/index.html`,
-  `sed -i 's/>v11\.35</>v11.36</g' public/index.html`, plus the app.js + sw.js lines.
+**v11.36 / v=1136 / ctf-v11.36**. To ship `v11.37`:
+1. `public/index.html` — bump every `?v=1136` → `?v=1137` (≈14 occurrences) AND the
+   two build-tag chips `>v11.36<` → `>v11.37<` (brand tag + the mobile pill by ☰).
+2. `public/app.js` — bump `coinflip3d.js?v=1136`, the blackjack iframe
+   `blackjack.html?tv=1&v=1136`, AND `slots3d.js?v=` (currently `1136`) → `…1137`.
+   ⚠️ `slots3d.js` has its OWN version (was `1109`, now `1136`) — bump it whenever
+   you change the slot renderer, or users keep the stale build.
+3. `public/sw.js` — bump `const CACHE = "ctf-v11.36"` → `"ctf-v11.37"`.
+- Quick recipe (sed): `sed -i 's/v=1136/v=1137/g' public/index.html`,
+  `sed -i 's/>v11.36</>v11.37</g' public/index.html`, plus the app.js + sw.js lines.
 - The service worker (`sw.js`) is network-first for HTML, cache-first for `?v=`/`/vendor/`
   assets, and calls `skipWaiting()`+`clients.claim()` so updates apply on next load.
 - **Server-only changes** (e.g. `server/blackjack-server.js`) do NOT need a version
@@ -88,7 +100,7 @@ Claude-Session: https://claude.ai/code/session_01WXBP6SbFfnkNE8eqQGGJCn
 
 ### TV channels (`GAME_CHANNEL` in app.js)
 flip **8**, dice (0-100) **9**, twodice **10**, crash **11**, slots **12**,
-pressure/Balloon Pop **13**, plane **14**, slots3d/Gem Vault **15**, blackjack **16**.
+pressure/Balloon Pop **13**, plane **14**, slots3d/Royal Riches (was Gem Vault) **15**, blackjack **16**.
 (Poker is a separate full-width view, not a TV channel.)
 
 ### On-chain config (`public/config.js`, Sepolia chainId 11155111)
@@ -181,6 +193,12 @@ pressure/Balloon Pop **13**, plane **14**, slots3d/Gem Vault **15**, blackjack *
 ---
 
 ## 10. Recent history (most recent first)
+- **v11.36 — CH-15 slot RENAMED "Gem Vault" → "Royal Riches" + brand-new premium
+  renderer** (`public/slots3d.js` fully replaced). Procedural PMREM env-mapped ornate
+  gold cabinet, baked 512px faceted-gem symbols (sparkle/glint/caustic), gold-ingot BAR,
+  amethyst WILD shield, vault-dial scatter, perimeter chase light, ring bursts. No
+  full-screen bloom (symbols stay crisp). Channel id 15 + key `slots3d` + engine math
+  unchanged. Preview: `public/_gemvault_preview.html`. `slots3d.js?v=` bumped 1109→1136.
 - v11.35 — bug-hunt fixes: coin shows the *result* face on channel-leave-while-pending;
   re-bet-during-hold gated; floating bet-bar range mirrors live slider (Balloon Pop max).
 - (server) blackjack: one seat per wallet across tables; mid-hand top-up re-arms turn clock.

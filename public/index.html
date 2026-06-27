@@ -27,7 +27,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=1135" />
+    <link rel="stylesheet" href="styles.css?v=1136" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -37,13 +37,13 @@
     <!-- ───────────────────────── Header ───────────────────────── -->
     <header class="topbar">
       <button id="rail-toggle" class="rail-toggle" aria-label="Open menu" title="Menu">☰</button>
-      <span class="build-tag-m" id="build-tag-m" title="Live build version — confirms the deploy is up to date">v11.35</span>
+      <span class="build-tag-m" id="build-tag-m" title="Live build version — confirms the deploy is up to date">v11.36</span>
       <div class="brand">
         <span class="brand-tv">📺</span>
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v11.35</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v11.36</span>
       </div>
       <div class="topbar-right">
         <div class="tb-tools">
@@ -176,7 +176,7 @@
               <path d="M12 7 9.3 9.2 12 13l2.7-3.8z"/>
             </svg>
           </span>
-          <span class="gc-name">Gem Vault</span>
+          <span class="gc-name">Royal Riches</span>
         </button>
 
         <button type="button" class="game-card blackjack" id="ch-blackjack" role="tab" aria-selected="false" data-game="blackjack">
@@ -400,7 +400,7 @@
 
                 <!-- Promo intro reel — autoplays once (muted) on first load, then fades
                      to black and hands off to the game. Replay button under the TV. -->
-                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=1135"></video>
+                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=1136"></video>
 
                 <!-- Shown while a bet tx is being signed + mined (esp. slow on mobile) -->
                 <div id="tv-pending" class="tv-pending hidden">⏳ SENDING BET…<br />confirm in your wallet, then hold tight</div>
@@ -903,7 +903,7 @@
         <!-- Gem Vault 3D (CH 15): premium Three.js slot, play-money / demo only -->
         <div class="card dice-panel slots3d-panel" id="slots3d-panel" data-game="slots3d" hidden>
           <div class="ph-head">
-            <h2 class="card-title">💎 Gem Vault 3D <span class="ch-tag">CH 15</span></h2>
+            <h2 class="card-title">👑 Royal Riches <span class="ch-tag">CH 15</span></h2>
             <span class="ph-bankroll muted">Balance: <strong id="s3d-balance">$0</strong> · edge ~5%</span>
           </div>
           <p class="muted td-intro">A 5×3, 20-line slot — match symbols left-to-right; <strong>WILD</strong> substitutes and 3+ <strong>Vault</strong> scatters pay anywhere. <strong>95% RTP</strong> · provably fair.</p>
@@ -1255,7 +1255,7 @@
     </div>
 
     <!-- ─────────── Gem Vault 3D: payouts + free-spins explainer ─────────── -->
-    <div id="s3d-help-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Gem Vault payouts and free spins">
+    <div id="s3d-help-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Royal Riches payouts and free spins">
       <div class="modal-card s3d-help-card">
         <button id="s3d-help-close" class="modal-close" aria-label="Close">✕</button>
         <div id="s3d-help-body"><!-- built from the engine by slots3d --></div>
@@ -1361,17 +1361,17 @@
     </aside>
 
     <script defer src="vendor/ethers.umd.min.js"></script>
-    <script defer src="config.js?v=1135"></script>
-    <script defer src="contract.js?v=1135"></script>
-    <script defer src="chiptune.js?v=1135"></script>
-    <script defer src="scenes.js?v=1135"></script>
-    <script defer src="tv.js?v=1135"></script>
-    <script defer src="poker-engine.js?v=1135"></script>
-    <script defer src="poker-bots.js?v=1135"></script>
-    <script defer src="poker-ui.js?v=1135"></script>
-    <script defer src="crash-engine.js?v=1135"></script>
-    <script defer src="crash-render.js?v=1135"></script>
-    <script defer src="profile.js?v=1135"></script>
-    <script defer src="app.js?v=1135"></script>
+    <script defer src="config.js?v=1136"></script>
+    <script defer src="contract.js?v=1136"></script>
+    <script defer src="chiptune.js?v=1136"></script>
+    <script defer src="scenes.js?v=1136"></script>
+    <script defer src="tv.js?v=1136"></script>
+    <script defer src="poker-engine.js?v=1136"></script>
+    <script defer src="poker-bots.js?v=1136"></script>
+    <script defer src="poker-ui.js?v=1136"></script>
+    <script defer src="crash-engine.js?v=1136"></script>
+    <script defer src="crash-render.js?v=1136"></script>
+    <script defer src="profile.js?v=1136"></script>
+    <script defer src="app.js?v=1136"></script>
   </body>
 </html>
