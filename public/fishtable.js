@@ -128,6 +128,14 @@
   TexFactory.prototype.ring = function () {
     return this._bake("ring", 64, 64, (g) => { g.lineStyle(6, 0xffffff, 1); g.drawCircle(32, 32, 26); });
   };
+  // an actual catch-net: radial spokes crossed by concentric arcs
+  TexFactory.prototype.net = function () {
+    return this._bake("net", 100, 100, (g) => {
+      const c = 50; g.lineStyle(2.4, 0xffffff, 0.9);
+      for (let i = 0; i < 12; i++) { const a = i * Math.PI / 6; g.moveTo(c, c); g.lineTo(c + Math.cos(a) * 44, c + Math.sin(a) * 44); }
+      for (const r of [16, 28, 40]) g.drawCircle(c, c, r);
+    });
+  };
 
   /* ============================ the game ============================ */
   function FishTable(opts) {
@@ -197,6 +205,8 @@
     this.fishLayer = new PIXI.Container(); app.stage.addChild(this.fishLayer);
     this.bulletLayer = new PIXI.Container(); app.stage.addChild(this.bulletLayer);
     this.fxLayer = new PIXI.Container(); app.stage.addChild(this.fxLayer);
+    // full-screen flash overlay for impactful moments (catches/jackpot/chest)
+    this._flash = new PIXI.Sprite(PIXI.Texture.WHITE); this._flash.width = W; this._flash.height = H; this._flash.alpha = 0; this._flash.blendMode = PIXI.BLEND_MODES.ADD; app.stage.addChild(this._flash);
 
     // ── cannon / turret at bottom center ──
     this.cannon = new PIXI.Container(); this.cannon.x = W / 2; this.cannon.y = H - 24; app.stage.addChild(this.cannon);
@@ -218,6 +228,13 @@
     this.reticle = new PIXI.Graphics(); this.reticle.lineStyle(2, 0xff5d72, 0.85); this.reticle.drawCircle(0, 0, 16); this.reticle.moveTo(-22, 0); this.reticle.lineTo(-8, 0); this.reticle.moveTo(8, 0); this.reticle.lineTo(22, 0); this.reticle.moveTo(0, -22); this.reticle.lineTo(0, -8); this.reticle.moveTo(0, 8); this.reticle.lineTo(0, 22); this.reticle.visible = false; this.fxLayer.addChild(this.reticle);
 
     // ── in-canvas HUD ──
+    // depth vignette — darken the edges so the tank feels deep (center stays clear)
+    const vC = document.createElement("canvas"); vC.width = W; vC.height = H; const vx = vC.getContext("2d");
+    const vg = vx.createRadialGradient(W / 2, H * 0.46, Math.min(W, H) * 0.25, W / 2, H * 0.5, Math.max(W, H) * 0.7);
+    vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(0.7, "rgba(2,8,18,0.18)"); vg.addColorStop(1, "rgba(1,5,12,0.62)");
+    vx.fillStyle = vg; vx.fillRect(0, 0, W, H);
+    const vign = new PIXI.Sprite(PIXI.Texture.from(vC)); app.stage.addChild(vign);
+
     this._buildHud();
     // initial bubbles
     for (let i = 0; i < 26; i++) { this._spawnBubble(true); }
@@ -279,7 +296,7 @@
     const tipX = this.cannon.x + Math.cos(ang) * 54, tipY = this.cannon.y + Math.sin(ang) * 54;
     const col = this.power >= 5 ? 0xff4d9d : this.power >= 3 ? 0xffd23f : 0x39e7ff;
     const sp = new PIXI.Sprite(this.tex.bullet(col)); sp.anchor.set(0.5); sp.x = tipX; sp.y = tipY; sp.rotation = ang + Math.PI / 2;
-    const sc = 0.8 + this.power * 0.12; sp.scale.set(sc);
+    const sc = 0.8 + this.power * 0.12; sp.scale.set(sc, sc * 1.7); // streak along travel
     this.bulletLayer.addChild(sp);
     const speed = 620 + this.power * 30;
     this.bullets.push({ s: sp, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed, r: 7 * sc, col, hit: false });
@@ -311,7 +328,7 @@
     this._combo++; this._comboT = 1.2;
     // FX: net catch ring + coin burst toward balance HUD + floating payout
     this._net(fish.c.x, fish.c.y, fish.def.color, true);
-    const coins = clamp(Math.round(fish.def.mult * 0.8) + 4, 5, 40);
+    const coins = clamp(Math.round(fish.def.mult * 1.1) + 5, 6, 64);
     for (let i = 0; i < coins; i++) this._spawnCoin(fish.c.x, fish.c.y);
     this._floatText("+$" + payout.toFixed(2), fish.c.x, fish.c.y - fish.r, fish.def.tier === "boss" ? 0xffd23f : 0x45f0a6);
     // shake scaled to value
@@ -462,7 +479,7 @@
 
   /* ---------- FX primitives ---------- */
   FishTable.prototype._net = function (x, y, color, big) {
-    const s = new PIXI.Sprite(this.tex.ring()); s.anchor.set(0.5); s.x = x; s.y = y; s.tint = color; s.blendMode = PIXI.BLEND_MODES.ADD; s.scale.set(0.2); this.fxLayer.addChild(s);
+    const s = new PIXI.Sprite(big ? this.tex.net() : this.tex.ring()); s.anchor.set(0.5); s.x = x; s.y = y; s.tint = big ? 0xffffff : color; s.blendMode = PIXI.BLEND_MODES.ADD; s.scale.set(0.2); this.fxLayer.addChild(s);
     this.fx.push({ s, t: 0, dur: big ? 0.5 : 0.32, kind: "ring", to: big ? 2.6 : 1.4 });
   };
   FishTable.prototype._explosion = function (x, y, radius, color) {
@@ -484,9 +501,13 @@
     t.anchor.set(0.5); t.x = x; t.y = y; this.fxLayer.addChild(t); this.fx.push({ s: t, t: 0, dur: 0.9, kind: "float" });
   };
   FishTable.prototype._flashBanner = function (txt, sub, color) {
-    this.banner.text = txt; this.banner.style.fill = color; this.banner.alpha = 1; this.banner.scale.set(1.4);
+    this.banner.text = txt; this.banner.style.fill = color; this.banner.alpha = 1; this.banner.scale.set(2.3); // slam in big, settles via easeOutBack
     this.bannerSub.text = sub || ""; this.bannerSub.alpha = sub ? 1 : 0;
-    this._bannerT = 0;
+    this._bannerT = 0; this._screenFlash(color, 0.18);
+  };
+  // brief full-screen color flash for impactful moments
+  FishTable.prototype._screenFlash = function (color, a) {
+    if (!this._flash) return; this._flash.tint = color; this._flash.alpha = Math.max(this._flash.alpha, a);
   };
 
   /* ---------- per-frame ---------- */
@@ -576,8 +597,15 @@
     for (const s of this.causticLayer.children) { s.x += s._vx * dt; if (s.x < -100) s.x = this.W + 100; if (s.x > this.W + 100) s.x = -100; s.alpha = 0.08 + 0.04 * Math.sin(this._t + s.x); }
     for (const w of this.weeds.children) { w.rotation = Math.sin(this._t * 0.8 + w._phase) * w._amp; }
 
-    // banner anim
-    if (this.banner.alpha > 0) { this._bannerT += dt; this.banner.scale.set(lerp(this.banner.scale.x, 1, Math.min(1, dt * 8))); if (this._bannerT > 1.1) { this.banner.alpha = Math.max(0, this.banner.alpha - dt * 1.6); this.bannerSub.alpha = this.banner.alpha; } }
+    // banner anim — slam in (easeOutBack overshoot) then hold then fade
+    if (this.banner.alpha > 0) {
+      this._bannerT += dt; const k = Math.min(1, this._bannerT / 0.32);
+      const eb = 1 + 2.70158 * Math.pow(k - 1, 3) + 1.70158 * Math.pow(k - 1, 2);
+      this.banner.scale.set(2.3 + (1 - 2.3) * eb);
+      if (this._bannerT > 1.2) { this.banner.alpha = Math.max(0, this.banner.alpha - dt * 1.6); this.bannerSub.alpha = this.banner.alpha; }
+    }
+    // screen flash decay
+    if (this._flash) { if (this._flash.alpha > 0.01) this._flash.alpha *= 0.86; else this._flash.alpha = 0; }
 
     // combo decay
     if (this._comboT > 0) { this._comboT -= dt; if (this._comboT <= 0) this._combo = 0; }
