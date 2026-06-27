@@ -2223,20 +2223,11 @@ body.demo-mode #bankroll { display: none !important; }
 #layer-fish.rr-fs .fish-stage canvas { object-fit: contain; }
 /* fullscreen: CSS-pinned (works on iOS too) — fills the whole viewport */
 #layer-fish.rr-fs { position: fixed; inset: 0; width: 100vw; height: 100dvh; z-index: 99999; background: #041326; }
-/* Reliably hide the site chrome while Reef is fullscreen. A z-index alone isn't
-   enough — #layer-fish sits inside a positioned/transformed ancestor, so its fixed
-   overlay can be trapped below the sticky topbar / bottom nav. Hiding them outright
-   guarantees a true edge-to-edge game. */
-body.rr-fs-on .topbar,
-body.rr-fs-on .bottom-nav,
-body.rr-fs-on .chat-tab,
-body.rr-fs-on .chat-drawer,
-body.rr-fs-on .action-dock,
-body.rr-fs-on #betbar-stake,
-body.rr-fs-on .betbar-stake,
-body.rr-fs-on #fish-panel,
-body.rr-fs-on .game-panel,
-body.rr-fs-on .bankroll { display: none !important; }
+/* Reef fullscreen: toggleFullscreen() REPARENTS #layer-fish to be a direct child of
+   <body>, so this single rule hides ALL other page chrome (top bar, bottom nav, the
+   landscape side menu, the ETH ticker, the Share-win button, modals, everything) in
+   every layout/orientation. The game layer is the only thing left visible. */
+body.rr-fs-on > *:not(#layer-fish) { display: none !important; }
 body.rr-fs-on { overflow: hidden !important; }
 /* The "back to normal view" button — large, fixed, always on top of the game. */
 #layer-fish.rr-fs .fish-fs-exit {

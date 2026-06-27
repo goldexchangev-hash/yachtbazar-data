@@ -1,7 +1,7 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v11.45**.
+Last updated at build **v11.46**.
 
 > **📒 PER-GAME LIVING SPECS:** Detailed, always-current handoff docs live alongside this
 > file. **`REEF-RAIDERS.md`** is the full spec for the Reef Raiders fish-shooter (CH 17) —

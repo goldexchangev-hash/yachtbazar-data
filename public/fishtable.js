@@ -538,6 +538,7 @@
 
   /* ---------- BONUS ROUND 2: FEEDING FRENZY (Treasure Clam) ---------- */
   FishTable.prototype._startFrenzy = function (dur) {
+    if (this._frenzy > 0) return; // never re-arm an active frenzy (would chain free shots)
     this._frenzy = dur; this._frenzyMax = dur; this._frenzyWon = 0;
     this._flashBanner("🌊 FEEDING FRENZY!", "FREE SHOTS — catch everything!", 0x45f0a6);
     // flood the tank with a formation of catchable fish
@@ -549,8 +550,11 @@
     if (this._frenzy <= 0) return;
     this._frenzy -= dt;
     // Cap the free-shot winnings so the frenzy can't blow the house edge: it's a
-    // bonus reward, not an open tap. Once it's paid out ~25x the base bet, it ends.
-    if (this._frenzyWon >= this.unitBet * 25) { this._frenzy = 0.0001; }
+    // bonus reward, not an open tap. Once it's paid out ~25x the base bet, END it.
+    // NB: must set EXACTLY 0 (not a tiny positive) — a positive value pins _frenzy
+    // every frame and the "<= 0" end-check below never fires → frenzy stuck ON
+    // forever = free shots that never deduct (the auto-fire-stuck / not-charging bug).
+    if (this._frenzyWon >= this.unitBet * 25) { this._frenzy = 0; }
     // dense spawns of mostly small/medium fish
     if (Math.random() < dt * 6 && this.fish.length < 26) { const small = E.FISH.filter((f) => f.tier !== "boss" && !f.bonus); this._spawnFish(small[(Math.random() * small.length) | 0]); }
     // frenzy meter bar (reuse jackpot meter area, green)
@@ -770,6 +774,12 @@
     v.addEventListener("mousemove", onMove); v.addEventListener("touchmove", onMove, { passive: false });
     v.addEventListener("mousedown", onDown); v.addEventListener("touchstart", onDown, { passive: false });
     window.addEventListener("mouseup", onUp); window.addEventListener("touchend", onUp);
+    // CRITICAL: also clear "holding" on touch/pointer CANCEL + blur + tab-hide. Without
+    // these, a cancelled touch (a system gesture on mobile interrupts touchend) leaves
+    // _holding stuck true → the cannon fires forever and the Auto button can't stop it.
+    window.addEventListener("touchcancel", onUp); window.addEventListener("pointercancel", onUp);
+    window.addEventListener("blur", onUp);
+    document.addEventListener("visibilitychange", () => { if (document.hidden) this._holding = false; });
     const e = this.els;
     if (e.betSlider) e.betSlider.addEventListener("input", () => this.setBet(parseFloat(e.betSlider.value) || MIN_BET));
     if (e.powerUp) e.powerUp.addEventListener("click", () => this.setPower(this.power + 1));
@@ -807,10 +817,22 @@
   FishTable.prototype.newSession = function (buyIn) { this._sesSpent = 0; this._sesWon = 0; this._sesBuyIn = +buyIn || 0; this._renderHud(); };
   FishTable.prototype._save = function () { if (this.onBalance) try { this.onBalance(this.balance); } catch (e) {} };
 
+  // Tear down any in-flight bonus round + free-fire so leaving the channel can't strand
+  // the game in a state where `_chest`/`_jpFx` stay set (firing is gated on them being
+  // null) or `_frenzy` stays >0 (free shots). Jackpot money is credited BEFORE its show,
+  // so dropping the show loses no payout.
+  FishTable.prototype._forceEndBonuses = function () {
+    this._frenzy = 0; this._holding = false;
+    try { if (this._chest && this._chest.cont) { this.hud.removeChild(this._chest.cont); this._chest.cont.destroy({ children: true }); } } catch (e) {}
+    this._chest = null;
+    try { if (this._jpFx && this._jpFx.cont) { this.hud.removeChild(this._jpFx.cont); this._jpFx.cont.destroy({ children: true }); } } catch (e) {}
+    this._jpFx = null;
+  };
+
   /* ---------- host bridge ---------- */
   FishTable.prototype.setActive = function (on) {
     on = !!on; if (on === this._active) return; this._active = on;
-    if (on) { this.app.ticker.start(); } else { this.app.ticker.stop(); this._holding = false; }
+    if (on) { this.app.ticker.start(); } else { this.app.ticker.stop(); this._forceEndBonuses(); try { this._fsExit(this._fsTarget); } catch (e) {} }
   };
   FishTable.prototype.setEnabled = function (on) { this._enabled = !!on; this._renderHud(); };
   FishTable.prototype.setBalance = function (usd) { this.balance = Math.max(0, Math.round((+usd || 0) * 100) / 100); this._renderHud(); };
@@ -818,7 +840,7 @@
   FishTable.prototype.setMode = function () { /* demo-only for now; kept for API symmetry */ };
   FishTable.prototype.setBet = function (v) { this.unitBet = Math.max(MIN_BET, Math.round((+v || MIN_BET) * 100) / 100); this._renderHud(); };
   FishTable.prototype.setPower = function (p) { this.power = clamp(p | 0, 1, MAX_POWER); this._renderHud(); };
-  FishTable.prototype.toggleAuto = function () { this.auto = !this.auto; if (this.els.autoBtn) this.els.autoBtn.classList.toggle("on", this.auto); this._renderHud(); };
+  FishTable.prototype.toggleAuto = function () { this.auto = !this.auto; this._holding = false; /* always clear a (possibly stuck) hold so the Auto button is a reliable stop */ if (this.els.autoBtn) this.els.autoBtn.classList.toggle("on", this.auto); this._renderHud(); };
   FishTable.prototype.toggleLock = function () { this.lock = !this.lock; if (!this.lock) this.reticle.visible = false; if (this.els.lockBtn) this.els.lockBtn.classList.toggle("on", this.lock); this._renderHud(); };
   // Fullscreen (immersive arcade mode). The real Fullscreen API does NOT work on
   // iPhone Safari for non-video elements, so we ALWAYS toggle a CSS class that
@@ -828,18 +850,35 @@
   FishTable.prototype.toggleFullscreen = function (el) {
     const target = el || this._fsTarget || this.mount || this.app.view;
     const turningOn = !(target.classList && target.classList.contains("rr-fs"));
-    if (target.classList) target.classList.toggle("rr-fs", turningOn);
-    document.body.classList.toggle("rr-fs-on", turningOn);
-    try {
-      if (turningOn) { const req = target.requestFullscreen || target.webkitRequestFullscreen || target.webkitRequestFullScreen || target.msRequestFullscreen; if (req) req.call(target); }
-      else { if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen(); else if (document.webkitFullscreenElement && document.webkitExitFullscreen) document.webkitExitFullscreen(); }
-    } catch (e) {}
-    if (this.els.fsBtn) this.els.fsBtn.classList.toggle("on", turningOn);
+    if (turningOn) {
+      // REPARENT the game layer to <body> so it escapes the TV's stacking context.
+      // Then a single CSS rule (`body.rr-fs-on > *:not(#layer-fish){display:none}`)
+      // hides EVERYTHING else — top bar, bottom nav, the landscape side menu, the ETH
+      // ticker, the Share-win button — regardless of layout or orientation. Whitelisting
+      // elements one by one kept missing things; this covers them all.
+      if (!this._fsHome) this._fsHome = { parent: target.parentNode, next: target.nextSibling };
+      document.body.appendChild(target);
+      target.classList.add("rr-fs");
+      document.body.classList.add("rr-fs-on");
+      try { const req = target.requestFullscreen || target.webkitRequestFullscreen || target.webkitRequestFullScreen || target.msRequestFullscreen; if (req) req.call(target); } catch (e) {}
+      if (this.els.fsBtn) this.els.fsBtn.classList.add("on");
+    } else {
+      this._fsExit(target);
+    }
+  };
+  FishTable.prototype._fsExit = function (target) {
+    target = target || this._fsTarget || this.mount; if (!target) return;
+    if (!target.classList || !target.classList.contains("rr-fs")) return; // not in fullscreen
+    target.classList.remove("rr-fs");
+    document.body.classList.remove("rr-fs-on");
+    if (this._fsHome && this._fsHome.parent) { try { this._fsHome.parent.insertBefore(target, this._fsHome.next || null); } catch (e) {} this._fsHome = null; }
+    try { if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen(); else if (document.webkitFullscreenElement && document.webkitExitFullscreen) document.webkitExitFullscreen(); } catch (e) {}
+    if (this.els.fsBtn) this.els.fsBtn.classList.remove("on");
   };
   FishTable.prototype.setFullscreenTarget = function (el) {
     this._fsTarget = el;
-    // keep the CSS class in sync if the user exits real fullscreen via Esc/swipe
-    const sync = () => { const real = !!(document.fullscreenElement || document.webkitFullscreenElement); if (!real && el.classList.contains("rr-fs") && this._fsWasReal) { el.classList.remove("rr-fs"); document.body.classList.remove("rr-fs-on"); this._fsWasReal = false; if (this.els.fsBtn) this.els.fsBtn.classList.remove("on"); } this._fsWasReal = real; };
+    // keep state in sync if the user exits real fullscreen via Esc/swipe
+    const sync = () => { const real = !!(document.fullscreenElement || document.webkitFullscreenElement); if (!real && el.classList.contains("rr-fs") && this._fsWasReal) { this._fsExit(el); this._fsWasReal = false; } this._fsWasReal = real; };
     document.addEventListener("fullscreenchange", sync); document.addEventListener("webkitfullscreenchange", sync);
   };
 

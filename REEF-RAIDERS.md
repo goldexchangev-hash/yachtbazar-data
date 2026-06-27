@@ -5,7 +5,7 @@
 > **update it with every change** so it never goes stale. Keep the Changelog at the
 > bottom current and bump the "Last updated" build below.
 
-**Last updated: build v11.45.** Live at https://tv-crypto-flip.onrender.com (Render
+**Last updated: build v11.46.** Live at https://tv-crypto-flip.onrender.com (Render
 auto-deploys the `claude/ethereum-betting-game-vrf-2dq50k` branch on push).
 
 ---
@@ -169,22 +169,42 @@ resets it (called on first channel entry).
 - **Specials:** Bomb Fish = AoE splash; Electric Eel = chains to 3 nearest. Power 1–MAX_POWER
   scales cost + kill chance together (RTP preserved).
 
+### Money/state safety invariants (do NOT break — these were real bugs)
+- **Frenzy must end at exactly 0.** The free-shot Frenzy makes shots cost 0. Its winnings
+  cap must set `_frenzy = 0` (NOT a tiny positive like `0.0001`) — a positive value gets
+  re-pinned every frame so the `<= 0` end-check never fires → **frenzy stuck ON forever =
+  free shots that never deduct + auto-fire that can't be stopped** (this was the live bug).
+  `_startFrenzy` also early-returns if a frenzy is already active (no chaining).
+- **`_holding` must clear on cancel.** The hold-to-fire flag clears on mouseup/touchend AND
+  `touchcancel`/`pointercancel`/`blur`/`visibilitychange` — without the cancel handlers a
+  cancelled mobile touch leaves it stuck true → endless fire. `toggleAuto()` also force-clears
+  `_holding`, so tapping Auto is always a reliable stop.
+- **Bonus state must not strand firing.** Firing is gated on `!_chest && !_jpFx`. `setActive(false)`
+  calls `_forceEndBonuses()` (clears `_frenzy`, tears down `_chest`/`_jpFx` containers) so
+  navigating away mid-bonus can't leave firing disabled on return.
+- **Every paid shot deducts exactly `cost()`** (verified: 3,334-shot headless run, 0 bad
+  deductions). The only free shots are during an active Frenzy. Keep it that way.
+
 ---
 
 ## 6. Fullscreen (mobile-critical)
 
-- `toggleFullscreen(el)` toggles the `.rr-fs` class on `#layer-fish` AND `rr-fs-on` on
-  `<body>`, and requests the real Fullscreen API (iOS Safari ignores it for divs — the
-  class is the real mechanism).
+- `toggleFullscreen(el)` **REPARENTS `#layer-fish` to be a direct child of `<body>`**
+  (saving its home in `this._fsHome`), adds `.rr-fs` to it + `rr-fs-on` to `<body>`, and
+  requests the real Fullscreen API where supported (iOS Safari ignores it for divs — the
+  reparent + class is the real mechanism). `_fsExit(el)` reverses it (restores the element
+  to `#tv-screen`, removes classes, exits real FS). `setActive(false)` also calls `_fsExit`
+  so leaving the channel can't strand the layer on `<body>`.
+- **Why reparent:** whitelisting chrome elements to hide kept missing things (the ETH
+  ticker, the Share-win button, and the **landscape desktop side-menu `#game-nav`**, which
+  only appears at wide viewports). With the layer on `<body>`, ONE rule hides everything:
+  `body.rr-fs-on > *:not(#layer-fish) { display: none !important; }`. Verified headless: in
+  fullscreen, the ONLY rendered things are `#layer-fish` and `#fish-fs-exit`.
 - **Aspect:** `#layer-fish.rr-fs .fish-stage canvas { object-fit: contain }` so the 3:2
-  render is letterboxed, not stretched into the tall portrait box. Rotate the phone to
-  landscape to fill the screen.
-- **Hiding chrome:** `#layer-fish` is nested deep in the TV's stacking context, so a high
-  z-index alone does NOT cover the site's top bar / bottom nav. Instead `body.rr-fs-on`
-  **explicitly hides** `.topbar`, `.bottom-nav`, `.chat-tab`, `.chat-drawer`, `.action-dock`,
-  `#betbar-stake`, `#fish-panel`, `.bankroll`. Add any new chrome here too.
-- **Exit:** `#fish-fs-exit` ("✕ Exit fullscreen") — big, `position:fixed`, max z-index, shown
-  only in `.rr-fs`. Both the dock fullscreen button and this exit button call `toggleFullscreen`.
+  render is letterboxed, not stretched. Rotate the phone to landscape to fill the screen.
+- **Exit:** `#fish-fs-exit` ("✕ Exit fullscreen") lives INSIDE `#layer-fish` (so it moves
+  with the reparent and stays clickable) — big, `position:fixed`, max z-index, shown only
+  in `.rr-fs`. The dock fullscreen button and this exit button both call `toggleFullscreen`.
 
 ---
 
@@ -274,6 +294,15 @@ caps live in the renderer, so for a full check also reason about those (see §4)
 
 ## Changelog (newest first)
 
+- **v11.46** — Bug-hunt pass (auto-fire stuck / not deducting). ROOT CAUSE: the Frenzy
+  winnings cap set `_frenzy = 0.0001`, which re-pinned every frame so Frenzy never ended →
+  free shots forever + auto that couldn't be stopped (now ends at exactly 0). Also: `_holding`
+  now clears on touchcancel/pointercancel/blur/visibilitychange + `toggleAuto` force-clears it;
+  `_startFrenzy` won't re-arm an active frenzy; `setActive(false)` tears down in-flight
+  bonus rounds (`_forceEndBonuses`). **Fullscreen rewritten to REPARENT `#layer-fish` to
+  `<body>`** so one rule hides all chrome (incl. the landscape side-menu, ETH ticker,
+  Share-win button) — verified only the game + exit button render. Verified via a headless
+  ledger harness: 0 bad deductions across 3,334 shots, frenzy/chest/jackpot all end.
 - **v11.45** — Fixed the refresh-hang (missing `fish` branch in the page-load restore +
   `changeChannel`/`setConnected` gaps). **Reef math → ~10% house edge**: RTP 0.92→0.85,
   kill floor 0.02→0.005 (killed the 320%/160% boss exploit), jackpot turned into a
