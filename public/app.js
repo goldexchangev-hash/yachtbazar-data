@@ -341,14 +341,21 @@
     const s = curStakeSlider();
     const show = !!(s && BETBAR_GAMES.has(currentGame));
     if (show) bar.removeAttribute("hidden"); else bar.setAttribute("hidden", "");
-    const amt = $("bbs-amt"); if (show && amt) amt.textContent = usd(+s.value || 0);
+    if (!show) return;
+    const amt = $("bbs-amt"); if (amt) amt.textContent = usd(+s.value || 0);
+    // mirror the active game's slider range + value onto the floating slider
+    const sl = $("bbs-slider");
+    if (sl) { sl.min = s.min || "10"; sl.max = s.max || "500"; sl.step = s.step || "5"; sl.value = s.value; }
   }
-  function betbarStep(dir) {
+  // Push a value onto the current game's real slider (clamped to its range) and fire
+  // the same "input" event the panel listens to, so all readouts refresh.
+  function betbarSet(v) {
     const s = curStakeSlider(); if (!s) return;
-    const step = (+s.step || 5) * (dir > 0 ? 1 : -1);
-    const v = Math.max(+s.min || 0, Math.min(+s.max || 1e9, (+s.value || 0) + step));
+    const step = +s.step || 5, min = +s.min || 0, max = +s.max || 1e9;
+    v = Math.max(min, Math.min(max, Math.round(v / step) * step));
     if (String(v) !== s.value) { s.value = String(v); setSliderUsd(s.id); try { s.dispatchEvent(new Event("input", { bubbles: true })); } catch (e) {} }
   }
+  function betbarStep(dir) { const s = curStakeSlider(); if (!s) betbarSet(0); else betbarSet((+s.value || 0) + (+s.step || 5) * (dir > 0 ? 1 : -1)); }
   function wireBetbar() {
     const bar = $("betbar-stake"); if (!bar) return;
     bar.addEventListener("click", (e) => {
@@ -356,10 +363,12 @@
       const step = e.target.closest(".bbs-step"), preset = e.target.closest(".bbs-preset");
       if (step) betbarStep(+step.dataset.dir);
       else if (preset) quickBet(s.id, preset.dataset.mode);
-      else if (e.target.closest(".bbs-amt")) { try { s.scrollIntoView({ behavior: "smooth", block: "center" }); s.focus(); } catch (e2) {} }
       syncBetbarStake();
     });
-    // keep the floating amount in lock-step when the panel slider (or quickBet/keys) moves it
+    // drag the floating slider → drive the real game slider
+    const sl = $("bbs-slider");
+    if (sl) sl.addEventListener("input", () => { betbarSet(+sl.value); const amt = $("bbs-amt"); if (amt) { const s = curStakeSlider(); if (s) amt.textContent = usd(+s.value || 0); } });
+    // keep the floating bar in lock-step when the panel slider (or quickBet/keys) moves it
     document.addEventListener("input", (e) => { if (e.target === curStakeSlider()) syncBetbarStake(); }, true);
   }
 
@@ -2212,7 +2221,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1131"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1132"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -2631,7 +2640,7 @@
     const f = $("bj-frame");
     if (f && !f.src) {
       // No &bal= seed — the table starts from its own server default ($1,000), NOT the demo balance.
-      let src = "blackjack.html?tv=1&v=1131&guest=" + encodeURIComponent(bjGuestId());
+      let src = "blackjack.html?tv=1&v=1132&guest=" + encodeURIComponent(bjGuestId());
       if (bjPendingTable) { src += "&table=" + encodeURIComponent(bjPendingTable); bjPendingTable = null; }
       f.src = src; // loads the felt + scripts inside the TV
     }

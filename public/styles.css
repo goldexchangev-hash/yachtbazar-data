@@ -1853,23 +1853,26 @@ body.chat-open .chat-tab { transform: translate(120%, -50%); opacity: 0; pointer
     padding-top: 8px; padding-bottom: 8px;
   }
   body.has-betbar #betbar-stake:not([hidden]) {
-    display: flex; gap: 7px; align-items: center;
+    display: block;
     bottom: calc(58px + env(safe-area-inset-bottom) + var(--betbar-action-h));
-    padding: 7px 12px;
+    padding: 8px 12px;
   }
   body.has-betbar #betbar-stake[hidden] { display: none; }
+  .bbs-top { display: flex; align-items: center; gap: 10px; }
+  .bbs-bot { display: flex; align-items: center; gap: 7px; margin-top: 8px; }
+  .bbs-slider { flex: 1 1 auto; min-width: 0; height: 10px; } /* the slide-to-change-bet control */
+  .bbs-slider::-webkit-slider-thumb { width: 26px; height: 26px; } /* bigger thumb for thumbs */
+  .bbs-slider::-moz-range-thumb { width: 24px; height: 24px; }
   .bbs-step { flex: 0 0 auto; width: 44px; height: 44px; font-size: 24px; font-weight: 800; line-height: 1;
     border-radius: 12px; background: var(--s-surface); color: var(--s-text); border: 1px solid var(--s-border); cursor: pointer; }
-  .bbs-amt { flex: 1 1 auto; min-width: 0; height: 44px; font-family: var(--display); font-weight: 800;
-    font-size: clamp(16px, 5.4vw, 22px); color: var(--s-green); background: var(--s-surface);
-    border: 1px solid var(--s-border); border-radius: 12px; cursor: pointer; padding: 0 8px; }
-  .bbs-preset { flex: 0 0 auto; min-width: 42px; padding: 0 9px; height: 44px; border-radius: 12px;
-    background: var(--s-surface); color: var(--s-text-2); border: 1px solid var(--s-border); font-weight: 700; font-size: 13px; cursor: pointer; }
-  .bbs-step:active, .bbs-preset:active, .bbs-amt:active { transform: scale(.95); }
+  .bbs-amt { flex: 1 1 auto; min-width: 0; font-family: var(--display); font-weight: 800;
+    font-size: clamp(18px, 6vw, 24px); color: var(--s-green); white-space: nowrap; }
+  .bbs-preset { flex: 0 0 auto; min-width: 44px; padding: 0 10px; height: 40px; border-radius: 12px;
+    background: var(--s-surface); color: var(--s-text-2); border: 1px solid var(--s-border); font-weight: 700; font-size: 14px; cursor: pointer; }
+  .bbs-step:active, .bbs-preset:active { transform: scale(.95); }
   .bbs-preset:hover, .bbs-step:hover { border-color: var(--s-green); color: var(--s-green); }
-  @media (max-width: 360px) { .bbs-preset[data-mode="half"] { display: none; } } /* shed ½ first when cramped */
-  /* clear BOTH pinned rows + the nav so page content / #demo-below never hide behind them */
-  body.has-betbar { padding-bottom: calc(58px + var(--betbar-action-h) + 56px + env(safe-area-inset-bottom)); }
+  /* clear BOTH pinned rows (slider strip is ~2 rows tall) + the nav so content never hides behind them */
+  body.has-betbar { padding-bottom: calc(58px + var(--betbar-action-h) + 104px + env(safe-area-inset-bottom)); }
 }
 
 /* ════════ Music dropdown (top bar) ════════ */

@@ -27,7 +27,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=1131" />
+    <link rel="stylesheet" href="styles.css?v=1132" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -37,13 +37,13 @@
     <!-- ───────────────────────── Header ───────────────────────── -->
     <header class="topbar">
       <button id="rail-toggle" class="rail-toggle" aria-label="Open menu" title="Menu">☰</button>
-      <span class="build-tag-m" id="build-tag-m" title="Live build version — confirms the deploy is up to date">v11.31</span>
+      <span class="build-tag-m" id="build-tag-m" title="Live build version — confirms the deploy is up to date">v11.32</span>
       <div class="brand">
         <span class="brand-tv">📺</span>
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v11.31</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v11.32</span>
       </div>
       <div class="topbar-right">
         <div class="tb-tools">
@@ -400,7 +400,7 @@
 
                 <!-- Promo intro reel — autoplays once (muted) on first load, then fades
                      to black and hands off to the game. Replay button under the TV. -->
-                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=1131"></video>
+                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=1132"></video>
 
                 <!-- Shown while a bet tx is being signed + mined (esp. slow on mobile) -->
                 <div id="tv-pending" class="tv-pending hidden">⏳ SENDING BET…<br />confirm in your wallet, then hold tight</div>
@@ -445,12 +445,17 @@
              dock so you can change your bet without scrolling to the panel. JS points it
              at the current game's real stake slider; desktop hides it. -->
         <div id="betbar-stake" class="betbar-stake" hidden aria-label="Quick bet amount">
-          <button type="button" class="bbs-step" data-dir="-1" aria-label="Lower bet">−</button>
-          <button type="button" class="bbs-amt" id="bbs-amt" aria-label="Current bet — tap to edit">$25</button>
-          <button type="button" class="bbs-step" data-dir="1" aria-label="Raise bet">＋</button>
-          <button type="button" class="bbs-preset" data-mode="half">½</button>
-          <button type="button" class="bbs-preset" data-mode="double">2×</button>
-          <button type="button" class="bbs-preset" data-mode="max">Max</button>
+          <div class="bbs-top">
+            <button type="button" class="bbs-step" data-dir="-1" aria-label="Lower bet">−</button>
+            <input type="range" class="slider bbs-slider" id="bbs-slider" min="10" max="500" step="5" value="25" aria-label="Slide to change bet" />
+            <button type="button" class="bbs-step" data-dir="1" aria-label="Raise bet">＋</button>
+          </div>
+          <div class="bbs-bot">
+            <span class="bbs-amt" id="bbs-amt">$25</span>
+            <button type="button" class="bbs-preset" data-mode="half">½</button>
+            <button type="button" class="bbs-preset" data-mode="double">2×</button>
+            <button type="button" class="bbs-preset" data-mode="max">Max</button>
+          </div>
         </div>
 
         <!-- Primary action buttons, docked right under the play balance so the TV
@@ -1356,17 +1361,17 @@
     </aside>
 
     <script defer src="vendor/ethers.umd.min.js"></script>
-    <script defer src="config.js?v=1131"></script>
-    <script defer src="contract.js?v=1131"></script>
-    <script defer src="chiptune.js?v=1131"></script>
-    <script defer src="scenes.js?v=1131"></script>
-    <script defer src="tv.js?v=1131"></script>
-    <script defer src="poker-engine.js?v=1131"></script>
-    <script defer src="poker-bots.js?v=1131"></script>
-    <script defer src="poker-ui.js?v=1131"></script>
-    <script defer src="crash-engine.js?v=1131"></script>
-    <script defer src="crash-render.js?v=1131"></script>
-    <script defer src="profile.js?v=1131"></script>
-    <script defer src="app.js?v=1131"></script>
+    <script defer src="config.js?v=1132"></script>
+    <script defer src="contract.js?v=1132"></script>
+    <script defer src="chiptune.js?v=1132"></script>
+    <script defer src="scenes.js?v=1132"></script>
+    <script defer src="tv.js?v=1132"></script>
+    <script defer src="poker-engine.js?v=1132"></script>
+    <script defer src="poker-bots.js?v=1132"></script>
+    <script defer src="poker-ui.js?v=1132"></script>
+    <script defer src="crash-engine.js?v=1132"></script>
+    <script defer src="crash-render.js?v=1132"></script>
+    <script defer src="profile.js?v=1132"></script>
+    <script defer src="app.js?v=1132"></script>
   </body>
 </html>
