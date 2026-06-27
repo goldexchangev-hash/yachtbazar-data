@@ -130,7 +130,7 @@
 
     this.fish = []; this.bullets = []; this.coins = []; this.bubbles = []; this.fx = [];
     this._spawnT = 0; this._fireCd = 0; this._t = 0; this._shake = 0; this._jackpot = 0; this._won = 0; this._combo = 0; this._comboT = 0;
-    this._frenzy = 0; this._frenzyMax = 0; this._frenzyWon = 0; this._wheel = null;
+    this._frenzy = 0; this._frenzyMax = 0; this._frenzyWon = 0; this._chest = null;
     this._aim = -Math.PI / 2; this._barrelAng = -Math.PI / 2;
 
     this._initPixi();
@@ -318,8 +318,8 @@
       else if (fish.def.special === "chain") this._eelChain(fish);
     }
     // ── BONUS ROUNDS: catching the right creature triggers a feature ──
-    if (!isSplash && fish.def.bonus && !this._wheel && this._frenzy <= 0) {
-      if (fish.def.bonus === "wheel") this._fortuneWheel();
+    if (!isSplash && fish.def.bonus && !this._chest && this._frenzy <= 0) {
+      if (fish.def.bonus === "chest") this._treasureChest();
       else if (fish.def.bonus === "frenzy") this._startFrenzy(9);
     }
     // death anim
@@ -349,51 +349,78 @@
     if (this.onWin) try { this.onWin({ profitUsd: amt, mult: jpMult, bonus: true }); } catch (e) {}
   };
 
-  /* ---------- BONUS ROUND 1: FORTUNE WHEEL (Gold Crab) ---------- */
-  FishTable.prototype._fortuneWheel = function () {
-    const segs = [2, 5, 10, 3, 25, 5, 50, 3, 15, 5, 100, 8]; // multiples of unitBet
-    const N = segs.length, cx = this.W / 2, cy = this.H * 0.42, R = Math.min(this.W, this.H) * 0.3;
+  /* ---------- BONUS ROUND 1: TREASURE CHEST (Gold Crab) ----------
+     The chest drops in, rattles, bursts open, then a string of random prizes
+     pop out one-by-one — each adds to your balance with a floating +$ amount,
+     totalling up to a grand "TREASURE" payout. */
+  FishTable.prototype._treasureChest = function () {
+    const cx = this.W / 2, cy = this.H * 0.46, S = Math.min(this.W, this.H) * 0.34;
     const cont = new PIXI.Container(); cont.x = cx; cont.y = cy;
-    // dim backdrop
     const dim = new PIXI.Graphics(); dim.beginFill(0x02060f, 0.66); dim.drawRect(-cx, -cy, this.W, this.H); dim.endFill(); cont.addChild(dim);
-    const wheel = new PIXI.Container(); cont.addChild(wheel);
-    const cols = [0x39e7ff, 0xffd23f, 0xff5d9e, 0x45f0a6, 0xb14dff, 0xff8a3d];
-    for (let i = 0; i < N; i++) {
-      const a0 = (i / N) * Math.PI * 2, a1 = ((i + 1) / N) * Math.PI * 2;
-      const w = new PIXI.Graphics(); w.beginFill(cols[i % cols.length]); w.moveTo(0, 0); w.arc(0, 0, R, a0, a1); w.closePath(); w.endFill();
-      w.lineStyle(3, 0x041326, 0.6); w.moveTo(0, 0); w.lineTo(Math.cos(a0) * R, Math.sin(a0) * R); wheel.addChild(w);
-      const lt = new PIXI.Text("x" + segs[i], { fontFamily: "Bungee, Arial", fontSize: R * 0.13, fontWeight: "700", fill: 0x041326 }); lt.anchor.set(0.5);
-      const am = (a0 + a1) / 2; lt.x = Math.cos(am) * R * 0.7; lt.y = Math.sin(am) * R * 0.7; lt.rotation = am + Math.PI / 2; wheel.addChild(lt);
-    }
-    const hub = new PIXI.Graphics(); hub.beginFill(0xffd23f); hub.drawCircle(0, 0, R * 0.16); hub.endFill(); hub.beginFill(0x7a4a00); hub.drawCircle(0, 0, R * 0.07); hub.endFill(); wheel.addChild(hub);
-    // pointer (top)
-    const ptr = new PIXI.Graphics(); ptr.beginFill(0xffffff); ptr.moveTo(0, -R - 6); ptr.lineTo(-14, -R - 26); ptr.lineTo(14, -R - 26); ptr.closePath(); ptr.endFill(); cont.addChild(ptr);
-    const title = new PIXI.Text("🎡 FORTUNE WHEEL", { fontFamily: "Bungee, Arial", fontSize: 26, fontWeight: "700", fill: 0xffd23f, stroke: 0x041326, strokeThickness: 5 }); title.anchor.set(0.5); title.y = -R - 50; cont.addChild(title);
+    // glow behind the chest
+    const glow = new PIXI.Sprite(this.tex.glow("chest", 0xffd23f, 420)); glow.anchor.set(0.5); glow.blendMode = PIXI.BLEND_MODES.ADD; glow.alpha = 0; glow.y = -S * 0.1; cont.addChild(glow);
+    // chest group (built around its own origin; lid hinges at the back-top)
+    const chest = new PIXI.Container(); chest.y = S * 0.1; cont.addChild(chest);
+    const W = S, H = S * 0.62;
+    const box = new PIXI.Graphics();
+    box.beginFill(0x3a2606); box.drawRoundedRect(-W / 2, -H * 0.2, W, H * 0.8, 12); box.endFill();
+    box.beginFill(0x6e4a18); box.drawRoundedRect(-W / 2 + 6, -H * 0.2 + 6, W - 12, H * 0.8 - 12, 8); box.endFill();
+    for (const bx of [-W * 0.32, W * 0.32]) { box.beginFill(0xffd23f); box.drawRect(bx - 7, -H * 0.2, 14, H * 0.8); box.endFill(); box.beginFill(0xb8860b); box.drawRect(bx - 7, -H * 0.2, 4, H * 0.8); box.endFill(); }
+    box.beginFill(0xffd23f); box.drawRoundedRect(-18, H * 0.12, 36, 34, 6); box.endFill(); box.beginFill(0x3a2606); box.drawCircle(0, H * 0.24, 7); box.endFill(); box.drawRect(-3, H * 0.24, 6, 14);
+    chest.addChild(box);
+    const lid = new PIXI.Graphics();
+    lid.beginFill(0x3a2606); lid.moveTo(-W / 2, 0); lid.quadraticCurveTo(0, -H * 0.62, W / 2, 0); lid.lineTo(-W / 2, 0); lid.endFill();
+    lid.beginFill(0x6e4a18); lid.moveTo(-W / 2 + 6, -2); lid.quadraticCurveTo(0, -H * 0.55, W / 2 - 6, -2); lid.lineTo(-W / 2 + 6, -2); lid.endFill();
+    // gold rim along the lid's front edge (reads cleanly whether closed or open)
+    lid.beginFill(0xffd23f); lid.drawRect(-W / 2 + 4, -12, W - 8, 9); lid.endFill();
+    lid.beginFill(0xfff3c0, 0.7); lid.drawRect(-W / 2 + 4, -12, W - 8, 3); lid.endFill();
+    lid.y = -H * 0.2; lid.pivot.y = 0; chest.addChild(lid); // hinge at lid.y
+    const title = new PIXI.Text("🪙 TREASURE CHEST", { fontFamily: "Bungee, Arial", fontSize: 26, fontWeight: "700", fill: 0xffd23f, stroke: 0x041326, strokeThickness: 5 }); title.anchor.set(0.5); title.y = -S * 0.62; cont.addChild(title);
+    const totalText = new PIXI.Text("", { fontFamily: "Bungee, Arial", fontSize: 34, fontWeight: "700", fill: 0xfff3c0, stroke: 0x5e3d12, strokeThickness: 6 }); totalText.anchor.set(0.5); totalText.y = S * 0.92; cont.addChild(totalText);
     this.hud.addChild(cont);
-    // weighted target: bigger multiplier = rarer
-    let tw = 0; const wts = segs.map((m) => 1 / m); wts.forEach((w) => tw += w);
-    let rr = this.engine.next() * tw, idx = 0; for (let i = 0; i < N; i++) { rr -= wts[i]; if (rr <= 0) { idx = i; break; } }
-    const segMid = (idx + 0.5) / N * Math.PI * 2;
-    const targetRot = (Math.PI * 2 * 4) - segMid - Math.PI / 2; // land idx under the top pointer
-    this._wheel = { cont, wheel, segs, idx, rot: 0, vel: 0, t: 0, target: targetRot, awarded: false, title };
-    const C = root.Chiptune; if (C && C.swoosh) try { C.swoosh(1600); } catch (e) {}
+    // roll the prize list (weighted small; bigger = rarer)
+    const pool = [1, 2, 2, 3, 3, 5, 5, 8, 10, 15, 25, 50];
+    const n = 5 + (this.engine.next() * 4 | 0); const prizes = [];
+    for (let i = 0; i < n; i++) prizes.push(pool[(this.engine.next() * pool.length) | 0]);
+    this._chest = { cont, chest, lid, glow, title, totalText, prizes, idx: 0, total: 0, phase: "intro", t: 0, popT: 0 };
+    const C = root.Chiptune; if (C && C.swoosh) try { C.swoosh(900); } catch (e) {}
   };
-  FishTable.prototype._updateWheel = function (dt) {
-    const w = this._wheel; if (!w) return; w.t += dt;
-    const k = Math.min(1, w.t / 3.2), e = 1 - Math.pow(1 - k, 4);
-    w.wheel.rotation = w.target * e;
-    if (k >= 1 && !w.awarded) {
-      w.awarded = true;
-      const mult = w.segs[w.idx], amt = Math.round(mult * this.unitBet * 100) / 100;
-      this.balance = Math.round((this.balance + amt) * 100) / 100; this._won = amt; this._save(); this._renderHud();
-      w.title.text = "WON  x" + mult + "  +$" + amt.toFixed(2);
-      for (let i = 0; i < clamp(mult, 8, 80); i++) this._spawnCoin(this.W / 2, this.H * 0.42);
-      this._shake = Math.max(this._shake, clamp(mult / 4, 6, 20));
-      const C = root.Chiptune; if (C && C.jackpot) try { C.jackpot(); } catch (e) {}
-      if (this.onWin && amt > this.cost() * 4) try { this.onWin({ profitUsd: amt, mult: mult, bonus: true }); } catch (e) {}
-      w.holdT = 0;
+  FishTable.prototype._updateChest = function (dt) {
+    const w = this._chest; if (!w) return; w.t += dt;
+    if (w.phase === "intro") { // drop + rattle
+      const k = Math.min(1, w.t / 0.9); w.cont.alpha = Math.min(1, k * 2);
+      w.chest.y = lerp(-this.H * 0.4, this.H * 0.1, 1 - Math.pow(1 - k, 3));
+      if (k > 0.6) { w.chest.x = Math.sin(w.t * 50) * 5 * (1 - k) * 6; } // rattle as it settles
+      if (k >= 1) { w.chest.x = 0; w.phase = "open"; w.t = 0; this._shake = Math.max(this._shake, 14); const C = root.Chiptune; if (C && C.coin) try { C.coin(); } catch (e) {} }
+    } else if (w.phase === "open") { // lid flips up + light burst
+      const k = Math.min(1, w.t / 0.45), e = 1 - Math.pow(1 - k, 3);
+      w.lid.rotation = -2.2 * e; w.glow.alpha = e * 0.9; w.glow.scale.set(0.5 + e * 0.8);
+      if (k >= 1) { w.phase = "pop"; w.t = 0; w.popT = 0; }
+    } else if (w.phase === "pop") { // prizes pop out one by one
+      w.glow.alpha = 0.6 + 0.2 * Math.sin(w.t * 8);
+      w.popT -= dt;
+      if (w.popT <= 0 && w.idx < w.prizes.length) {
+        w.popT = 0.34;
+        const mult = w.prizes[w.idx++]; const amt = Math.round(mult * this.unitBet * 100) / 100;
+        w.total = Math.round((w.total + amt) * 100) / 100;
+        this.balance = Math.round((this.balance + amt) * 100) / 100; this._won = w.total; this._save(); this._renderHud();
+        w.totalText.text = "+$" + w.total.toFixed(2);
+        // a coin/gem leaps out of the chest with a floating value
+        const px = this.W / 2 + rand(-30, 30), py = this.H * 0.46 - 10;
+        for (let c = 0; c < clamp(mult, 3, 18); c++) this._spawnCoin(px, py);
+        this._floatText("+$" + amt.toFixed(2), px + rand(-40, 40), py - 30, mult >= 25 ? 0xffd23f : 0x45f0a6);
+        this._shake = Math.max(this._shake, clamp(mult / 5, 4, 14));
+        const C = root.Chiptune; if (C && C.coin) try { C.coin(); } catch (e) {}
+      }
+      if (w.idx >= w.prizes.length) { w.phase = "hold"; w.t = 0; w.title.text = "💰 TREASURE  +$" + w.total.toFixed(2);
+        this._shake = Math.max(this._shake, 18);
+        const C = root.Chiptune; if (C && C.jackpot) try { C.jackpot(); } catch (e) {}
+        if (this.onWin && w.total > this.cost() * 4) try { this.onWin({ profitUsd: w.total, mult: w.total / Math.max(0.01, this.unitBet), bonus: true }); } catch (e) {}
+      }
+    } else if (w.phase === "hold") {
+      w.glow.alpha = Math.max(0, 0.8 - w.t * 0.5);
+      if (w.t > 1.8) { this.hud.removeChild(w.cont); w.cont.destroy({ children: true }); this._chest = null; }
     }
-    if (w.awarded) { w.holdT += dt; if (w.holdT > 1.6) { this.hud.removeChild(w.cont); w.cont.destroy({ children: true }); this._wheel = null; } }
   };
 
   /* ---------- BONUS ROUND 2: FEEDING FRENZY (Treasure Clam) ---------- */
@@ -451,11 +478,11 @@
     if (!this._active) return;
     this._t += dt;
     // bonus rounds take over
-    if (this._wheel) this._updateWheel(dt);
+    if (this._chest) this._updateChest(dt);
     if (this._frenzy > 0) this._updateFrenzy(dt);
 
-    // spawn cadence (suspended during the fortune wheel)
-    if (!this._wheel) {
+    // spawn cadence (suspended during the treasure chest)
+    if (!this._chest) {
       this._spawnT -= dt;
       if (this._spawnT <= 0) {
         this._spawnT = this._frenzy > 0 ? rand(0.15, 0.4) : rand(0.5, 1.3);
@@ -468,7 +495,7 @@
     // autofire / lock (frenzy auto-fires for non-stop action; wheel pauses firing)
     this._fireCd -= dt;
     if (this.lock) this._autoAim();
-    if (!this._wheel && (this.auto || this._holding || this._frenzy > 0) && this._fireCd <= 0) this._fire();
+    if (!this._chest && (this.auto || this._holding || this._frenzy > 0) && this._fireCd <= 0) this._fire();
 
     // barrel aim easing + recoil
     let da = this._aim - this._barrelAng; da = Math.atan2(Math.sin(da), Math.cos(da));

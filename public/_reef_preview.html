@@ -22,7 +22,7 @@
     <button id="pdn">– PWR</button><button id="pup">PWR +</button>
     <button id="auto">🔥 Auto</button>
     <button id="lock">🎯 Lock</button>
-    <button id="wheel">🎡 Wheel bonus</button>
+    <button id="chest">🪙 Chest bonus</button>
     <button id="frenzy">🌊 Frenzy bonus</button>
   </div>
   <div class="hint">Aim with mouse · click/hold to shoot · ↑/↓ power · Space autofire · L lock · the gold CRAB = Fortune Wheel, the pink CLAM = Feeding Frenzy</div>
@@ -42,7 +42,7 @@
   document.getElementById('pdn').onclick = () => g.setPower(g.power - 1);
   const ab = document.getElementById('auto'); ab.onclick = () => { g.toggleAuto(); ab.classList.toggle('on', g.auto); };
   const lb = document.getElementById('lock'); lb.onclick = () => { g.toggleLock(); lb.classList.toggle('on', g.lock); };
-  document.getElementById('wheel').onclick = () => g._fortuneWheel();
+  document.getElementById('chest').onclick = () => g._treasureChest();
   document.getElementById('frenzy').onclick = () => g._startFrenzy(9);
 </script>
 </body></html>
