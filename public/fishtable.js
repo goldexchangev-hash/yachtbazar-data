@@ -163,6 +163,7 @@
     this._spawnT = 0; this._fireCd = 0; this._t = 0; this._shake = 0; this._jackpot = 0; this._won = 0; this._combo = 0; this._comboT = 0;
     this._sesSpent = 0; this._sesWon = 0; this._sesBuyIn = 0; // session money-flow tracker (so the credits flow is visible)
     this._frenzy = 0; this._frenzyMax = 0; this._frenzyWon = 0; this._chest = null; this._jpFx = null;
+    this._jackpotPool = 0; // progressive jackpot: 5% of every paid shot accrues here and is paid out when the meter pops (self-budgeting)
     this._aim = -Math.PI / 2; this._barrelAng = -Math.PI / 2;
 
     this._initPixi();
@@ -321,7 +322,7 @@
     const free = this._frenzy > 0;
     const cost = free ? 0 : this.cost();
     if (!free && this.balance < cost) { this._flashBanner("INSUFFICIENT", "add funds 👇", 0xff5d72); return; }
-    if (cost > 0) { this.balance = Math.round((this.balance - cost) * 100) / 100; this._sesSpent = Math.round((this._sesSpent + cost) * 100) / 100; this._save(); this._renderHud(); }
+    if (cost > 0) { this.balance = Math.round((this.balance - cost) * 100) / 100; this._sesSpent = Math.round((this._sesSpent + cost) * 100) / 100; this._jackpotPool = Math.round((this._jackpotPool + cost * 0.05) * 100) / 100; this._save(); this._renderHud(); }
     const ang = this._aim;
     const tipX = this.cannon.x + Math.cos(ang) * 54, tipY = this.cannon.y + Math.sin(ang) * 54;
     const col = this.power >= 5 ? 0xff4d9d : this.power >= 3 ? 0xffd23f : 0x39e7ff;
@@ -376,9 +377,8 @@
     // JACKPOT METER — fills as you catch (faster at higher power); when it FILLS,
     // the jackpot fires. (Plus a rare surprise roll on any catch.)
     if (!this._jpFx && !this._chest) {
-      this._jackpot = clamp(this._jackpot + 0.012 * power, 0, 1);
-      if (this._jackpot >= 1) { this._awardJackpot(300 + (Math.random() * 600 | 0)); } // meter full → JACKPOT! (resets the meter)
-      else { const jp = this.engine.rollJackpot(power); if (jp > 0) this._awardJackpot(jp); }
+      this._jackpot = clamp(this._jackpot + 0.0022 * power, 0, 1); // slow build → the pool grows big before it pops
+      if (this._jackpot >= 1) this._awardJackpot(); // meter full → pay the accumulated progressive pool
     }
     // specials AoE
     if (!isSplash) {
@@ -388,7 +388,7 @@
     // ── BONUS ROUNDS: catching the right creature triggers a feature ──
     if (!isSplash && fish.def.bonus && !this._chest && this._frenzy <= 0) {
       if (fish.def.bonus === "chest") this._treasureChest();
-      else if (fish.def.bonus === "frenzy") this._startFrenzy(9);
+      else if (fish.def.bonus === "frenzy") this._startFrenzy(6); // trimmed 9s→6s of free fire to keep the house edge
     }
     // death anim
     fish.death = 0;
@@ -407,12 +407,16 @@
     let px = src.c.x, py = src.c.y;
     for (const t of targets) { this._lightning(px, py, t.o.c.x, t.o.c.y); px = t.o.c.x; py = t.o.c.y; const res = this.engine.resolveSplash(t.o.def.mult, this.power); if (res.dead) this._catchFish(t.o, this.power, true); else { t.o.flinch = 0.18; t.o.sp.tint = 0xfff15a; } }
   };
-  FishTable.prototype._awardJackpot = function (jpMult) {
-    const amt = Math.round(jpMult * this.unitBet * 100) / 100;
-    this.balance = Math.round((this.balance + amt) * 100) / 100; this._won = amt; this._sesWon = Math.round((this._sesWon + amt) * 100) / 100; this._save(); this._renderHud();
+  // Pay the PROGRESSIVE jackpot: the pool (5% of every paid shot since the last pop).
+  // This is what keeps the jackpot self-budgeting — it returns exactly what it raked.
+  FishTable.prototype._awardJackpot = function () {
+    const amt = Math.round(this._jackpotPool * 100) / 100;
     this._jackpot = 0;
+    if (amt < this.unitBet) return; // nothing meaningful pooled yet — don't fire a $0 spectacle
+    this._jackpotPool = 0;
+    this.balance = Math.round((this.balance + amt) * 100) / 100; this._won = amt; this._sesWon = Math.round((this._sesWon + amt) * 100) / 100; this._save(); this._renderHud();
     this._startJackpotShow(amt);
-    if (this.onWin) try { this.onWin({ profitUsd: amt, mult: jpMult, bonus: true }); } catch (e) {}
+    if (this.onWin) try { this.onWin({ profitUsd: amt, bonus: true }); } catch (e) {}
   };
   // ── BIG JACKPOT SPECTACLE: a multi-second screen takeover — rotating god-rays,
   //    a full-screen coin downpour, slam-in banner, count-up, flashes + shakes. ──
@@ -488,8 +492,8 @@
     const totalText = new PIXI.Text("", { fontFamily: "Bungee, Arial", fontSize: 34, fontWeight: "700", fill: 0xfff3c0, stroke: 0x5e3d12, strokeThickness: 6 }); totalText.anchor.set(0.5); totalText.y = S * 0.92; cont.addChild(totalText);
     this.hud.addChild(cont);
     // roll the prize list (weighted small; bigger = rarer)
-    const pool = [1, 2, 2, 3, 3, 5, 5, 8, 10, 15, 25, 50];
-    const n = 5 + (this.engine.next() * 4 | 0); const prizes = [];
+    const pool = [1, 1, 2, 2, 3, 3, 5, 5, 8, 10, 15]; // trimmed (dropped 25/50) so the chest bonus doesn't blow the house edge
+    const n = 4 + (this.engine.next() * 3 | 0); const prizes = [];
     for (let i = 0; i < n; i++) prizes.push(pool[(this.engine.next() * pool.length) | 0]);
     this._chest = { cont, chest, lid, glow, title, totalText, prizes, idx: 0, total: 0, phase: "intro", t: 0, popT: 0 };
     const C = root.Chiptune; if (C && C.swoosh) try { C.swoosh(900); } catch (e) {}
@@ -544,6 +548,9 @@
   FishTable.prototype._updateFrenzy = function (dt) {
     if (this._frenzy <= 0) return;
     this._frenzy -= dt;
+    // Cap the free-shot winnings so the frenzy can't blow the house edge: it's a
+    // bonus reward, not an open tap. Once it's paid out ~25x the base bet, it ends.
+    if (this._frenzyWon >= this.unitBet * 25) { this._frenzy = 0.0001; }
     // dense spawns of mostly small/medium fish
     if (Math.random() < dt * 6 && this.fish.length < 26) { const small = E.FISH.filter((f) => f.tier !== "boss" && !f.bonus); this._spawnFish(small[(Math.random() * small.length) | 0]); }
     // frenzy meter bar (reuse jackpot meter area, green)
@@ -733,7 +740,7 @@
     g.beginFill(0x0c2840); g.drawRoundedRect(x, y, bw, bh, 5); g.endFill();
     const frac = frenzy ? (this._frenzy / this._frenzyMax) : this._jackpot;
     g.beginFill(frenzy ? 0x45f0a6 : 0xffd23f); g.drawRoundedRect(x, y, bw * frac, bh, 5); g.endFill();
-    this.jpText.text = frenzy ? ("🌊 FREE-FIRE FRENZY  " + this._frenzy.toFixed(1) + "s  +$" + this._frenzyWon.toFixed(0)) : ("★ JACKPOT  " + Math.floor(this._jackpot * 100) + "%  — fill to win ★");
+    this.jpText.text = frenzy ? ("🌊 FREE-FIRE FRENZY  " + this._frenzy.toFixed(1) + "s  +$" + this._frenzyWon.toFixed(0)) : ("★ JACKPOT $" + this._usd(this._jackpotPool) + "  ·  " + Math.floor(this._jackpot * 100) + "% ★");
   };
 
   /* ---------- aim / input ---------- */

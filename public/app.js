@@ -2278,7 +2278,7 @@
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
       .then(() => loadScriptOnce("slots3d-engine.js?v=1100"))
-      .then(() => loadScriptOnce("slots3d.js?v=1144"))
+      .then(() => loadScriptOnce("slots3d.js?v=1145"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2320,8 +2320,8 @@
     if (window.FishTable) return Promise.resolve(true);
     if (fishLoadPromise) return fishLoadPromise;
     fishLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishtable-engine.js?v=1144"))
-      .then(() => loadScriptOnce("fishtable.js?v=1144"))
+      .then(() => loadScriptOnce("fishtable-engine.js?v=1145"))
+      .then(() => loadScriptOnce("fishtable.js?v=1145"))
       .then(() => true)
       .catch((e) => { fishLoadPromise = null; throw e; });
     return fishLoadPromise;
@@ -2385,7 +2385,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1144"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1145"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -2816,7 +2816,7 @@
     const f = $("bj-frame");
     if (f && !f.src) {
       // No &bal= seed — the table starts from its own server default ($1,000), NOT the demo balance.
-      let src = "blackjack.html?tv=1&v=1144&guest=" + encodeURIComponent(bjGuestId());
+      let src = "blackjack.html?tv=1&v=1145&guest=" + encodeURIComponent(bjGuestId());
       if (bjPendingTable) { src += "&table=" + encodeURIComponent(bjPendingTable); bjPendingTable = null; }
       f.src = src; // loads the felt + scripts inside the TV
     }
@@ -3073,6 +3073,11 @@
     // game instead of an empty black layer once the promo intro ends.
     if (saved === "plane") ensurePlaneReady();
     if (saved === "slots3d") ensureSlots3dReady();
+    // Reef Raiders (CH 17) is lazy-loaded too. WITHOUT this branch a manual page
+    // refresh on the fish channel never calls ensureFishReady(), so the canvas is
+    // never built and the loading screen hangs forever — the only recovery was
+    // switching channels and back. THIS is the "reef stuck on loading after refresh" bug.
+    if (saved === "fish") ensureFishReady();
     if (saved === "flip") ensureCoinFlip3dReady(); // build the 3D coin on reload too
     if (saved === "dice") ensureDice3dReady();     // build the 0-100 neon rail on reload too
     if (saved === "twodice") ensureDice2_3dReady(); // build the 3D dice on reload too

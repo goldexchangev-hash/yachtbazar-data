@@ -218,7 +218,7 @@
       if (c === this._connected) return;
       this._connected = c;
       const p = this._phase;
-      if (p === "idle" || p === "crash" || p === "slots" || p === "pressure") this.idle(); // only refresh a resting screen
+      if (p === "idle" || p === "crash" || p === "slots" || p === "pressure" || p === "fish" || p === "plane" || p === "slots3d" || p === "blackjack") this.idle(); // only refresh a resting screen
     },
 
     // app.js sets the channel's title here; the TV shows it in the ready room
@@ -492,6 +492,7 @@
       else if (num === 14) this._planeIdle();
       else if (num === 15) this._slots3dIdle();
       else if (num === 16) this._blackjackIdle();
+      else if (num === 17) this._fishIdle();
       else this._readyRoom();
       await sleep(160); if (seq !== this._seq) return;
       this.screenEl.classList.remove("ch-switch");

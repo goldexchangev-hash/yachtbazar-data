@@ -25,7 +25,16 @@
 (function (root) {
   "use strict";
 
-  const RTP = 0.92, P_MIN = 0.02, P_MAX = 0.9;
+  // House edge lives in the kill RTP. ~85% on kills leaves ~5% headroom for the
+  // PROGRESSIVE JACKPOT, which is funded by a 5%-of-every-shot rake (see fishtable.js)
+  // and pays its accumulated pool — so the jackpot returns what it takes and the
+  // OVERALL game lands near a ~10% house edge instead of the old >100% (the meter used
+  // to hand out a free 300-900x every ~83 catches).
+  // P_MIN must stay BELOW RTP/maxMult (0.85/160 = 0.0053) or the boss fish get
+  // over-rewarded: a flat 0.02 floor made the Kraken pay 320% and the Gold Shark 160%
+  // (you could farm bosses at power 1). At 0.005 every fish returns a true 85% at power
+  // 1 no matter which you shoot. P_MAX favors the house on small fish at high power.
+  const RTP = 0.85, P_MIN = 0.005, P_MAX = 0.9;
 
   /* ---- fish roster. mult = payout multiple of unitBet. kind drives behaviour ---- */
   // tier: small | medium | special | boss   (spawn weight = how often it appears)
