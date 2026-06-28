@@ -1,6 +1,8 @@
 "use strict";
 
 const crypto = require("crypto");
+const fs = require("fs");
+const path = require("path");
 const { ethers } = require("ethers");
 const realmoney = require("./realmoney.js");
 
@@ -9,8 +11,40 @@ const usedBuyIns = new Set();
 const pendingBuyIns = new Set();
 const BRIDGE_ABI = [
   "event BlackjackBuyIn(address indexed player,uint256 amount,uint256 locked)",
+  "function bjLocked(address player) view returns (uint256)",
 ];
 const WEI_PER_ETH = 10n ** 18n;
+
+function bridgeStateFile() {
+  const f = String(process.env.BRIDGE_STATE_FILE || "").trim();
+  return f ? path.resolve(f) : "";
+}
+
+function bridgeStateConfigured() {
+  return !!bridgeStateFile();
+}
+
+function loadBridgeState() {
+  const f = bridgeStateFile();
+  if (!f) return;
+  try {
+    const raw = JSON.parse(fs.readFileSync(f, "utf8"));
+    for (const tx of raw.usedBuyIns || []) if (typeof tx === "string") usedBuyIns.add(tx.toLowerCase());
+    for (const s of raw.sessions || []) if (s && s.id) sessions.set(String(s.id), s);
+  } catch (e) {
+    if (e && e.code !== "ENOENT") console.error("bridge state load failed:", e.message || e);
+  }
+}
+
+function saveBridgeState() {
+  const f = bridgeStateFile();
+  if (!f) return;
+  const tmp = f + ".tmp";
+  const data = JSON.stringify({ usedBuyIns: Array.from(usedBuyIns), sessions: Array.from(sessions.values()) }, null, 2);
+  fs.mkdirSync(path.dirname(f), { recursive: true });
+  fs.writeFileSync(tmp, data);
+  fs.renameSync(tmp, f);
+}
 
 function fail(res, status, message) {
   return res.status(status).json({ ok: false, error: message });
@@ -36,7 +70,7 @@ function nonce() {
 }
 
 function bridgeEnabled() {
-  return realmoney.enabled() && process.env.ENABLE_EXPERIMENTAL_BRIDGE === "1";
+  return realmoney.enabled() && process.env.ENABLE_EXPERIMENTAL_BRIDGE === "1" && bridgeStateConfigured();
 }
 
 function buyInUsdFromWei(wei) {
@@ -75,6 +109,7 @@ async function verifyBuyIn(o) {
   if (!receipt || receipt.status !== 1) throw new Error("buy-in transaction is not confirmed");
   if (receipt.to && receipt.to.toLowerCase() !== o.contract.toLowerCase()) throw new Error("buy-in went to the wrong contract");
   const iface = new ethers.Interface(BRIDGE_ABI);
+  let eventLocked = null;
   for (const log of receipt.logs || []) {
     if (String(log.address).toLowerCase() !== o.contract.toLowerCase()) continue;
     let parsed = null;
@@ -82,22 +117,35 @@ async function verifyBuyIn(o) {
     if (!parsed || parsed.name !== "BlackjackBuyIn") continue;
     if (String(parsed.args.player).toLowerCase() !== o.player.toLowerCase()) continue;
     if (BigInt(parsed.args.amount.toString()) !== o.buyInWei) continue;
+    eventLocked = BigInt(parsed.args.locked.toString());
+    break;
+  }
+  if (eventLocked != null) {
+    const contract = new ethers.Contract(o.contract, BRIDGE_ABI, provider);
+    const currentLocked = BigInt((await contract.bjLocked(o.player)).toString());
+    if (currentLocked < eventLocked) throw new Error("buy-in is no longer locked on-chain");
     return true;
   }
   throw new Error("buy-in event was not found in the transaction");
 }
 
+loadBridgeState();
+
 function attachBridge(app, opts) {
   const blackjack = opts && opts.blackjack;
 
   app.get("/api/bridge/status", (req, res) => {
+    const chainId = Number(req.query && req.query.chainId);
+    const statusChainId = Number.isSafeInteger(chainId) && chainId > 0 ? chainId : 11155111;
     res.json({
       ok: true,
       enabled: bridgeEnabled(),
       signerConfigured: realmoney.enabled(),
       bridgeFlagEnabled: process.env.ENABLE_EXPERIMENTAL_BRIDGE === "1",
+      stateConfigured: bridgeStateConfigured(),
       signerAddress: realmoney.signerAddress(),
-      rpcConfigured: !!(process.env.SEPOLIA_RPC_URL || process.env.RPC_URL || process.env.LOCAL_RPC_URL),
+      statusChainId,
+      rpcConfigured: !!rpcUrl(statusChainId),
       games: ["blackjack"],
       parkedGames: ["pressure", "slots3d", "fish"],
       model: "verified on-chain buy-in + server-authoritative ledger + signed settlement",
@@ -127,7 +175,6 @@ function attachBridge(app, opts) {
         if (existing.contract.toLowerCase() !== contract.toLowerCase()) throw new Error("open bridge session uses a different contract");
         if (Number(existing.chainId) !== chainId) throw new Error("open bridge session uses a different chain");
       }
-      blackjack.bridge.fund(player, buyInUsd, !!existing);
       let session = existing;
       if (session) {
         session.buyInWei = (BigInt(session.buyInWei) + buyInWei).toString();
@@ -154,6 +201,8 @@ function attachBridge(app, opts) {
         sessions.set(id, session);
       }
       usedBuyIns.add(txKey);
+      saveBridgeState();
+      blackjack.bridge.fund(player, buyInUsd, !!existing);
       pendingBuyIns.delete(txKey);
       res.json({ ok: true, session, balanceUsd: blackjack.bridge.balance(player) });
     } catch (e) {
@@ -195,6 +244,7 @@ function attachBridge(app, opts) {
         signature,
       };
       blackjack.bridge.clear(player);
+      saveBridgeState();
       res.json(s.settlement);
     } catch (e) {
       fail(res, 400, e.message || "could not settle blackjack bridge");

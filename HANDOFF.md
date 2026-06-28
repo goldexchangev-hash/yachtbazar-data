@@ -1,7 +1,17 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v11.64**.
+Last updated at build **v11.65**.
+
+> **NOTE FOR CLAUDE/CHATGPT (v11.65):** Third audit pass bridge hardening.
+> The bridge can no longer be enabled with only a signer and flag; it now also
+> requires `BRIDGE_STATE_FILE` so used buy-in tx hashes and sessions are persisted
+> across restarts. `/api/bridge/status` is chain-aware (`?chainId=`) and reports
+> `stateConfigured`, so Sepolia buy-ins are not green-lit by a local-only RPC.
+> Buy-in verification checks current on-chain `bjLocked(player)` against the emitted
+> locked amount, which rejects already-settled historical buy-in txs. Cache/build
+> bumped to 1165. Real-money bridge still remains disabled on Render until durable
+> state, Sepolia RPC, signer, wallet auth, and the explicit flag are all configured.
 
 > **NOTE FOR CLAUDE/CHATGPT (v11.64):** Second audit pass.
 > Fixed bridge verification/session issues from the post-`v11.63` audit: the
