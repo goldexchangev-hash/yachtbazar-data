@@ -17,6 +17,10 @@ async function deployFixture() {
   return { game, deployer, treasury, alice, bob, carol, dave };
 }
 
+async function feeFor(game, pot) {
+  return (pot * (await game.HOUSE_FEE_BPS())) / (await game.BPS_DENOMINATOR());
+}
+
 // Pull the FlipSettled result out of a tx receipt.
 async function result(tx, game) {
   const rcpt = await tx.wait();
@@ -37,7 +41,7 @@ describe("CoinFlipBetting (prevrandao, no oracle)", function () {
     expect(after).to.equal(before + ethers.parseEther("0.05") - r.gasUsed * r.gasPrice);
   });
 
-  it("PvP flip settles instantly with a 10% fee and conserves ETH", async function () {
+  it("PvP flip settles instantly with the house fee and conserves ETH", async function () {
     const { game, treasury, alice, bob } = await deployFixture();
     const bet = ethers.parseEther("0.01");
     await game.connect(alice).deposit({ value: bet });
@@ -46,7 +50,7 @@ describe("CoinFlipBetting (prevrandao, no oracle)", function () {
     const res = await result(await game.connect(bob).joinRoom(1), game);
 
     const pot = bet * 2n;
-    const fee = (pot * 1000n) / 10000n;
+    const fee = await feeFor(game, pot);
     const payout = pot - fee;
     expect(res.fee).to.equal(fee);
     expect(res.payout).to.equal(payout);
@@ -55,7 +59,7 @@ describe("CoinFlipBetting (prevrandao, no oracle)", function () {
     const loser = res.winner === alice.address ? bob.address : alice.address;
     expect(await game.balances(res.winner)).to.equal(payout);
     expect(await game.balances(loser)).to.equal(0n);
-    // the 10% rake now flows into the house bankroll, not the treasury balance
+    // the rake now flows into the house bankroll, not the treasury balance
     expect(await game.balances(treasury.address)).to.equal(0n);
     expect(await game.houseBankroll()).to.equal(fee);
     // conservation: winnings + fee == both stakes
@@ -84,7 +88,7 @@ describe("CoinFlipBetting (prevrandao, no oracle)", function () {
 
     const res = await result(await game.connect(alice).playHouse(bet, true), game);
     const pot = bet * 2n;
-    const fee = (pot * 1000n) / 10000n;
+    const fee = await feeFor(game, pot);
     const payout = pot - fee;
     // rake goes to the bankroll now, so the treasury balance stays empty
     expect(await game.balances(treasury.address)).to.equal(0n);
@@ -178,7 +182,7 @@ describe("CoinFlipBetting (prevrandao, no oracle)", function () {
     expect(open[0].open).to.equal(true);
   });
 
-  it("host table: player flips vs the bank; 10% rake splits 50/50 platform/host; ETH conserved", async function () {
+  it("host table: player flips vs the bank; rake splits 50/50 platform/host; ETH conserved", async function () {
     const { game, treasury, alice, bob } = await deployFixture();
     const bet = ethers.parseEther("0.01");
     await game.connect(alice).deposit({ value: ethers.parseEther("0.1") });
@@ -186,11 +190,11 @@ describe("CoinFlipBetting (prevrandao, no oracle)", function () {
     await game.connect(alice).createHostRoom(ethers.parseEther("0.1"), "T"); // id 1, alice balance -> 0
 
     const args = hostFlip(await (await game.connect(bob).playHostRoom(1, bet, true)).wait(), game);
-    const pot = bet * 2n, fee = pot / 10n, payout = pot - fee;
+    const pot = bet * 2n, fee = await feeFor(game, pot), payout = pot - fee;
     expect(args.fee).to.equal(fee);
     expect(args.player).to.equal(bob.address);
 
-    // the 10% rake is split 50/50: the platform half flows into the house bankroll,
+    // the rake is split 50/50: the platform half flows into the house bankroll,
     // the host half stays in the host creator's balance
     const platformCut = fee / 2n, hostCut = fee - platformCut;
     expect(await game.balances(treasury.address)).to.equal(0n);

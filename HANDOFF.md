@@ -1,7 +1,15 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v11.73**.
+Last updated at build **v11.74**.
+
+> **NOTE FOR CLAUDE/CHATGPT (v11.74):** Fee-copy/test cleanup from bug hunt.
+> The contract has used `HOUSE_FEE_BPS=300` (3%) since the earlier fee reduction,
+> but several tests and visible strings still said 10%. Contract tests now derive
+> fee expectations from `HOUSE_FEE_BPS`, the create-room/host-table UI copy shows
+> 3%, README fee text is updated, and the frontend cache/build is bumped to 1174.
+> `test/poker-engine.test.js` no longer calls `process.exit`, so `hardhat test`
+> runs the poker harness and the contract tests in one full pass.
 
 > **NOTE FOR CLAUDE/CHATGPT (v11.73):** Blackjack bridge recovery hotfix.
 > Active real-wallet Blackjack stake exposure is now included in the saved

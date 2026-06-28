@@ -7,7 +7,7 @@
 > top "NOTE FOR …" entries are the live source of truth** — read them after this.
 >
 > ⚠️ **Two AIs ship this repo in parallel and the OTHER one is very active** — the branch
-> moved from v11.51 to **v11.73** in a short window (a real-money Blackjack bridge + many bug
+> moved from v11.51 to **v11.74** in a short window (a real-money Blackjack bridge + many bug
 > hunts). **`git pull` before you start**, and re-pull often; expect your local snapshot to
 > be behind.
 
@@ -130,7 +130,7 @@ Blackjack (own server chip balance), Poker. Poker is currently hidden.
   `server/realmoney.js` (reads `HOUSE_SIGNER_KEY`, falls back to `BLACKJACK_SIGNER_KEY`).
 
 ### Real-money credits status — BUILT (Blackjack bridge), gated OFF behind env flags
-> This advanced a lot recently. Treat **`HANDOFF.md`'s NOTE entries (v11.6x–v11.73)** as
+> This advanced a lot recently. Treat **`HANDOFF.md`'s NOTE entries (v11.6x–v11.74)** as
 > authoritative — they document the bridge hardening pass-by-pass. Summary:
 
 The owner wants real-money credits (deposit → buy-in → play → cash-out) for the off-chain
@@ -226,7 +226,7 @@ verifies on-chain `bjLocked(player)` against the emitted buy-in). Endpoints:
 ## 8. What changed recently / open work
 
 **The running list lives in `HANDOFF.md`'s NOTE entries — read them; this is just orientation.**
-Big themes recently (v11.52→v11.73, mostly the other AI): the **Blackjack real-money bridge**
+Big themes recently (v11.52→v11.74, mostly the other AI): the **Blackjack real-money bridge**
 (`server/bridge-server.js`: signed buy-in/settle, durable state, wallet auth via MetaMask
 signature, per-wallet serialization, on-chain `bjLocked` verification, restart recovery) and
 many whole-site bug-hunt passes (mobile top-bar, demo-balance hiding after connect, zero-balance
@@ -241,7 +241,7 @@ Gem Vault art, v11.46 Reef bug-hunt (stuck frenzy / input / reparent fullscreen)
 - Low-priority: a slots jackpot-cap contract tweak to bundle with any redeploy (noted in HANDOFF).
 - Reef art/animation overhaul (multi-part sprites) — researched, not built.
 
-**Current state at this snapshot:** **build v11.73** (the other AI ships fast — re-pull and
+**Current state at this snapshot:** **build v11.74** (the other AI ships fast — re-pull and
 trust `HANDOFF.md` over this number). Branch in sync after the pull that added this file.
 
 ---
@@ -252,8 +252,8 @@ trust `HANDOFF.md` over this number). Branch in sync after the pull that added t
    `public/app.js` (the lazy-loader `?v=` strings incl. `slots3d.js?v=`, `fishtable.js?v=`,
    `fishtable-engine.js?v=`), `public/sw.js` (`ctf-v11.XX`). Stale caches are the #1
    "it didn't update" cause. (Server-only changes don't need a bump.) Quick recipe (example
-   1173 → 1174): `sed -i 's/1173/1174/g' public/index.html public/app.js`,
-   `sed -i 's/>v11.73</>v11.74</g' public/index.html`, `sed -i 's/ctf-v11\.73/ctf-v11.74/' public/sw.js`.
+   1174 → 1175): `sed -i 's/1174/1175/g' public/index.html public/app.js`,
+   `sed -i 's/>v11.74</>v11.75</g' public/index.html`, `sed -i 's/ctf-v11\.74/ctf-v11.75/' public/sw.js`.
 2. **Update the docs** — the relevant game spec + `HANDOFF.md` (its "Last updated" line +
    changelog). Create a new `*-HANDOFF.md` for any game you do non-trivial work on that lacks
    one (Overview → Files → Wiring → Math → Mechanics → Loading → Versioning → Changelog).

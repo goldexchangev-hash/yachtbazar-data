@@ -122,4 +122,4 @@ ok('3000 random hands: chips conserved + terminate', bad===0);
 }
 
 console.log(fails?('\n'+fails+' FAILED'):'\nALL POKER TESTS PASS');
-process.exit(fails?1:0);
+if (fails) throw new Error(fails + " poker engine checks failed");

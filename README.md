@@ -6,7 +6,7 @@ no LINK** — it uses Ethereum's built-in `block.prevrandao`, so flips settle
 **instantly** and you can deploy on any testnet with one click.
 
 - 🪙 **Pure ETH** — deposit, bet, win, withdraw. No tokens or swaps.
-- 🏠 **House takes 10%** of every pot, credited to the host's wallet.
+- 🏠 **House takes 3%** of every pot; host-table rake splits between platform and table host.
 - 👤 **Play another player** (custom rooms) or **the house**, with a drag slider.
 - 🤝 **Bet negotiation** — a joiner can propose a higher stake; host accepts/denies.
 - ♾️ **Unlimited parallel games** at once.
@@ -95,7 +95,7 @@ No VRF subscription or LINK needed — just ETH for gas.
 ## How it works
 
 ```
-contracts/CoinFlipBetting.sol   game logic; prevrandao randomness; 10% fee
+contracts/CoinFlipBetting.sol   game logic; prevrandao randomness; 3% fee
 scripts/deploy.js  fundHouse.js  exportArtifact.js  play.js
 server/server.js                static site + WebSocket (players, chat, bets)
 public/                         frontend (vanilla JS + ethers, no build step)
@@ -106,7 +106,7 @@ test/                           Hardhat tests
 
 - Each game is an independent room that settles in the same transaction, so many
   games run in parallel.
-- The 10% fee is always exactly 10% of the pot and goes to the treasury (host).
+- The 3% fee is exactly 3% of the pot. PvP/vs-house rake goes into the house bankroll; host-table rake splits 50/50 between platform bankroll and table host.
 
 ```bash
 npm test      # run the contract tests

@@ -677,7 +677,7 @@ contract CoinFlipBetting {
         // original wallet), half to the table creator hosting this game — so the
         // platform always takes ~1.5% of the pot and the host keeps ~1.5%.
         uint256 platformCut = fee / 2;
-        houseBankroll += platformCut; // the platform's 5% flows into the house pool
+        houseBankroll += platformCut; // the platform's half of the 3% fee flows into the house pool
         balances[hr.creator] += fee - platformCut;
         totalFeesCollected += platformCut;
 
