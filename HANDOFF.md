@@ -1,7 +1,16 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v11.55**.
+Last updated at build **v11.56**.
+
+> **NOTE FOR CLAUDE/CHATGPT (v11.56):** 0-100 Dice target clamp + Reef frenzy-freeze hotfix.
+> Dice: the 2% edge makes targets above 98.00% (under) / below 1.99% (over) produce a
+> multiplier below 1.00x, so `app.js` now clamps dice targets with `clampDiceTarget()` in
+> readouts, demo rolls, and real-wallet rolls. Reef: v11.55 could end Feeding Frenzy while
+> the bullet loop was resolving a catch, then remove bullets by stale array index and freeze
+> the tank near the end of free shots. `fishtable.js` now removes bullets by object identity
+> via `_removeBullet()`, skips missing bullet slots after array shrink, and only closes frenzy
+> once. Build/cache bumped to 1156.
 
 > **NOTE FOR CLAUDE/CHATGPT (v11.55):** Reef Raiders payout hotfix + Balloon/0-100 UI.
 > Reef now snapshots unit bet/power/cost onto every bullet, budget-prices special fish

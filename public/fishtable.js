@@ -334,7 +334,7 @@
     this.bulletLayer.addChild(sp);
     const speed = 620 + shotPower * 30;
     // cap live bullets so the now-long-lived ricochets can't pile up
-    while (this.bullets.length > 38) { const old = this.bullets.shift(); this.bulletLayer.removeChild(old.s); old.s.destroy(); }
+    while (this.bullets.length > 38) this._removeBullet(this.bullets[0]);
     this.bullets.push({ s: sp, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed, r: 7 * sc, col, hit: false, bounces: 0, life: 0, unitBet: shotUnitBet, power: shotPower, cost: paidCost, free, frenzyId: free ? this._frenzyId : 0 });
     // recoil + muzzle flash
     this._recoil = 8; this._muzzle(tipX, tipY, col);
@@ -344,6 +344,12 @@
   FishTable.prototype._muzzle = function (x, y, col) {
     const s = new PIXI.Sprite(this.tex.glow("muzzle", col, 80)); s.anchor.set(0.5); s.x = x; s.y = y; s.blendMode = PIXI.BLEND_MODES.ADD; s.scale.set(0.5); this.fxLayer.addChild(s);
     this.fx.push({ s, t: 0, dur: 0.18, kind: "flash" });
+  };
+  FishTable.prototype._removeBullet = function (b) {
+    if (!b) return;
+    try { if (b.s) { this.bulletLayer.removeChild(b.s); b.s.destroy(); } } catch (e) {}
+    const idx = this.bullets.indexOf(b);
+    if (idx >= 0) this.bullets.splice(idx, 1);
   };
 
   /* ---------- hit resolution ---------- */
@@ -406,7 +412,7 @@
     }
     // death anim
     fish.death = 0;
-    if (shot.free && this._frenzyWon >= this._frenzyBudget) this._finishFrenzy(true);
+    if (shot.free && this._frenzy > 0 && this._frenzyWon >= this._frenzyBudget) this._finishFrenzy(true);
   };
   FishTable.prototype._bombSplash = function (src, shot) {
     this._explosion(src.c.x, src.c.y, 150, 0xff7a3d);
@@ -587,8 +593,7 @@
     for (let i = this.bullets.length - 1; i >= 0; i--) {
       const b = this.bullets[i];
       if (!b.free || b.hit || b.frenzyId !== this._frenzyId) continue;
-      try { this.bulletLayer.removeChild(b.s); b.s.destroy(); } catch (e) {}
-      this.bullets.splice(i, 1);
+      this._removeBullet(b);
     }
     this._flashBanner("FRENZY OVER", msg, 0xffd23f);
   };
@@ -687,7 +692,7 @@
 
     // bullets — RICOCHET off the walls so shots rarely go to waste
     for (let i = this.bullets.length - 1; i >= 0; i--) {
-      const b = this.bullets[i]; b.life += dt; b.s.x += b.vx * dt; b.s.y += b.vy * dt;
+      const b = this.bullets[i]; if (!b || !b.s) continue; b.life += dt; b.s.x += b.vx * dt; b.s.y += b.vy * dt;
       // bounce off left / right / top / bottom edges (reflect the velocity component)
       let bounced = false;
       if (b.s.x < b.r) { b.s.x = b.r; b.vx = Math.abs(b.vx); bounced = true; }
@@ -701,7 +706,7 @@
       // A shot NEVER expires on its own — it ricochets forever until it catches a fish,
       // so the player never feels a paid shot was wasted. (Memory stays bounded by the
       // 38-bullet FIFO cap in _fire(); fish now fill the whole field so hits come fast.)
-      if (b.hit) { this.bulletLayer.removeChild(b.s); b.s.destroy(); this.bullets.splice(i, 1); }
+      if (b.hit) this._removeBullet(b);
     }
 
     // coins fly to balance HUD
@@ -855,8 +860,7 @@
     for (let i = this.bullets.length - 1; i >= 0; i--) {
       const b = this.bullets[i];
       if (!b.free || b.hit) continue;
-      try { this.bulletLayer.removeChild(b.s); b.s.destroy(); } catch (e) {}
-      this.bullets.splice(i, 1);
+      this._removeBullet(b);
     }
     try { if (this._chest && this._chest.cont) { this.hud.removeChild(this._chest.cont); this._chest.cont.destroy({ children: true }); } } catch (e) {}
     this._chest = null;

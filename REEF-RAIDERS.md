@@ -5,7 +5,7 @@
 > **update it with every change** so it never goes stale. Keep the Changelog at the
 > bottom current and bump the "Last updated" build below.
 
-**Last updated: build v11.55.** Live at https://tv-crypto-flip.onrender.com (Render
+**Last updated: build v11.56.** Live at https://tv-crypto-flip.onrender.com (Render
 auto-deploys the `claude/ethereum-betting-game-vrf-2dq50k` branch on push).
 
 ---
@@ -313,6 +313,11 @@ shipping; current target is around ~90% RTP (see §4).
 ---
 
 ## Changelog (newest first)
+- **v11.56** - Frenzy freeze hotfix. v11.55 could end Feeding Frenzy while the bullet loop
+  was still resolving a catch, then remove free bullets by a stale array index. That could
+  leave a destroyed/finished bullet in the live array and freeze the tank near the end of
+  free shots. Bullet cleanup now uses `_removeBullet(b)` by object identity, the bullet loop
+  skips missing slots after array shrink, and the frenzy close path only fires once.
 - **v11.55** - Payout hotfix. Fixed two major RTP leaks: bullets now snapshot unit
   bet/power/cost at fire time so cheap shots cannot be upgraded before hit, and special fish
   now use budgeted kill odds for chest/frenzy/splash value. Treasure Chest and Frenzy use

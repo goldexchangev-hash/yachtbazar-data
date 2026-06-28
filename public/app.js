@@ -1754,16 +1754,24 @@
     try { if (read.maxPayoutBpsOfBankroll) dicePayoutCapBps = BigInt(await read.maxPayoutBpsOfBankroll()); } catch { dicePayoutCapBps = 100n; }
   }
   function diceMaxProfitWei() { return diceHouseWei > 0n ? (diceHouseWei * dicePayoutCapBps) / 10000n : 0n; }
+  const DICE_MAX_WIN_OUTCOMES = 9800; // keep total payout >= stake after the 2% edge
+  function clampDiceTarget(raw, mode) {
+    let t = Math.min(9899, Math.max(100, (+raw) | 0));
+    if (mode === "over") t = Math.max(t, 9999 - DICE_MAX_WIN_OUTCOMES);
+    else t = Math.min(t, DICE_MAX_WIN_OUTCOMES);
+    return t;
+  }
 
   // Live odds bar + readouts as the player drags. Target T in [100,9899] (1%–99%).
   function diceReadouts() {
     const tEl = $("dice-target"); if (!tEl) return;
-    const T = Math.min(9899, Math.max(100, (+tEl.value) | 0));
+    const T = clampDiceTarget(tEl.value, diceMode);
+    if (((+tEl.value) | 0) !== T) tEl.value = String(T);
     const winOutcomes = diceMode === "under" ? T : (9999 - T);
     const chance = winOutcomes / 100;        // %
     const mult = Math.floor(9800 * 10000 / winOutcomes) / 10000; // 2% edge; floor to match on-chain bps
     const stake = +$("dice-stake").value;
-    const profit = stake * (mult - 1);
+    const profit = Math.max(0, stake * (mult - 1));
     const pct = T / 100;
     $("dice-target-val").textContent = pct.toFixed(2);
     $("ob-flag").textContent = pct.toFixed(2);
@@ -1796,8 +1804,9 @@
     if (!(stakeUsd > 0)) return toast("Drag to pick a stake", "err");
     const bet = usdToWei(stakeUsd);
     if (bet > maxBet) return toast("Max bet is " + usdOf(maxBet), "err");
-    const target = (+$("dice-target").value) | 0;
     const rollOver = diceMode === "over";
+    const target = clampDiceTarget($("dice-target").value, rollOver ? "over" : "under");
+    $("dice-target").value = String(target);
     rememberBet(stakeUsd);
     doPlayDice(bet, target, rollOver);
   }
@@ -2107,14 +2116,14 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1155").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1156").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=1155"))
+      .then(() => loadScriptOnce("slots.js?v=1156"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -2124,11 +2133,11 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=1155"))
-      .then(() => loadScriptOnce("pressure-render.js?v=1155"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=1155"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=1156"))
+      .then(() => loadScriptOnce("pressure-render.js?v=1156"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=1156"))
       // optional 3D red balloon (Three.js) — falls back to the 2D balloon if it can't load
-      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1155")).catch(() => {}))
+      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1156")).catch(() => {}))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -2186,10 +2195,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=1155"))
-      .then(() => loadScriptOnce("plane-render.js?v=1155"))
-      .then(() => loadScriptOnce("plane-feed.js?v=1155"))
-      .then(() => loadScriptOnce("plane-ui.js?v=1155"))
+      .then(() => loadScriptOnce("plane-engine.js?v=1156"))
+      .then(() => loadScriptOnce("plane-render.js?v=1156"))
+      .then(() => loadScriptOnce("plane-feed.js?v=1156"))
+      .then(() => loadScriptOnce("plane-ui.js?v=1156"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2270,15 +2279,15 @@
   function loadThreeOnce() {
     if (window.THREE) return Promise.resolve();
     if (threeLoadPromise) return threeLoadPromise;
-    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1155").catch((e) => { threeLoadPromise = null; throw e; });
+    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1156").catch((e) => { threeLoadPromise = null; throw e; });
     return threeLoadPromise;
   }
   function ensureSlots3dLoaded() {
     if (window.Slots3D) return Promise.resolve(true);
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("slots3d-engine.js?v=1155"))
-      .then(() => loadScriptOnce("slots3d.js?v=1155"))
+      .then(() => loadScriptOnce("slots3d-engine.js?v=1156"))
+      .then(() => loadScriptOnce("slots3d.js?v=1156"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2320,8 +2329,8 @@
     if (window.FishTable) return Promise.resolve(true);
     if (fishLoadPromise) return fishLoadPromise;
     fishLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishtable-engine.js?v=1155"))
-      .then(() => loadScriptOnce("fishtable.js?v=1155"))
+      .then(() => loadScriptOnce("fishtable-engine.js?v=1156"))
+      .then(() => loadScriptOnce("fishtable.js?v=1156"))
       .then(() => true)
       .catch((e) => { fishLoadPromise = null; throw e; });
     return fishLoadPromise;
@@ -2402,7 +2411,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1155"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1156"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -2429,7 +2438,7 @@
   function loadRail3dOnce() {
     if (window.Rail3D) return Promise.resolve(true);
     if (rail3dLoadPromise) return rail3dLoadPromise;
-    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1155")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
+    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1156")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
     return rail3dLoadPromise;
   }
   function buildRail3d() {
@@ -2450,7 +2459,7 @@
   function loadDice2_3dOnce() {
     if (window.TwoDice3D) return Promise.resolve(true);
     if (d2_3dLoadPromise) return d2_3dLoadPromise;
-    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1155")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
+    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1156")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
     return d2_3dLoadPromise;
   }
   function buildDice2_3d() {
@@ -2696,13 +2705,14 @@
   function demoDice() {
     if (revealLock) return; // a reveal is in flight → ignore the spam tap (no stacked debits)
     const v = demoStake("dice-stake"); if (!v) return;
-    const T = Math.min(9899, Math.max(100, (+$("dice-target").value) | 0));
     const over = diceMode === "over";
+    const T = clampDiceTarget($("dice-target").value, over ? "over" : "under");
+    $("dice-target").value = String(T);
     const roll = Math.floor(Math.random() * 10000); // 0..9999 (landing on T loses)
     const won = over ? roll > T : roll < T;
     const winOutcomes = over ? (9999 - T) : T;
     const mult = Math.floor(9800 * 10000 / winOutcomes) / 10000;
-    const profitUsd = won ? v * (mult - 1) : 0;
+    const profitUsd = won ? Math.max(0, v * (mult - 1)) : 0;
     rememberBet(v);
     demoUsd += (won ? profitUsd : -v); demoSave();
     lockReveal();
@@ -2830,7 +2840,7 @@
     const f = $("bj-frame");
     if (f && !f.src) {
       // No &bal= seed — the table starts from its own server default ($1,000), NOT the demo balance.
-      let src = "blackjack.html?tv=1&v=1155&guest=" + encodeURIComponent(bjGuestId());
+      let src = "blackjack.html?tv=1&v=1156&guest=" + encodeURIComponent(bjGuestId());
       if (bjPendingTable) { src += "&table=" + encodeURIComponent(bjPendingTable); bjPendingTable = null; }
       f.src = src; // loads the felt + scripts inside the TV
     }
