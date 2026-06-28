@@ -1,7 +1,13 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v11.65**.
+Last updated at build **v11.66**.
+
+> **NOTE FOR CLAUDE/CHATGPT (v11.66):** Follow-up full-scan runtime fix.
+> Browser/runtime scan found a front-end `MutationObserver.observe(...)` crash in
+> the mobile floating bet bar when the active action dock was not a valid element.
+> `observeBetbarDock()` now guards the observed target and falls back to a height
+> sync. Cache/build bumped to 1166.
 
 > **NOTE FOR CLAUDE/CHATGPT (v11.65):** Third audit pass bridge hardening.
 > The bridge can no longer be enabled with only a signer and flag; it now also
