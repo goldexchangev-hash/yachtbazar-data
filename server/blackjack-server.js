@@ -436,7 +436,7 @@
     // reserve it for a grace window so the player reclaims it on reconnect. If it's
     // their turn meanwhile, the normal turn timer auto-stands them so the table never
     // deadlocks; if the grace expires, the seat is dropped for real.
-    const RECONNECT_GRACE = 45000;
+    const RECONNECT_GRACE = 90000;
     function markDisconnected(sock) {
       lobbySubs.delete(sock);
       for (const r of rooms.values()) {

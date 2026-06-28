@@ -9,6 +9,7 @@ const realmoney = require("./realmoney.js");
 const sessions = new Map();
 const usedBuyIns = new Set();
 const pendingBuyIns = new Set();
+const playerLocks = new Map();
 const BRIDGE_ABI = [
   "event BlackjackBuyIn(address indexed player,uint256 amount,uint256 locked)",
   "function bjLocked(address player) view returns (uint256)",
@@ -127,6 +128,22 @@ function sessionById(id, player) {
   return s;
 }
 
+async function withPlayerLock(player, fn) {
+  const key = String(player || "").toLowerCase();
+  const prev = playerLocks.get(key) || Promise.resolve();
+  let release;
+  const current = new Promise((resolve) => { release = resolve; });
+  const chained = prev.catch(() => {}).then(() => current);
+  playerLocks.set(key, chained);
+  await prev.catch(() => {});
+  try {
+    return await fn();
+  } finally {
+    release();
+    if (playerLocks.get(key) === chained) playerLocks.delete(key);
+  }
+}
+
 async function verifyBuyIn(o) {
   const url = rpcUrl(o.chainId);
   if (!url) throw new Error("bridge RPC not configured");
@@ -208,59 +225,61 @@ function attachBridge(app, opts) {
     let txKey = "";
     try {
       const player = address(req.body && req.body.player, "player");
-      const existing = sessionFor(player);
-      const contract = address(req.body && req.body.contract, "contract");
-      const chainId = Number(req.body && req.body.chainId);
-      if (!Number.isSafeInteger(chainId) || chainId <= 0) throw new Error("chain id is invalid");
-      const txHash = String(req.body && req.body.txHash || "");
-      if (!/^0x[0-9a-fA-F]{64}$/.test(txHash)) throw new Error("buy-in transaction hash is invalid");
-      txKey = txHash.toLowerCase();
-      if (usedBuyIns.has(txKey) || pendingBuyIns.has(txKey)) throw new Error("buy-in transaction was already used");
-      pendingBuyIns.add(txKey);
-      const buyInWei = positiveWei(req.body && req.body.buyInWei, "buy-in");
-      verifyBridgeSignature("start", req.body, { player, contract, chainId, buyInWei: buyInWei.toString() });
-      const buyInUsd = buyInUsdFromWei(buyInWei);
-      if (!(buyInUsd > 0)) throw new Error("buy-in USD value is invalid");
-      await verifyBuyIn({ txHash, player, contract, chainId, buyInWei });
-      if (existing) {
-        if (existing.contract.toLowerCase() !== contract.toLowerCase()) throw new Error("open bridge session uses a different contract");
-        if (Number(existing.chainId) !== chainId) throw new Error("open bridge session uses a different chain");
-      }
-      if (blackjack.bridge.hasOpenExposure(player)) throw new Error("finish the current hand before changing bridge funds");
-      let session = existing;
-      if (session) {
-        session.buyInWei = (BigInt(session.buyInWei) + buyInWei).toString();
-        session.buyInUsd = Math.round((+session.buyInUsd + buyInUsd) * 100) / 100;
-        session.buyInCents = (BigInt(session.buyInCents) + cents(buyInUsd)).toString();
-        session.lastTxHash = txHash;
-        session.updatedAt = Date.now();
-        if (!session.wsToken) session.wsToken = authToken();
-      } else {
-        const id = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString("hex");
-        session = {
-          id,
-          game: "blackjack",
-          player,
-          contract,
-          chainId,
-          txHash,
-          buyInWei: buyInWei.toString(),
-          buyInUsd,
-          buyInCents: cents(buyInUsd).toString(),
-          nonce: nonce(),
-          wsToken: authToken(),
-          startedAt: Date.now(),
-          closed: false,
-        };
-        sessions.set(id, session);
-      }
-      const balanceUsd = blackjack.bridge.fund(player, buyInUsd, !!existing);
-      session.balanceUsd = balanceUsd;
-      usedBuyIns.add(txKey);
-      saveBridgeState();
-      blackjack.bridge.authorize(player, session.wsToken);
-      pendingBuyIns.delete(txKey);
-      res.json({ ok: true, session, wsToken: session.wsToken, balanceUsd });
+      await withPlayerLock(player, async () => {
+        const contract = address(req.body && req.body.contract, "contract");
+        const chainId = Number(req.body && req.body.chainId);
+        if (!Number.isSafeInteger(chainId) || chainId <= 0) throw new Error("chain id is invalid");
+        const txHash = String(req.body && req.body.txHash || "");
+        if (!/^0x[0-9a-fA-F]{64}$/.test(txHash)) throw new Error("buy-in transaction hash is invalid");
+        txKey = txHash.toLowerCase();
+        if (usedBuyIns.has(txKey) || pendingBuyIns.has(txKey)) throw new Error("buy-in transaction was already used");
+        pendingBuyIns.add(txKey);
+        const buyInWei = positiveWei(req.body && req.body.buyInWei, "buy-in");
+        verifyBridgeSignature("start", req.body, { player, contract, chainId, buyInWei: buyInWei.toString() });
+        const buyInUsd = buyInUsdFromWei(buyInWei);
+        if (!(buyInUsd > 0)) throw new Error("buy-in USD value is invalid");
+        await verifyBuyIn({ txHash, player, contract, chainId, buyInWei });
+        const existing = sessionFor(player);
+        if (existing) {
+          if (existing.contract.toLowerCase() !== contract.toLowerCase()) throw new Error("open bridge session uses a different contract");
+          if (Number(existing.chainId) !== chainId) throw new Error("open bridge session uses a different chain");
+        }
+        if (blackjack.bridge.hasOpenExposure(player)) throw new Error("finish the current hand before changing bridge funds");
+        let session = existing;
+        if (session) {
+          session.buyInWei = (BigInt(session.buyInWei) + buyInWei).toString();
+          session.buyInUsd = Math.round((+session.buyInUsd + buyInUsd) * 100) / 100;
+          session.buyInCents = (BigInt(session.buyInCents) + cents(buyInUsd)).toString();
+          session.lastTxHash = txHash;
+          session.updatedAt = Date.now();
+          if (!session.wsToken) session.wsToken = authToken();
+        } else {
+          const id = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString("hex");
+          session = {
+            id,
+            game: "blackjack",
+            player,
+            contract,
+            chainId,
+            txHash,
+            buyInWei: buyInWei.toString(),
+            buyInUsd,
+            buyInCents: cents(buyInUsd).toString(),
+            nonce: nonce(),
+            wsToken: authToken(),
+            startedAt: Date.now(),
+            closed: false,
+          };
+          sessions.set(id, session);
+        }
+        const balanceUsd = blackjack.bridge.fund(player, buyInUsd, !!existing);
+        session.balanceUsd = balanceUsd;
+        usedBuyIns.add(txKey);
+        saveBridgeState();
+        blackjack.bridge.authorize(player, session.wsToken);
+        pendingBuyIns.delete(txKey);
+        res.json({ ok: true, session, wsToken: session.wsToken, balanceUsd });
+      });
     } catch (e) {
       if (txKey) pendingBuyIns.delete(txKey);
       fail(res, 400, e.message || "could not start blackjack bridge");
@@ -272,43 +291,45 @@ function attachBridge(app, opts) {
     if (!bridgeEnabled()) return fail(res, 503, "bridge is not enabled on the server");
     try {
       const player = address(req.body && req.body.player, "player");
-      const requestedSession = req.body && req.body.sessionId;
-      const contract = address(req.body && req.body.contract, "contract");
-      const chainId = Number(req.body && req.body.chainId);
-      if (!Number.isSafeInteger(chainId) || chainId <= 0) throw new Error("chain id is invalid");
-      verifyBridgeSignature("settle", req.body, { player, contract, chainId, sessionId: requestedSession || "latest" });
-      const s = requestedSession ? sessionById(requestedSession, player) : sessionFor(player);
-      if (!s) throw new Error("no open blackjack bridge session");
-      if (s.contract.toLowerCase() !== contract.toLowerCase()) throw new Error("blackjack bridge session uses a different contract");
-      if (Number(s.chainId) !== chainId) throw new Error("blackjack bridge session uses a different chain");
-      if (s.settlement) return res.json(s.settlement);
-      if (s.closed) throw new Error("blackjack bridge session is already closed");
-      const balanceUsd = blackjack.bridge.balance(player);
-      const netCents = cents(balanceUsd) - BigInt(s.buyInCents);
-      const buyInCents = BigInt(s.buyInCents);
-      let netWei = buyInCents > 0n ? (netCents * BigInt(s.buyInWei)) / buyInCents : 0n;
-      const floor = -BigInt(s.buyInWei);
-      if (netWei < floor) netWei = floor;
-      const signature = await realmoney.signSettlement(player, netWei, s.nonce, s.chainId, s.contract);
-      s.closed = true;
-      s.closedAt = Date.now();
-      s.balanceUsd = balanceUsd;
-      s.netWei = netWei.toString();
-      s.settlement = {
-        ok: true,
-        sessionId: s.id,
-        player,
-        balanceUsd,
-        netWei: netWei.toString(),
-        nonce: s.nonce,
-        chainId: s.chainId,
-        contract: s.contract,
-        signature,
-      };
-      blackjack.bridge.clear(player);
-      if (blackjack.bridge.deauthorize) blackjack.bridge.deauthorize(player);
-      saveBridgeState();
-      res.json(s.settlement);
+      await withPlayerLock(player, async () => {
+        const requestedSession = req.body && req.body.sessionId;
+        const contract = address(req.body && req.body.contract, "contract");
+        const chainId = Number(req.body && req.body.chainId);
+        if (!Number.isSafeInteger(chainId) || chainId <= 0) throw new Error("chain id is invalid");
+        verifyBridgeSignature("settle", req.body, { player, contract, chainId, sessionId: requestedSession || "latest" });
+        const s = requestedSession ? sessionById(requestedSession, player) : sessionFor(player);
+        if (!s) throw new Error("no open blackjack bridge session");
+        if (s.contract.toLowerCase() !== contract.toLowerCase()) throw new Error("blackjack bridge session uses a different contract");
+        if (Number(s.chainId) !== chainId) throw new Error("blackjack bridge session uses a different chain");
+        if (s.settlement) return res.json(s.settlement);
+        if (s.closed) throw new Error("blackjack bridge session is already closed");
+        const balanceUsd = blackjack.bridge.balance(player);
+        const netCents = cents(balanceUsd) - BigInt(s.buyInCents);
+        const buyInCents = BigInt(s.buyInCents);
+        let netWei = buyInCents > 0n ? (netCents * BigInt(s.buyInWei)) / buyInCents : 0n;
+        const floor = -BigInt(s.buyInWei);
+        if (netWei < floor) netWei = floor;
+        const signature = await realmoney.signSettlement(player, netWei, s.nonce, s.chainId, s.contract);
+        s.closed = true;
+        s.closedAt = Date.now();
+        s.balanceUsd = balanceUsd;
+        s.netWei = netWei.toString();
+        s.settlement = {
+          ok: true,
+          sessionId: s.id,
+          player,
+          balanceUsd,
+          netWei: netWei.toString(),
+          nonce: s.nonce,
+          chainId: s.chainId,
+          contract: s.contract,
+          signature,
+        };
+        blackjack.bridge.clear(player);
+        if (blackjack.bridge.deauthorize) blackjack.bridge.deauthorize(player);
+        saveBridgeState();
+        res.json(s.settlement);
+      });
     } catch (e) {
       fail(res, 400, e.message || "could not settle blackjack bridge");
     }

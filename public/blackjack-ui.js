@@ -91,6 +91,7 @@
     this.net.on("bj:error", function (m) {
       // a failed reconnect-rejoin (table full / gone) → fall back to the lobby cleanly
       if (self._reconnectRoom && (m.intent === "join" || m.code === "table_full" || m.code === "no_room" || m.code === "lobby_full")) { self._reconnectRoom = null; self.toast("Reconnected — pick a table to jump back in"); self.showLobby(); return; }
+      if (self.embed && m.code === "auth_required") self._emitDockError(m.msg || m.message || "Lock credits before joining blackjack");
       // restore controls on rejection: force a dock rebuild from the still-intact legal set
       self.toast(m.msg || "Error", true); self._dockSig = null; self._renderDock();
     });
@@ -433,6 +434,12 @@
       bet: this.bet, betMin: 10, betMax: maxBet, betStep: 5, legal: legal, countMsLeft: countMsLeft, roomId: roomId,
       needFunds: needFunds, handBet: this.handBet || 0,
       placed: (mySeat && mySeat.baseBet > 0) ? mySeat.baseBet : 0 };
+    try { if (root.parent && root.parent !== root) root.parent.postMessage(state, "*"); } catch (e) {}
+  };
+  BlackjackClient.prototype._emitDockError = function (msg) {
+    var state = { type: "bj:dock", mode: "waiting", msg: msg, balance: this.balance || 0, showEth: this.showEth,
+      bet: this.bet || 25, betMin: 10, betMax: 0, betStep: 5, legal: [], countMsLeft: null, roomId: null,
+      needFunds: [], handBet: 0, placed: 0 };
     try { if (root.parent && root.parent !== root) root.parent.postMessage(state, "*"); } catch (e) {}
   };
   BlackjackClient.prototype._settleMsg = function (mySeat) {
