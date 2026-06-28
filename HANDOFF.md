@@ -1,7 +1,13 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v11.61**.
+Last updated at build **v11.62**.
+
+> **NOTE FOR CLAUDE/CHATGPT (v11.62):** Restore mobile speaker/help top-bar buttons.
+> v11.58 hid the speaker and Help buttons under 480px to keep wallet sign-out visible.
+> That removed useful menus on phones. `styles.css` now keeps speaker, Help, and Chat
+> visible by shrinking icon buttons, the network badge, wallet avatar, address width,
+> and the `OUT` sign-out pill instead of hiding controls. Build/cache bumped to 1162.
 
 > **NOTE FOR CLAUDE/CHATGPT (v11.61):** Show game credits on connected Blackjack.
 > Connected wallets have `$0` server table chips until they lock game credits into
