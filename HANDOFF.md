@@ -1,7 +1,14 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v11.60**.
+Last updated at build **v11.61**.
+
+> **NOTE FOR CLAUDE/CHATGPT (v11.61):** Show game credits on connected Blackjack.
+> Connected wallets have `$0` server table chips until they lock game credits into
+> Blackjack, which looked like the player's balance vanished. `renderBjDock()` now
+> paints `Credits $X` from `gameWei` when table chips are zero, changes Reload to
+> `Lock credits`, and refreshes on-chain balance before starting a buy-in. Build/cache
+> bumped to 1161.
 
 > **NOTE FOR CLAUDE/CHATGPT (v11.60):** Fix Blackjack black screen after wallet connect.
 > v11.59 cleared a stale guest Blackjack iframe with `f.src = ""`, but browsers can
