@@ -1,7 +1,29 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v11.62**.
+Last updated at build **v11.63**.
+
+> **NOTE FOR CLAUDE/CHATGPT (v11.63):** Whole-site bug-hunt hotfix.
+> Mobile header: disconnected phones no longer reserve an empty wallet cluster, so
+> Music/Help/Chat and Connect stay visible. Connected phones keep all top-bar buttons
+> plus the compact `OUT` sign-out pill. Core wallet games: Dice, Dice #2, Crash, Plane,
+> and legacy Crypto Reels now treat `$0` in-game credits as insufficient instead of
+> letting zero-balance wallets submit reverting bets; live click paths re-check
+> `read.balances(account)` immediately before sending. Dice #2 now keeps its unsupported
+> contract warning disabled after slider/readout updates. Gem Vault remains playable
+> as play-money after wallet connect. Reef/Fish controls are enrolled in the mobile
+> fixed-dock layout so portrait controls do not clip under the bottom nav. Blackjack
+> bridge top-ups now add to an existing verified session instead of replacing table
+> funds, and real wallet identity must come from the stamped WebSocket connection
+> while guest ids still work for demo. The real-money bridge is intentionally gated
+> behind `ENABLE_EXPERIMENTAL_BRIDGE=1`; server-side buy-in credits are derived from
+> `BRIDGE_ETH_USD`/`ETH_USD`, duplicate tx hashes are reserved during verification,
+> and settle responses are idempotent. Legacy `/slots.html` redirects to Gem Vault;
+> Blackjack iframe inner assets are cache-bumped; PWA shell caches all local icons;
+> Gem Vault/Plane/Reef internal max buttons obey demo caps; reset clears active
+> Pressure/Gem/Reef bonus state; flip feed/history uses the contract's 3% fee math.
+> Full cache/build bump to 1163, including app JS, lazy game scripts, CSS,
+> manifest/promo, Blackjack iframe URL, and service worker cache.
 
 > **NOTE FOR CLAUDE/CHATGPT (v11.62):** Restore mobile speaker/help top-bar buttons.
 > v11.58 hid the speaker and Help buttons under 480px to keep wallet sign-out visible.

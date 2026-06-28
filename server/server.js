@@ -14,6 +14,7 @@
 const path = require("path");
 const http = require("http");
 const os = require("os");
+require("dotenv").config();
 const express = require("express");
 const { WebSocketServer } = require("ws");
 const { attachBlackjack } = require("./blackjack-server.js");
@@ -102,7 +103,12 @@ wss.on("connection", (ws) => {
     }
     // Blackjack sub-protocol: route any bj:* intent to the engine first.
     if (typeof data.type === "string" && data.type.startsWith("bj:")) {
-      blackjack.handle(ws, data);
+      try {
+        blackjack.handle(ws, data);
+      } catch (e) {
+        try { ws.send(JSON.stringify({ type: "bj:error", code: "server", message: "Blackjack message could not be processed" })); } catch {}
+        console.error("blackjack ws error:", e && e.message ? e.message : e);
+      }
       return;
     }
     if (data.type === "hello" && typeof data.address === "string") {

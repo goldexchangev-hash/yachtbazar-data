@@ -14,7 +14,7 @@
 (function (root) {
   "use strict";
   const PIXI = root.PIXI, E = root.FishTableEngine;
-  const MIN_BET = 1, MAX_POWER = 7;
+  const MIN_BET = 1, MAX_BET = 50, MAX_POWER = 7;
 
   /* ---------- small helpers ---------- */
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -877,8 +877,9 @@
   FishTable.prototype.setBalance = function (usd) { this.balance = Math.max(0, Math.round((+usd || 0) * 100) / 100); this._renderHud(); };
   FishTable.prototype.setEthUsd = function (n) { if (n > 0) { this.ethUsd = n; this._renderHud(); } };
   FishTable.prototype.setMode = function () { /* demo-only for now; kept for API symmetry */ };
-  FishTable.prototype.setBet = function (v) { this.unitBet = Math.max(MIN_BET, Math.round((+v || MIN_BET) * 100) / 100); this._renderHud(); };
+  FishTable.prototype.setBet = function (v) { this.unitBet = Math.max(MIN_BET, Math.min(MAX_BET, Math.round((+v || MIN_BET) * 100) / 100)); this._renderHud(); };
   FishTable.prototype.setPower = function (p) { this.power = clamp(p | 0, 1, MAX_POWER); this._renderHud(); };
+  FishTable.prototype.restartDemo = function () { this.auto = false; this.lock = false; this._holding = false; this._forceEndBonuses(); if (this.els.autoBtn) this.els.autoBtn.classList.remove("on"); if (this.els.lockBtn) this.els.lockBtn.classList.remove("on"); this._renderHud(); };
   FishTable.prototype.toggleAuto = function () { this.auto = !this.auto; this._holding = false; /* always clear a (possibly stuck) hold so the Auto button is a reliable stop */ if (this.els.autoBtn) this.els.autoBtn.classList.toggle("on", this.auto); this._renderHud(); };
   FishTable.prototype.toggleLock = function () { this.lock = !this.lock; if (!this.lock) this.reticle.visible = false; if (this.els.lockBtn) this.els.lockBtn.classList.toggle("on", this.lock); this._renderHud(); };
   // Fullscreen (immersive arcade mode). The real Fullscreen API does NOT work on

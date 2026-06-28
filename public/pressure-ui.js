@@ -340,6 +340,13 @@
     this.balance = Math.round(b * 100) / 100;
     this._renderHud();
   };
+  PressureGame.prototype.restartDemo = function () {
+    clearTimeout(this._resetTimer); this._resetTimer = null;
+    this.pressing = false; this.state = "armed"; this.floors = []; this.heldSec = 0; this.burst = 0;
+    this.r.clearValveRings(); this.r.reset(); if (this._b3d) this._b3d.reset();
+    this._msg(this.balance < this.bet ? "Add funds to keep playing" : "HOLD the balloon to pump");
+    this._renderHud();
+  };
   PressureGame.prototype.setEthUsd = function (p) { if (p > 0) { this.ethUsd = p; this._renderHud(); } };
   // Pause/resume the Pixi ticker + global input so the balloon doesn't burn CPU
   // or capture keypresses off-channel.

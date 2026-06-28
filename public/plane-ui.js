@@ -9,7 +9,7 @@
 (function (root) {
   "use strict";
   const E = root.PlaneEngine;
-  const ETH_USD = 3400, MIN_BET = 10, MAX_AUTO = 999.99;
+  const ETH_USD = 3400, MIN_BET = 10, DEMO_MAX_BET = 500, MAX_AUTO = 999.99;
   const BET_WINDOW = 4.0, TAKEOFF_BEAT = 0.7, CRASH_PAUSE = 1.6;
 
   /* Self-contained rising "engine" tone (own AudioContext; never touches the
@@ -327,14 +327,15 @@
       // deducts at launch but cashes out on the current stake). Edit only while
       // betting / idle; the controls are also disabled in those states.
       if (!this._canEditBet()) { this._syncPanel(b); return; }
-      b.stake = Math.max(MIN_BET, Math.round(v * 100) / 100); b.baseStake = b.stake; this._syncPanel(b); this._renderButtons();
+      const cap = this.mode === "demo" ? DEMO_MAX_BET : Math.max(DEMO_MAX_BET, this.balance || DEMO_MAX_BET);
+      b.stake = Math.max(MIN_BET, Math.min(cap, Math.round(v * 100) / 100)); b.baseStake = b.stake; this._syncPanel(b); this._renderButtons();
     };
     if (e.action) e.action.addEventListener("click", () => this._onAction(b));
     if (e.betUp) e.betUp.addEventListener("click", () => setBet(b.stake + step(b.stake)));
     if (e.betDown) e.betDown.addEventListener("click", () => setBet(b.stake - step(b.stake - 0.01)));
     if (e.betHalf) e.betHalf.addEventListener("click", () => setBet(b.stake / 2));
     if (e.betDouble) e.betDouble.addEventListener("click", () => setBet(b.stake * 2));
-    if (e.betMax) e.betMax.addEventListener("click", () => setBet(this.balance));
+    if (e.betMax) e.betMax.addEventListener("click", () => setBet(this.mode === "demo" ? Math.min(DEMO_MAX_BET, this.balance) : this.balance));
     if (e.betInput) { e.betInput.addEventListener("change", () => setBet(parseFloat(e.betInput.value) || MIN_BET)); e.betInput.addEventListener("input", () => setBet(parseFloat(e.betInput.value) || MIN_BET)); }
     const setAuto = (v) => { b.autoTarget = Math.max(1.01, Math.min(MAX_AUTO, Math.round(v * 100) / 100)); this._syncPanel(b); };
     if (e.autoSlider) e.autoSlider.addEventListener("input", () => setAuto(parseFloat(e.autoSlider.value)));

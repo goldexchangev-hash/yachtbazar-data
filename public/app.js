@@ -342,7 +342,7 @@
   // mirrors/drives the current game's REAL stake slider so you can change the
   // bet without scrolling. No game logic is duplicated — every change funnels
   // through the same <input> + "input" event the panel already listens to.
-  const BETBAR_GAMES = new Set(["flip", "dice", "twodice", "crash", "pressure", "plane", "slots3d"]);
+  const BETBAR_GAMES = new Set(["flip", "dice", "twodice", "crash", "pressure", "plane", "slots3d", "fish"]);
   const BETBAR_SL = { flip: "house-bet", dice: "dice-stake", twodice: "td-stake", crash: "crash-stake", pressure: "pr-bet-slider", slots3d: "s3d-bet-slider", plane: "plane-a-bet" };
   function curStakeSlider() { return $(BETBAR_SL[currentGame]); }
   // Measure the active game's pinned action dock and lift the stake strip above it.
@@ -1794,7 +1794,7 @@
     let hint = "";
     let stakeWei = 0n; try { stakeWei = usdToWei(stake); } catch {}
     let profitWei = 0n; try { profitWei = usdToWei(profit); } catch {}
-    if (gameWei > 0n && stakeWei > gameWei) hint = "Not enough in-game balance — deposit first 👇";
+    if (stakeWei > gameWei) hint = "Not enough in-game balance — deposit first 👇";
     else if (maxBet > 0n && stakeWei > maxBet) hint = "Max bet is " + usdOf(maxBet);
     else if (diceHouseWei > 0n && profitWei > diceMaxProfitWei()) hint = (dicePayoutCapBps >= 10000n ? "House can't cover that win yet — fund the house or lower the stake (max win " + usdOf(diceMaxProfitWei()) + ")" : "Max win per roll is " + usdOf(diceMaxProfitWei()) + " (" + (Number(dicePayoutCapBps) / 100) + "% of the house bankroll) — lower the stake or multiplier");
     const btn = $("dice-roll-btn");
@@ -1802,13 +1802,18 @@
     $("dice-roll-hint").textContent = hint;
   }
 
-  function playDiceClick() {
+  async function playDiceClick() {
     if (demoOn) return demoDice();
     if (!ready()) return;
     const stakeUsd = parseFloat($("dice-stake").value);
     if (!(stakeUsd > 0)) return toast("Drag to pick a stake", "err");
     const bet = usdToWei(stakeUsd);
     if (bet > maxBet) return toast("Max bet is " + usdOf(maxBet), "err");
+    try {
+      const gb = await read.balances(account);
+      gameWei = gb;
+      if (gb < bet) return toast("Deposit first 👇 — your stake comes from your in-game balance (you have " + usdOf(gb) + ").", "err");
+    } catch {}
     const rollOver = diceMode === "over";
     const target = clampDiceTarget($("dice-target").value, rollOver ? "over" : "under");
     $("dice-target").value = String(target);
@@ -1888,12 +1893,13 @@
     let stakeWei = 0n; try { stakeWei = usdToWei(stake); } catch {}
     let profitWei = 0n; try { profitWei = usdToWei(profit); } catch {}
     if (combos <= 0) hint = "Pick a different target for this bet type";
-    else if (gameWei > 0n && stakeWei > gameWei) hint = "Not enough in-game balance — deposit first 👇";
+    else if (stakeWei > gameWei) hint = "Not enough in-game balance — deposit first 👇";
     else if (maxBet > 0n && stakeWei > maxBet) hint = "Max bet is " + usdOf(maxBet);
     else if (diceHouseWei > 0n && profitWei > diceMaxProfitWei()) hint = (dicePayoutCapBps >= 10000n ? "House can't cover that win yet — fund the house or lower the stake (max win " + usdOf(diceMaxProfitWei()) + ")" : "Max win per roll is " + usdOf(diceMaxProfitWei()));
     const btn = $("td-roll-btn");
     if (btn) { btn.disabled = !!hint; btn.style.opacity = hint ? "0.55" : ""; }
     $("td-roll-hint").textContent = hint;
+    if (twoDiceSupported === false) applyTwoDiceSupport();
   }
   // Not every deployed house contract has Dice #2 — older deploys predate it.
   // Probe a Dice #2 view function once; if it reverts, the contract lacks the
@@ -1928,6 +1934,11 @@
     if (!(stakeUsd > 0)) return toast("Drag to pick a stake", "err");
     const bet = usdToWei(stakeUsd);
     if (bet > maxBet) return toast("Max bet is " + usdOf(maxBet), "err");
+    try {
+      const gb = await read.balances(account);
+      gameWei = gb;
+      if (gb < bet) return toast("Deposit first 👇 — your stake comes from your in-game balance (you have " + usdOf(gb) + ").", "err");
+    } catch {}
     const target = (+$("td-target").value) | 0;
     const over = tdMode === "over";
     if (tdWinCombos(target, over) <= 0) return toast("Pick a different target for this bet type", "err");
@@ -1992,7 +2003,7 @@
     let stakeWei = 0n; try { stakeWei = usdToWei(stake); } catch {}
     let profitWei = 0n; try { profitWei = usdToWei(profit); } catch {}
     if (!(stake > 0)) hint = "Drag to pick a stake";
-    else if (gameWei > 0n && stakeWei > gameWei) hint = "Not enough in-game balance — deposit first 👇";
+    else if (stakeWei > gameWei) hint = "Not enough in-game balance — deposit first 👇";
     else if (maxBet > 0n && stakeWei > maxBet) hint = "Max bet is " + usdOf(maxBet);
     else if (diceHouseWei > 0n && profitWei > diceMaxProfitWei()) hint = (dicePayoutCapBps >= 10000n ? "House can't cover that win yet — fund the house or lower the target (max win " + usdOf(diceMaxProfitWei()) + ")" : "Max win per round is " + usdOf(diceMaxProfitWei()));
     const btn = $("crash-launch");
@@ -2028,6 +2039,11 @@
     if (!(stakeUsd > 0)) return toast("Drag to pick a stake", "err");
     const bet = usdToWei(stakeUsd);
     if (bet > maxBet) return toast("Max bet is " + usdOf(maxBet), "err");
+    try {
+      const gb = await read.balances(account);
+      gameWei = gb;
+      if (gb < bet) return toast("Deposit first 👇 — your stake comes from your in-game balance (you have " + usdOf(gb) + ").", "err");
+    } catch {}
     const target = crashTargetVal();
     const targetX100 = Math.round(target * 100);
     if (targetX100 < 101 || targetX100 > 100000) return toast("Cash-out target must be between 1.01× and 1000×", "err");
@@ -2080,7 +2096,7 @@
     let hint = "";
     let stakeWei = 0n; try { stakeWei = usdToWei(stake); } catch {}
     if (!(stake > 0)) hint = "Drag to pick a bet";
-    else if (gameWei > 0n && stakeWei > gameWei) hint = "Not enough in-game balance — deposit first 👇";
+    else if (stakeWei > gameWei) hint = "Not enough in-game balance — deposit first 👇";
     else if (maxBet > 0n && stakeWei > maxBet) hint = "Max bet is " + usdOf(maxBet);
     const btn = $("slots-spin");
     if (btn) { btn.disabled = !!hint; btn.style.opacity = hint ? "0.55" : ""; }
@@ -2121,14 +2137,14 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1162").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1163").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=1162"))
+      .then(() => loadScriptOnce("slots.js?v=1163"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -2138,11 +2154,11 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=1162"))
-      .then(() => loadScriptOnce("pressure-render.js?v=1162"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=1162"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=1163"))
+      .then(() => loadScriptOnce("pressure-render.js?v=1163"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=1163"))
       // optional 3D red balloon (Three.js) — falls back to the 2D balloon if it can't load
-      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1162")).catch(() => {}))
+      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1163")).catch(() => {}))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -2200,10 +2216,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=1162"))
-      .then(() => loadScriptOnce("plane-render.js?v=1162"))
-      .then(() => loadScriptOnce("plane-feed.js?v=1162"))
-      .then(() => loadScriptOnce("plane-ui.js?v=1162"))
+      .then(() => loadScriptOnce("plane-engine.js?v=1163"))
+      .then(() => loadScriptOnce("plane-render.js?v=1163"))
+      .then(() => loadScriptOnce("plane-feed.js?v=1163"))
+      .then(() => loadScriptOnce("plane-ui.js?v=1163"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2262,7 +2278,11 @@
     if ((await ensureCrashSupport()) === false) { toast("Plane needs the Crash contract on this house — it needs a redeploy. (Other channels still work.)", "err"); return null; }
     let bet; try { bet = usdToWei(betUsd); } catch { return null; }
     if (bet > maxBet) { toast("Max bet is " + usdOf(maxBet), "err"); return null; }
-    if (gameWei > 0n && bet > gameWei) { toast("Not enough in-game balance — deposit first 👇", "err"); return null; }
+    try {
+      const gb = await read.balances(account);
+      gameWei = gb;
+      if (gb < bet) { toast("Not enough in-game balance — deposit first 👇", "err"); return null; }
+    } catch {}
     const tx100 = Math.max(101, Math.min(100000, targetX100 | 0));
     activeRoomId = null; lastRevealed = null;
     lockReveal();
@@ -2284,15 +2304,15 @@
   function loadThreeOnce() {
     if (window.THREE) return Promise.resolve();
     if (threeLoadPromise) return threeLoadPromise;
-    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1162").catch((e) => { threeLoadPromise = null; throw e; });
+    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1163").catch((e) => { threeLoadPromise = null; throw e; });
     return threeLoadPromise;
   }
   function ensureSlots3dLoaded() {
     if (window.Slots3D) return Promise.resolve(true);
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("slots3d-engine.js?v=1162"))
-      .then(() => loadScriptOnce("slots3d.js?v=1162"))
+      .then(() => loadScriptOnce("slots3d-engine.js?v=1163"))
+      .then(() => loadScriptOnce("slots3d.js?v=1163"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2321,7 +2341,7 @@
     ensureSlots3dLoaded().then(() => {
       const g = buildSlots3d(); if (!g) return;
       g.setActive(true); g.setEthUsd(ethUsd);
-      if (demoOn) { g.setBalance(demoUsd); g.setEnabled(true); } else { g.setEnabled(false); }
+      g.setBalance(demoUsd); g.setEnabled(true);
       if (window.TV && currentGame === "slots3d" && !TV._promoPlaying) try { TV.idle(); } catch (e) {}
     }).catch(() => toast("Couldn't load Gem Vault — check your connection", "err"));
   }
@@ -2334,8 +2354,8 @@
     if (window.FishTable) return Promise.resolve(true);
     if (fishLoadPromise) return fishLoadPromise;
     fishLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishtable-engine.js?v=1162"))
-      .then(() => loadScriptOnce("fishtable.js?v=1162"))
+      .then(() => loadScriptOnce("fishtable-engine.js?v=1163"))
+      .then(() => loadScriptOnce("fishtable.js?v=1163"))
       .then(() => true)
       .catch((e) => { fishLoadPromise = null; throw e; });
     return fishLoadPromise;
@@ -2416,7 +2436,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1162"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1163"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -2443,7 +2463,7 @@
   function loadRail3dOnce() {
     if (window.Rail3D) return Promise.resolve(true);
     if (rail3dLoadPromise) return rail3dLoadPromise;
-    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1162")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
+    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1163")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
     return rail3dLoadPromise;
   }
   function buildRail3d() {
@@ -2464,7 +2484,7 @@
   function loadDice2_3dOnce() {
     if (window.TwoDice3D) return Promise.resolve(true);
     if (d2_3dLoadPromise) return d2_3dLoadPromise;
-    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1162")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
+    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1163")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
     return d2_3dLoadPromise;
   }
   function buildDice2_3d() {
@@ -2656,6 +2676,9 @@
     // A Plane round mid-flight has already debited its stake; restart it cleanly so
     // the reset balance isn't settled against a stale in-flight bet.
     if (planeGame && demoOn) try { planeGame.restartDemo(); } catch (e) {}
+    if (pressureGame && demoOn) try { pressureGame.restartDemo(); } catch (e) {}
+    if (slots3dGame && demoOn) try { slots3dGame.restartDemo(); } catch (e) {}
+    if (fishGame && demoOn) try { fishGame.restartDemo(); } catch (e) {}
     demoUsd = DEMO_START_USD; demoSave(); demoSyncBalance();
     if (pressureGame) pressureGame.setBalance(demoUsd);
     if (planeGame && demoOn) planeGame.setBalance(demoUsd);
@@ -2867,7 +2890,7 @@
     if (f && !f.getAttribute("src")) {
       // No &bal= seed — the table starts from its own server default ($1,000), NOT the demo balance.
       const tableWallet = account || bjGuestId();
-      let src = "blackjack.html?tv=1&v=1162&guest=" + encodeURIComponent(tableWallet);
+      let src = "blackjack.html?tv=1&v=1163&guest=" + encodeURIComponent(tableWallet);
       if (bjPendingTable) { src += "&table=" + encodeURIComponent(bjPendingTable); bjPendingTable = null; }
       f.src = src; // loads the felt + scripts inside the TV
     }
@@ -2891,7 +2914,7 @@
     const buyWei = usdToWei(buyUsd);
     try {
       const st = await bridgeStatus();
-      if (!st.enabled) return toast("Bridge signer is not configured on the server yet.", "err");
+      if (!st.enabled) return toast(st.signerConfigured ? "Blackjack bridge is not enabled on the server yet." : "Bridge signer is not configured on the server yet.", "err");
       if (!st.rpcConfigured) return toast("Bridge RPC is not configured, so buy-ins cannot be verified yet.", "err");
     } catch (e) { return toast(e.message || "Bridge status unavailable", "err"); }
     const ok = await confirmTransfer({
@@ -2996,6 +3019,12 @@
   function bjCmd(cmd, extra) { const f = $("bj-frame"); if (f && f.contentWindow) try { f.contentWindow.postMessage(Object.assign({ type: "bj:cmd", cmd }, extra || {}), "*"); } catch (e) {} }
   function bjEth(usd) { const r = ethUsd || 3400; return "≈ Ξ" + (usd / r).toFixed(4); }
   function buildBjBet(ctr, s) {
+    if (!(s.betMax >= 10)) {
+      const note = document.createElement("div"); note.className = "bj-placed";
+      const lbl = document.createElement("div"); lbl.className = "bj-placed-lbl";
+      lbl.textContent = account ? "Lock credits before placing a bet." : "Reload chips before placing a bet.";
+      note.appendChild(lbl); ctr.appendChild(note); return;
+    }
     bjBet = Math.min(Math.max(10, Math.round((s.bet || bjBet) / 5) * 5), s.betMax);
     const wrap = document.createElement("div"); wrap.className = "bj-bet";
     const val = document.createElement("div"); val.className = "bj-bet-val";
@@ -3691,7 +3720,7 @@
     const rows = [];
     for (const r of rooms) {
       if (Number(r.status) !== 2) continue; // settled only
-      const bet = r.betAmount, pot = bet * 2n, netWin = pot - pot / 10n - bet;
+      const bet = r.betAmount, bd = breakdown(bet), netWin = bd.win - bet;
       let who, won, amt;
       if (r.isHouseGame) {
         won = eq(r.winner, r.player1);
@@ -4023,8 +4052,7 @@
       const baseTs = head ? Number(head.timestamp) : Math.floor(Date.now() / 1000);
       for (const e of evs) {
         const a = e.args;
-        const pot = a.betAmount * 2n;
-        const payout = pot - pot / 10n;
+        const payout = breakdown(a.betAmount).win;
         addHostGame({
           label: "Host table",
           won: a.playerWon,
@@ -4048,8 +4076,7 @@
         const isPlayer = eq(r.player1, account) || (eq(r.player2, account) && !r.isHouseGame);
         if (!isPlayer) continue;
         const won = eq(r.winner, account);
-        const pot = r.betAmount * 2n;
-        const payout = pot - pot / 10n;
+        const payout = breakdown(r.betAmount).win;
         const amount = won ? payout : r.betAmount;       // pot won / stake lost (gross)
         const net = won ? payout - r.betAmount : -r.betAmount; // true balance change
         games.push({ label: r.isHouseGame ? "vs House" : "PvP #" + r.id.toString(), won, amount, net, ts: Number(r.settledAt) });

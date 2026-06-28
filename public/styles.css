@@ -1593,6 +1593,7 @@ body:not(.game-poker) #poker-view { display:none !important; }
 .build-tag { color: var(--s-muted); }
 .rail-toggle {
   display: none; align-items: center; justify-content: center;
+  flex: 0 0 38px;
   width: 38px; height: 38px; border-radius: var(--r-sm); border: 1px solid var(--s-border);
   background: var(--s-surface); color: var(--s-text); font-size: 18px; cursor: pointer;
 }
@@ -1712,6 +1713,7 @@ input[type="range"] {
 
 /* ── Wallet cluster: keep the disconnect button on-screen on mobile ── */
 .wallet-cluster { display: flex; align-items: center; gap: 10px; }
+body:not(.connected) .wallet-cluster { display: none; }
 @media (max-width: 640px) {
   .topbar { padding-left: 8px; padding-right: 8px; gap: 6px; overflow: hidden; }
   .topbar-right { flex-wrap: nowrap; justify-content: flex-end; gap: 6px; min-width: 0; flex: 1 1 auto; overflow: hidden; }
@@ -1730,7 +1732,7 @@ input[type="range"] {
 }
 @media (max-width: 480px) {
   .topbar-right { gap: 4px; }
-  .btn-icon { width: 30px; height: 30px; min-width: 30px; min-height: 30px; font-size: 13px; }
+  .btn-icon { width: 34px; height: 34px; min-width: 34px; min-height: 34px; font-size: 14px; }
   .net-badge { width: 28px; height: 30px; justify-content: center; padding: 0; }
   .net-badge span { display: none; }
   .tb-tools { flex: 0 0 auto; gap: 1px; padding: 1px; }

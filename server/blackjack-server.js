@@ -508,11 +508,11 @@
       }
       return false;
     }
-    function bridgeFund(wallet, amountUsd) {
+    function bridgeFund(wallet, amountUsd, add) {
       if (!/^0x[0-9a-fA-F]{40}$/.test(String(wallet || ""))) throw new Error("real wallet required");
       if (hasOpenExposure(wallet)) throw new Error("finish the current hand before changing bridge funds");
       const amt = r2(Math.max(0, Math.min(1000000, +amountUsd || 0)));
-      bank.all.set(wallet, amt);
+      bank.all.set(wallet, add ? r2(bank.get(wallet) + amt) : amt);
       for (const r of rooms.values()) {
         for (const s of r.seats) if (s && s.wallet === wallet) {
           pushWallet(s.sock, wallet); broadcastState(r);
@@ -549,13 +549,19 @@
     }
 
     /* ---------------- router ---------------- */
+    function messageWallet(sock, m) {
+      if (sock.wallet) return sock.wallet;
+      const hinted = String((m && m.wallet) || "");
+      return /^guest:/.test(hinted) ? hinted : "";
+    }
     function handle(sock, m) {
+      const wallet = messageWallet(sock, m);
       switch (m.type) {
         // Identity is the CONNECTION's trusted wallet (stamped by the transport), never
         // the client-supplied m.wallet — so the engine is self-enforcing if reused.
-        case "bj:lobby:subscribe": { lobbySubs.add(sock); if (rooms.size === 0) createRoom(); send(sock, { type: "bj:lobby:list", rooms: lobbyList() }); const w = sock.wallet || m.wallet; if (w) pushWallet(sock, w); break; }
+        case "bj:lobby:subscribe": { lobbySubs.add(sock); if (rooms.size === 0) createRoom(); send(sock, { type: "bj:lobby:list", rooms: lobbyList() }); if (wallet) pushWallet(sock, wallet); break; }
         case "bj:lobby:unsubscribe": lobbySubs.delete(sock); break;
-        case "bj:room:join": join(sock, sock.wallet || m.wallet || "anon", m.roomId, m.seatPref); break;
+        case "bj:room:join": join(sock, wallet || "anon", m.roomId, m.seatPref); break;
         case "bj:room:watch": watch(sock, m.roomId); break;
         case "bj:room:leave": leave(sock); break;
         case "bj:bet:place": placeBet(sock, m.amountUsd, m.clientSeed); break;

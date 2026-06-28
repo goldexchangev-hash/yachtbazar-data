@@ -12,3 +12,5 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "20"
+      - key: ENABLE_EXPERIMENTAL_BRIDGE
+        value: "0"

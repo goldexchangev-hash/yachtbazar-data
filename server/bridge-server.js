@@ -6,9 +6,11 @@ const realmoney = require("./realmoney.js");
 
 const sessions = new Map();
 const usedBuyIns = new Set();
+const pendingBuyIns = new Set();
 const BRIDGE_ABI = [
   "event BlackjackBuyIn(address indexed player,uint256 amount)",
 ];
+const WEI_PER_ETH = 10n ** 18n;
 
 function fail(res, status, message) {
   return res.status(status).json({ ok: false, error: message });
@@ -33,16 +35,25 @@ function nonce() {
   return BigInt("0x" + crypto.randomBytes(16).toString("hex")).toString();
 }
 
+function bridgeEnabled() {
+  return realmoney.enabled() && process.env.ENABLE_EXPERIMENTAL_BRIDGE === "1";
+}
+
+function buyInUsdFromWei(wei) {
+  const ethUsd = Math.max(1, +(process.env.BRIDGE_ETH_USD || process.env.ETH_USD || 3400));
+  return Math.round((Number(wei) / Number(WEI_PER_ETH)) * ethUsd * 100) / 100;
+}
+
 function rpcUrl(chainId) {
   if (chainId === 11155111) return process.env.SEPOLIA_RPC_URL || process.env.RPC_URL || "";
   if (chainId === 31337) return process.env.LOCAL_RPC_URL || process.env.RPC_URL || "http://127.0.0.1:8545";
   return process.env.RPC_URL || "";
 }
 
-function sessionFor(player) {
+function sessionFor(player, includeClosed) {
   const p = String(player || "").toLowerCase();
   for (const s of sessions.values()) {
-    if (!s.closed && s.player.toLowerCase() === p) return s;
+    if ((includeClosed || !s.closed) && s.player.toLowerCase() === p) return s;
   }
   return null;
 }
@@ -75,7 +86,9 @@ function attachBridge(app, opts) {
   app.get("/api/bridge/status", (req, res) => {
     res.json({
       ok: true,
-      enabled: realmoney.enabled(),
+      enabled: bridgeEnabled(),
+      signerConfigured: realmoney.enabled(),
+      bridgeFlagEnabled: process.env.ENABLE_EXPERIMENTAL_BRIDGE === "1",
       signerAddress: realmoney.signerAddress(),
       rpcConfigured: !!(process.env.SEPOLIA_RPC_URL || process.env.RPC_URL || process.env.LOCAL_RPC_URL),
       games: ["blackjack"],
@@ -86,51 +99,71 @@ function attachBridge(app, opts) {
 
   app.post("/api/bridge/blackjack/start", async (req, res) => {
     if (!blackjack || !blackjack.bridge) return fail(res, 503, "blackjack bridge is unavailable");
-    if (!realmoney.enabled()) return fail(res, 503, "bridge signer not configured");
+    if (!bridgeEnabled()) return fail(res, 503, "bridge is not enabled on the server");
+    let txKey = "";
     try {
       const player = address(req.body && req.body.player, "player");
-      if (sessionFor(player)) throw new Error("you already have an open bridge session");
+      const existing = sessionFor(player);
       const contract = address(req.body && req.body.contract, "contract");
       const chainId = Number(req.body && req.body.chainId);
       if (!Number.isSafeInteger(chainId) || chainId <= 0) throw new Error("chain id is invalid");
       const txHash = String(req.body && req.body.txHash || "");
       if (!/^0x[0-9a-fA-F]{64}$/.test(txHash)) throw new Error("buy-in transaction hash is invalid");
-      if (usedBuyIns.has(txHash.toLowerCase())) throw new Error("buy-in transaction was already used");
+      txKey = txHash.toLowerCase();
+      if (usedBuyIns.has(txKey) || pendingBuyIns.has(txKey)) throw new Error("buy-in transaction was already used");
+      pendingBuyIns.add(txKey);
       const buyInWei = positiveWei(req.body && req.body.buyInWei, "buy-in");
-      const buyInUsd = Math.max(0, Math.min(1000000, +(req.body && req.body.buyInUsd) || 0));
+      const buyInUsd = buyInUsdFromWei(buyInWei);
       if (!(buyInUsd > 0)) throw new Error("buy-in USD value is invalid");
       await verifyBuyIn({ txHash, player, contract, chainId, buyInWei });
-      const id = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString("hex");
-      const session = {
-        id,
-        game: "blackjack",
-        player,
-        contract,
-        chainId,
-        txHash,
-        buyInWei: buyInWei.toString(),
-        buyInUsd,
-        buyInCents: cents(buyInUsd).toString(),
-        nonce: nonce(),
-        startedAt: Date.now(),
-        closed: false,
-      };
-      blackjack.bridge.fund(player, buyInUsd);
-      usedBuyIns.add(txHash.toLowerCase());
-      sessions.set(id, session);
-      res.json({ ok: true, session, balanceUsd: buyInUsd });
+      if (existing) {
+        if (existing.contract.toLowerCase() !== contract.toLowerCase()) throw new Error("open bridge session uses a different contract");
+        if (Number(existing.chainId) !== chainId) throw new Error("open bridge session uses a different chain");
+      }
+      blackjack.bridge.fund(player, buyInUsd, !!existing);
+      let session = existing;
+      if (session) {
+        session.buyInWei = (BigInt(session.buyInWei) + buyInWei).toString();
+        session.buyInUsd = Math.round((+session.buyInUsd + buyInUsd) * 100) / 100;
+        session.buyInCents = (BigInt(session.buyInCents) + cents(buyInUsd)).toString();
+        session.lastTxHash = txHash;
+        session.updatedAt = Date.now();
+      } else {
+        const id = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString("hex");
+        session = {
+          id,
+          game: "blackjack",
+          player,
+          contract,
+          chainId,
+          txHash,
+          buyInWei: buyInWei.toString(),
+          buyInUsd,
+          buyInCents: cents(buyInUsd).toString(),
+          nonce: nonce(),
+          startedAt: Date.now(),
+          closed: false,
+        };
+        sessions.set(id, session);
+      }
+      usedBuyIns.add(txKey);
+      pendingBuyIns.delete(txKey);
+      res.json({ ok: true, session, balanceUsd: blackjack.bridge.balance(player) });
     } catch (e) {
+      if (txKey) pendingBuyIns.delete(txKey);
       fail(res, 400, e.message || "could not start blackjack bridge");
     }
   });
 
   app.post("/api/bridge/blackjack/settle", async (req, res) => {
     if (!blackjack || !blackjack.bridge) return fail(res, 503, "blackjack bridge is unavailable");
-    if (!realmoney.enabled()) return fail(res, 503, "bridge signer not configured");
+    if (!bridgeEnabled()) return fail(res, 503, "bridge is not enabled on the server");
     try {
       const player = address(req.body && req.body.player, "player");
-      const s = sessionFor(player);
+      const s = sessionFor(player, true);
       if (!s) throw new Error("no open blackjack bridge session");
+      if (s.settlement) return res.json(s.settlement);
+      if (s.closed) throw new Error("blackjack bridge session is already closed");
       const balanceUsd = blackjack.bridge.balance(player);
       const netCents = cents(balanceUsd) - BigInt(s.buyInCents);
       const buyInCents = BigInt(s.buyInCents);
@@ -142,8 +175,7 @@ function attachBridge(app, opts) {
       s.closedAt = Date.now();
       s.balanceUsd = balanceUsd;
       s.netWei = netWei.toString();
-      blackjack.bridge.clear(player);
-      res.json({
+      s.settlement = {
         ok: true,
         sessionId: s.id,
         player,
@@ -153,7 +185,9 @@ function attachBridge(app, opts) {
         chainId: s.chainId,
         contract: s.contract,
         signature,
-      });
+      };
+      blackjack.bridge.clear(player);
+      res.json(s.settlement);
     } catch (e) {
       fail(res, 400, e.message || "could not settle blackjack bridge");
     }

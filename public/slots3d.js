@@ -11,7 +11,7 @@
 (function (root) {
   "use strict";
   const THREE = root.THREE, E = root.Slots3DEngine;
-  const REELS = 5, ROWS = 3, MIN_BET = 10;
+  const REELS = 5, ROWS = 3, MIN_BET = 10, MAX_BET = 500;
   const PANY = 0.55; // shift the reels UP in frame, leaving a black shelf at the bottom for the win/bonus banners
 
   /* palette per symbol id (0..7) */
@@ -606,7 +606,7 @@
     if (e.betSlider) e.betSlider.value = this.bet;
     this._renderHud(); this._renderSpinBtn();
   };
-  Slots3D.prototype._setBet = function (v) { this.bet = Math.max(MIN_BET, Math.round((+v || MIN_BET) * 100) / 100); this._syncBet(); };
+  Slots3D.prototype._setBet = function (v) { this.bet = Math.max(MIN_BET, Math.min(MAX_BET, Math.round((+v || MIN_BET) * 100) / 100)); this._syncBet(); };
   Slots3D.prototype._updatePf = function () { if (this.els.pfNonce) this.els.pfNonce.textContent = String(this.nonce); if (this.els.pfLast && this.lastRound) this.els.pfLast.textContent = "round #" + this.lastRound.nonce + " · win " + this._usd(this.lastRound.win); };
   Slots3D.prototype._verifyLast = function () {
     if (!this.lastRound) { this._msg("Spin once, then verify", ""); return; }
@@ -624,7 +624,7 @@
     if (e.betSlider) e.betSlider.addEventListener("input", () => this._setBet(parseFloat(e.betSlider.value) || MIN_BET));
     if (e.betHalf) e.betHalf.addEventListener("click", () => this._setBet(this.bet / 2));
     if (e.betDouble) e.betDouble.addEventListener("click", () => this._setBet(this.bet * 2));
-    if (e.betMax) e.betMax.addEventListener("click", () => this._setBet(this.balance));
+    if (e.betMax) e.betMax.addEventListener("click", () => this._setBet(Math.min(MAX_BET, this.balance)));
     if (e.pfClient) e.pfClient.addEventListener("change", () => { this.clientSeed = e.pfClient.value || E.randomSeed(8); });
     if (e.pfVerify) e.pfVerify.addEventListener("click", () => this._verifyLast());
     // SPACE spins (only while this is the live channel + no modal/typing)
@@ -649,6 +649,11 @@
   Slots3D.prototype.setBalance = function (usd) { this.balance = Math.max(0, Math.round((+usd || 0) * 100) / 100); this._renderHud(); this._renderSpinBtn(); };
   Slots3D.prototype.setEthUsd = function (n) { if (n > 0) { this.ethUsd = n; this._renderHud(); } };
   Slots3D.prototype.setMode = function () { /* demo-only for now; kept for API symmetry */ };
+  Slots3D.prototype.restartDemo = function () {
+    clearTimeout(this._bonusT); clearTimeout(this._idleT); this._bonusT = 0; this._idleT = 0;
+    this._bonus = null; this._spinning = false; this.state = "idle";
+    this._hideOverlay(); this._clearWinFx(); this._msg("Tap SPIN", ""); this._renderHud(); this._renderSpinBtn();
+  };
 
   root.Slots3D = Slots3D;
 })(typeof globalThis !== "undefined" ? globalThis : this);

@@ -3,133 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0c0d16" />
-    <title>🎰 Crypto Reels — TV Crypto Flip slots</title>
-    <meta name="description" content="Crypto Reels — a neon 16-bit slot machine. Play-money, just for fun. Part of TV Crypto Flip." />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Bungee&family=Press+Start+2P&family=Space+Grotesk:wght@400;500;600;700&display=swap"
-      rel="stylesheet"
-    />
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎰</text></svg>" />
-    <link rel="stylesheet" href="styles.css" />
-    <link rel="stylesheet" href="slots.css" />
+    <meta http-equiv="refresh" content="0; url=/index.html?game=slots3d" />
+    <title>Gem Vault — Crypto TV</title>
+    <script>
+      location.replace("/index.html?game=slots3d");
+    </script>
   </head>
   <body>
-    <!-- Animated backdrop (shared) -->
-    <div class="bg-grid" aria-hidden="true"></div>
-    <div class="bg-glow" aria-hidden="true"></div>
-
-    <!-- ───────────────────────── Header ───────────────────────── -->
-    <header class="topbar">
-      <div class="brand">
-        <span class="brand-tv">🎰</span>
-        <span class="brand-name">CRYPTO<span class="brand-accent"> REELS</span></span>
-        <span class="brand-live"><i></i>ON&nbsp;AIR</span>
-      </div>
-      <div class="topbar-right">
-        <button id="sound-btn" class="btn btn-ghost" title="Play / silence background music">🔇 Music</button>
-        <button id="rules-btn" class="btn btn-ghost" title="Paytable & rules">Paytable</button>
-        <a class="btn btn-primary" href="/index.html" title="Back to the coin-flip game">📺 Coin&nbsp;Flip</a>
-      </div>
-    </header>
-
-    <main class="slot-layout">
-      <div class="slot-subnav">
-        <span>🎮 Play-money slots — just for fun.</span>
-        <span class="dot">•</span>
-        <a href="/index.html">Try the provably-fair coin flip →</a>
-      </div>
-
-      <section class="cabinet">
-        <div class="marquee">
-          <span class="m-coin">🪙</span>
-          <div>
-            <div class="marquee-title">CRYPTO REELS</div>
-            <div class="marquee-sub">16-BIT · 5 REELS · 9 LINES</div>
-          </div>
-          <span class="m-coin">💎</span>
-        </div>
-
-        <!-- The Pixi canvas lives inside a CRT screen wrapper -->
-        <div class="screen-shell">
-          <div class="screen-crt" id="screen-crt">
-            <div id="pixi-mount"></div>
-            <div class="scanlines" aria-hidden="true"></div>
-            <div class="vignette" aria-hidden="true"></div>
-            <div class="flicker" aria-hidden="true"></div>
-            <div class="screen-loading" id="screen-loading">
-              <div>🎰</div>
-              <div>LOADING REELS…</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- HUD -->
-        <div class="slot-hud">
-          <div class="hud-cell credits">
-            <span class="hud-label">Credits</span>
-            <span class="hud-val" id="hud-credits">0</span>
-          </div>
-          <div class="hud-cell bet">
-            <span class="hud-label">Total Bet</span>
-            <span class="hud-val" id="hud-bet">0</span>
-          </div>
-          <div class="hud-cell win" id="hud-win-cell">
-            <span class="hud-label">Last Win</span>
-            <span class="hud-val" id="hud-win">0</span>
-          </div>
-        </div>
-
-        <!-- Controls -->
-        <div class="slot-controls">
-          <div class="bet-stepper" role="group" aria-label="Line bet">
-            <button id="bet-down" aria-label="Lower bet">−</button>
-            <div class="bet-amount">
-              <span id="bet-line">5</span>
-              <small>PER LINE ×9</small>
-            </div>
-            <button id="bet-up" aria-label="Raise bet">+</button>
-          </div>
-          <button id="max-bet" class="btn-tool">MAX BET</button>
-          <button id="spin-btn" class="btn-spin">SPIN</button>
-          <button id="auto-btn" class="btn-tool">AUTO</button>
-          <button id="add-credits" class="btn-tool hidden">+1000 💰</button>
-        </div>
-
-        <p class="slot-footnote">
-          Play money only — no wallet, no real funds. Powered by
-          <a href="https://pixijs.com" target="_blank" rel="noopener">PixiJS</a>.
-          Want real stakes? <a href="/index.html">Flip a coin on-chain →</a>
-        </p>
-      </section>
-    </main>
-
-    <!-- Paytable modal -->
-    <div id="rules-modal" class="modal hidden">
-      <div class="modal-card">
-        <button class="modal-close" id="rules-close" aria-label="Close">✕</button>
-        <h2>🎰 Paytable &amp; Rules</h2>
-        <p class="muted" style="margin: 0 0 12px; font-size: 13px;">
-          Match symbols left-to-right on any of the 9 lines. Payouts below are multiples of your
-          <b style="color: var(--cyan)">per-line bet</b> for 3 / 4 / 5 of a kind.
-        </p>
-        <div class="paytable" id="paytable"></div>
-        <p class="pt-note">
-          <b>💎 WILD</b> substitutes for any symbol except the scatter.
-          <b>🪙 SCATTER</b> pays anywhere on the screen (×total bet): 3 = 2×, 4 = 10×, 5 = 50×.
-          Lines pay only on the longest left-aligned match. RTP is tuned for fun, not for profit —
-          it's play money.
-        </p>
-      </div>
-    </div>
-
-    <div id="toast" class="toast"></div>
-
-    <!-- Libraries (vendored, no build step) + game -->
-    <script src="vendor/pixi.min.js"></script>
-    <script src="chiptune.js"></script>
-    <script src="slots.js"></script>
+    <p>Gem Vault has replaced the legacy slots page. <a href="/index.html?game=slots3d">Open Gem Vault</a>.</p>
   </body>
 </html>

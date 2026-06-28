@@ -420,8 +420,9 @@
     else if (isMyTurn) mode = "turn";
     else if (m.phase === "dealing" || m.phase === "dealer") mode = "dealing";
     else if (m.phase === "settle") mode = "settle";
-    var maxBet = Math.max(50, Math.floor((this.balance || 1000) / 5) * 5); // floor to the $5 step so both ends agree
-    this.bet = Math.min(Math.max(10, Math.round(this.bet / 5) * 5), maxBet); // mirror _betUI normalization
+    var rawBalance = (this.balance != null && isFinite(this.balance)) ? this.balance : 1000;
+    var maxBet = Math.max(0, Math.floor(rawBalance / 5) * 5); // floor to the $5 step so both ends agree
+    this.bet = maxBet >= 10 ? Math.min(Math.max(10, Math.round(this.bet / 5) * 5), maxBet) : 10; // mirror _betUI normalization
     var legal = []; ["hit", "stand", "double", "split", "surrender"].forEach(function (a) { if (self.legal.indexOf(a) >= 0) legal.push(a); });
     // one countdown for the controls under the TV: the whole betting window (pre- AND post-bet), or YOUR turn
     var countMsLeft = (this.deadline && (m.phase === "betting" || mode === "turn")) ? Math.max(0, this.deadline - (Date.now() + this.skew)) : null;
@@ -445,7 +446,9 @@
   };
   BlackjackClient.prototype._betUI = function (row) {
     var self = this; row.innerHTML = "";
-    var maxBet = Math.max(50, Math.floor(self.balance || 1000));
+    var rawBalance = (self.balance != null && isFinite(self.balance)) ? self.balance : 1000;
+    var maxBet = Math.max(0, Math.floor(rawBalance / 5) * 5);
+    if (maxBet < 10) { row.appendChild(el("div", "empty-note", "Add chips before placing a bet.")); return; }
     self.bet = Math.min(Math.max(10, Math.round(self.bet / 5) * 5), maxBet);
     var wrap = el("div", "bet-ui");
     var val = el("div", "bet-val");
