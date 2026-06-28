@@ -2347,7 +2347,11 @@ body.rr-fs-on #layer-fish * { visibility: visible !important; }
 .bj-reload:active { transform: scale(.96); }
 .bj-toprow .bj-count { position: static; }
 /* on the blackjack channel the demo credits are irrelevant (blackjack has its own balance) → hide them */
-body.bj-channel #demo-below, body.bj-channel #demo-bar { display: none !important; }
+body.connected #demo-below,
+body.connected #demo-bar,
+body.connected #demo-tv-badge,
+body.bj-channel #demo-below,
+body.bj-channel #demo-bar { display: none !important; }
 /* bet-locked-in confirmation + remove button */
 .bj-placed { display: flex; flex-direction: column; gap: 8px; align-items: center; }
 .bj-placed-lbl { color: var(--s-text-2); font-size: 13px; }

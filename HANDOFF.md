@@ -1,7 +1,13 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v11.58**.
+Last updated at build **v11.59**.
+
+> **NOTE FOR CLAUDE/CHATGPT (v11.59):** Hide demo balance after wallet connect.
+> Connected wallets now forcibly hide `#demo-bar`, `#demo-below`, and the TV demo badge
+> in both JS and CSS. Blackjack also now reloads its iframe if it was already loaded
+> under a `guest:` id, so connected users do not keep seeing the demo/guest `$1,000`
+> table balance after MetaMask connects. Build/cache bumped to 1159.
 
 > **NOTE FOR CLAUDE/CHATGPT (v11.58):** Mobile connected-header fix.
 > On narrow phones, the connected wallet pill could push the Disconnect button off the
