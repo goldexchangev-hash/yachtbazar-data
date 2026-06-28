@@ -1,7 +1,18 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v11.56**.
+Last updated at build **v11.57**.
+
+> **NOTE FOR CLAUDE/CHATGPT (v11.57):** Blackjack wallet bridge foundation.
+> Added `server/bridge-server.js` and attached it from `server/server.js`. The only live
+> bridge game is Blackjack because it is server-authoritative: `/api/bridge/blackjack/start`
+> requires a confirmed `BlackjackBuyIn` event from the contract tx before funding table
+> chips, and `/api/bridge/blackjack/settle` signs only the server-held blackjack balance.
+> Required Render env before this works live: `HOUSE_SIGNER_KEY` plus `SEPOLIA_RPC_URL`
+> (or `RPC_URL`), and the contract owner must set `blackjackSigner` to the signer address.
+> Connected-wallet Blackjack now loads under the wallet address; guest play keeps demo
+> reload. Balloon Pop, Gem Vault, and Reef are deliberately listed as parked bridge games
+> until server-side replay adapters are added. Build/cache bumped to 1157.
 
 > **NOTE FOR CLAUDE/CHATGPT (v11.56):** 0-100 Dice target clamp + Reef frenzy-freeze hotfix.
 > Dice: the 2% edge makes targets above 98.00% (under) / below 1.99% (over) produce a

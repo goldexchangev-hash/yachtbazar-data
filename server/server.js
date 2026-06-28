@@ -17,6 +17,7 @@ const os = require("os");
 const express = require("express");
 const { WebSocketServer } = require("ws");
 const { attachBlackjack } = require("./blackjack-server.js");
+const { attachBridge } = require("./bridge-server.js");
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const HOST = process.env.HOST || "0.0.0.0";
@@ -24,16 +25,12 @@ const PUBLIC_HOST = process.env.PUBLIC_HOST || ""; // e.g. your public IP for in
 
 const app = express();
 const publicDir = path.join(__dirname, "..", "public");
+app.use(express.json({ limit: "64kb" }));
 app.use(express.static(publicDir));
 
 // Tiny health/info endpoint the frontend can use to learn its share base.
 app.get("/api/info", (req, res) => {
   res.json({ publicHost: PUBLIC_HOST, port: PORT, players: activePlayers().length });
-});
-
-// SPA-ish fallback so deep links like /?room=12 still serve index.html.
-app.get("*", (req, res) => {
-  res.sendFile(path.join(publicDir, "index.html"));
 });
 
 const server = http.createServer(app);
@@ -44,6 +41,12 @@ const wss = new WebSocketServer({ server, maxPayload: 64 * 1024 });
 const blackjack = attachBlackjack({
   startBalance: 1000, // match the site's default play-money demo balance ($1,000)
   timers: { dealReveal: 450, dealPace: 430, dealerReveal: 800, dealerPace: 900 },
+});
+attachBridge(app, { blackjack });
+
+// SPA-ish fallback so deep links like /?room=12 still serve index.html.
+app.get("*", (req, res) => {
+  res.sendFile(path.join(publicDir, "index.html"));
 });
 
 /** ws -> { address } */

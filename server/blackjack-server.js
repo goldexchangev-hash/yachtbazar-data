@@ -20,7 +20,8 @@
   const Shuffle = (typeof require !== "undefined") ? require("../public/blackjack-shuffle.js") : root.BlackjackShuffle;
 
   function makeBank(start) {
-    const m = new Map(); const get = (w) => { if (!m.has(w)) m.set(w, start == null ? 5000 : start); return m.get(w); };
+    const realWallet = (w) => /^0x[0-9a-fA-F]{40}$/.test(String(w || ""));
+    const m = new Map(); const get = (w) => { if (!m.has(w)) m.set(w, realWallet(w) ? 0 : (start == null ? 5000 : start)); return m.get(w); };
     return { get, all: m, credit: (w, a) => m.set(w, Math.round((get(w) + a) * 100) / 100), debit: (w, a) => { if (get(w) < a) return false; m.set(w, Math.round((get(w) - a) * 100) / 100); return true; } };
   }
   const r2 = (n) => Math.round(n * 100) / 100;
@@ -497,6 +498,41 @@
       pushWallet(sock, w);
       for (const r of rooms.values()) { if (seatOf(r, sock) >= 0) { broadcastState(r); break; } } // refresh betMax
     }
+    function hasOpenExposure(wallet) {
+      for (const r of rooms.values()) {
+        for (const s of r.seats) {
+          if (!s || s.wallet !== wallet) continue;
+          if (seatStake(s) > 0) return true;
+          if (r.phase !== "idle" && r.phase !== "betting") return true;
+        }
+      }
+      return false;
+    }
+    function bridgeFund(wallet, amountUsd) {
+      if (!/^0x[0-9a-fA-F]{40}$/.test(String(wallet || ""))) throw new Error("real wallet required");
+      if (hasOpenExposure(wallet)) throw new Error("finish the current hand before changing bridge funds");
+      const amt = r2(Math.max(0, Math.min(1000000, +amountUsd || 0)));
+      bank.all.set(wallet, amt);
+      for (const r of rooms.values()) {
+        for (const s of r.seats) if (s && s.wallet === wallet) {
+          pushWallet(s.sock, wallet); broadcastState(r);
+        }
+      }
+      return amt;
+    }
+    function bridgeBalance(wallet) {
+      if (hasOpenExposure(wallet)) throw new Error("finish the current hand before cashing out");
+      return r2(bank.get(wallet));
+    }
+    function bridgeClear(wallet) {
+      if (hasOpenExposure(wallet)) throw new Error("finish the current hand before cashing out");
+      bank.all.set(wallet, 0);
+      for (const r of rooms.values()) {
+        for (const s of r.seats) if (s && s.wallet === wallet) {
+          pushWallet(s.sock, wallet); broadcastState(r);
+        }
+      }
+    }
     function action(sock, act) {
       for (const r of rooms.values()) { const i = seatOf(r, sock); if (i < 0) continue;
         if (r.turnIdx !== i || r.phase !== "turns") return err(sock, "not_your_turn", "Not your turn", "action");
@@ -535,6 +571,7 @@
 
     createRoom();
     return { handle, onClose, bank, config,
+      bridge: { fund: bridgeFund, balance: bridgeBalance, clear: bridgeClear, hasOpenExposure },
       _mgr: { rooms, openRoom, createRoom, closeRoom, lobbyList },
       _room: { startBetting, endBetting, deal, applyAction, dealerPlay, settle, snapshot, takeInsurance, closeInsurance } };
   }

@@ -1,57 +1,58 @@
-# Real-money (Sepolia) setup — Reef Raiders · Royal Riches · Balloon Pop
+# Real-money (Sepolia) setup - bridge sessions
 
-These three games are play-money by default. To let them wager **real Sepolia ETH**
-they use the contract's generic **buy-in → signed-settle** framework (the same one
-built for blackjack): you deposit ETH, lock a session buy-in, play off-chain against
-a server-committed provably-fair seed, and the house server signs your net P&L so the
-contract pays out. **A player can never lose more than they locked.**
+The contract has a generic **buy-in -> signed-settle** framework: players deposit
+ETH, lock a session buy-in, play a server-authoritative off-chain game, then the
+house server signs the final net P&L so the contract releases `locked + net`.
+**A player can never lose more than they locked.**
 
-## ⚠️ Owner one-time setup (required — nothing pays out until this is done)
+Current live bridge scope: **Blackjack only**. Reef Raiders, Gem Vault, and
+Balloon Pop remain play-money for wallet-connected users until their server-side
+replay adapters exist. Do not sign browser-reported balances for those games.
 
-1. **Generate a house signer keypair** (do this locally, keep the private key secret):
-   ```
+## Owner one-time setup
+
+1. Generate a house signer keypair locally:
+   ```bash
    node server/realmoney.js --genkey
    ```
-   It prints an `address` and a `privateKey`.
 
-2. **Render env var** — in the Render dashboard for `tv-crypto-flip`, add:
+2. In Render, add:
+   ```bash
+   HOUSE_SIGNER_KEY=<private key from step 1>
+   SEPOLIA_RPC_URL=<Sepolia JSON-RPC URL>
    ```
-   HOUSE_SIGNER_KEY = <the privateKey from step 1>
-   ```
-   (Never commit this to the repo. The server reads it at runtime; if it's unset,
-   real-money settlement stays disabled and the games remain play-money.)
 
-3. **Tell the contract to trust that signer** — from the **owner wallet** (the one
-   that deployed the contract), send one transaction:
+3. From the contract owner wallet, call:
+   ```solidity
+   contract.setBlackjackSigner(<signer address from step 1>)
    ```
-   contract.setBlackjackSigner(<the address from step 1>)
-   ```
-   (You can do this from the in-app Host tools, Etherscan "Write Contract", or a script.)
 
-4. **Fund the house bankroll** so the contract can pay winners:
-   ```
+4. Fund the house bankroll so winners can be paid:
+   ```bash
    npm run fundhouse:sepolia
    ```
-   (or call `contract.fundHouse()` with some Sepolia ETH).
 
-5. **Players deposit** Sepolia ETH into the contract (`deposit()` / the in-app Wallet
-   panel) — that becomes their withdrawable balance the games buy in from.
+5. Players deposit Sepolia ETH into game credits through the in-app Wallet panel.
 
-## How a real-money session works (per game)
-- Player picks **real** mode (wallet connected) and a **buy-in** amount → one tx
-  `blackjackBuyIn(amount)` locks it.
-- The server commits a provably-fair `serverSeed` (publishes its hash); the client
-  plays, every outcome deriving from that seed (so it can't be forged either way).
-- On **cash-out**, the server re-derives the authoritative net from the seed, signs
-  `(player, net, nonce, chainId, contract)`, and the client submits
-  `settleBlackjack(player, net, nonce, signature)` → the contract returns
-  `locked + net` to the player's withdrawable balance.
+## Blackjack Bridge Flow
 
-## Status / phases
-- ✅ **Foundation:** `server/realmoney.js` house signer (contract-compatible; self-test
-  `node server/realmoney.js`), `ethers` promoted to a runtime dependency.
-- ⏳ **Next:** per-game real-money session manager on the server (commit seed, track
-  buy-in, re-derive net, sign), and the frontend real-money mode + deposit/buy-in/
-  cash-out UI for each of the three games.
+- The player connects a wallet and taps **Reload balance** on Blackjack.
+- The app calls `blackjackBuyIn(amount)` to lock credits on-chain.
+- `/api/bridge/blackjack/start` verifies the confirmed `BlackjackBuyIn` event by
+  transaction hash before funding the server-held table balance.
+- Blackjack hands remain server-authoritative: the server owns the shoe, bets,
+  actions, and balance changes.
+- On **Cash out**, `/api/bridge/blackjack/settle` signs
+  `(player, net, nonce, chainId, contract)`.
+- The app submits `settleBlackjack(player, net, nonce, signature)` and the contract
+  releases `locked + net` back to the player's withdrawable game credits.
 
-> Until the owner steps above are done, the three games stay play-money (safe default).
+## Status
+
+- Live foundation: `server/realmoney.js` house signer plus
+  `server/bridge-server.js` Blackjack bridge with receipt verification.
+- Next: server replay/session adapters for Reef Raiders, Gem Vault, and Balloon Pop
+  before enabling real-money bridge mode for those games.
+
+If `HOUSE_SIGNER_KEY` or `SEPOLIA_RPC_URL` is missing, the app shows a setup error
+before locking funds.

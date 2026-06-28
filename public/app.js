@@ -839,6 +839,7 @@
     chip.classList.remove("hidden");
     $("wallet-addr").textContent = short(account);
     blockies(account, 8, 4, $("wallet-avatar"));
+    { const f = $("bj-frame"); if (f && /guest=guest%3A/i.test(f.src || "")) { f.src = ""; if (currentGame === "blackjack") ensureBlackjackReady(); } }
     const nb = $("net-badge");
     nb.classList.remove("hidden");
     nb.classList.toggle("wrong", !chainOK);
@@ -2116,14 +2117,14 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1156").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1157").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=1156"))
+      .then(() => loadScriptOnce("slots.js?v=1157"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -2133,11 +2134,11 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=1156"))
-      .then(() => loadScriptOnce("pressure-render.js?v=1156"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=1156"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=1157"))
+      .then(() => loadScriptOnce("pressure-render.js?v=1157"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=1157"))
       // optional 3D red balloon (Three.js) — falls back to the 2D balloon if it can't load
-      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1156")).catch(() => {}))
+      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1157")).catch(() => {}))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -2195,10 +2196,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=1156"))
-      .then(() => loadScriptOnce("plane-render.js?v=1156"))
-      .then(() => loadScriptOnce("plane-feed.js?v=1156"))
-      .then(() => loadScriptOnce("plane-ui.js?v=1156"))
+      .then(() => loadScriptOnce("plane-engine.js?v=1157"))
+      .then(() => loadScriptOnce("plane-render.js?v=1157"))
+      .then(() => loadScriptOnce("plane-feed.js?v=1157"))
+      .then(() => loadScriptOnce("plane-ui.js?v=1157"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2279,15 +2280,15 @@
   function loadThreeOnce() {
     if (window.THREE) return Promise.resolve();
     if (threeLoadPromise) return threeLoadPromise;
-    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1156").catch((e) => { threeLoadPromise = null; throw e; });
+    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1157").catch((e) => { threeLoadPromise = null; throw e; });
     return threeLoadPromise;
   }
   function ensureSlots3dLoaded() {
     if (window.Slots3D) return Promise.resolve(true);
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("slots3d-engine.js?v=1156"))
-      .then(() => loadScriptOnce("slots3d.js?v=1156"))
+      .then(() => loadScriptOnce("slots3d-engine.js?v=1157"))
+      .then(() => loadScriptOnce("slots3d.js?v=1157"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2329,8 +2330,8 @@
     if (window.FishTable) return Promise.resolve(true);
     if (fishLoadPromise) return fishLoadPromise;
     fishLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishtable-engine.js?v=1156"))
-      .then(() => loadScriptOnce("fishtable.js?v=1156"))
+      .then(() => loadScriptOnce("fishtable-engine.js?v=1157"))
+      .then(() => loadScriptOnce("fishtable.js?v=1157"))
       .then(() => true)
       .catch((e) => { fishLoadPromise = null; throw e; });
     return fishLoadPromise;
@@ -2411,7 +2412,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1156"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1157"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -2438,7 +2439,7 @@
   function loadRail3dOnce() {
     if (window.Rail3D) return Promise.resolve(true);
     if (rail3dLoadPromise) return rail3dLoadPromise;
-    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1156")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
+    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1157")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
     return rail3dLoadPromise;
   }
   function buildRail3d() {
@@ -2459,7 +2460,7 @@
   function loadDice2_3dOnce() {
     if (window.TwoDice3D) return Promise.resolve(true);
     if (d2_3dLoadPromise) return d2_3dLoadPromise;
-    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1156")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
+    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1157")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
     return d2_3dLoadPromise;
   }
   function buildDice2_3d() {
@@ -2807,7 +2808,7 @@
     if (game !== "blackjack" && window.BJ_MUTE) { window.BJ_MUTE(true); bjStopCount(); } // hush blackjack + stop its countdown off-channel
     // Blackjack uses its OWN standalone server balance — hide the demo credits on this channel.
     document.body.classList.toggle("bj-channel", game === "blackjack");
-    if (game === "blackjack") { const wl = $("bj-wallet"); if (wl) wl.textContent = "🪪 " + bjGuestId(); }
+    if (game === "blackjack") { const wl = $("bj-wallet"); if (wl) wl.textContent = "🪪 " + short(account || bjGuestId()); }
     // Poker is its own full-width view (no TV); everything else uses the TV channel.
     if (game === "poker") { if (window.PokerUI) PokerUI.show(); }
     else { if (window.PokerUI) PokerUI.hide(); if (window.TV && TV.changeChannel) TV.changeChannel(GAME_CHANNEL[game]); }
@@ -2836,11 +2837,25 @@
   try { bjPendingTable = new URLSearchParams(location.search).get("bjtable"); } catch (e) {}
   let bjRoomId = null; // latest table id the felt reports (for the Share button)
   const BJ_START = 1000; // blackjack has its OWN standalone play-chip balance, independent of the demo credits
+  let bjBridgeBusy = false;
+  async function bridgeJson(url, body) {
+    const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body || {}) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.error || "Bridge request failed");
+    return j;
+  }
+  async function bridgeStatus() {
+    const r = await fetch("/api/bridge/status", { cache: "no-store" });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.error || "Bridge status unavailable");
+    return j;
+  }
   function ensureBlackjackReady() {
     const f = $("bj-frame");
     if (f && !f.src) {
       // No &bal= seed — the table starts from its own server default ($1,000), NOT the demo balance.
-      let src = "blackjack.html?tv=1&v=1156&guest=" + encodeURIComponent(bjGuestId());
+      const tableWallet = account || bjGuestId();
+      let src = "blackjack.html?tv=1&v=1157&guest=" + encodeURIComponent(tableWallet);
       if (bjPendingTable) { src += "&table=" + encodeURIComponent(bjPendingTable); bjPendingTable = null; }
       f.src = src; // loads the felt + scripts inside the TV
     }
@@ -2850,7 +2865,91 @@
   // the site demo credits (those were getting tangled up with the table). The ⟳ Reload button
   // tops the table back up to $1,000. The server refuses a re-seed mid-hand, so reload can
   // never wipe a live bet/hand.
-  function bjReload() { const f = $("bj-frame"); if (f && f.contentWindow) try { f.contentWindow.postMessage({ type: "bj:seed", balance: BJ_START }, "*"); } catch (e) {} }
+  async function bjReload() {
+    const f = $("bj-frame");
+    if (!account) {
+      if (f && f.contentWindow) try { f.contentWindow.postMessage({ type: "bj:seed", balance: BJ_START }, "*"); } catch (e) {}
+      return;
+    }
+    if (bjBridgeBusy) return;
+    if (!ready()) return;
+    const buyUsd = Math.min(BJ_START, Math.floor(weiToUsd(gameWei)));
+    if (!(buyUsd >= 10)) return toast("Deposit at least $10 into game credits first.", "err");
+    const buyWei = usdToWei(buyUsd);
+    try {
+      const st = await bridgeStatus();
+      if (!st.enabled) return toast("Bridge signer is not configured on the server yet.", "err");
+      if (!st.rpcConfigured) return toast("Bridge RPC is not configured, so buy-ins cannot be verified yet.", "err");
+    } catch (e) { return toast(e.message || "Bridge status unavailable", "err"); }
+    const ok = await confirmTransfer({
+      title: "Lock blackjack credits",
+      sub: "These credits move into a server-held blackjack table session until you cash out.",
+      usd: usd(buyUsd), eth: "approx " + ethApprox(buyUsd) + " ETH",
+      from: "Game credits", to: "Blackjack table",
+      confirmLabel: "Lock " + usd(buyUsd),
+      note: "MetaMask first locks the credits on-chain. The server verifies that transaction before giving table chips.",
+    });
+    if (!ok) return;
+    const btn = $("bj-reload");
+    bjBridgeBusy = true; setBtnBusy(btn, "Locking...");
+    try {
+      toast("Confirm the blackjack buy-in in MetaMask...");
+      const tx = await contract.blackjackBuyIn(buyWei, { gasLimit: await estGas("blackjackBuyIn", [buyWei], null, 160000n) });
+      const rcpt = await tx.wait();
+      await bridgeJson("/api/bridge/blackjack/start", {
+        player: account,
+        contract: deployment.address,
+        chainId: Number(deployment.chainId),
+        buyInWei: buyWei.toString(),
+        buyInUsd: buyUsd,
+        txHash: rcpt.hash || tx.hash,
+      });
+      if (f && f.contentWindow) try { f.contentWindow.postMessage({ type: "bj:seed", balance: buyUsd }, "*"); } catch (e) {}
+      refreshBalances();
+      toast("Blackjack credits locked: " + usd(buyUsd), "ok");
+    } catch (e) {
+      toast(e.message || "Blackjack bridge could not start", "err");
+    } finally {
+      bjBridgeBusy = false; clearBtnBusy(btn);
+    }
+  }
+  async function bjCashout() {
+    if (!account) return toast("Demo blackjack has no wallet cash-out.", "err");
+    if (bjBridgeBusy) return;
+    if (!ready()) return;
+    const ok = await confirmTransfer({
+      title: "Cash out blackjack",
+      sub: "The server signs your settled table balance, then MetaMask releases the locked credits.",
+      usd: "Table balance", eth: "", from: "Blackjack table", to: "Game credits",
+      confirmLabel: "Cash out",
+      note: "Finish the current hand first. Cash-out is refused while cards or bets are live.",
+    });
+    if (!ok) return;
+    const btn = $("bj-cashout");
+    bjBridgeBusy = true; setBtnBusy(btn, "Cashing out...");
+    try {
+      const key = "ctf_bj_settlement_" + account.toLowerCase();
+      let s = null;
+      try { s = JSON.parse(localStorage.getItem(key) || "null"); } catch {}
+      if (!s || !s.signature || String(s.player || "").toLowerCase() !== account.toLowerCase()) {
+        s = await bridgeJson("/api/bridge/blackjack/settle", { player: account });
+        try { localStorage.setItem(key, JSON.stringify(s)); } catch {}
+      }
+      toast("Confirm the signed settlement in MetaMask...");
+      const net = BigInt(s.netWei);
+      const tx = await contract.settleBlackjack(account, net, BigInt(s.nonce), s.signature, {
+        gasLimit: await estGas("settleBlackjack", [account, net, BigInt(s.nonce), s.signature], null, 220000n),
+      });
+      await tx.wait();
+      try { localStorage.removeItem(key); } catch {}
+      refreshBalances();
+      toast("Blackjack settled back to game credits.", "ok");
+    } catch (e) {
+      toast(e.message || "Blackjack bridge could not cash out", "err");
+    } finally {
+      bjBridgeBusy = false; clearBtnBusy(btn);
+    }
+  }
   window.BJ_MUTE = (mute) => bjFramePost(!mute); // hush the iframe's audio when off-channel
   function bjShareLink() { return location.origin + location.pathname + "?game=blackjack" + (bjRoomId ? "&bjtable=" + encodeURIComponent(bjRoomId) : ""); }
   function bjShareTable() {
@@ -3104,7 +3203,7 @@
     if (saved === "flip") ensureCoinFlip3dReady(); // build the 3D coin on reload too
     if (saved === "dice") ensureDice3dReady();     // build the 0-100 neon rail on reload too
     if (saved === "twodice") ensureDice2_3dReady(); // build the 3D dice on reload too
-    if (saved === "blackjack") { document.body.classList.add("bj-channel"); { const wl = $("bj-wallet"); if (wl) wl.textContent = "🪪 " + bjGuestId(); } ensureBlackjackReady(); if (window.TV && TV._blackjackIdle) try { TV._blackjackIdle(); } catch (e) {} } // restore + show the CH 16 felt on reload (hide demo credits, show table wallet)
+    if (saved === "blackjack") { document.body.classList.add("bj-channel"); { const wl = $("bj-wallet"); if (wl) wl.textContent = "🪪 " + short(account || bjGuestId()); } ensureBlackjackReady(); if (window.TV && TV._blackjackIdle) try { TV._blackjackIdle(); } catch (e) {} } // restore + show the CH 16 felt on reload (hide demo credits, show table wallet)
   }
 
   // My open tables: show bank + idle countdown, auto-close (refund) when stale.
@@ -4072,7 +4171,8 @@
     { const dr = $("demo-reset"); if (dr) dr.onclick = demoReset; }
     { const dc = $("demo-connect"); if (dc) dc.onclick = connect; }
     { const bs = $("bj-share"); if (bs) bs.onclick = bjShareTable; } // copy a link to the current blackjack table
-    { const br = $("bj-reload"); if (br) br.onclick = () => { bjReload(); toast("Table chips topped back up to $1,000 💰", "ok"); }; } // standalone blackjack top-up
+    { const br = $("bj-reload"); if (br) br.onclick = () => { bjReload(); if (!account) toast("Table chips topped back up to $1,000 💰", "ok"); }; }
+    { const bc = $("bj-cashout"); if (bc) bc.onclick = bjCashout; }
     $("raise-max-btn").onclick = raiseMaxBet;
     $("fund-house-btn").onclick = fundHouseTool;
     $("cashout-house-btn").onclick = cashOutHouse;
