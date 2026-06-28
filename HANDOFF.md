@@ -1,7 +1,13 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v11.57**.
+Last updated at build **v11.58**.
+
+> **NOTE FOR CLAUDE/CHATGPT (v11.58):** Mobile connected-header fix.
+> On narrow phones, the connected wallet pill could push the Disconnect button off the
+> right edge. `styles.css` now lets the wallet cluster shrink, ellipsizes the address,
+> compacts Disconnect to an `OUT` pill, compresses the network badge, and hides the
+> extra music/help icons under 480px. Build/cache bumped to 1158.
 
 > **NOTE FOR CLAUDE/CHATGPT (v11.57):** Blackjack wallet bridge foundation.
 > Added `server/bridge-server.js` and attached it from `server/server.js`. The only live
