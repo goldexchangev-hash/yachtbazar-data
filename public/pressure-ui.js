@@ -338,6 +338,7 @@
   PressureGame.prototype.setBalance = function (b) {
     if (!isFinite(b) || this.state === "inflating") return;
     this.balance = Math.round(b * 100) / 100;
+    if (this.state === "armed" || this.state === "result") this._msg(this.balance < this.bet ? "Add funds to keep playing" : "HOLD the balloon to pump");
     this._renderHud();
   };
   PressureGame.prototype.restartDemo = function () {

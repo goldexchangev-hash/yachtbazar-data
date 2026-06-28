@@ -8,7 +8,7 @@ const sessions = new Map();
 const usedBuyIns = new Set();
 const pendingBuyIns = new Set();
 const BRIDGE_ABI = [
-  "event BlackjackBuyIn(address indexed player,uint256 amount)",
+  "event BlackjackBuyIn(address indexed player,uint256 amount,uint256 locked)",
 ];
 const WEI_PER_ETH = 10n ** 18n;
 
@@ -56,6 +56,13 @@ function sessionFor(player, includeClosed) {
     if ((includeClosed || !s.closed) && s.player.toLowerCase() === p) return s;
   }
   return null;
+}
+
+function sessionById(id, player) {
+  const s = sessions.get(String(id || ""));
+  if (!s) return null;
+  if (player && s.player.toLowerCase() !== String(player).toLowerCase()) return null;
+  return s;
 }
 
 async function verifyBuyIn(o) {
@@ -160,7 +167,8 @@ function attachBridge(app, opts) {
     if (!bridgeEnabled()) return fail(res, 503, "bridge is not enabled on the server");
     try {
       const player = address(req.body && req.body.player, "player");
-      const s = sessionFor(player, true);
+      const requestedSession = req.body && req.body.sessionId;
+      const s = requestedSession ? sessionById(requestedSession, player) : sessionFor(player);
       if (!s) throw new Error("no open blackjack bridge session");
       if (s.settlement) return res.json(s.settlement);
       if (s.closed) throw new Error("blackjack bridge session is already closed");

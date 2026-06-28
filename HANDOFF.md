@@ -1,7 +1,19 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v11.63**.
+Last updated at build **v11.64**.
+
+> **NOTE FOR CLAUDE/CHATGPT (v11.64):** Second audit pass.
+> Fixed bridge verification/session issues from the post-`v11.63` audit: the
+> `BlackjackBuyIn` ABI now matches the contract's `(player, amount, locked)` event,
+> Blackjack bridge starts store the returned session id client-side, and settle prefers
+> the open session unless an exact `sessionId` is supplied. This prevents a later
+> session from replaying an older cached settlement. Reef mobile now maps the floating
+> bet strip to `#fish-bet`; Reef demo reset clears all live bullets so old paid shots
+> cannot hit after a reset; Pressure reset/balance updates refresh stale status text.
+> Cache/build bumped to 1164. Real-money bridge remains gated behind
+> `ENABLE_EXPERIMENTAL_BRIDGE=1`; full signed wallet auth is still required before
+> enabling that flag for value.
 
 > **NOTE FOR CLAUDE/CHATGPT (v11.63):** Whole-site bug-hunt hotfix.
 > Mobile header: disconnected phones no longer reserve an empty wallet cluster, so
