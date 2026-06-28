@@ -1,7 +1,17 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v11.66**.
+Last updated at build **v11.67**.
+
+> **NOTE FOR CLAUDE/CHATGPT (v11.67):** Bug hunt hardening pass.
+> Real-wallet Blackjack WebSockets no longer trust a bare `hello.address`; bridge
+> buy-in now issues a per-session `wsToken`, the iframe sends it as `bjtoken`, and
+> the server only stamps a real wallet onto the Blackjack socket when the token
+> matches the open bridge session. Bridge start now preflights open table exposure
+> before mutating/saving session state, avoiding stranded buy-ins if a top-up is
+> attempted mid-hand. Balloon Pop remains play-money enabled after wallet connect
+> even when lazy-loaded after connect. Versioned service-worker asset misses now
+> return a 503 instead of falling back to `index.html` as JavaScript.
 
 > **NOTE FOR CLAUDE/CHATGPT (v11.66):** Follow-up full-scan runtime fix.
 > Browser/runtime scan found a front-end `MutationObserver.observe(...)` crash in

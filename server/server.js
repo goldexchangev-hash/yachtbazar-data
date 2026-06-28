@@ -112,8 +112,13 @@ wss.on("connection", (ws) => {
       return;
     }
     if (data.type === "hello" && typeof data.address === "string") {
-      clients.get(ws).address = data.address;
-      ws.wallet = data.address; // stamp the connection's wallet so the blackjack engine trusts it
+      const addr = data.address;
+      clients.get(ws).address = addr;
+      // Presence/chat can use the displayed address, but Blackjack spending needs
+      // a trusted identity. Guests are play-money; real wallets must present the
+      // bridge session token issued after an on-chain buy-in.
+      if (/^guest:/.test(addr) || (blackjack.bridge && blackjack.bridge.isAuthorized(addr, data.bjToken))) ws.wallet = addr;
+      else ws.wallet = "";
       broadcastPlayers();
       // Replay recent chat so the conversation is already there when they arrive
       // (and so a host who reconnects sees what players said while away).

@@ -45,6 +45,9 @@
     const send = (sock, obj) => { if (sock && sock.send) try { sock.send(JSON.stringify(obj)); } catch (e) {} };
 
     const rooms = new Map(); let seq = 0; const lobbySubs = new Set();
+    const bridgeAuth = new Map();
+    const norm = (w) => String(w || "").toLowerCase();
+    const realWallet = (w) => /^0x[0-9a-fA-F]{40}$/.test(String(w || ""));
 
     const inRound = (s) => !!(s && s.baseBet > 0);
     const seatStake = (s) => !s ? 0 : (s.hands && s.hands.length ? s.hands.reduce((a, h) => a + h.bet, 0) : (s.baseBet || 0)) + (s.insurance || 0);
@@ -527,6 +530,7 @@
     function bridgeClear(wallet) {
       if (hasOpenExposure(wallet)) throw new Error("finish the current hand before cashing out");
       bank.all.set(wallet, 0);
+      bridgeAuth.delete(norm(wallet));
       for (const r of rooms.values()) {
         for (const s of r.seats) if (s && s.wallet === wallet) {
           pushWallet(s.sock, wallet); broadcastState(r);
@@ -577,7 +581,12 @@
 
     createRoom();
     return { handle, onClose, bank, config,
-      bridge: { fund: bridgeFund, balance: bridgeBalance, clear: bridgeClear, hasOpenExposure },
+      bridge: {
+        fund: bridgeFund, balance: bridgeBalance, clear: bridgeClear, hasOpenExposure,
+        authorize: (wallet, token) => { if (realWallet(wallet) && token) bridgeAuth.set(norm(wallet), String(token)); },
+        deauthorize: (wallet) => bridgeAuth.delete(norm(wallet)),
+        isAuthorized: (wallet, token) => !realWallet(wallet) || (!!token && bridgeAuth.get(norm(wallet)) === String(token)),
+      },
       _mgr: { rooms, openRoom, createRoom, closeRoom, lobbyList },
       _room: { startBetting, endBetting, deal, applyAction, dealerPlay, settle, snapshot, takeInsurance, closeInsurance } };
   }

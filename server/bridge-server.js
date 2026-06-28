@@ -69,6 +69,10 @@ function nonce() {
   return BigInt("0x" + crypto.randomBytes(16).toString("hex")).toString();
 }
 
+function authToken() {
+  return crypto.randomBytes(24).toString("hex");
+}
+
 function bridgeEnabled() {
   return realmoney.enabled() && process.env.ENABLE_EXPERIMENTAL_BRIDGE === "1" && bridgeStateConfigured();
 }
@@ -133,6 +137,11 @@ loadBridgeState();
 
 function attachBridge(app, opts) {
   const blackjack = opts && opts.blackjack;
+  if (blackjack && blackjack.bridge && blackjack.bridge.authorize) {
+    for (const s of sessions.values()) {
+      if (s && !s.closed && s.player && s.wsToken) blackjack.bridge.authorize(s.player, s.wsToken);
+    }
+  }
 
   app.get("/api/bridge/status", (req, res) => {
     const chainId = Number(req.query && req.query.chainId);
@@ -175,6 +184,7 @@ function attachBridge(app, opts) {
         if (existing.contract.toLowerCase() !== contract.toLowerCase()) throw new Error("open bridge session uses a different contract");
         if (Number(existing.chainId) !== chainId) throw new Error("open bridge session uses a different chain");
       }
+      if (blackjack.bridge.hasOpenExposure(player)) throw new Error("finish the current hand before changing bridge funds");
       let session = existing;
       if (session) {
         session.buyInWei = (BigInt(session.buyInWei) + buyInWei).toString();
@@ -182,6 +192,7 @@ function attachBridge(app, opts) {
         session.buyInCents = (BigInt(session.buyInCents) + cents(buyInUsd)).toString();
         session.lastTxHash = txHash;
         session.updatedAt = Date.now();
+        if (!session.wsToken) session.wsToken = authToken();
       } else {
         const id = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString("hex");
         session = {
@@ -195,6 +206,7 @@ function attachBridge(app, opts) {
           buyInUsd,
           buyInCents: cents(buyInUsd).toString(),
           nonce: nonce(),
+          wsToken: authToken(),
           startedAt: Date.now(),
           closed: false,
         };
@@ -203,8 +215,9 @@ function attachBridge(app, opts) {
       usedBuyIns.add(txKey);
       saveBridgeState();
       blackjack.bridge.fund(player, buyInUsd, !!existing);
+      blackjack.bridge.authorize(player, session.wsToken);
       pendingBuyIns.delete(txKey);
-      res.json({ ok: true, session, balanceUsd: blackjack.bridge.balance(player) });
+      res.json({ ok: true, session, wsToken: session.wsToken, balanceUsd: blackjack.bridge.balance(player) });
     } catch (e) {
       if (txKey) pendingBuyIns.delete(txKey);
       fail(res, 400, e.message || "could not start blackjack bridge");
@@ -244,6 +257,7 @@ function attachBridge(app, opts) {
         signature,
       };
       blackjack.bridge.clear(player);
+      if (blackjack.bridge.deauthorize) blackjack.bridge.deauthorize(player);
       saveBridgeState();
       res.json(s.settlement);
     } catch (e) {
