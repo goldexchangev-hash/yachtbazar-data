@@ -1,7 +1,14 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v11.59**.
+Last updated at build **v11.60**.
+
+> **NOTE FOR CLAUDE/CHATGPT (v11.60):** Fix Blackjack black screen after wallet connect.
+> v11.59 cleared a stale guest Blackjack iframe with `f.src = ""`, but browsers can
+> resolve an empty iframe src to the current page URL, leaving `ensureBlackjackReady()`
+> thinking the iframe was already loaded and causing a black CH-16 screen. It now uses
+> `removeAttribute("src")` and checks `getAttribute("src")` before loading
+> `blackjack.html`. Build/cache bumped to 1160.
 
 > **NOTE FOR CLAUDE/CHATGPT (v11.59):** Hide demo balance after wallet connect.
 > Connected wallets now forcibly hide `#demo-bar`, `#demo-below`, and the TV demo badge
