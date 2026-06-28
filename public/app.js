@@ -2138,14 +2138,14 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1168").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1169").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=1168"))
+      .then(() => loadScriptOnce("slots.js?v=1169"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -2155,11 +2155,11 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=1168"))
-      .then(() => loadScriptOnce("pressure-render.js?v=1168"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=1168"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=1169"))
+      .then(() => loadScriptOnce("pressure-render.js?v=1169"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=1169"))
       // optional 3D red balloon (Three.js) — falls back to the 2D balloon if it can't load
-      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1168")).catch(() => {}))
+      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1169")).catch(() => {}))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -2217,10 +2217,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=1168"))
-      .then(() => loadScriptOnce("plane-render.js?v=1168"))
-      .then(() => loadScriptOnce("plane-feed.js?v=1168"))
-      .then(() => loadScriptOnce("plane-ui.js?v=1168"))
+      .then(() => loadScriptOnce("plane-engine.js?v=1169"))
+      .then(() => loadScriptOnce("plane-render.js?v=1169"))
+      .then(() => loadScriptOnce("plane-feed.js?v=1169"))
+      .then(() => loadScriptOnce("plane-ui.js?v=1169"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2305,15 +2305,15 @@
   function loadThreeOnce() {
     if (window.THREE) return Promise.resolve();
     if (threeLoadPromise) return threeLoadPromise;
-    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1168").catch((e) => { threeLoadPromise = null; throw e; });
+    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1169").catch((e) => { threeLoadPromise = null; throw e; });
     return threeLoadPromise;
   }
   function ensureSlots3dLoaded() {
     if (window.Slots3D) return Promise.resolve(true);
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("slots3d-engine.js?v=1168"))
-      .then(() => loadScriptOnce("slots3d.js?v=1168"))
+      .then(() => loadScriptOnce("slots3d-engine.js?v=1169"))
+      .then(() => loadScriptOnce("slots3d.js?v=1169"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2355,8 +2355,8 @@
     if (window.FishTable) return Promise.resolve(true);
     if (fishLoadPromise) return fishLoadPromise;
     fishLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishtable-engine.js?v=1168"))
-      .then(() => loadScriptOnce("fishtable.js?v=1168"))
+      .then(() => loadScriptOnce("fishtable-engine.js?v=1169"))
+      .then(() => loadScriptOnce("fishtable.js?v=1169"))
       .then(() => true)
       .catch((e) => { fishLoadPromise = null; throw e; });
     return fishLoadPromise;
@@ -2437,7 +2437,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1168"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1169"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -2464,7 +2464,7 @@
   function loadRail3dOnce() {
     if (window.Rail3D) return Promise.resolve(true);
     if (rail3dLoadPromise) return rail3dLoadPromise;
-    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1168")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
+    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1169")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
     return rail3dLoadPromise;
   }
   function buildRail3d() {
@@ -2485,7 +2485,7 @@
   function loadDice2_3dOnce() {
     if (window.TwoDice3D) return Promise.resolve(true);
     if (d2_3dLoadPromise) return d2_3dLoadPromise;
-    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1168")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
+    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1169")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
     return d2_3dLoadPromise;
   }
   function buildDice2_3d() {
@@ -2875,6 +2875,25 @@
     if (!r.ok || !j.ok) throw new Error(j.error || "Bridge request failed");
     return j;
   }
+  function bjBridgeMessage(intent, body) {
+    const lines = [
+      "Crypto TV Blackjack Bridge",
+      "Action: " + intent,
+      "Player: " + account,
+      "Contract: " + deployment.address,
+      "Chain ID: " + Number(deployment.chainId),
+    ];
+    if (intent === "start") {
+      lines.push("Buy-in wei: " + String(body.buyInWei || "0"));
+    } else if (intent === "settle") {
+      lines.push("Session: " + String(body.sessionId || "latest"));
+    }
+    return lines.join("\n");
+  }
+  async function signBjBridge(intent, body) {
+    if (!signer || !account) throw new Error("Wallet is not connected");
+    return signer.signMessage(bjBridgeMessage(intent, body || {}));
+  }
   async function bridgeStatus() {
     const cid = Number(deployment && deployment.chainId) || 11155111;
     const r = await fetch("/api/bridge/status?chainId=" + encodeURIComponent(String(cid)), { cache: "no-store" });
@@ -2895,10 +2914,11 @@
     if (f && !f.getAttribute("src")) {
       // No &bal= seed — the table starts from its own server default ($1,000), NOT the demo balance.
       const tableWallet = account || bjGuestId();
-      let src = "blackjack.html?tv=1&v=1168&guest=" + encodeURIComponent(tableWallet);
-      if (account) { try { const tok = localStorage.getItem(bjBridgeTokenKey()) || ""; if (tok) src += "&bjtoken=" + encodeURIComponent(tok); } catch {} }
+      let src = "blackjack.html?tv=1&v=1169&guest=" + encodeURIComponent(tableWallet);
+      let tokenHash = "";
+      if (account) { try { const tok = localStorage.getItem(bjBridgeTokenKey()) || ""; if (tok) tokenHash = "#bjtoken=" + encodeURIComponent(tok); } catch {} }
       if (bjPendingTable) { src += "&table=" + encodeURIComponent(bjPendingTable); bjPendingTable = null; }
-      f.src = src; // loads the felt + scripts inside the TV
+      f.src = src + tokenHash; // loads the felt + scripts inside the TV
     }
     setTimeout(() => { bjFramePost(true); }, 50);
   }
@@ -2935,16 +2955,18 @@
     const btn = $("bj-reload");
     bjBridgeBusy = true; setBtnBusy(btn, "Locking...");
     try {
-      toast("Confirm the blackjack buy-in in MetaMask...");
-      const tx = await contract.blackjackBuyIn(buyWei, { gasLimit: await estGas("blackjackBuyIn", [buyWei], null, 160000n) });
-      const rcpt = await tx.wait();
-      const started = await bridgeJson("/api/bridge/blackjack/start", {
+      const startBody = {
         player: account,
         contract: deployment.address,
         chainId: Number(deployment.chainId),
         buyInWei: buyWei.toString(),
-        txHash: rcpt.hash || tx.hash,
-      });
+      };
+      startBody.signature = await signBjBridge("start", startBody);
+      toast("Confirm the blackjack buy-in in MetaMask...");
+      const tx = await contract.blackjackBuyIn(buyWei, { gasLimit: await estGas("blackjackBuyIn", [buyWei], null, 160000n) });
+      const rcpt = await tx.wait();
+      startBody.txHash = rcpt.hash || tx.hash;
+      const started = await bridgeJson("/api/bridge/blackjack/start", startBody);
       try {
         if (started && started.session && started.session.id) localStorage.setItem(bjBridgeSessionKey(), started.session.id);
         if (started && started.wsToken) localStorage.setItem(bjBridgeTokenKey(), started.wsToken);
@@ -2981,7 +3003,9 @@
       let s = null;
       try { s = JSON.parse(localStorage.getItem(key) || "null"); } catch {}
       if (!s || !s.signature || String(s.player || "").toLowerCase() !== account.toLowerCase()) {
-        s = await bridgeJson("/api/bridge/blackjack/settle", { player: account, sessionId });
+        const settleBody = { player: account, contract: deployment.address, chainId: Number(deployment.chainId), sessionId };
+        settleBody.signature = await signBjBridge("settle", settleBody);
+        s = await bridgeJson("/api/bridge/blackjack/settle", settleBody);
         try { localStorage.setItem(key, JSON.stringify(s)); } catch {}
       }
       toast("Confirm the signed settlement in MetaMask...");

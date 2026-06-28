@@ -30,8 +30,9 @@
     this.joinTable = opts.joinTable || null; // a specific shared table to sit at (from a share link)
     this._seedBalance = (opts.seedBalance != null && isFinite(opts.seedBalance)) ? opts.seedBalance : null; // demo balance to sync the table to
     this.wallet = opts.wallet || null;
+    this.bjToken = opts.bjToken || "";
     this.showEth = isWallet(this.wallet); // ETH amounts only matter once a real wallet is connected
-    this.net = opts.net || new root.BJNet({ wallet: this.wallet });
+    this.net = opts.net || new root.BJNet({ wallet: this.wallet, bjToken: this.bjToken });
     this.view = this.embed ? "table" : "lobby";
     this.you = null; this.spectating = null;
     this.room = null; this.legal = []; this.activeHand = -1;
