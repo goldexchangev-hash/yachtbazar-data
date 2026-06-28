@@ -5,7 +5,7 @@
 > **update it with every change** so it never goes stale. Keep the Changelog at the
 > bottom current and bump the "Last updated" build below.
 
-**Last updated: build v11.48.** Live at https://tv-crypto-flip.onrender.com (Render
+**Last updated: build v11.55.** Live at https://tv-crypto-flip.onrender.com (Render
 auto-deploys the `claude/ethereum-betting-game-vrf-2dq50k` branch on push).
 
 ---
@@ -104,7 +104,7 @@ demo balance), `onWin({profitUsd, bonus, mult})` (feeds the universal win overla
 
 ## 4. Money model & MATH (house edge ~10%)
 
-> ⚠️ Reef pays out, so getting this right matters. As of v11.45 the realized RTP is
+> ⚠️ Reef pays out, so getting this right matters. As of v11.55 the realized RTP is
 > **~90% (≈10% house edge)** for sensible play. Earlier builds paid **>100%** (the player
 > won long-term) — see the fixes below so you don't reintroduce them.
 
@@ -119,6 +119,11 @@ p_kill = clamp( P * RTP / mult , P_MIN , P_MAX )
 Constants: **`RTP = 0.85`, `P_MIN = 0.005`, `P_MAX = 0.9`.**
 Expected payout of a connecting shot = `mult * (P*RTP/mult) = P*RTP = RTP * cost` → a flat
 85% return on kills, **independent of which fish you shoot**.
+
+As of v11.55, special/bonus fish are priced with `budgetMult(def,power)`: chest/frenzy add
+25x unitBet of expected/capped bonus budget, and bomb/eel add splash budget (4 bomb targets,
+3 chain targets). `resolveHit` must receive the full fish definition (`fish.def`), not only
+`fish.def.mult`, or lock-on/special farming can become player-positive again.
 
 - **Why `P_MIN = 0.005` (not 0.02):** `P_MIN` must stay **below `RTP / maxMult` = 0.85/160
   = 0.0053**, or boss fish get over-rewarded. The old `0.02` floor made the **Kraken
@@ -136,17 +141,23 @@ Expected payout of a connecting shot = `mult * (P*RTP/mult) = P*RTP = RTP * cost
 - The meter label shows the live pool: `★ JACKPOT $<pool> · <pct>% ★`.
 
 ### Bonus rounds (rare, triggered by catching specific fish)
+As of v11.55, both bonuses use the trigger-time shot terms. Treasure Chest pays off the
+unitBet stamped on the shot that caught the crab, not the current UI slider. Frenzy stamps
+unitBet/power/frenzy id, caps winnings at 25x trigger-time unitBet, and clears stale free
+bullets when the round ends.
+
 - **Gold Crab (`bonus:"chest"`) → Treasure Chest:** pops `4–6` prizes from
   `[1,1,2,2,3,3,5,5,8,10,15]` (× unitBet). Trimmed from the old `5–8 × [...,25,50]`.
 - **Treasure Clam (`bonus:"frenzy"`) → Feeding Frenzy:** `6s` of free auto-fire, **capped at
   25× unitBet of winnings** (`_updateFrenzy` ends it once `_frenzyWon >= unitBet*25`) so free-fire
   can't blow the edge. Was 9s, uncapped.
 
-### Net result (simulated, 3M shots)
-Random targeting @power1 = **89.9% RTP**; boss-only farming = **90.7%** (exploit dead);
-small-fish only = **89.9%**. Bonus rounds add a couple % on top of the 85% kill base + 5%
-jackpot rake. **Tune by editing `RTP` in the engine and the jackpot rake / bonus caps in
-the renderer; re-run the sim (see §9) after any payout change.**
+### Net result (simulated, v11.55 audit)
+`node scripts/reef-rtp-audit.js 1000000 50` ran 1M shots/style at $50. Tested styles stayed
+under ~91% RTP after jackpot/bonus/splash estimates: random power 1 = **90.30%**, lock-on
+styles = **~86.5–90.4%**, boss-only = **~90–90.9%**, small-only = **~44.8–90.1%** depending
+on power. **Tune by editing `RTP` in the engine and the jackpot rake / bonus caps in the
+renderer; re-run the audit (see §9) after any payout change.**
 
 ### Session money-flow readout
 `fishtable.js` tracks `_sesSpent` / `_sesWon` and renders a top-of-canvas line + the
@@ -170,6 +181,9 @@ resets it (called on first channel entry).
   scales cost + kill chance together (RTP preserved).
 
 ### Money/state safety invariants (do NOT break — these were real bugs)
+- **Every bullet must carry its original stake terms.** `_fire()` stamps `unitBet`, `power`,
+  `cost`, `free`, and `frenzyId` onto the bullet. Catch resolution must use those values,
+  not live slider state, or a player can fire cheap shots and raise stake/power before impact.
 - **Frenzy must end at exactly 0.** The free-shot Frenzy makes shots cost 0. Its winnings
   cap must set `_frenzy = 0` (NOT a tiny positive like `0.0001`) — a positive value gets
   re-pinned every frame so the `<= 0` end-check never fires → **frenzy stuck ON forever =
@@ -281,9 +295,10 @@ Chromium: `executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'`
 `#fish-stage canvas` exists and `TV._phase === "fish"`.
 
 ### RTP simulation (after ANY payout change)
-Run a pure-engine sim of `resolveHit` over millions of shots across strategies (random
-targeting, boss-only, small-only) and confirm RTP stays ≤ ~0.92. The jackpot rake and bonus
-caps live in the renderer, so for a full check also reason about those (see §4).
+Run `node scripts/reef-rtp-audit.js 1000000 50` or larger. It checks random targeting,
+lock-on/special farming, boss-only, and small-only styles across powers and estimates jackpot,
+chest, frenzy, and splash value. Confirm all realistic/abuse styles stay below 100% before
+shipping; current target is around ~90% RTP (see §4).
 
 ---
 
@@ -292,12 +307,18 @@ caps live in the renderer, so for a full check also reason about those (see §4)
 - **Art/animation overhaul** (multi-part sprites + bones-ish rig, squash/stretch, trails,
   glow, particles) — researched, not implemented.
 - **Real-money credits** — see §8 (blocked on redeploy).
-- Bonus rounds (chest/frenzy) are budgeted by trimming/caps rather than a precise rake; if
-  you want an exact total RTP incl. bonuses, fund them from a rake like the jackpot.
+- Bonus rounds (chest/frenzy) are now priced into kill odds and capped, but if you want an
+  exact standalone feature wallet, fund them from a rake like the jackpot.
 
 ---
 
 ## Changelog (newest first)
+- **v11.55** - Payout hotfix. Fixed two major RTP leaks: bullets now snapshot unit
+  bet/power/cost at fire time so cheap shots cannot be upgraded before hit, and special fish
+  now use budgeted kill odds for chest/frenzy/splash value. Treasure Chest and Frenzy use
+  trigger-time stake/power; stale frenzy free bullets are cleared; Bomb Fish splash is capped
+  to the 4 closest targets. Added `scripts/reef-rtp-audit.js`; 1M-shot $50 audit keeps tested
+  random/boss/small/lock-on abuse styles under ~91% RTP. UI now labels Reef as ~90% RTP.
 - **v11.48** - Android manual-fullscreen rotation hardening. If Android drops the native
   Fullscreen API state while the player tilts the phone, `setFullscreenTarget` now keeps
   the CSS `.rr-fs` shell alive instead of calling `_fsExit`, so the site header/bottom nav
@@ -335,4 +356,4 @@ caps live in the renderer, so for a full check also reason about those (see §4)
 - **v11.42** — Session money-flow readout (spent/caught/net) so the credit flow is visible.
 - **v11.41** — Frenzy free-shots, fullscreen button, loading re-pokes, keep Reef visible on
   wallet connect.
-- **v11.37** — Reef Raiders shipped live as CH 17 (renderer + 92% RTP engine + bonus rounds).
+- **v11.37** — Reef Raiders shipped live as CH 17 (renderer + original 92% RTP engine + bonus rounds).

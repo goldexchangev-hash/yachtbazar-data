@@ -35,6 +35,8 @@
   // (you could farm bosses at power 1). At 0.005 every fish returns a true 85% at power
   // 1 no matter which you shoot. P_MAX favors the house on small fish at high power.
   const RTP = 0.85, P_MIN = 0.005, P_MAX = 0.9;
+  const BONUS_BUDGET = { chest: 25, frenzy: 25 };
+  const SPLASH_TARGET_BUDGET = { bomb: 4, chain: 3 };
 
   /* ---- fish roster. mult = payout multiple of unitBet. kind drives behaviour ---- */
   // tier: small | medium | special | boss   (spawn weight = how often it appears)
@@ -70,21 +72,31 @@
   }
   Engine.prototype.next = function () { this.shot++; return this._rng(); };
 
-  /* kill probability for a fish of multiple `mult` hit by a gun of power `power` */
-  Engine.prototype.killProb = function (mult, power) {
-    return Math.max(P_MIN, Math.min(P_MAX, (power || 1) * RTP / mult));
+  /* kill probability for a fish hit by a gun of power `power` */
+  Engine.prototype.budgetMult = function (target, power) {
+    const def = target && typeof target === "object" ? target : null;
+    const mult = def ? def.mult : +target;
+    let extra = 0;
+    if (def && def.bonus) extra += BONUS_BUDGET[def.bonus] || 0;
+    if (def && def.special) extra += (SPLASH_TARGET_BUDGET[def.special] || 0) * (power || 1) * RTP;
+    return Math.max(0.01, mult + extra);
+  };
+
+  Engine.prototype.killProb = function (target, power) {
+    return Math.max(P_MIN, Math.min(P_MAX, (power || 1) * RTP / this.budgetMult(target, power)));
   };
 
   /* Resolve a bullet (power `power`) hitting a fish of `mult`.
      Returns { dead, payout } where payout is in unitBet multiples (caller × unitBet). */
-  Engine.prototype.resolveHit = function (mult, power) {
-    const p = this.killProb(mult, power);
+  Engine.prototype.resolveHit = function (target, power) {
+    const p = this.killProb(target, power);
+    const mult = target && typeof target === "object" ? target.mult : target;
     const dead = this.next() < p;
     return { dead: dead, payout: dead ? mult : 0, p: p };
   };
 
   /* A secondary kill (bomb splash / eel chain) — same odds, fresh roll. */
-  Engine.prototype.resolveSplash = function (mult, power) { return this.resolveHit(mult, power); };
+  Engine.prototype.resolveSplash = function (target, power) { return this.resolveHit(target, power); };
 
   /* weighted pick of a fish type for spawning (optionally bias toward small fish) */
   Engine.prototype.pickFish = function (rng) {

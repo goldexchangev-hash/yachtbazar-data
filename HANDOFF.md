@@ -1,7 +1,17 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v11.54**.
+Last updated at build **v11.55**.
+
+> **NOTE FOR CLAUDE/CHATGPT (v11.55):** Reef Raiders payout hotfix + Balloon/0-100 UI.
+> Reef now snapshots unit bet/power/cost onto every bullet, budget-prices special fish
+> (`chest`/`frenzy` + bomb/eel splash value) in `fishtable-engine.js`, caps Bomb Fish
+> splash to the 4 closest targets, makes Treasure Chest/Frenzy use trigger-time stake/power,
+> clears stale frenzy free bullets, and adds `scripts/reef-rtp-audit.js`. A 1M-shot $50
+> audit puts tested random/boss/small/lock-on styles under ~91% RTP after jackpot/bonus
+> estimates; old lock-on/special farming was player-positive. Balloon Pop demo stakes are
+> capped at $500 in `pressure-ui.js`. 0-100 TV preview now updates the green/red rail live
+> while dragging the target slider. Build/cache bumped to 1155.
 
 > **NOTE FOR CLAUDE/CHATGPT (v11.54):** Emergency TV startup hotfix. v11.53 removed
 > the old CH-12 Crypto Reels DOM layer, but `tv.js::_show()` still blindly called
@@ -104,7 +114,7 @@ Last updated at build **v11.54**.
 > **`fish`**), an arcade fish-shooter, is now LIVE (demo/play-money). Files:
 > `public/fishtable.js` (PixiJS renderer + host bridge `setActive/setEnabled/
 > setBalance/setEthUsd/setMode/setBet/setPower/toggleAuto/toggleLock/
-> toggleFullscreen`) and `public/fishtable-engine.js` (92% RTP, per-fish
+> toggleFullscreen`) and `public/fishtable-engine.js` (~90% RTP, per-fish
 > kill-probability `p=power*RTP/mult`, seeded provably-fair stream). Wired exactly
 > like the slots3d channel: `GAME_CHANNEL/TITLE/ORDER`, `ensureFishLoaded/
 > buildFish/ensureFishReady`, demo-only show/hide (hidden in real mode),
@@ -307,7 +317,7 @@ slots3d/Gem Vault **15**, blackjack **16**, fish/Reef Raiders **17**.
 
 ## 10. Recent history (most recent first)
 - **v11.37 — NEW GAME "Reef Raiders" (CH 17, key `fish`) shipped LIVE** (demo). PixiJS
-  arcade fish-shooter: aim cannon, shoot fish, catch for coins; 92% RTP engine
+  arcade fish-shooter: aim cannon, shoot fish, catch for coins; ~90% RTP engine
   (`fishtable-engine.js`), specials (bomb AoE, eel chain, gold/boss), progressive
   jackpot, autofire + target-lock + power 1–7, **fullscreen**. Two bonus rounds:
   Gold Crab → Treasure Chest, Treasure Clam → Feeding Frenzy. Built from 4 research

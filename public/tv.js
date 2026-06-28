@@ -282,6 +282,28 @@
       this._setStatic(0.05);
       this._show("dice");
     },
+    previewDice(opts) {
+      opts = opts || {};
+      const L = this.layers.dice, tp = Math.max(0, Math.min(100, +opts.target || 50));
+      const mode = opts.mode === "over" ? "over" : "under";
+      if (L) L.classList.remove("win", "lose", "tier-big", "tier-mega", "nearmiss");
+      const set = (id, t) => { const e = $(id); if (e) e.textContent = t; };
+      set("dice-tv-target", (mode === "under" ? "UNDER " : "OVER ") + tp.toFixed(2));
+      set("dice-tv-num", "00.00"); set("dice-tv-verdict", ""); set("dice-tv-payout", "");
+      const win = $("dl-win"), lose = $("dl-lose"), mark = $("dl-targetmark"), marker = $("dl-marker");
+      if (mark) mark.style.left = tp + "%";
+      if (marker) marker.style.left = "0%";
+      if (mode === "under") {
+        if (win) win.style.cssText = "left:0;width:" + tp + "%";
+        if (lose) lose.style.cssText = "left:" + tp + "%;width:" + (100 - tp) + "%";
+      } else {
+        if (lose) lose.style.cssText = "left:0;width:" + tp + "%";
+        if (win) win.style.cssText = "left:" + tp + "%;width:" + (100 - tp) + "%";
+      }
+      if (this._rail3d) try { this._rail3d.reset(); this._rail3d.setup(tp, mode); this._rail3d.setPuck(0); } catch (e) {}
+      this._setStatic(0.05);
+      this._show("dice");
+    },
     _twodicePreview() {
       const L = this.layers.twodice;
       if (L) L.classList.remove("win", "lose", "tier-big", "tier-mega");
