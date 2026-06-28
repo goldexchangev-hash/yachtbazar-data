@@ -1,14 +1,16 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v11.69**.
+Last updated at build **v11.70**.
 
-> **NOTE FOR CLAUDE/CHATGPT (v11.69):** Blackjack bridge auth hardening.
-> Bridge start/settle requests now require a MetaMask signature from the player
+> **NOTE FOR CLAUDE/CHATGPT (v11.70):** Blackjack bridge hardening pass.
+> Bridge start/settle requests require a MetaMask signature from the player
 > before the server issues a table `wsToken` or signed cash-out settlement. The
-> TV iframe now passes that token through to `BJNet`, and the token rides in the
-> URL hash plus a same-origin referrer policy instead of a normal query string.
-> Cache/build bumped to 1169.
+> TV iframe passes that token through to `BJNet`, and the token rides in the URL
+> hash plus a same-origin referrer policy instead of a normal query string. Open
+> bridge table balances are now saved on every server-side balance change and
+> restored after restart, and already-open sockets re-check the current bridge
+> token before every real-wallet Blackjack action. Cache/build bumped to 1170.
 
 > **NOTE FOR CLAUDE/CHATGPT (v11.67):** Bug hunt hardening pass.
 > Real-wallet Blackjack WebSockets no longer trust a bare `hello.address`; bridge

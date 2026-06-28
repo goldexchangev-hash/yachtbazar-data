@@ -163,7 +163,24 @@ function attachBridge(app, opts) {
   const blackjack = opts && opts.blackjack;
   if (blackjack && blackjack.bridge && blackjack.bridge.authorize) {
     for (const s of sessions.values()) {
-      if (s && !s.closed && s.player && s.wsToken) blackjack.bridge.authorize(s.player, s.wsToken);
+      if (s && !s.closed && s.player && s.wsToken) {
+        blackjack.bridge.authorize(s.player, s.wsToken);
+        if (blackjack.bridge.setBalance) {
+          const restoreUsd = +(s.balanceUsd != null ? s.balanceUsd : s.buyInUsd);
+          if (restoreUsd > 0) {
+            try { blackjack.bridge.setBalance(s.player, restoreUsd); } catch (e) { console.error("bridge balance restore failed:", e && e.message ? e.message : e); }
+          }
+        }
+      }
+    }
+    if (blackjack.bridge.onBalanceChange) {
+      blackjack.bridge.onBalanceChange((player, balanceUsd) => {
+        const s = sessionFor(player);
+        if (!s || s.closed) return;
+        s.balanceUsd = balanceUsd;
+        s.updatedAt = Date.now();
+        saveBridgeState();
+      });
     }
   }
 
@@ -237,12 +254,13 @@ function attachBridge(app, opts) {
         };
         sessions.set(id, session);
       }
+      const balanceUsd = blackjack.bridge.fund(player, buyInUsd, !!existing);
+      session.balanceUsd = balanceUsd;
       usedBuyIns.add(txKey);
       saveBridgeState();
-      blackjack.bridge.fund(player, buyInUsd, !!existing);
       blackjack.bridge.authorize(player, session.wsToken);
       pendingBuyIns.delete(txKey);
-      res.json({ ok: true, session, wsToken: session.wsToken, balanceUsd: blackjack.bridge.balance(player) });
+      res.json({ ok: true, session, wsToken: session.wsToken, balanceUsd });
     } catch (e) {
       if (txKey) pendingBuyIns.delete(txKey);
       fail(res, 400, e.message || "could not start blackjack bridge");

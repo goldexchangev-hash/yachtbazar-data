@@ -32,6 +32,20 @@
     const config = Object.assign({}, Rules.DEFAULT_CONFIG, opts.config || {});
     const T = Object.assign({ betting: 15000, turn: 20000, insurance: 12000, idle: 300000, between: 3500, dealReveal: 0, dealPace: 0, dealerReveal: 0, dealerPace: 0 }, opts.timers || {});
     const bank = opts.bank || makeBank(opts.startBalance);
+    const balanceWatchers = new Set();
+    const notifyBalance = (wallet) => {
+      if (!/^0x[0-9a-fA-F]{40}$/.test(String(wallet || ""))) return;
+      for (const fn of balanceWatchers) {
+        try { fn(wallet, r2(bank.get(wallet))); } catch (e) {}
+      }
+    };
+    if (!bank._bjWatched) {
+      const rawCredit = bank.credit.bind(bank);
+      const rawDebit = bank.debit.bind(bank);
+      bank.credit = (w, a) => { const out = rawCredit(w, a); notifyBalance(w); return out; };
+      bank.debit = (w, a) => { const out = rawDebit(w, a); if (out) notifyBalance(w); return out; };
+      bank._bjWatched = true;
+    }
     const MAX_ROOMS = opts.maxRooms || 50;
     const setT = opts.setTimeout || ((f, ms) => setTimeout(f, ms));
     const clrT = opts.clearTimeout || clearTimeout;
@@ -516,11 +530,19 @@
       if (hasOpenExposure(wallet)) throw new Error("finish the current hand before changing bridge funds");
       const amt = r2(Math.max(0, Math.min(1000000, +amountUsd || 0)));
       bank.all.set(wallet, add ? r2(bank.get(wallet) + amt) : amt);
+      notifyBalance(wallet);
       for (const r of rooms.values()) {
         for (const s of r.seats) if (s && s.wallet === wallet) {
           pushWallet(s.sock, wallet); broadcastState(r);
         }
       }
+      return r2(bank.get(wallet));
+    }
+    function bridgeSetBalance(wallet, amountUsd) {
+      if (!/^0x[0-9a-fA-F]{40}$/.test(String(wallet || ""))) throw new Error("real wallet required");
+      const amt = r2(Math.max(0, Math.min(1000000, +amountUsd || 0)));
+      bank.all.set(wallet, amt);
+      notifyBalance(wallet);
       return amt;
     }
     function bridgeBalance(wallet) {
@@ -530,6 +552,7 @@
     function bridgeClear(wallet) {
       if (hasOpenExposure(wallet)) throw new Error("finish the current hand before cashing out");
       bank.all.set(wallet, 0);
+      notifyBalance(wallet);
       bridgeAuth.delete(norm(wallet));
       for (const r of rooms.values()) {
         for (const s of r.seats) if (s && s.wallet === wallet) {
@@ -558,8 +581,22 @@
       const hinted = String((m && m.wallet) || "");
       return /^guest:/.test(hinted) ? hinted : "";
     }
+    function authStillValid(sock) {
+      const w = sock && sock.wallet;
+      if (!realWallet(w)) return true;
+      if (bridgeAuth.get(norm(w)) === String(sock.bjToken || "")) return true;
+      sock.wallet = "";
+      sock.bjAuthDenied = true;
+      return false;
+    }
+    function authBypassType(type) {
+      return type === "bj:lobby:subscribe" || type === "bj:lobby:unsubscribe" || type === "bj:room:watch" || type === "bj:room:leave";
+    }
     function handle(sock, m) {
-      if (sock.bjAuthDenied && m.type !== "bj:lobby:subscribe" && m.type !== "bj:lobby:unsubscribe") {
+      if (!authStillValid(sock) && !authBypassType(m.type)) {
+        return err(sock, "auth_required", "Lock blackjack credits before joining with this wallet", "join");
+      }
+      if (sock.bjAuthDenied && !authBypassType(m.type)) {
         return err(sock, "auth_required", "Lock blackjack credits before joining with this wallet", "join");
       }
       const wallet = messageWallet(sock, m);
@@ -585,10 +622,11 @@
     createRoom();
     return { handle, onClose, bank, config,
       bridge: {
-        fund: bridgeFund, balance: bridgeBalance, clear: bridgeClear, hasOpenExposure,
+        fund: bridgeFund, setBalance: bridgeSetBalance, balance: bridgeBalance, clear: bridgeClear, hasOpenExposure,
         authorize: (wallet, token) => { if (realWallet(wallet) && token) bridgeAuth.set(norm(wallet), String(token)); },
         deauthorize: (wallet) => bridgeAuth.delete(norm(wallet)),
         isAuthorized: (wallet, token) => !realWallet(wallet) || (!!token && bridgeAuth.get(norm(wallet)) === String(token)),
+        onBalanceChange: (fn) => { if (typeof fn === "function") balanceWatchers.add(fn); return () => balanceWatchers.delete(fn); },
       },
       _mgr: { rooms, openRoom, createRoom, closeRoom, lobbyList },
       _room: { startBetting, endBetting, deal, applyAction, dealerPlay, settle, snapshot, takeInsurance, closeInsurance } };
