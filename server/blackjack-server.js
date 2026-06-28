@@ -559,6 +559,9 @@
       return /^guest:/.test(hinted) ? hinted : "";
     }
     function handle(sock, m) {
+      if (sock.bjAuthDenied && m.type !== "bj:lobby:subscribe" && m.type !== "bj:lobby:unsubscribe") {
+        return err(sock, "auth_required", "Lock blackjack credits before joining with this wallet", "join");
+      }
       const wallet = messageWallet(sock, m);
       switch (m.type) {
         // Identity is the CONNECTION's trusted wallet (stamped by the transport), never

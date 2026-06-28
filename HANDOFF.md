@@ -1,7 +1,13 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v11.67**.
+Last updated at build **v11.68**.
+
+> **NOTE FOR CLAUDE/CHATGPT (v11.68):** Blackjack auth fallback fix.
+> A real wallet that fails Blackjack bridge-token auth is no longer seated as
+> anonymous play-money. The WebSocket now marks denied real-wallet identities and
+> the Blackjack router rejects join/bet/action intents with `auth_required` until
+> the wallet has a verified bridge session token. Cache/build bumped to 1168.
 
 > **NOTE FOR CLAUDE/CHATGPT (v11.67):** Bug hunt hardening pass.
 > Real-wallet Blackjack WebSockets no longer trust a bare `hello.address`; bridge
