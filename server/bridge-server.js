@@ -191,10 +191,12 @@ function attachBridge(app, opts) {
       }
     }
     if (blackjack.bridge.onBalanceChange) {
-      blackjack.bridge.onBalanceChange((player, balanceUsd) => {
+      blackjack.bridge.onBalanceChange((player, balanceUsd, recoverableUsd, exposureUsd) => {
         const s = sessionFor(player);
         if (!s || s.closed) return;
-        s.balanceUsd = balanceUsd;
+        s.balanceUsd = recoverableUsd == null ? balanceUsd : recoverableUsd;
+        s.availableBalanceUsd = balanceUsd;
+        s.openExposureUsd = exposureUsd || 0;
         s.updatedAt = Date.now();
         saveBridgeState();
       });
@@ -288,7 +290,6 @@ function attachBridge(app, opts) {
 
   app.post("/api/bridge/blackjack/settle", async (req, res) => {
     if (!blackjack || !blackjack.bridge) return fail(res, 503, "blackjack bridge is unavailable");
-    if (!bridgeEnabled()) return fail(res, 503, "bridge is not enabled on the server");
     try {
       const player = address(req.body && req.body.player, "player");
       await withPlayerLock(player, async () => {
@@ -303,6 +304,7 @@ function attachBridge(app, opts) {
         if (Number(s.chainId) !== chainId) throw new Error("blackjack bridge session uses a different chain");
         if (s.settlement) return res.json(s.settlement);
         if (s.closed) throw new Error("blackjack bridge session is already closed");
+        if (!realmoney.enabled()) throw new Error("house signer not configured");
         const balanceUsd = blackjack.bridge.balance(player);
         const netCents = cents(balanceUsd) - BigInt(s.buyInCents);
         const buyInCents = BigInt(s.buyInCents);

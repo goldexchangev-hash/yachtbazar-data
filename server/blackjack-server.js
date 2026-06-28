@@ -33,10 +33,22 @@
     const T = Object.assign({ betting: 15000, turn: 20000, insurance: 12000, idle: 300000, between: 3500, dealReveal: 0, dealPace: 0, dealerReveal: 0, dealerPace: 0 }, opts.timers || {});
     const bank = opts.bank || makeBank(opts.startBalance);
     const balanceWatchers = new Set();
+    function openExposure(wallet) {
+      let out = 0;
+      for (const r of rooms.values()) {
+        for (const s of r.seats) {
+          if (!s || s.wallet !== wallet || s.settled) continue;
+          out = r2(out + seatStake(s));
+        }
+      }
+      return out;
+    }
     const notifyBalance = (wallet) => {
       if (!/^0x[0-9a-fA-F]{40}$/.test(String(wallet || ""))) return;
+      const balance = r2(bank.get(wallet));
+      const exposure = r2(openExposure(wallet));
       for (const fn of balanceWatchers) {
-        try { fn(wallet, r2(bank.get(wallet))); } catch (e) {}
+        try { fn(wallet, balance, r2(balance + exposure), exposure); } catch (e) {}
       }
     };
     if (!bank._bjWatched) {
@@ -135,7 +147,7 @@
       r.shoeId = r.id + ":" + r.handNumber;
       const rnd = randomness.begin(r.shoeId);
       r.serverSeed = rnd.serverSeed; r.commit = rnd.commit; r.proof = rnd.proof || null;
-      for (const s of r.seats) if (s) { s.baseBet = 0; s.hands = []; s.active = -1; s.insurance = 0; s.insuranceResult = null; s.insuranceDecided = false; s.left = false; s.settled = false; s.clientSeed = ""; }
+      for (const s of r.seats) if (s) { s.baseBet = 0; s.hands = []; s.active = -1; s.insurance = 0; s.insuranceResult = null; s.insuranceDecided = false; s.left = false; s.settled = false; s.clientSeed = ""; notifyBalance(s.wallet); }
       r.deadline = now() + T.betting;
       // no touch() here — opening a window isn't player activity; abandoned tables still idle-close.
       armBetting(r, T.betting);
@@ -307,6 +319,7 @@
         h.done = true; advanceHand(r);
       } else if (action === "double") {
         bank.debit(s.wallet, h.bet); h.bet = r2(h.bet * 2); h.doubled = true; pushWallet(s.sock, s.wallet);
+        notifyBalance(s.wallet);
         h.cards.push(draw(r)); h.done = true;
         broadcast(r, { type: "bj:event", kind: "double", seat: seatIdx, hand: s.active }); advanceHand(r);
       } else if (action === "surrender") {
@@ -318,6 +331,7 @@
         h.fromSplit = true; h.isAceSplit = isAce;          // the original hand is now a split hand
         const fresh = newHand(h.bet, { fromSplit: true, isAceSplit: isAce, cards: [moved] });
         s.hands.splice(s.active + 1, 0, fresh);
+        notifyBalance(s.wallet);
         broadcast(r, { type: "bj:event", kind: "split", seat: seatIdx });
         startTurn(r); // re-enters with the (now 1-card) original hand → deals its 2nd card
       }
@@ -351,7 +365,7 @@
         }
         const ir = s.insuranceResult;
         if (ir && ir.taken) net = r2(net + (ir.payout || 0) - (ir.amount || 0));
-        s.settled = true; pushWallet(s.sock, s.wallet);
+        s.settled = true; notifyBalance(s.wallet); pushWallet(s.sock, s.wallet);
         perSeat.push({ seat: i, wallet: s.wallet, hands: handsOut, insurance: (ir && ir.taken) ? { amount: ir.amount, won: !!ir.won, payout: ir.payout || 0 } : null, net });
       }
       broadcastState(r);
@@ -476,6 +490,7 @@
         if (had > 0) bank.credit(s.wallet, had); // refund the old escrow first (re-bet replaces)
         if (!bank.debit(s.wallet, amt)) { if (had > 0) bank.debit(s.wallet, had); return err(sock, "insufficient", "Not enough balance", "bet"); } // re-debit; never escrow an unfunded bet
         s.baseBet = amt; s.clientSeed = clientSeed || Shuffle.randomSeed(8);
+        notifyBalance(s.wallet);
         touch(r);
         const seated = r.seats.filter(Boolean);
         if (seated.length && seated.every((x) => x.baseBet > 0)) {
@@ -495,6 +510,7 @@
         const s = r.seats[i];
         if (s.baseBet > 0) {
           bank.credit(s.wallet, s.baseBet); s.baseBet = 0;
+          notifyBalance(s.wallet);
           r.deadline = now() + T.betting; armBetting(r, T.betting); // fresh window (epoch-guarded)
           touch(r); pushWallet(s.sock, s.wallet); broadcastState(r);
         }
@@ -622,7 +638,7 @@
     createRoom();
     return { handle, onClose, bank, config,
       bridge: {
-        fund: bridgeFund, setBalance: bridgeSetBalance, balance: bridgeBalance, clear: bridgeClear, hasOpenExposure,
+        fund: bridgeFund, setBalance: bridgeSetBalance, balance: bridgeBalance, clear: bridgeClear, hasOpenExposure, openExposure,
         authorize: (wallet, token) => { if (realWallet(wallet) && token) bridgeAuth.set(norm(wallet), String(token)); },
         deauthorize: (wallet) => bridgeAuth.delete(norm(wallet)),
         isAuthorized: (wallet, token) => !realWallet(wallet) || (!!token && bridgeAuth.get(norm(wallet)) === String(token)),

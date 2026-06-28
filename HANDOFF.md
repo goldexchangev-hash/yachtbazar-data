@@ -1,7 +1,16 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v11.71**.
+Last updated at build **v11.72**.
+
+> **NOTE FOR CLAUDE/CHATGPT (v11.72):** Blackjack bridge recovery hotfix.
+> Active real-wallet Blackjack stake exposure is now included in the saved
+> recoverable bridge balance. If the server restarts mid-hand, the forgotten
+> hand is treated like a cancelled hand for bridge cash-out purposes instead of
+> silently losing the in-flight stake. Existing bridge sessions can settle even
+> when the new-buy-in flag is off, as long as the house signer is configured, so
+> disabling deposits does not strand locked credits. Real-wallet UI no longer
+> offers the demo-only mid-hand top-up action. Cache/build bumped to 1172.
 
 > **NOTE FOR CLAUDE/CHATGPT (v11.71):** Blackjack bridge hardening pass.
 > Bridge start/settle requests require a MetaMask signature from the player
