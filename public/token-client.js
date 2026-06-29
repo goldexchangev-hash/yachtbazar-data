@@ -1,0 +1,125 @@
+/* ============================================================
+   token-client.js — browser client for the server-side TOKEN bridge.
+
+   Turns "one MetaMask popup per bet" into: ONE buy-in (lock ETH) → play every game
+   instantly off-chain (no popups) → ONE cash-out. Talks to /api/token/* and signs
+   the buy-in / cash-out authorizations with the player's wallet. NO Chainlink VRF —
+   the server commits a seed before each session and reveals it at cash-out so every
+   bet is verifiable.
+
+   window.TokenBridgeClient  /  module.exports (for the auth-parity self-test)
+   ============================================================ */
+(function (root) {
+  "use strict";
+
+  // The EXACT message the server (server/token-http.js :: tokenAuthMessage) verifies.
+  // Kept byte-identical here so wallet auth never silently mismatches. `getAddress`
+  // is ethers.getAddress (checksums the addresses just like the server).
+  function tokenAuthMessage(intent, o, getAddress) {
+    const lines = [
+      "Crypto TV Token Bridge",
+      "Action: " + String(intent || ""),
+      "Player: " + getAddress(o.player),
+      "Contract: " + getAddress(o.contract),
+      "Chain ID: " + Number(o.chainId),
+    ];
+    if (intent === "start") lines.push("Buy-in wei: " + String(o.buyInWei || "0"));
+    else if (intent === "settle") lines.push("Session: " + String(o.sessionId || ""));
+    return lines.join("\n");
+  }
+
+  // deps: { ethers, signer, contract, account, chainId, contractAddr, fetch?, apiBase? }
+  //   signer   = ethers wallet signer (signMessage + the tx sender)
+  //   contract = ethers Contract bound to the signer (blackjackBuyIn / settleBlackjack)
+  function TokenBridgeClient(deps) {
+    this.d = deps || {};
+    this.session = null;   // { sessionId, sessionToken, commit, tokens, buyInUnits }
+    this.tokens = 0;
+  }
+
+  TokenBridgeClient.prototype._post = async function (path, body) {
+    const f = this.d.fetch || root.fetch.bind(root);
+    const res = await f((this.d.apiBase || "") + path, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body || {}),
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok || j.ok === false) throw new Error(j.error || ("request failed: " + path));
+    return j;
+  };
+  TokenBridgeClient.prototype.status = async function () {
+    const f = this.d.fetch || root.fetch.bind(root);
+    return (await f((this.d.apiBase || "") + "/api/token/status")).json();
+  };
+
+  // BUY IN: lock `amountWei` on-chain (ONE popup) → open a server token session.
+  TokenBridgeClient.prototype.buyIn = async function (amountWei) {
+    const d = this.d;
+    const player = d.account, contract = d.contractAddr, chainId = Number(d.chainId);
+    const buyInWei = (typeof amountWei === "bigint" ? amountWei : BigInt(amountWei)).toString();
+    // 1) player authorizes the buy-in (off-chain signature — no gas)
+    const signature = await d.signer.signMessage(tokenAuthMessage("start", { player, contract, chainId, buyInWei }, d.ethers.getAddress));
+    // 2) lock the funds on-chain (the ONE popup) and wait for it to confirm
+    const tx = await d.contract.blackjackBuyIn(buyInWei, { gasLimit: 200000n });
+    const receipt = await tx.wait();
+    // 3) hand the server the confirmed txHash + the signature → it verifies + grants tokens
+    const r = await this._post("/api/token/start", { player, contract, chainId, txHash: receipt.hash, buyInWei, signature });
+    this.session = r; this.tokens = r.tokens;
+    return r;
+  };
+
+  // PLAY: one instant off-chain bet (no popup). `game` is a token-enabled key.
+  TokenBridgeClient.prototype.play = async function (game, betUnits, params, clientSeed) {
+    if (!this.session) throw new Error("buy in first");
+    const r = await this._post("/api/token/play", {
+      sessionId: this.session.sessionId, sessionToken: this.session.sessionToken,
+      game: game, betUnits: betUnits, params: params || {}, clientSeed: clientSeed || "",
+    });
+    this.tokens = r.tokens;
+    return r; // { win, multiplier, payoutUnits, outcome, detail, tokens }
+  };
+
+  // CASH OUT: server signs the net → submit settleBlackjack on-chain (ONE popup).
+  TokenBridgeClient.prototype.cashOut = async function () {
+    if (!this.session) throw new Error("no open session");
+    const d = this.d, player = d.account, contract = d.contractAddr, chainId = Number(d.chainId);
+    const sessionId = this.session.sessionId;
+    const signature = await d.signer.signMessage(tokenAuthMessage("settle", { player, contract, chainId, sessionId }, d.ethers.getAddress));
+    const s = await this._post("/api/token/settle", { player, sessionId, signature });
+    // s = { netWei, nonce, signature (house), serverSeedReveal, commit, ... }
+    const tx = await d.contract.settleBlackjack(player, BigInt(s.netWei), BigInt(s.nonce), s.signature, { gasLimit: 200000n });
+    const receipt = await tx.wait();
+    const settled = { ...s, claimTx: receipt.hash };
+    this.session = null; this.tokens = 0;
+    return settled;
+  };
+
+  const API = { TokenBridgeClient: TokenBridgeClient, tokenAuthMessage: tokenAuthMessage };
+  if (typeof module !== "undefined" && module.exports) module.exports = API;
+  root.TokenBridgeClient = TokenBridgeClient;
+  root.TokenClientAPI = API;
+})(typeof globalThis !== "undefined" ? globalThis : this);
+
+/* ---------------- auth-parity self-test: node public/token-client.js ---------------- */
+if (typeof require !== "undefined" && require.main === module) {
+  const { ethers } = require("ethers");
+  const client = require("./token-client.js");
+  const server = require("../server/token-http.js");
+  let ok = true;
+  const eq = (label, cond) => { console.log((cond ? "  ok  " : "  FAIL") + "  " + label); if (!cond) ok = false; };
+  const player = "0x2f4bef94550c29c497b999b86b758f9771f7ab39"; // lower-case on purpose → must checksum to match
+  const contract = "0xd7e584c341bdbf20848cfa162f65efb406aa0cbc";
+  const startO = { player, contract, chainId: 11155111, buyInWei: "250000000000000000" };
+  const settleO = { player, contract, chainId: 11155111, sessionId: "abc123" };
+  eq("start message matches server byte-for-byte", client.tokenAuthMessage("start", startO, ethers.getAddress) === server.tokenAuthMessage("start", startO));
+  eq("settle message matches server byte-for-byte", client.tokenAuthMessage("settle", settleO, ethers.getAddress) === server.tokenAuthMessage("settle", settleO));
+  // a signature made client-side recovers to the player on the server's message (round-trip)
+  (async () => {
+    const w = ethers.Wallet.createRandom();
+    const o = { player: w.address, contract, chainId: 11155111, buyInWei: "1000" };
+    const sig = await w.signMessage(client.tokenAuthMessage("start", o, ethers.getAddress));
+    let threw = false; try { server.verifyWalletSignature("start", { signature: sig }, o); } catch (e) { threw = true; }
+    eq("client signature verifies on the server", !threw);
+    console.log(ok ? "\nSELF-TEST OK — client auth is byte-identical to the server." : "\nSELF-TEST FAILED");
+    process.exit(ok ? 0 : 1);
+  })();
+}

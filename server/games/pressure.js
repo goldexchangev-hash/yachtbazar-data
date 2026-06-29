@@ -206,11 +206,14 @@ if (require.main === module) {
   const b = play({ serverSeed: seed, clientSeed: "det", nonce: 7, betUnits: 1, params: { cashOutAt: 2 } });
   eq("deterministic for identical inputs", JSON.stringify(a) === JSON.stringify(b));
 
-  // ── 4. Win condition: a target at/under the burst wins, just over it loses ──
-  const burst = deriveBurst(seed, "edge", 11);
-  const justUnder = play({ serverSeed: seed, clientSeed: "edge", nonce: 11, betUnits: 1, params: { cashOutAt: Math.max(MIN_CASHOUT, burst) } });
-  const justOver = play({ serverSeed: seed, clientSeed: "edge", nonce: 11, betUnits: 1, params: { cashOutAt: burst + 0.01 } });
-  eq("cashOutAt == burst wins (popPoint >= cashOutAt)", burst < MIN_CASHOUT ? true : justUnder.win === true);
+  // ── 4. Win condition: a target at/under the burst wins, just over it loses. Pick a
+  //    MID-RANGE burst (away from the 1.20x min and the max cap — at the cap a +0.01 step
+  //    clamps back and spuriously "wins") so this boundary check is deterministic, not flaky. ──
+  let bNonce = 0, burst = 0;
+  for (let n = 0; n < 200000; n++) { const bb = deriveBurst(seed, "edge", n); if (bb >= 2 && bb <= 50) { bNonce = n; burst = bb; break; } }
+  const justUnder = play({ serverSeed: seed, clientSeed: "edge", nonce: bNonce, betUnits: 1, params: { cashOutAt: burst } });
+  const justOver = play({ serverSeed: seed, clientSeed: "edge", nonce: bNonce, betUnits: 1, params: { cashOutAt: burst + 0.01 } });
+  eq("cashOutAt == burst wins (popPoint >= cashOutAt)", justUnder.win === true);
   eq("cashOutAt just over burst loses", justOver.win === false && justOver.payoutUnits === 0);
 
   // ── 5. VOID below the 1.20x minimum refunds the stake (net 0) ──

@@ -40,7 +40,13 @@ const ENGINES = {
   pressure: require("./games/pressure.js"),
   slots: require("./games/slots.js"),
   slots3d: require("./games/slots3d.js"),
+  fishshooter: require("./games/fishshooter.js"), // per-shot micro-bet engine (continuous game)
+  reef: require("./games/reef.js"),               // per-shot micro-bet engine (continuous game)
+  plane: require("./games/crash.js"),             // Aviator-style climb = the crash mechanic
+  swoop: require("./games/crash.js"),             // Sky Swoop biplane = the crash mechanic
 };
+// NOTE: blackjack + poker are MULTIPLAYER/round-based and run on their own server-authoritative
+// engines (blackjack-server.js / poker-server.js), not this single-player per-bet ledger.
 function games() { return Object.keys(ENGINES); }
 function hasGame(g) { return Object.prototype.hasOwnProperty.call(ENGINES, g); }
 
@@ -148,25 +154,64 @@ function makeTokenBridge(opts) {
     return s.settlement;
   }
 
+  // PURE verifier — the heart of "anyone can re-check the session from public data".
+  // Takes ONLY the inputs an auditor holds after reveal (NO live session memory):
+  //   commit            : the published SHA256(serverSeed) from start()
+  //   revealedSeed      : the serverSeed disclosed at settle()
+  //   orderedBets       : the bet ledger, each { nonce, game, betUnits, params, clientSeed, payoutUnits }
+  //   buyInUnits        : tokens granted at start (ledger origin)
+  //   claimedFinalTokens: the final token balance the house claims to have signed against
+  // Re-runs every bet through its engine off the revealed seed and asserts:
+  //   (a) commit == SHA256(revealedSeed),
+  //   (b) nonces are the contiguous 0..n-1 sequence (no skipped/duplicated/re-ordered bet),
+  //   (c) every replayed payout matches the recorded payout, and
+  //   (d) the replayed ledger (buyIn − Σbet + Σpayout) == claimedFinalTokens.
+  function verifyRederive(args) {
+    args = args || {};
+    const commit = args.commit;
+    const revealedSeed = args.revealedSeed;
+    const orderedBets = Array.isArray(args.orderedBets) ? args.orderedBets : [];
+    const buyInUnits = round2(args.buyInUnits);
+    const claimedFinalTokens = round2(args.claimedFinalTokens);
+
+    const commitOk = !!(commit && revealedSeed) && PF.verify(commit, revealedSeed);
+    let payoutsMatch = true;
+    let noncesOk = true;
+    let ledger = buyInUnits;
+    for (let i = 0; i < orderedBets.length; i++) {
+      const b = orderedBets[i];
+      if (Number(b.nonce) !== i) noncesOk = false; // contiguous 0..n-1, in order
+      if (!hasGame(b.game)) { payoutsMatch = false; continue; }
+      const res = ENGINES[b.game].play({ serverSeed: revealedSeed, clientSeed: b.clientSeed, nonce: b.nonce, betUnits: b.betUnits, params: b.params });
+      const payout = round2(Math.max(0, Number(res && res.payoutUnits) || 0));
+      if (Math.abs(payout - round2(b.payoutUnits)) > 1e-9) payoutsMatch = false;
+      ledger = round2(ledger - round2(b.betUnits) + payout);
+    }
+    const ledgerMatches = Math.abs(ledger - claimedFinalTokens) < 1e-6;
+    return {
+      ok: commitOk && payoutsMatch && noncesOk && ledgerMatches,
+      commitOk: commitOk, payoutsMatch: payoutsMatch, noncesOk: noncesOk,
+      ledgerMatches: ledgerMatches, replayedTokens: ledger, finalTokens: claimedFinalTokens,
+    };
+  }
+
   // Independent re-derivation (what an auditor / the fairness panel runs after reveal):
-  // replays every bet from the revealed seed and checks the recorded payouts + commit.
+  // a THIN wrapper that lifts a live session's fields and defers to the PURE verifier.
   function rederive(sessionId) {
     const s = sessions.get(sessionId);
     if (!s) throw new Error("no such session");
-    const commitOk = PF.verify(s.commit, s.serverSeed);
-    let allMatch = true; let ledger = s.buyInUnits;
-    for (const b of s.bets) {
-      const res = ENGINES[b.game].play({ serverSeed: s.serverSeed, clientSeed: b.clientSeed, nonce: b.nonce, betUnits: b.betUnits, params: b.params });
-      const payout = round2(Math.max(0, Number(res.payoutUnits) || 0));
-      if (Math.abs(payout - b.payoutUnits) > 1e-9) allMatch = false;
-      ledger = round2(ledger - b.betUnits + payout);
-    }
-    return { commitOk: commitOk, payoutsMatch: allMatch, ledgerMatches: Math.abs(ledger - s.tokens) < 1e-6, finalTokens: s.tokens };
+    return verifyRederive({
+      commit: s.commit,
+      revealedSeed: s.serverSeed,
+      orderedBets: s.bets,
+      buyInUnits: s.buyInUnits,
+      claimedFinalTokens: s.tokens,
+    });
   }
 
   function session(id) { return sessions.get(id) || null; }
 
-  return { start, play, settle, rederive, session, games, hasGame, _sessions: sessions };
+  return { start, play, settle, rederive, verifyRederive, session, games, hasGame, _sessions: sessions };
 }
 
 module.exports = { makeTokenBridge, games, hasGame, ENGINES };
@@ -194,7 +239,7 @@ if (require.main === module) {
     const tb = makeTokenBridge({ signer: signer2, toWei: (u) => BigInt(Math.round(u * 1e6)) }); // 1 unit = 1e6 wei (test scale)
 
     // games are registered
-    eq("7 games token-enabled (" + tb.games().join(",") + ")", tb.games().length === 7);
+    eq("11 games token-enabled (" + tb.games().join(",") + ")", tb.games().length === 11);
 
     // start a big session so we can measure RTP without running dry
     const st = tb.start({ player, chainId: 11155111, contract, buyInUnits: 5_000_000, settleNonce: NONCE });
@@ -234,11 +279,40 @@ if (require.main === module) {
     const ps = makeTokenBridge({}); const psid = ps.start({ player, chainId: 1, contract, buyInUnits: 1 }).sessionId;
     eq("default settleNonce is a uint256 decimal", /^[0-9]+$/.test(ps.session(psid).settleNonce));
 
-    // provably-fair re-derivation matches the whole ledger
+    // provably-fair re-derivation matches the whole ledger (thin wrapper over the pure verifier)
     const rd = tb.rederive(st.sessionId);
     eq("commit verifies against revealed seed", rd.commitOk);
     eq("every bet re-derives to the same payout", rd.payoutsMatch);
     eq("ledger reconciles to final tokens", rd.ledgerMatches);
+    eq("nonces are the contiguous 0..n-1 sequence", rd.noncesOk);
+    eq("rederive aggregate ok flag is true", rd.ok === true);
+
+    // ── PURE verifier: operates ONLY on passed-in args, never live session memory ──
+    const live = tb.session(st.sessionId);
+    const pureArgs = () => ({ commit: live.commit, revealedSeed: live.serverSeed, orderedBets: live.bets.map((b) => ({ ...b, params: { ...b.params } })), buyInUnits: live.buyInUnits, claimedFinalTokens: live.tokens });
+    eq("pure verifier passes on honest args", tb.verifyRederive(pureArgs()).ok === true);
+
+    // tamper: a wrong commit must fail commitOk (and overall ok)
+    const aWrongCommit = pureArgs(); aWrongCommit.commit = crypto.createHash("sha256").update("not-the-seed").digest("hex");
+    const vWrongCommit = tb.verifyRederive(aWrongCommit);
+    eq("pure verifier rejects a forged commit", vWrongCommit.commitOk === false && vWrongCommit.ok === false);
+
+    // tamper: a flipped final-tokens claim must fail ledgerMatches
+    const aBadFinal = pureArgs(); aBadFinal.claimedFinalTokens = aBadFinal.claimedFinalTokens + 1000;
+    const vBadFinal = tb.verifyRederive(aBadFinal);
+    eq("pure verifier rejects an inflated final-tokens claim", vBadFinal.ledgerMatches === false && vBadFinal.ok === false);
+
+    // tamper: a doctored recorded payout must fail payoutsMatch
+    const aBadPayout = pureArgs(); aBadPayout.orderedBets[0] = { ...aBadPayout.orderedBets[0], payoutUnits: aBadPayout.orderedBets[0].payoutUnits + 999 };
+    eq("pure verifier rejects a doctored recorded payout", tb.verifyRederive(aBadPayout).payoutsMatch === false);
+
+    // tamper: a non-contiguous nonce sequence (skip / re-order) must fail noncesOk
+    const aBadNonce = pureArgs(); aBadNonce.orderedBets[1] = { ...aBadNonce.orderedBets[1], nonce: aBadNonce.orderedBets[1].nonce + 5 };
+    eq("pure verifier rejects a non-contiguous nonce", tb.verifyRederive(aBadNonce).noncesOk === false);
+
+    // the wrapper truly defers to the pure verifier — same honest result
+    const rd2 = tb.rederive(st.sessionId);
+    eq("wrapper == pure verifier on the live session", rd2.ok === tb.verifyRederive(pureArgs()).ok && rd2.payoutsMatch && rd2.ledgerMatches);
 
     // settle signs a recoverable net + reveals the seed
     const stl = await tb.settle({ sessionId: st.sessionId });

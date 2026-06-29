@@ -102,11 +102,49 @@ function makeTokenService(opts) {
   opts = opts || {};
   const ethUsdFn = typeof opts.ethUsd === "function" ? opts.ethUsd : () => Number(opts.ethUsd) || 3400;
   const verifyBuyIn = opts.verifyBuyIn || makeOnChainVerifier(opts.rpcUrlFor || (() => ""), opts.minConfirmations || 1);
-  const usedBuyIns = new Set();
-  const tokenForSession = new Map(); // sessionId -> bearer token
-  const openByPlayer = new Map();    // player -> sessionId (one open session per player)
 
-  const bridge = makeTokenBridge({ signer: opts.signer || null, persist: opts.persist || null });
+  // ── durable replay guard + open-session map ──────────────────────────────
+  // A restart MUST preserve usedBuyIns (so a confirmed buy-in tx can never re-fund a
+  // second session) AND openByPlayer (so the one-open-session rule survives). Both ride
+  // the SAME injected persist store as the bridge, under a namespace so they don't clobber
+  // the bridge's { sessions } blob. We split one physical store into two logical views.
+  const rawPersist = opts.persist || null;
+  let _blob = null; // cached merged blob: { http:{usedBuyIns,openByPlayer}, bridge:{sessions} }
+  function _read() {
+    if (_blob) return _blob;
+    let st = null;
+    if (rawPersist && rawPersist.load) { try { st = rawPersist.load(); } catch (e) {} }
+    _blob = (st && typeof st === "object") ? st : {};
+    return _blob;
+  }
+  function _write() { if (rawPersist && rawPersist.save) { try { rawPersist.save(_read()); } catch (e) {} } }
+  // Namespaced sub-store handed to a consumer: load()/save() see only their slice.
+  function nsPersist(key) {
+    if (!rawPersist) return null;
+    return {
+      load() { return _read()[key] || null; },
+      save(slice) { _read()[key] = slice; _write(); },
+    };
+  }
+
+  // Rehydrate the HTTP-layer guard state from the durable store.
+  const httpPersist = nsPersist("http");
+  const usedBuyIns = new Set();
+  const tokenForSession = new Map(); // sessionId -> bearer token (in-memory: a bearer is per-process)
+  const openByPlayer = new Map();    // player -> sessionId (one open session per player)
+  if (httpPersist) {
+    try {
+      const st = httpPersist.load() || {};
+      for (const tx of st.usedBuyIns || []) usedBuyIns.add(String(tx));
+      for (const [p, sid] of st.openByPlayer || []) openByPlayer.set(String(p), String(sid));
+    } catch (e) {}
+  }
+  function saveHttp() {
+    if (!httpPersist) return;
+    try { httpPersist.save({ usedBuyIns: Array.from(usedBuyIns), openByPlayer: Array.from(openByPlayer.entries()) }); } catch (e) {}
+  }
+
+  const bridge = makeTokenBridge({ signer: opts.signer || null, persist: nsPersist("bridge") });
 
   async function doStart(body) {
     const player = address(body && body.player, "player");
@@ -128,6 +166,7 @@ function makeTokenService(opts) {
     const started = bridge.start({ player, chainId, contract, buyInUnits, lockedWei: lockedWei.toString(), now: (opts.now && opts.now()) || 0 });
     usedBuyIns.add(txKey);
     openByPlayer.set(player, started.sessionId);
+    saveHttp(); // durably record the spent txHash + open session BEFORE handing back a token
     const sessionToken = crypto.randomBytes(24).toString("hex");
     tokenForSession.set(started.sessionId, sessionToken);
     return { ok: true, sessionId: started.sessionId, sessionToken, commit: started.commit, tokens: started.tokens, buyInUnits, games: started.games };
@@ -149,6 +188,7 @@ function makeTokenService(opts) {
     verifyWalletSignature("settle", body, { player, contract: s.contract, chainId: s.chainId, sessionId: s.id });
     const settlement = await bridge.settle({ sessionId: s.id });
     openByPlayer.delete(player);
+    saveHttp(); // the session is no longer open — persist the freed slot (txHash stays spent)
     tokenForSession.delete(s.id);
     return settlement; // includes netWei, signature, serverSeedReveal (now safe), commit
   }
@@ -237,7 +277,43 @@ if (require.main === module) {
     let again = 0; try { startBody.txHash = "0x" + "c".repeat(64); startBody.signature = await sign("start", { player, contract, chainId, buyInWei: lockedWei.toString() }); await svc.doStart(startBody); } catch (e) { again++; }
     eq("can open a new session after settling", again === 0);
 
-    console.log(ok ? "\nSELF-TEST OK — token HTTP service: verified buy-in → token-gated play → wallet-authed signed settle." : "\nSELF-TEST FAILED");
+    // ── PERSISTED replay guard survives a restart ───────────────────────────
+    // A single in-memory store stands in for the durable persist sink (e.g. a JSON file).
+    const store = { _state: null, load() { return this._state; }, save(s) { this._state = JSON.parse(JSON.stringify(s)); } };
+    const mkSvc = () => makeTokenService({ signer, ethUsd: () => 4000, verifyBuyIn: async (o) => ({ lockedWei: o.buyInWei }), persist: store });
+
+    const w2 = ethers.Wallet.createRandom(); const p2 = w2.address;
+    const sign2 = (intent, o) => w2.signMessage(tokenAuthMessage(intent, o));
+    const tx2 = "0x" + "d".repeat(64);
+
+    const svcA = mkSvc();
+    const sb2 = { player: p2, contract, chainId, txHash: tx2, buyInWei: lockedWei.toString() };
+    sb2.signature = await sign2("start", { player: p2, contract, chainId, buyInWei: lockedWei.toString() });
+    const started2 = await svcA.doStart(sb2);
+    eq("fresh buy-in starts under a persisting service", started2.tokens === 1000);
+
+    // RESTART: a brand-new service loads ONLY from the durable store.
+    const svcB = mkSvc();
+    let reusedAfterRestart = 0; try { await svcB.doStart(sb2); } catch (e) { reusedAfterRestart = 1; }
+    eq("PERSIST: a used buy-in txHash is still rejected after restart", reusedAfterRestart === 1);
+
+    // the open session also survived the restart → a NEW txHash for the same player is blocked
+    const sb2b = { player: p2, contract, chainId, txHash: "0x" + "e".repeat(64), buyInWei: lockedWei.toString() };
+    sb2b.signature = await sign2("start", { player: p2, contract, chainId, buyInWei: lockedWei.toString() });
+    let openSurvived = 0; try { await svcB.doStart(sb2b); } catch (e) { openSurvived = 1; }
+    eq("PERSIST: the open-session lock survives restart", openSurvived === 1);
+
+    // and the bridge session itself survived — settle works on the restarted service
+    const settleSig2 = await sign2("settle", { player: p2, contract, chainId, sessionId: started2.sessionId });
+    const stl2 = await svcB.doSettle({ player: p2, sessionId: started2.sessionId, signature: settleSig2 });
+    eq("PERSIST: the bridge session survives restart and settles", !!stl2.serverSeedReveal);
+
+    // after settle on the restarted service the player is free again — but the spent tx stays spent
+    const svcC = mkSvc();
+    let stillSpent = 0; try { await svcC.doStart(sb2); } catch (e) { stillSpent = 1; }
+    eq("PERSIST: spent txHash stays spent even after the session is settled", stillSpent === 1);
+
+    console.log(ok ? "\nSELF-TEST OK — token HTTP service: verified buy-in → token-gated play → wallet-authed signed settle (+ persisted replay guard)." : "\nSELF-TEST FAILED");
     process.exit(ok ? 0 : 1);
   })().catch((e) => { console.error("FAIL", e.message); process.exit(1); });
 }
