@@ -109,16 +109,25 @@
     try { this.app.renderer.resize(this.cW, this.cH); } catch (e) {}
     if (this._ready && (oldW !== this.cW || oldH !== this.cH)) this._layout();
   };
+  // Cover-fit a background sprite, but HIDE (never blow up) a tiny/unloaded/placeholder texture,
+  // and cap the scale — so a transient critical-asset failure can never produce a full-screen blast.
+  FishShooter.prototype._coverBg = function (spr) {
+    if (!spr || !spr.texture) return;
+    var tw = spr.texture.width, th = spr.texture.height;
+    if (tw < 32 || th < 32) { spr.visible = false; return; } // not a real background yet → don't render it
+    spr.visible = true;
+    spr.scale.set(Math.min(8, Math.max(this.cW / tw, this.cH / th)));
+    spr.x = this.cW / 2; spr.y = this.cH / 2;
+  };
   // (re)position the responsive scene elements for the current W/H
   FishShooter.prototype._layout = function () {
     var W = this.W, H = this.H, cW = this.cW, cH = this.cH;
     // Place + scale the WORLD: contain-fit, centered (letterbox). Same board every view.
     if (this.world) { this.world.scale.set(this._scale); this.world.x = this._offX; this.world.y = this._offY; }
     // Backgrounds COVER the FULL container (raw px) so the letterbox margins show seabed.
-    if (this.bg) { var sc = Math.max(cW / this.bg.texture.width, cH / this.bg.texture.height); this.bg.scale.set(sc); this.bg.x = cW / 2; this.bg.y = cH / 2; }
-    if (this.bgBonus) { var sc2 = Math.max(cW / this.bgBonus.texture.width, cH / this.bgBonus.texture.height); this.bgBonus.scale.set(sc2); this.bgBonus.x = cW / 2; this.bgBonus.y = cH / 2; }
-    if (this.bgBoss) { var sc3 = Math.max(cW / this.bgBoss.texture.width, cH / this.bgBoss.texture.height); this.bgBoss.scale.set(sc3); this.bgBoss.x = cW / 2; this.bgBoss.y = cH / 2; }
-    if (this.bgWorld) { var sc4 = Math.max(cW / this.bgWorld.texture.width, cH / this.bgWorld.texture.height); this.bgWorld.scale.set(sc4); this.bgWorld.x = cW / 2; this.bgWorld.y = cH / 2; }
+    // _coverBg caps the cover-scale so a tiny/unloaded texture can NEVER blow up to fill the
+    // screen (the v12.16 "blast"); a real bg only ever needs <~3x.
+    this._coverBg(this.bg); this._coverBg(this.bgBonus); this._coverBg(this.bgBoss); this._coverBg(this.bgWorld);
     if (this._boss && this._boss.spr) { var bdw = W * 0.52; this._boss.scale = bdw / this._boss.spr.texture.width; this._boss.r = bdw * 0.4; this._boss.spr.x = W / 2; this._boss.baseY = H * 0.34; }
     if (this.vign) { this.vign.width = W; this.vign.height = H; }
     // Seat the cannon on the bottom edge: drop its center so the base bottom sits
@@ -173,27 +182,35 @@
       self._loadAssets(deferred, false, function () { self._refreshBgSprites(); }); // PHASE 2 — background
     });
   };
-  // Load a list PER-ASSET so one failure can't reject the batch (PIXI.Assets.load(array) is
-  // all-or-nothing). Successes merge into this.tex; a CRITICAL failure gets a neutral placeholder
-  // so _build()/render never hit an undefined texture; a DEFERRED failure is left absent (guarded
-  // at use). done() fires once EVERY item settles (success or failure). Never rejects.
+  // Load a list with a CONCURRENCY CAP + per-asset RETRY. Loading every asset at once flooded the
+  // connection on a cold load, so some CRITICAL assets transiently failed → a placeholder was used →
+  // (with the old 16px opaque placeholder) _layout scaled it ~40x to fill the screen = the v12.16
+  // full-screen "blast" hiding the cannon (it cleared "after a few refreshes" = once cached). Now:
+  // retry up to 3x with backoff (transient failures recover IN THE SAME LOAD), cap concurrency so we
+  // don't flood, and a persistent CRITICAL failure falls back to a 1x1 TRANSPARENT placeholder
+  // (invisible — never a blast; the sprite just doesn't show). DEFERRED failures are left absent
+  // (guarded at use). done() fires once EVERY item settles. Never rejects.
   FishShooter.prototype._loadAssets = function (list, placeholderOnFail, done) {
-    var self = this, left = list.length;
-    if (!left) { if (done) done(); return; }
-    list.forEach(function (item) {
-      PIXI.Assets.load(item.src)
-        .then(function (t) { self.tex[item.alias] = t; })
-        .catch(function (e) {
-          if (root.console) console.warn("[fishshooter] asset failed" + (placeholderOnFail ? " (placeholder)" : "") + ": " + item.alias, e && e.message);
-          if (placeholderOnFail) self.tex[item.alias] = self._placeholderTex();
-        })
-        .then(function () { if (--left === 0 && done) done(); });
-    });
+    var self = this, n = list.length, i = 0, finished = 0, CONC = 6;
+    if (!n) { if (done) done(); return; }
+    function tryLoad(item, attempt) {
+      return PIXI.Assets.load(item.src).then(function (t) { self.tex[item.alias] = t; }, function (e) {
+        if (attempt < 3) return new Promise(function (r) { setTimeout(r, 250 * attempt); }).then(function () { return tryLoad(item, attempt + 1); });
+        if (root.console) console.warn("[fishshooter] asset failed after retries: " + item.alias, e && e.message);
+        if (placeholderOnFail) self.tex[item.alias] = self._placeholderTex();
+      });
+    }
+    function next() {
+      if (i >= n) return;
+      var item = list[i++];
+      tryLoad(item, 1).then(function () { finished++; if (finished === n) { if (done) done(); } else next(); });
+    }
+    for (var k = 0; k < Math.min(CONC, n); k++) next(); // prime the worker pool
   };
+  // 1x1 FULLY TRANSPARENT — any scale is invisible, so a failed sprite never renders as a blast.
   FishShooter.prototype._placeholderTex = function () {
     if (this._phTex) return this._phTex;
-    var c = document.createElement("canvas"); c.width = c.height = 16; var x = c.getContext("2d");
-    x.fillStyle = "rgba(70,110,150,0.5)"; x.fillRect(0, 0, 16, 16); this._phTex = PIXI.Texture.from(c); return this._phTex;
+    var c = document.createElement("canvas"); c.width = c.height = 1; this._phTex = PIXI.Texture.from(c); return this._phTex;
   };
   // Re-point the persistent background sprites once the deferred world backgrounds arrive (they
   // were built against the critical `background` texture as a valid stand-in, so _layout never
@@ -205,7 +222,12 @@
     try { this._layout(); } catch (e) {}
   };
 
-  FishShooter.prototype._frames = function (key, n) { var a = []; for (var i = 0; i < n; i++) a.push(this.tex[key + "_" + i]); return a; };
+  // Return the n frames for a creature/FX — but [] if ANY frame is missing, invalid, or a
+  // placeholder (a deferred/transient-failed asset). Callers check .length and skip, so
+  // `new PIXI.AnimatedSprite(frames)` is never handed an undefined/empty array (which throws).
+  FishShooter.prototype._frames = function (key, n) {
+    var a = [], ph = this._phTex; for (var i = 0; i < n; i++) { var t = this.tex[key + "_" + i]; if (!t || !t.valid || t === ph) return []; a.push(t); } return a;
+  };
 
   /* ---------- scene ---------- */
   FishShooter.prototype._build = function () {
@@ -307,7 +329,7 @@
     var def = forceDef || this.engine.pickFish();
     var nf = frameCount(def.key);
     var frames = this._frames(def.key, nf);
-    if (!frames[0] || !frames[0].valid) return;
+    if (!frames.length) return; // frames not all loaded yet (deferred/transient) → skip this spawn
     var spr = new PIXI.AnimatedSprite(frames);
     // 8-frame creatures read smooth at a lower per-tick speed; 4-frame ones need it faster to feel alive.
     spr.anchor.set(0.5); spr.animationSpeed = nf >= 8 ? rand(0.11, 0.16) : rand(0.16, 0.26); spr.play();
@@ -617,7 +639,7 @@
     this._flashBanner("TREASURE CHEST!", "", 0xffd23f);
     this._shake = Math.max(this._shake, 10);
     var C = root.Chiptune; if (C && C.bigwin) try { C.bigwin(); } catch (e) {}
-    if (this.tex.chest_0) {
+    if (this._frames("chest", 4).length) {
       var s = new PIXI.AnimatedSprite(this._frames("chest", 4)); s.anchor.set(0.5); s.x = x; s.y = y;
       s.loop = false; s.animationSpeed = 0.16; s.scale.set((fish.r * 2.7) / s.texture.width); // ~35% smaller chest
       s.onFrameChange = function () { for (var i = 0; i < 5; i++) self._spawnCoin(x + rand(-30, 30), y - 8); };
@@ -727,8 +749,8 @@
 
   /* ---------- fx ---------- */
   FishShooter.prototype._burst = function (x, y, scl) { // juicy additive coin-burst on a catch
-    if (!this.tex.coinburst_0) return;
-    var s = new PIXI.AnimatedSprite(this._frames("coinburst", 9)); s.anchor.set(0.5); s.x = x; s.y = y;
+    var bf = this._frames("coinburst", 9); if (!bf.length) return; // deferred FX not loaded yet → skip
+    var s = new PIXI.AnimatedSprite(bf); s.anchor.set(0.5); s.x = x; s.y = y;
     s.blendMode = PIXI.BLEND_MODES.ADD; s.loop = false; s.animationSpeed = 0.5; s.scale.set(scl || 1);
     var self = this; s.onComplete = function () { try { self.fxLayer.removeChild(s); s.destroy(); } catch (e) {} };
     this.fxLayer.addChild(s); s.play();
@@ -743,8 +765,8 @@
   };
   FishShooter.prototype._explosion = function (x, y, color) { this._explCache = this._explCache || {}; var t = this._explCache[color] || (this._explCache[color] = this._radial(color, 256)); var s = new PIXI.Sprite(t); s.anchor.set(0.5); s.x = x; s.y = y; s.blendMode = PIXI.BLEND_MODES.ADD; s.scale.set(0.2); this.fxLayer.addChild(s); this.fx.push({ s: s, t: 0, dur: 0.4, kind: "ring", to: 1.6 }); this._shake = 14; }; // cache radial by color (was leaking per explosion)
   FishShooter.prototype._lightning = function (x1, y1, x2, y2) { var g = new PIXI.Graphics(); g.lineStyle(3, 0xfff15a, 0.95); var seg = 6; g.moveTo(x1, y1); for (var i = 1; i < seg; i++) { var t = i / seg; g.lineTo(lerp(x1, x2, t) + rand(-12, 12), lerp(y1, y2, t) + rand(-12, 12)); } g.lineTo(x2, y2); g.blendMode = PIXI.BLEND_MODES.ADD; this.fxLayer.addChild(g); this.fx.push({ s: g, t: 0, dur: 0.22, kind: "fade" }); };
-  FishShooter.prototype._spawnCoin = function (x, y) { var s = new PIXI.AnimatedSprite(this._frames("coinspin", 4)); s.anchor.set(0.5); s.animationSpeed = 0.4; s.play(); s.x = x; s.y = y; s.scale.set(rand(0.18, 0.34)); this.fxLayer.addChild(s); var a = rand(-Math.PI, 0), sp = rand(120, 320); this.coins.push({ s: s, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 70, t: 0, life: rand(0.7, 1.1), tx: this.W - 38, ty: this.H - 18 }); };
-  FishShooter.prototype._rainCoin = function () { var s = new PIXI.AnimatedSprite(this._frames("coinspin", 4)); s.anchor.set(0.5); s.animationSpeed = 0.4; s.play(); s.x = rand(0, this.W); s.y = -20; s.scale.set(rand(0.2, 0.4)); this.fxLayer.addChild(s); this.coins.push({ s: s, vx: rand(-30, 30), vy: rand(150, 340), t: 0, life: rand(1.6, 2.6), rain: true }); };
+  FishShooter.prototype._spawnCoin = function (x, y) { var cf = this._frames("coinspin", 4); if (!cf.length) return; var s = new PIXI.AnimatedSprite(cf); s.anchor.set(0.5); s.animationSpeed = 0.4; s.play(); s.x = x; s.y = y; s.scale.set(rand(0.18, 0.34)); this.fxLayer.addChild(s); var a = rand(-Math.PI, 0), sp = rand(120, 320); this.coins.push({ s: s, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 70, t: 0, life: rand(0.7, 1.1), tx: this.W - 38, ty: this.H - 18 }); };
+  FishShooter.prototype._rainCoin = function () { var cf = this._frames("coinspin", 4); if (!cf.length) return; var s = new PIXI.AnimatedSprite(cf); s.anchor.set(0.5); s.animationSpeed = 0.4; s.play(); s.x = rand(0, this.W); s.y = -20; s.scale.set(rand(0.2, 0.4)); this.fxLayer.addChild(s); this.coins.push({ s: s, vx: rand(-30, 30), vy: rand(150, 340), t: 0, life: rand(1.6, 2.6), rain: true }); };
   FishShooter.prototype._floatText = function (txt, x, y, color) { var t = new PIXI.Text(txt, { fontFamily: "Bungee, Arial", fontSize: 22, fontWeight: "700", fill: color, stroke: 0x041326, strokeThickness: 4 }); t.anchor.set(0.5); t.x = x; t.y = y; this.fxLayer.addChild(t); this.fx.push({ s: t, t: 0, dur: 0.9, kind: "float" }); };
   FishShooter.prototype._flashBanner = function (txt, sub, color) { this.banner.text = txt; this.banner.style.fill = color; this.banner.alpha = 1; this.banner.scale.set(2.2); this.bannerSub.text = sub || ""; this.bannerSub.alpha = sub ? 1 : 0; this._bannerT = 0; };
 
