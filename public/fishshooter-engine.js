@@ -10,21 +10,31 @@
    so EV per connecting shot = mult*unitBet*(P*RTP/mult) = P*unitBet*RTP = RTP*cost
    — a flat RTP on every connecting shot, target-independent. Misses are skill.
 
-   POWER IS RTP-NEUTRAL HERE: the smallest fish mult (6) ≥ MAX_POWER(5)*RTP/P_MAX
-   = 5*0.95/0.9 = 5.28, so NO fish ever hits the P_MAX clamp at the in-game power
-   range — every power level returns a flat ~95%. (Reef's engine keeps its own
-   85% + x2 minnow + power-7; the two are intentionally separate now.)
+   POWER IS ~RTP-NEUTRAL HERE: the smallest fish mult (6) ≥ MAX_POWER(2)*RTP/P_MAX
+   = 2*0.88/0.9 = 1.96, so NO fish ever hits the P_MAX clamp at the in-game power
+   range — every power returns a flat ~88% PER CONNECTING SHOT (realized adds the 5%
+   jackpot rake, minus a little overkill → ~90% low 90s). Power is capped at x2 because at x3 with fast auto-fire,
+   redundant bullets overkill fish that already died — wasted paid shots crater the
+   realized RTP (x3-fast measured ~72%). (Reef's engine is separate: 85% + power-7.)
 
    globalThis.FishShooterEngine
    ============================================================ */
 (function (root) {
   "use strict";
 
-  // 95% RTP = player-friendly ~5% edge on a play-money demo (long, fun sessions). The 5% jackpot
-  // rake is the player's own money cycled back via the boss round, so it's RTP-neutral (delays +
-  // concentrates variance). Invariants: (1) min mult ≥ MAX_POWER*RTP/P_MAX (=5.28 → floor 6) so no
-  // P_MAX clamp at any in-game power; (2) P_MIN < RTP/maxMult (whale 300 → 0.00317 > 0.0025 ✓).
-  const RTP = 0.95, P_MIN = 0.0025, P_MAX = 0.9;
+  // ~90% RTP overall (low 90s) = ~10% house edge on a play-money demo. TWO parts: the kill-prob knob
+  // below returns ~88% on every connecting shot (flat, target-independent), and the 5% jackpot rake is
+  // cycled back to players via the boss round (~+5% in big lumps) → ~90-93% realized. (So the rake is
+  // genuinely "the player's own money cycled back," as always claimed.) Power is capped at x2 in
+  // fishshooter.js: at x3 with fast auto-fire, redundant bullets overkill already-dead fish and waste
+  // paid shots, cratering realized RTP to ~72% — x1/x2 keep that small. Renderer + Monte-Carlo: x1 and
+  // BOTH powers at slow/medium fire land ~90-93% (low 90s); the ONE outlier is x2 + FAST auto-fire, which
+  // runs ~85-88% (richer for the house, NEVER player-favorable) — that residual is fire-speed overkill a
+  // single knob can't lift without pushing x2-slow over 100%; the clean fix is refunding non-connecting
+  // shots. Invariants: (1) min mult (6) ≥ MAX_POWER*RTP/P_MAX (=2*0.88/0.9 = 1.96 → floor 6) so no P_MAX
+  // clamp at any in-game power; (2) P_MIN < RTP/maxMult (whale
+  // 300 → 0.88/300 = 0.00293 > 0.0025 ✓).
+  const RTP = 0.88, P_MIN = 0.0025, P_MAX = 0.9;
   const BONUS_BUDGET = { chest: 25, frenzy: 25, storm: 25 };
   const SPLASH_TARGET_BUDGET = { bomb: 4, chain: 3 };
 

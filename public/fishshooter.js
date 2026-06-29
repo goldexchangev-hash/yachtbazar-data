@@ -17,7 +17,7 @@
   "use strict";
   var PIXI = root.PIXI, E = root.FishShooterEngine; // OWN engine, decoupled from Reef Raiders (fishtable-engine.js)
   var DIR = "/assets/fishshooter/";
-  var MIN_BET = 1, MAX_BET = 50, MAX_POWER = 3; // power 3 cap: above this, high per-shot kill-prob makes auto-fire OVERKILL fish (extra in-flight/culled bullets wasted), which craters realized RTP. The bet slider is the main stake dial; power is a modest speed/stake boost.
+  var MIN_BET = 1, MAX_BET = 50, MAX_POWER = 2; // power 2 cap: at x3 with fast auto-fire, high per-shot kill-prob makes redundant bullets OVERKILL already-dead fish (wasted paid shots), cratering realized RTP to ~72% (renderer-measured). x1/x2 keep waste small → realized ~92%. The bet slider is the main stake dial; power is a modest speed/stake boost.
   // Shooting-speed cooldowns (seconds/shot). ONE rate governs EVERY fire path — manual taps, auto-fire,
   // AND bonus/boss free shots — so you can never tap-spam the dragon faster than the chosen speed. FAST
   // ≈ 9 shots/s = a brisk "fast clicking" cap, never faster.
@@ -301,7 +301,7 @@
     var free = this._frenzy > 0 || !!this._boss;
     // Cooldown gate. FREE (bonus/boss) shots are ALWAYS paced by the speed setting — no tap-spamming
     // the dragon. Auto-fire/hold also respects it. But a MANUAL tap on a PAID shot fires as fast as
-    // you can click (it's fun, and RTP-neutral — every shot still returns ~95%, you just spend faster).
+    // you can click (it's fun, and RTP-neutral — every shot still returns ~92%, you just spend faster).
     if ((this._fireCd || 0) > 0 && (free || !manual)) return;
     var su = free ? this._frenzyUnit : this.unitBet, sp = free ? this._frenzyPow : this.power;
     var paid = Math.round(su * sp * 100) / 100, cost = free ? 0 : paid;

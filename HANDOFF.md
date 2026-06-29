@@ -1,7 +1,25 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v12.03**.
+Last updated at build **v12.04**.
+
+> **NOTE FOR CLAUDE/CHATGPT (v12.04):** Fish Shooter — MAX POWER x2 + RTP retuned to the low 90s (~90%), and
+> a REAL RTP-definition bug found+documented. Owner asked for a risk-of-ruin analysis ($1–$10 × powers) and
+> "low 90s RTP across the board, max x2 power." The careful analysis uncovered the game had **NO defined RTP**:
+> realized return swung **72%→97%** by power × fire-speed. Cause = **auto-fire OVERKILL** — at high power fish
+> die in ~1 hit, but fast auto-fire keeps firing bullets that arrive after the fish is already dead (paid shots
+> returning nothing). Renderer-measured realized at knob 0.92: x1≈97%, x2-fast≈85%, **x3-fast≈72%**; at SLOW
+> fire it's flat ~97% (proves overkill is the cause). ALSO the 5% jackpot rake cycles back **on top of** the
+> kill-prob knob (full-connect realized = knob + ~5%). SETTINGS NOW: **MAX_POWER 3→2** (`fishshooter.js`) +
+> **knob RTP 0.92→0.88** (`fishshooter-engine.js`) → realized **~90% (low 90s)** at x1 and at slow/medium fire
+> both powers; **x2 + FAST auto-fire is the ONE outlier at ~85–88%** (richer for the house, NEVER player-
+> favorable). That x2-fast residual is fire-speed overkill a single knob CAN'T lift without pushing x2-slow
+> over 100% — the only clean fix is **refunding non-connecting shots** (owner declined for now; chose "cap
+> power"). `index.html` help = power x1–x2, "~90% overall = ~88% catches + ~5% jackpot". Tools in
+> `crypto-tv-tools/`: `_fsh-ror.js`/`_fsh-ror2.js`/`_fsh-ror10.js` (risk-of-ruin + $10), `_fsh-overkill.js` +
+> `_fsh-verify88.js` (power×speed realized-RTP renderer harness — STUBS visuals + drives `_frame` headless).
+> KEY FORMULA: median shots-to-bust ≈ bankroll ÷ (edge × bet × power), edge ≈ 10%. RTP is bet-size-independent
+> ($1=$10 same %). DON'T re-raise MAX_POWER or per-power-compensate the knob without re-fixing overkill. Build 1204.
 
 > **NOTE FOR CLAUDE/CHATGPT (v12.03):** Fish Shooter — owner REVERSED part of v12.02: bring back fast manual
 > clicking. "If it doesn't even matter I liked that I could click it faster than what is shooting, it's fun for
