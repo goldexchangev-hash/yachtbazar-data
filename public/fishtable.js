@@ -316,6 +316,9 @@
 
   /* ---------- firing ---------- */
   FishTable.prototype.cost = function () { return Math.round(this.unitBet * this.power * 100) / 100; };
+  // True when a token session is open → each PAID shot settles per-shot with the server
+  // ("reef" engine, v2 disburses bonus/splash EV); local credits + jackpot meter gated off.
+  FishTable.prototype._tokenActive = function () { return !!(root.TokenMode && root.TokenMode.active()); };
   FishTable.prototype._fire = function () {
     if (!this._active || !this._enabled) return;
     // Feeding Frenzy = FREE shots (it's a bonus reward) — never charge during it.
@@ -325,7 +328,12 @@
     const paidCost = Math.round(shotUnitBet * shotPower * 100) / 100;
     const cost = free ? 0 : paidCost;
     if (!free && this.balance < cost) { this._flashBanner("INSUFFICIENT", "add funds 👇", 0xff5d72); return; }
-    if (cost > 0) { this.balance = Math.round((this.balance - cost) * 100) / 100; this._sesSpent = Math.round((this._sesSpent + cost) * 100) / 100; this._jackpotPool = Math.round((this._jackpotPool + cost * 0.05) * 100) / 100; this._save(); this._renderHud(); }
+    if (cost > 0) {
+      this._sesSpent = Math.round((this._sesSpent + cost) * 100) / 100;
+      // TOKEN: the server debits each per-shot bet (in _resolveBulletFish); no client rake. DEMO: as before.
+      if (!this._tokenActive()) { this.balance = Math.round((this.balance - cost) * 100) / 100; this._jackpotPool = Math.round((this._jackpotPool + cost * 0.05) * 100) / 100; }
+      this._save(); this._renderHud();
+    }
     const ang = this._aim;
     const tipX = this.cannon.x + Math.cos(ang) * 54, tipY = this.cannon.y + Math.sin(ang) * 54;
     const col = shotPower >= 5 ? 0xff4d9d : shotPower >= 3 ? 0xffd23f : 0x39e7ff;
@@ -359,6 +367,21 @@
       this._net(b.s.x, b.s.y, fish.def.color);
       return;
     }
+    // ── TOKEN MODE: a PAID shot is a server-settled micro-bet ("reef" engine). The server
+    //    returns the catch + (v2) the disbursed bonus/splash total, all folded into r.tokens.
+    if (this._tokenActive() && !b.free) {
+      const self = this, shot = { unitBet: b.unitBet || this.unitBet, power: b.power || this.power, cost: b.cost || this.cost(), free: false };
+      this._net(b.s.x, b.s.y, fish.def.color); // immediate net FX
+      root.TokenMode.bet("reef", shot.cost, { targetKey: fish.def.key, power: shot.power }).then(function (r) {
+        self.balance = root.TokenMode.tokens(); // authoritative
+        if (r && r.win) {
+          if (fish.alive) self._catchFish(fish, shot); // catch FX (local credit + triggers gated in _catchFish)
+          if (r.outcome && r.outcome.bonus && r.outcome.bonus.total > 0) self._startTokenBonus(r.outcome.bonus, shot); // server-driven bonus
+        } else if (fish.alive) { fish.flinch = 0.18; fish.sp.tint = 0xff8888; }
+        self._renderHud();
+      }).catch(function (e) { self.balance = root.TokenMode.tokens(); self._renderHud(); });
+      return;
+    }
     const shot = { unitBet: b.unitBet || this.unitBet, power: b.power || this.power, cost: b.cost || this.cost(), free: !!b.free, frenzyId: b.frenzyId || 0 };
     const res = this.engine.resolveHit(fish.def, shot.power);
     // net splash where it hit
@@ -375,8 +398,10 @@
       const remaining = Math.max(0, Math.round((this._frenzyBudget - this._frenzyWon) * 100) / 100);
       payout = Math.min(payout, remaining);
     }
-    this.balance = Math.round((this.balance + payout) * 100) / 100; this._won = payout; this._sesWon = Math.round((this._sesWon + payout) * 100) / 100; this._save(); this._renderHud();
-    if (shot.free) this._frenzyWon = Math.round((this._frenzyWon + payout) * 100) / 100;
+    // TOKEN: balance is the authoritative server ledger (set in _resolveBulletFish's .then); never credit locally.
+    if (!this._tokenActive()) this.balance = Math.round((this.balance + payout) * 100) / 100;
+    this._won = payout; this._sesWon = Math.round((this._sesWon + payout) * 100) / 100; this._save(); this._renderHud();
+    if (shot.free && !this._tokenActive()) this._frenzyWon = Math.round((this._frenzyWon + payout) * 100) / 100;
     // combo
     this._combo++; this._comboT = 1.2;
     // FX: net catch ring + coin burst toward balance HUD + floating payout
@@ -396,7 +421,7 @@
     if (this.onWin && payout >= Math.max(0.01, shot.cost || unitBet * power) * 8) { try { this.onWin({ profitUsd: payout - (shot.free ? 0 : shot.cost), mult: fish.def.mult }); } catch (e) {} }
     // JACKPOT METER — fills as you catch (faster at higher power); when it FILLS,
     // the jackpot fires. (Plus a rare surprise roll on any catch.)
-    if (!shot.free && !this._jpFx && !this._chest) {
+    if (!shot.free && !this._jpFx && !this._chest && !this._tokenActive()) { // TOKEN: no self-funded jackpot meter (server RTP is flat)
       this._jackpot = clamp(this._jackpot + 0.0022 * power, 0, 1); // slow build → the pool grows big before it pops
       if (this._jackpot >= 1) this._awardJackpot(); // meter full → pay the accumulated progressive pool
     }
@@ -406,7 +431,9 @@
       else if (fish.def.special === "chain") this._eelChain(fish, shot);
     }
     // ── BONUS ROUNDS: catching the right creature triggers a feature ──
-    if (!isSplash && fish.def.bonus && !this._chest && this._frenzy <= 0) {
+    // TOKEN: the bonus is triggered by the SERVER's disbursement (_startTokenBonus in
+    // _resolveBulletFish's .then), never locally — else it would double-fire.
+    if (!isSplash && fish.def.bonus && !this._chest && this._frenzy <= 0 && !this._tokenActive()) {
       if (fish.def.bonus === "chest") this._treasureChest(shot);
       else if (fish.def.bonus === "frenzy") this._startFrenzy(6, shot); // trimmed 9s→6s of free fire to keep the house edge
     }
@@ -539,7 +566,9 @@
         w.popT = 0.34;
         const mult = w.prizes[w.idx++]; const amt = Math.round(mult * w.unitBet * 100) / 100;
         w.total = Math.round((w.total + amt) * 100) / 100;
-        this.balance = Math.round((this.balance + amt) * 100) / 100; this._won = w.total; this._sesWon = Math.round((this._sesWon + amt) * 100) / 100; this._save(); this._renderHud();
+        // TOKEN: the chest total was already disbursed by the server (in r.tokens); prizes are cosmetic — no local credit.
+        if (!this._tokenActive()) this.balance = Math.round((this.balance + amt) * 100) / 100;
+        this._won = w.total; this._sesWon = Math.round((this._sesWon + amt) * 100) / 100; this._save(); this._renderHud();
         w.totalText.text = "+$" + w.total.toFixed(2);
         // a coin/gem leaps out of the chest with a floating value
         const px = this.W / 2 + rand(-30, 30), py = this.H * 0.46 - 10;
@@ -559,12 +588,23 @@
     }
   };
 
+  // TOKEN: a bonus-trigger fish was caught and the SERVER disbursed the bonus total (real money,
+  // already in r.tokens). Render the matching feature; it's cosmetic (no local credit). Reef has
+  // no "storm" wave, so storm maps to the frenzy visual. chest → treasure chest.
+  FishTable.prototype._startTokenBonus = function (serverBonus, shot) {
+    if (this._chest || this._frenzy > 0) return; // one feature at a time
+    this._tokenWaveTotal = Math.round((serverBonus.total || 0) * 100) / 100;
+    if (serverBonus.kind === "chest") this._treasureChest(shot);
+    else this._startFrenzy(6, shot); // frenzy / storm
+  };
+
   /* ---------- BONUS ROUND 2: FEEDING FRENZY (Treasure Clam) ---------- */
   FishTable.prototype._startFrenzy = function (dur, shot) {
     if (this._frenzy > 0) return; // never re-arm an active frenzy (would chain free shots)
     shot = shot || { unitBet: this.unitBet, power: this.power };
     this._frenzyId++;
     this._frenzy = dur; this._frenzyMax = dur; this._frenzyWon = 0; this._frenzyUnitBet = shot.unitBet; this._frenzyPower = shot.power; this._frenzyBudget = Math.round(shot.unitBet * 25 * 100) / 100;
+    if (this._tokenActive()) this._frenzyWon = Math.round((this._tokenWaveTotal || 0) * 100) / 100; // token: HUD shows the server-disbursed total
     this._flashBanner("🌊 FEEDING FRENZY!", "FREE SHOTS — catch everything!", 0x45f0a6);
     // flood the tank with a formation of catchable fish
     const small = E.FISH.filter((f) => f.tier !== "boss" && !f.bonus);

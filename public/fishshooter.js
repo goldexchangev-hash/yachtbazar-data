@@ -296,6 +296,10 @@
     this._aim = clamp(Math.atan2(dy, dx), -(Math.PI - 0.1), -0.1);
   };
   FishShooter.prototype.cost = function () { return Math.round(this.unitBet * this.power * 100) / 100; };
+  // True when a token session is open → each PAID shot settles per-shot with the server
+  // (server engine v2 also disburses the bonus/splash EV), and the local demo ledger /
+  // jackpot meter / double bonus-triggers are all gated off.
+  FishShooter.prototype._tokenActive = function () { return !!(root.TokenMode && root.TokenMode.active()); };
   FishShooter.prototype._fire = function (manual) {
     if (!this._active || !this._enabled || !this._ready) return;
     if (this._boss && !this._boss.started) return;   // hold fire during the boss 3-2-1 countdown
@@ -309,7 +313,14 @@
     var su = free ? this._frenzyUnit : this.unitBet, sp = free ? this._frenzyPow : this.power;
     var paid = Math.round(su * sp * 100) / 100, cost = free ? 0 : paid;
     if (!free && this.balance < cost) { this._flashBanner("INSUFFICIENT", "add funds", 0xff5d72); return; }
-    if (cost > 0) { this.balance = Math.round((this.balance - cost) * 100) / 100; this._sesSpent = Math.round((this._sesSpent + cost) * 100) / 100; this._jackpotPool = Math.round((this._jackpotPool + cost * JACKPOT_RAKE) * 100) / 100; this._save(); this._renderHud(); }
+    if (cost > 0) {
+      this._sesSpent = Math.round((this._sesSpent + cost) * 100) / 100;
+      // TOKEN: the server debits the stake on each per-shot bet (in _resolveHit) and there is
+      // no client jackpot rake — the server's flat RTP already includes everything. DEMO: debit
+      // the play-money stake + skim the rake into the self-funded jackpot pool, as before.
+      if (!this._tokenActive()) { this.balance = Math.round((this.balance - cost) * 100) / 100; this._jackpotPool = Math.round((this._jackpotPool + cost * JACKPOT_RAKE) * 100) / 100; }
+      this._save(); this._renderHud();
+    }
     var ang = this._aim, md = (this._barrelTipLen || 44) * (this._cannonK || 1), tx = this.cannon.x + Math.cos(ang) * md, ty = this.cannon.y + Math.sin(ang) * md;
     // Little glowing bullet: a small stretched core + an additive glow halo, much
     // smaller than before, oriented along its travel direction.
@@ -339,6 +350,22 @@
     b.hit = true;
     if (this._boss) { this._catchCosmetic(fish, b.s.x, b.s.y); return; } // boss round: minions pop for show only
     if (b.free && (this._frenzy <= 0 || b.frenzyId !== this._frenzyId)) { this._net(b.s.x, b.s.y, fish.def.color); return; } // stale free bullet after the wave → no catch
+    // ── TOKEN MODE: a PAID shot is a server-settled micro-bet. The server engine (v2) returns
+    //    the catch AND, on a bonus/splash fish, the disbursed bonus/splash total — all folded
+    //    into r.tokens. We render from the authoritative result; local money is never touched.
+    if (this._tokenActive() && !b.free) {
+      var self = this, shot = { unitBet: b.unitBet, power: b.power, cost: b.cost, free: false };
+      this._net(b.s.x, b.s.y, fish.def.color); // immediate net FX (latency-friendly)
+      root.TokenMode.bet("fishshooter", b.cost, { targetKey: fish.def.key, power: b.power }).then(function (r) {
+        self.balance = root.TokenMode.tokens(); // authoritative (stake debited + any payout/disbursement)
+        if (r && r.win) {
+          if (fish.alive) self._catch(fish, shot); // direct-catch FX (local credit + local triggers gated in _catch)
+          if (r.outcome && r.outcome.bonus && r.outcome.bonus.total > 0) self._startTokenBonus(r.outcome.bonus, shot); // server-driven wave
+        } else if (fish.alive) { fish.flinch = 0.16; fish.spr.tint = 0xff8888; }
+        self._renderHud();
+      }).catch(function (e) { self.balance = root.TokenMode.tokens(); self._renderHud(); }); // transactional bridge: a rejected bet cost nothing
+      return;
+    }
     if (b.free) { // accumulate the EXPECTED value this connecting free shot delivers; the wave ends when it reaches the budget (variable realized payout)
       this._frenzyExpected = (this._frenzyExpected || 0) + fish.def.mult * this.engine.killProb(fish.def, b.power) * (b.unitBet || this._frenzyUnit || 1);
     }
@@ -355,9 +382,13 @@
       // UNCAPPED real winnings → VARIABLE bonus payout. The wave is bounded by the EXPECTED-value
       // budget (see _resolveHit / _frame), not by clamping each catch, so a lucky big fish really
       // pays big. Accumulated here, deposited all at once in the finale (_updateBonusFinale).
-      this._frenzyWon = Math.round((this._frenzyWon + payout) * 100) / 100;
+      // TOKEN: free shots are cosmetic — the server already disbursed the wave total (shown via
+      // _startTokenBonus → _startFrenzy), so DON'T accumulate again.
+      if (!this._tokenActive()) this._frenzyWon = Math.round((this._frenzyWon + payout) * 100) / 100;
     } else {
-      this.balance = Math.round((this.balance + payout) * 100) / 100; this._sesWon = Math.round((this._sesWon + payout) * 100) / 100;
+      // TOKEN: balance is the authoritative server ledger (set in _resolveHit's .then); never credit locally.
+      if (!this._tokenActive()) this.balance = Math.round((this.balance + payout) * 100) / 100;
+      this._sesWon = Math.round((this._sesWon + payout) * 100) / 100;
     }
     this._won = payout; this._save(); this._renderHud();
     this._combo++; this._comboT = 1.2;
@@ -374,7 +405,7 @@
     if (this.onWin && payout >= Math.max(0.01, shot.cost || unitBet) * 8) try { this.onWin({ profitUsd: payout - (shot.free ? 0 : (shot.cost || 0)), mult: fish.def.mult }); } catch (e) {}
     // JACKPOT ROUND meter (self-funding pool). The Abyssal Angler SPIKES it; any boss-tier
     // kill SURGES it — so killing big creatures randomly pushes you into the jackpot round.
-    if (!shot.free && !this._boss && !this._bonus && !this._bonusFinale && !isSplash) {
+    if (!shot.free && !this._boss && !this._bonus && !this._bonusFinale && !isSplash && !this._tokenActive()) { // TOKEN: no self-funded jackpot meter (server RTP is flat; a server-side progressive is future v3)
       var bump = 0.0048 * (shot.power || 1); // fills ~2x faster → boss jackpot fires ~twice as often, so the (now smaller 2%) rake comes back in MORE FREQUENT, smaller bursts instead of one rare lump
       if (fish.def.key === "anglerfish") bump = 0.30;
       else if (fish.def.tier === "boss") bump += 0.10;
@@ -385,12 +416,16 @@
       // Lightning Storm round: every free kill arcs chain-lightning to nearby fish (payouts still
       // capped by the frenzy budget in _resolveHit/_catch, so the round total stays ≤ its budget).
       if (this._frenzy > 0 && this._frenzyKind === "storm" && shot.free) this._chain(fish, shot);
-      if (fish.def.special === "bomb") this._bomb(fish, shot);
+      if (fish.def.special === "bomb") this._bomb(fish, shot);   // splash renders in token too (server already paid splash.total)
       else if (fish.def.special === "chain") this._chain(fish, shot);
-      if (fish.def.bonus === "frenzy" && this._canBonus()) this._startBonus("frenzy", shot);   // Magma Lobster / Treasure Clam → Feeding Frenzy world
-      else if (fish.def.bonus === "chest" && this._canBonus()) this._startBonus("vault", shot); // Gold Crab / Armored Reef Crab → Treasure Vault world
-      else if (fish.def.bonus === "storm" && this._canBonus()) this._startBonus("storm", shot); // Electric Eel → Lightning Storm world
-      else if (fish.def.key === "seadragon" && this._canBonus()) this._startBossRound();         // Royal Sea Dragon → boss round
+      // TOKEN: the wave/boss is triggered by the SERVER's disbursement (_startTokenBonus in
+      // _resolveHit's .then), never locally — else it would double-fire.
+      if (!this._tokenActive()) {
+        if (fish.def.bonus === "frenzy" && this._canBonus()) this._startBonus("frenzy", shot);   // Magma Lobster / Treasure Clam → Feeding Frenzy world
+        else if (fish.def.bonus === "chest" && this._canBonus()) this._startBonus("vault", shot); // Gold Crab / Armored Reef Crab → Treasure Vault world
+        else if (fish.def.bonus === "storm" && this._canBonus()) this._startBonus("storm", shot); // Electric Eel → Lightning Storm world
+        else if (fish.def.key === "seadragon" && this._canBonus()) this._startBossRound();         // Royal Sea Dragon → boss round
+      }
     }
     fish.death = 0;
     // (frenzy no longer ends early on the budget — it runs its full timer; payouts stay capped in _resolveHit)
@@ -448,6 +483,7 @@
     kind = kind || "frenzy"; this._frenzyKind = kind;
     var th = BONUS_THEME[kind] || BONUS_THEME.frenzy;
     this._frenzyId++; this._frenzy = dur; this._frenzyMax = dur; this._frenzyWon = 0; this._frenzyExpected = 0;
+    if (this._tokenActive()) this._frenzyWon = Math.round((this._tokenWaveTotal || 0) * 100) / 100; // token: the wave pays the SERVER-disbursed total (free shots are cosmetic)
     this._frenzyUnit = shot.unitBet || this.unitBet;
     this._frenzyPow = 1; // free shots are POWER 1 → the wave is a CONSISTENT length at every bet/power
     // VARIABLE PAYOUT (no more "always 1250"): the wave pays the player's REAL, UNCAPPED free-shot
@@ -467,6 +503,14 @@
     this._bonus = { kind: kind, shot: { unitBet: shot.unitBet, power: shot.power, cost: shot.cost, free: !!shot.free }, countT: 0, lastNum: 99, started: false };
     this._shake = 30;
     var C = root.Chiptune; if (C) try { (C.bigwin || C.jackpot || function () {})(); } catch (e) {}
+  };
+  // TOKEN: a bonus-trigger fish was caught and the SERVER disbursed the wave total (real money,
+  // already in r.tokens). Render the same wave; it pays the server total at the finale (no local
+  // deposit). kind: server "chest"→"vault", else "storm"/"frenzy".
+  FishShooter.prototype._startTokenBonus = function (serverBonus, shot) {
+    if (!this._canBonus()) return;
+    this._tokenWaveTotal = Math.round((serverBonus.total || 0) * 100) / 100;
+    this._startBonus(serverBonus.kind === "chest" ? "vault" : serverBonus.kind, shot);
   };
   FishShooter.prototype._updateBonus = function (dt) {
     var bz = this._bonus; if (!bz) return;
@@ -504,7 +548,7 @@
     if (!fz.paid && fz.t >= 1.9) {
       fz.paid = true;
       if (fz.won > 0) {
-        this.balance = Math.round((this.balance + fz.won) * 100) / 100;
+        if (!this._tokenActive()) this.balance = Math.round((this.balance + fz.won) * 100) / 100; // TOKEN: the wave total is already in r.tokens — this is reveal-only, no second deposit
         this._sesWon = Math.round((this._sesWon + fz.won) * 100) / 100; this._won = fz.won; this._save();
         if (fz.kind === "vault") this._openChest({ cont: { x: this.W / 2, y: this.H * 0.40 }, r: this.W * 0.12 }, fz.shot); // vault pops its chest on the deposit
         this._flashBanner("YOU WON  $" + fz.won.toFixed(2), "DEPOSITED →", 0xffd23f);
