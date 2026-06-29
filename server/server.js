@@ -79,13 +79,36 @@ function tokenRpcUrl(chainId) {
   if (chainId === 31337) return process.env.LOCAL_RPC_URL || process.env.RPC_URL || "http://127.0.0.1:8545";
   return process.env.RPC_URL || "";
 }
+// Token valuation MUST track the SAME ETH/USD the client uses (app.js fetches CoinGecko), or a $X
+// deposit gets relabeled as a different token count on buy-in (the wei→USD round-trip uses two
+// different prices). The client was on a live ~$1.6k feed while the server defaulted to a stale
+// $3,400 → ~2x inflated tokens. So poll the live price here too. An explicit BRIDGE_ETH_USD/ETH_USD
+// env still wins (manual override); otherwise we use the live feed, falling back to 3400 only before
+// the first fetch.
+let _ethUsdLive = 0;
+async function refreshTokenEthUsd() {
+  try {
+    const r = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd", { signal: AbortSignal.timeout(8000) });
+    const j = await r.json();
+    const u = Number(j && j.ethereum && j.ethereum.usd);
+    if (u > 0) _ethUsdLive = u;
+  } catch (e) {}
+}
+refreshTokenEthUsd();
+{ const t = setInterval(refreshTokenEthUsd, 60000); if (t && t.unref) t.unref(); }
+function tokenEthUsd() {
+  const override = Number(process.env.BRIDGE_ETH_USD || process.env.ETH_USD || 0);
+  if (override > 0) return override;       // explicit manual override wins
+  if (_ethUsdLive > 0) return _ethUsdLive; // live CoinGecko price (matches the client)
+  return 3400;                              // last-resort fallback before the first fetch lands
+}
 const tokenSvc = attachTokenBridge(app, {
   enabled: () => process.env.ENABLE_TOKEN_BRIDGE === "1" && realmoney.enabled(),
   signer: { sign: (p, net, nonce, cid, c) => realmoney.signSettlement(p, net, nonce, cid, c) },
   signerAddress: () => { try { return realmoney.signerAddress(); } catch (e) { return null; } }, // public address (for /status diagnostics) — never the key
   flag: () => process.env.ENABLE_TOKEN_BRIDGE === "1",
   rpcUrlFor: tokenRpcUrl,
-  ethUsd: () => Number(process.env.BRIDGE_ETH_USD || process.env.ETH_USD || 3400),
+  ethUsd: tokenEthUsd, // live ETH/USD (matches the client) so $X deposited ≈ $X tokens
   persist: tokenPersist,
   minConfirmations: Number(process.env.TOKEN_MIN_CONFIRMATIONS || 1),
 });

@@ -193,7 +193,7 @@ function makeTokenService(opts) {
     return settlement; // includes netWei, signature, serverSeedReveal (now safe), commit
   }
 
-  function status() { return { ok: true, enabled: true, signerAddress: (opts.signerAddress ? opts.signerAddress() : null), games: bridge.games(), model: "server commit-reveal token bridge (no VRF)" }; }
+  function status() { return { ok: true, enabled: true, signerAddress: (opts.signerAddress ? opts.signerAddress() : null), ethUsd: (opts.ethUsd ? opts.ethUsd() : null), games: bridge.games(), model: "server commit-reveal token bridge (no VRF)" }; }
 
   // Validate a (sessionId, bearer-token) pair WITHOUT mutating anything — the ws crash
   // round-runner uses this to authorize cr:start over the socket, reusing the exact same
