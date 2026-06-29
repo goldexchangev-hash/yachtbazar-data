@@ -1092,8 +1092,10 @@ body:not(.game-pressure) [data-game="pressure"] { display: none !important; }
 body:not(.game-plane) [data-game="plane"] { display: none !important; }
 body:not(.game-slots3d) [data-game="slots3d"] { display: none !important; }
 body:not(.game-fish) [data-game="fish"] { display: none !important; }
+body:not(.game-swoop) [data-game="swoop"] { display: none !important; }
+body:not(.game-fishshooter) [data-game="fishshooter"] { display: none !important; }
 body:not(.game-blackjack) [data-game="blackjack"] { display: none !important; }
-body.game-dice [data-game="flip"], body.game-twodice [data-game="flip"], body.game-crash [data-game="flip"], body.game-slots [data-game="flip"], body.game-pressure [data-game="flip"], body.game-plane [data-game="flip"], body.game-slots3d [data-game="flip"], body.game-fish [data-game="flip"], body.game-blackjack [data-game="flip"] { display: none !important; }
+body.game-dice [data-game="flip"], body.game-twodice [data-game="flip"], body.game-crash [data-game="flip"], body.game-slots [data-game="flip"], body.game-pressure [data-game="flip"], body.game-plane [data-game="flip"], body.game-slots3d [data-game="flip"], body.game-fish [data-game="flip"], body.game-swoop [data-game="flip"], body.game-fishshooter [data-game="flip"], body.game-blackjack [data-game="flip"] { display: none !important; }
 /* …but the channel selector tiles are always visible (they're how you switch) */
 #game-nav .game-card { display: flex !important; }
 #game-nav .game-card[hidden] { display: none !important; } /* hidden channels (e.g. poker) stay hidden */
@@ -2252,7 +2254,7 @@ body.demo-mode #bankroll { display: none !important; }
    landscape side menu, the ETH ticker, the Share-win button, modals, everything) in
    every layout/orientation. The game layer is the only thing left visible. */
 html.rr-fs-on, body.rr-fs-on { width: 100vw !important; height: 100dvh !important; overflow: hidden !important; overscroll-behavior: none !important; background: #041326 !important; }
-body.rr-fs-on > *:not(#layer-fish) { display: none !important; }
+body.rr-fs-on > *:not(#layer-fish):not(#layer-swoop):not(#layer-fishshooter) { display: none !important; }
 body.rr-fs-on .topbar,
 body.rr-fs-on .bottom-nav,
 body.rr-fs-on .chat-tab,
@@ -2276,6 +2278,34 @@ body.rr-fs-on #layer-fish * { visibility: visible !important; }
 #layer-fish:fullscreen, #layer-fish:-webkit-full-screen { width: 100vw; height: 100vh; background: #041326; }
 .fish-fs-exit { display: none; }
 #layer-fish.rr-fs .fish-fs-exit { display: block; position: fixed; top: max(10px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); z-index: 2147483647; background: rgba(4,19,38,.82); color: #fff; border: 1px solid rgba(255,255,255,.5); border-radius: 10px; padding: 9px 14px; font-weight: 800; cursor: pointer; }
+/* ════════════════════ SKY SWOOP (CH 18) ════════════════════ */
+#layer-swoop { position: absolute; inset: 0; }
+.swoop-stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: #7ec4f5; }
+.swoop-stage canvas { width: 100% !important; height: 100% !important; display: block; touch-action: none; }
+#layer-swoop.rr-fs .swoop-stage canvas { object-fit: contain; }
+#layer-swoop.rr-fs { display: block !important; position: fixed !important; inset: 0 !important; width: 100vw !important; height: 100dvh !important; z-index: 2147483646 !important; background: #7ec4f5; }
+body.rr-fs-on #layer-swoop, body.rr-fs-on #layer-swoop * { visibility: visible !important; }
+#layer-swoop.rr-fs .fish-fs-exit { display: block; position: fixed; top: max(10px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); z-index: 2147483647; background: rgba(4,19,38,.82); color: #fff; border: 1px solid rgba(255,255,255,.5); border-radius: 10px; padding: 9px 14px; font-weight: 800; cursor: pointer; }
+/* Fish Shooter (CH 19): PixiJS top-down fish-table — mirrors Reef Raiders layer rules */
+#layer-fishshooter { position: absolute; inset: 0; }
+.fishshooter-stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: #041326; }
+.fishshooter-stage canvas { width: 100% !important; height: 100% !important; display: block; touch-action: none; }
+#layer-fishshooter.rr-fs .fishshooter-stage canvas { object-fit: contain; }
+#layer-fishshooter.rr-fs { display: block !important; position: fixed !important; inset: 0 !important; width: 100vw !important; height: 100dvh !important; z-index: 2147483646 !important; background: #041326; }
+body.rr-fs-on #layer-fishshooter, body.rr-fs-on #layer-fishshooter * { visibility: visible !important; }
+#layer-fishshooter.rr-fs .fish-fs-exit { display: block; position: fixed; top: max(10px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); z-index: 2147483647; background: rgba(4,19,38,.82); color: #fff; border: 1px solid rgba(255,255,255,.5); border-radius: 10px; padding: 9px 14px; font-weight: 800; cursor: pointer; }
+.fishshooter-dock { display: flex; flex-direction: column; gap: 8px; }
+
+.swoop-dock { display: flex; flex-direction: column; gap: 8px; }
+.swoop-toprow { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; }
+.swoop-mult { font-weight: 800; font-size: 26px; letter-spacing: -1px; color: #eaf6ff; }
+.swoop-mult.win { color: #36e06f; }
+.swoop-mult.bust { color: #ff6a6a; }
+.swoop-go { border: 0; border-radius: 14px; padding: 15px 22px; font-size: 18px; font-weight: 800; color: #042033; cursor: pointer; background: #ffd23f; box-shadow: 0 5px 0 #b9912a; transition: transform .05s, background .15s; }
+.swoop-go:active { transform: translateY(3px); box-shadow: 0 2px 0 #b9912a; }
+.swoop-go.cash { background: #36e06f; box-shadow: 0 5px 0 #1f9b4c; color: #042818; }
+.swoop-go.dead { background: #cfd8e0; color: #6b7682; box-shadow: 0 5px 0 #9aa6b0; }
+
 .fish-dock { display: flex; flex-direction: column; gap: 8px; }
 .fish-betrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .fish-cost { font-weight: 800; color: var(--s-gold, #ffd23f); }

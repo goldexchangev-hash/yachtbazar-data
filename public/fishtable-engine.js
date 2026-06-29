@@ -30,12 +30,13 @@
   // and pays its accumulated pool — so the jackpot returns what it takes and the
   // OVERALL game lands near a ~10% house edge instead of the old >100% (the meter used
   // to hand out a free 300-900x every ~83 catches).
-  // P_MIN must stay BELOW RTP/maxMult (0.85/160 = 0.0053) or the boss fish get
-  // over-rewarded: a flat 0.02 floor made the Kraken pay 320% and the Gold Shark 160%
-  // (you could farm bosses at power 1). At 0.005 every fish returns a true 85% at power
-  // 1 no matter which you shoot. P_MAX favors the house on small fish at high power.
-  const RTP = 0.85, P_MIN = 0.005, P_MAX = 0.9;
-  const BONUS_BUDGET = { chest: 25, frenzy: 25 };
+  // P_MIN must stay BELOW RTP/maxMult or the biggest fish get over-rewarded (their
+  // kill prob would be floored above the fair value). maxMult is now the Golden Whale
+  // at 300 → RTP/300 = 0.00283, so P_MIN must be < that. At 0.0025 every fish (whale
+  // included) returns a true 85% at power 1 no matter which you shoot. P_MAX favors the
+  // house on small fish at high power.
+  const RTP = 0.85, P_MIN = 0.0025, P_MAX = 0.9;
+  const BONUS_BUDGET = { chest: 25, frenzy: 25, storm: 25 };
   const SPLASH_TARGET_BUDGET = { bomb: 4, chain: 3 };
 
   /* ---- fish roster. mult = payout multiple of unitBet. kind drives behaviour ---- */
@@ -45,14 +46,20 @@
     { id: 1, key: "clown",    name: "Clownfish",     mult: 3,   tier: "small",   weight: 22, r: 18, color: 0xff9a3d, accent: 0xc4521a },
     { id: 2, key: "tang",     name: "Blue Tang",     mult: 5,   tier: "small",   weight: 16, r: 20, color: 0x4d7bff, accent: 0xffd23f },
     { id: 3, key: "puffer",   name: "Pufferfish",    mult: 8,   tier: "medium",  weight: 11, r: 24, color: 0xffe08a, accent: 0x7a5400 },
-    { id: 4, key: "turtle",   name: "Sea Turtle",    mult: 12,  tier: "medium",  weight: 8,  r: 30, color: 0x45f0a6, accent: 0x0b5e3c },
+    { id: 4, key: "turtle",   name: "Sea Turtle",    mult: 12,  tier: "medium",  weight: 8,  r: 30, color: 0x45f0a6, accent: 0x0b5e3c, sizeMul: 0.6 },
     { id: 5, key: "squid",    name: "Squid",         mult: 16,  tier: "medium",  weight: 6,  r: 28, color: 0xff5d9e, accent: 0x6e0440 },
-    { id: 6, key: "eel",      name: "Electric Eel",  mult: 20,  tier: "special", weight: 4,  r: 26, color: 0xfff15a, accent: 0x39e7ff, special: "chain" },
+    { id: 6, key: "eel",      name: "Electric Eel",  mult: 20,  tier: "special", weight: 4,  r: 26, color: 0xfff15a, accent: 0x39e7ff, bonus: "storm", sizeMul: 0.6 },
     { id: 7, key: "bomb",     name: "Bomb Fish",     mult: 14,  tier: "special", weight: 4,  r: 26, color: 0xff4d4d, accent: 0x2a0606, special: "bomb" },
-    { id: 8, key: "crab",     name: "Gold Crab",     mult: 28,  tier: "special", weight: 3,  r: 30, color: 0xffd23f, accent: 0x7a4a00, special: "gold", bonus: "chest" },
-    { id: 11, key: "clam",    name: "Treasure Clam", mult: 8,   tier: "special", weight: 2.6, r: 30, color: 0xff8ad0, accent: 0x6e1f56, special: "clam", bonus: "frenzy" },
+    { id: 8, key: "crab",     name: "Gold Crab",     mult: 28,  tier: "special", weight: 3,  r: 30, color: 0xffd23f, accent: 0x7a4a00, special: "gold", bonus: "chest", sizeMul: 0.8 },
+    { id: 11, key: "clam",    name: "Treasure Clam", mult: 8,   tier: "special", weight: 2.6, r: 30, color: 0xff8ad0, accent: 0x6e1f56, special: "clam", bonus: "frenzy", sizeMul: 0.5 },
     { id: 9, key: "shark",    name: "Gold Shark",    mult: 80,  tier: "boss",    weight: 1.3, r: 52, color: 0xcfe2ff, accent: 0x33507a, special: "boss" },
     { id: 10, key: "kraken",  name: "Kraken Boss",   mult: 160, tier: "boss",    weight: 0.5, r: 70, color: 0xb14dff, accent: 0x2b0b54, special: "boss" },
+    { id: 12, key: "whale",   name: "Golden Whale",  mult: 300, tier: "boss",    weight: 0.28, r: 80, color: 0xfff0c0, accent: 0xffd23f, special: "boss", sizeMul: 0.7 },
+    // ── bonus-trigger creatures (all funded via EXISTING channels; seadragon 200 < whale 300 so maxMult/P_MIN unchanged) ──
+    { id: 13, key: "lobster",   name: "Magma Lobster",     mult: 40,  tier: "special", weight: 1.6, r: 32, color: 0xff7a2d, accent: 0x39e7ff, special: "gold", bonus: "frenzy" },
+    { id: 14, key: "armadillo", name: "Armored Reef Crab", mult: 60,  tier: "special", weight: 1.1, r: 36, color: 0xffb84d, accent: 0x7a4a00, special: "gold", bonus: "chest" },
+    { id: 15, key: "anglerfish",name: "Abyssal Angler",    mult: 100, tier: "boss",    weight: 0.8, r: 44, color: 0x39e7ff, accent: 0x1a0b3a, special: "boss", sizeMul: 0.75 },
+    { id: 16, key: "seadragon", name: "Royal Sea Dragon",  mult: 200, tier: "boss",    weight: 0.4, r: 60, color: 0x2fe0a0, accent: 0xffd23f, special: "boss" },
   ];
   const BY_KEY = {}; FISH.forEach((f) => (BY_KEY[f.key] = f));
   const TOTAL_WEIGHT = FISH.reduce((s, f) => s + f.weight, 0);

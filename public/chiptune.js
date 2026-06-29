@@ -495,7 +495,11 @@
     _sfx() {
       ensureCtx();
       if (!ctx) return false;
-      if (ctx.state === "suspended") ctx.resume();
+      // Resume on ANY non-running state. iOS app-switch parks the context in
+      // "interrupted" (not "suspended"); the old narrow check skipped it, so every
+      // shot SFX after returning played into a dead context = silence. _sfx() runs
+      // inside the shot tap (a user gesture), so this resume is honored on iOS too.
+      if (ctx.state !== "running") { try { ctx.resume(); } catch (e) {} }
       return true;
     },
     blip() { if (this._sfx()) voice(NOTES["A5"], ctx.currentTime, 0.08, "square", master, 0.28); },

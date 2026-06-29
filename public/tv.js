@@ -47,6 +47,8 @@
         plane: $("layer-plane"),
         slots3d: $("layer-slots3d"),
         fish: $("layer-fish"),
+        swoop: $("layer-swoop"),
+        fishshooter: $("layer-fishshooter"),
         blackjack: $("layer-blackjack"),
         loading: $("layer-loading"),
       };
@@ -208,6 +210,8 @@
       if (this._activeChannel === 14) return this._planeIdle();  // plane room
       if (this._activeChannel === 15) return this._slots3dIdle(); // gem vault 3d
       if (this._activeChannel === 17) return this._fishIdle();   // reef raiders
+      if (this._activeChannel === 18) return this._swoopIdle();  // sky swoop
+      if (this._activeChannel === 19) return this._fishshooterIdle(); // fish shooter
       this._readyRoom(subtext);                                  // flip / 0-100 / dice #2 ready room
     },
 
@@ -218,7 +222,7 @@
       if (c === this._connected) return;
       this._connected = c;
       const p = this._phase;
-      if (p === "idle" || p === "crash" || p === "slots" || p === "pressure" || p === "fish" || p === "plane" || p === "slots3d" || p === "blackjack") this.idle(); // only refresh a resting screen
+      if (p === "idle" || p === "crash" || p === "slots" || p === "pressure" || p === "fish" || p === "swoop" || p === "fishshooter" || p === "plane" || p === "slots3d" || p === "blackjack") this.idle(); // only refresh a resting screen
     },
 
     // app.js sets the channel's title here; the TV shows it in the ready room
@@ -484,6 +488,25 @@
       this._show("fish");
     },
 
+    // Sky Swoop (CH 18): PlayCanvas biplane crash game plays on the TV. Reveal the
+    // canvas once it has mounted, else show the loading screen (lazy-loaded).
+    _swoopIdle() {
+      if (!this._connected) return this._staticIdle();
+      const stage = $("swoop-stage");
+      if (!stage || !stage.querySelector("canvas")) return this._loadingScreen();
+      this._setStatic(0.03);
+      this._show("swoop");
+    },
+
+    // Fish Shooter (CH 19): PixiJS top-down fish-table. Reveal once its canvas mounts.
+    _fishshooterIdle() {
+      if (!this._connected) return this._staticIdle();
+      const stage = $("fishshooter-stage");
+      if (!stage || !stage.querySelector("canvas")) return this._loadingScreen();
+      this._setStatic(0.03);
+      this._show("fishshooter");
+    },
+
     // Blackjack (CH 16): the live felt runs in its own iframe over its own WebSocket
     // (guest-friendly play-money), so just reveal its layer — BlackjackClient drives
     // the table + the dock under the TV itself.
@@ -515,6 +538,8 @@
       else if (num === 15) this._slots3dIdle();
       else if (num === 16) this._blackjackIdle();
       else if (num === 17) this._fishIdle();
+      else if (num === 18) this._swoopIdle();
+      else if (num === 19) this._fishshooterIdle();
       else this._readyRoom();
       await sleep(160); if (seq !== this._seq) return;
       this.screenEl.classList.remove("ch-switch");

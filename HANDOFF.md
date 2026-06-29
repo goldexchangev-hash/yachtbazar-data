@@ -1,7 +1,28 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v11.74**.
+Last updated at build **v11.95**.
+
+> **NOTE FOR CLAUDE/CHATGPT (v11.95):** Fish Shooter (CH 19) bonus-round build + two site fixes.
+> CH 19 "Fish Shooter" (`public/fishshooter.js`, PixiJS top-down fish-table, demo-only) now has
+> **three bonus WORLD rounds** beyond the jackpot boss, each its own creature → 3-2-1 countdown →
+> own background "world" → free-shot wave → finale: 🦞 Magma Lobster / 🐚 Treasure Clam → **Feeding
+> Frenzy** (`bg_frenzy`); 🦀 Gold Crab / Armored Reef Crab → **Treasure Vault** (`bg_vault`, finale
+> chest); ⚡ Electric Eel → **Lightning Storm** (`bg_storm`, chain-lightning on every free kill).
+> 🐉 Royal Sea Dragon / jackpot meter → the existing **Dragon Boss** round. Shared launcher
+> `_startBonus`/`_updateBonus`/`_endBonusWave`; a `bgWorld` sprite crossfades per round.
+> **House edge intact:** every wave is pre-funded by the trigger creature's `budgetMult` (+25× via
+> `BONUS_BUDGET={chest,frenzy,storm}` in `fishtable-engine.js`); free-shot payouts are hard-capped
+> to that budget in `_catch`, verified ≤ budget on all three rounds (`_fsh-bonusworlds.js`). Boss
+> invariant (total payout === pool) re-verified. **Shared-engine note:** `fishtable-engine.js`'s
+> roster (new creatures lobster/armadillo/anglerfish/seadragon, Golden Whale x300, eel→`bonus:"storm"`)
+> is shared with Reef Raiders (CH 17) — Reef bakes art procedurally so it renders the new keys via
+> its generic fallback with **0 console errors** (smoke-tested); a per-game roster split is still an
+> open option if Reef should not show the new creatures. Two fixes this build: (1) **audio dropout
+> after app-switch** — `chiptune.js _sfx()` now resumes the AudioContext on ANY non-running state
+> (iOS parks it in `"interrupted"`, not `"suspended"`; the old narrow check left every shot SFX
+> silent on return). (2) **demo credits** — site-wide grant + refill raised $1,000 → **$5,000**
+> (`DEMO_START_USD` in `app.js`). Cache/build bumped to 1195.
 
 > **NOTE FOR CLAUDE/CHATGPT (v11.74):** Fee-copy/test cleanup from bug hunt.
 > The contract has used `HOUSE_FEE_BPS=300` (3%) since the earlier fee reduction,

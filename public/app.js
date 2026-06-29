@@ -64,6 +64,11 @@
   let slots3dGame = null;         // the Gem Vault 3D instance, built on first visit to CH 15
   let fishLoadPromise = null;     // lazy-load guard for Reef Raiders (PixiJS fish-shooter)
   let fishGame = null;            // the Reef Raiders instance, built on first visit to CH 17
+  let playcanvasLoadPromise = null; // lazy-load guard for the PlayCanvas engine (Sky Swoop)
+  let swoopLoadPromise = null;    // lazy-load guard for Sky Swoop (PlayCanvas biplane crash)
+  let swoopGame = null;           // the Sky Swoop instance, built on first visit to CH 18
+  let fishshooterLoadPromise = null; // lazy-load guard for Fish Shooter (PixiJS fish-table)
+  let fishshooterGame = null;     // the Fish Shooter instance, built on first visit to CH 19
   let coinFlip3dLoadPromise = null; // lazy-load guard for the 3D coin (Three.js)
   let coinFlip3d = null;          // the CoinFlip3D instance, built on first visit to CH 8
   let rail3dLoadPromise = null;   // lazy-load guard for the 0-100 neon rail (Three.js)
@@ -79,7 +84,7 @@
   // No wallet, no chain — outcomes are simulated locally with the SAME odds and
   // paytables as the real on-chain games, and drive the SAME TV animations.
   let demoOn = false;
-  const DEMO_START_USD = 1000;
+  const DEMO_START_USD = 5000; // play-money grant + refill ceiling (site-wide): players top back up to $5,000
   const DEMO_MAX_USD = 10000000; // play-money is bounded — ignore a tampered/absurd stored value
   let demoUsd = DEMO_START_USD;
   try { const s = +localStorage.getItem("ctf_demo_usd"); if (s > 0) demoUsd = Math.min(s, DEMO_MAX_USD); } catch {}
@@ -308,7 +313,7 @@
   // Balloon Pop, Reef Raiders) run on the demo/play balance — NOT the on-chain
   // deposit — so "max" must clamp to that, never to the raw slider cap.
   function spendableUsd() {
-    if (currentGame === "slots3d" || currentGame === "pressure" || currentGame === "fish") return demoUsd;
+    if (currentGame === "slots3d" || currentGame === "pressure" || currentGame === "fish" || currentGame === "swoop" || currentGame === "fishshooter") return demoUsd;
     return gameWei > 0n ? weiToUsd(gameWei) : 0;
   }
   function quickBet(id, mode) {
@@ -342,7 +347,7 @@
   // mirrors/drives the current game's REAL stake slider so you can change the
   // bet without scrolling. No game logic is duplicated — every change funnels
   // through the same <input> + "input" event the panel already listens to.
-  const BETBAR_GAMES = new Set(["flip", "dice", "twodice", "crash", "pressure", "plane", "slots3d", "fish"]);
+  const BETBAR_GAMES = new Set(["flip", "dice", "twodice", "crash", "pressure", "plane", "slots3d", "fish", "swoop", "fishshooter"]);
   const BETBAR_SL = { flip: "house-bet", dice: "dice-stake", twodice: "td-stake", crash: "crash-stake", pressure: "pr-bet-slider", slots3d: "s3d-bet-slider", plane: "plane-a-bet", fish: "fish-bet" };
   function curStakeSlider() { return $(BETBAR_SL[currentGame]); }
   // Measure the active game's pinned action dock and lift the stake strip above it.
@@ -2138,14 +2143,21 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1174").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1195").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
+  }
+  // PlayCanvas engine (~2.2MB) — only loaded when the Sky Swoop channel is first opened.
+  function loadPlayCanvasOnce() {
+    if (window.pc) return Promise.resolve();
+    if (playcanvasLoadPromise) return playcanvasLoadPromise;
+    playcanvasLoadPromise = loadScriptOnce("vendor/playcanvas.min.js?v=1195").catch((e) => { playcanvasLoadPromise = null; throw e; });
+    return playcanvasLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=1174"))
+      .then(() => loadScriptOnce("slots.js?v=1195"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -2155,11 +2167,11 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=1174"))
-      .then(() => loadScriptOnce("pressure-render.js?v=1174"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=1174"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=1195"))
+      .then(() => loadScriptOnce("pressure-render.js?v=1195"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=1195"))
       // optional 3D red balloon (Three.js) — falls back to the 2D balloon if it can't load
-      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1174")).catch(() => {}))
+      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1195")).catch(() => {}))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -2217,10 +2229,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=1174"))
-      .then(() => loadScriptOnce("plane-render.js?v=1174"))
-      .then(() => loadScriptOnce("plane-feed.js?v=1174"))
-      .then(() => loadScriptOnce("plane-ui.js?v=1174"))
+      .then(() => loadScriptOnce("plane-engine.js?v=1195"))
+      .then(() => loadScriptOnce("plane-render.js?v=1195"))
+      .then(() => loadScriptOnce("plane-feed.js?v=1195"))
+      .then(() => loadScriptOnce("plane-ui.js?v=1195"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2305,15 +2317,15 @@
   function loadThreeOnce() {
     if (window.THREE) return Promise.resolve();
     if (threeLoadPromise) return threeLoadPromise;
-    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1174").catch((e) => { threeLoadPromise = null; throw e; });
+    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1195").catch((e) => { threeLoadPromise = null; throw e; });
     return threeLoadPromise;
   }
   function ensureSlots3dLoaded() {
     if (window.Slots3D) return Promise.resolve(true);
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("slots3d-engine.js?v=1174"))
-      .then(() => loadScriptOnce("slots3d.js?v=1174"))
+      .then(() => loadScriptOnce("slots3d-engine.js?v=1195"))
+      .then(() => loadScriptOnce("slots3d.js?v=1195"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2355,8 +2367,8 @@
     if (window.FishTable) return Promise.resolve(true);
     if (fishLoadPromise) return fishLoadPromise;
     fishLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishtable-engine.js?v=1174"))
-      .then(() => loadScriptOnce("fishtable.js?v=1174"))
+      .then(() => loadScriptOnce("fishtable-engine.js?v=1195"))
+      .then(() => loadScriptOnce("fishtable.js?v=1195"))
       .then(() => true)
       .catch((e) => { fishLoadPromise = null; throw e; });
     return fishLoadPromise;
@@ -2431,13 +2443,166 @@
     settle();
   }
 
+  // ── Sky Swoop (CH 18, key "swoop"): PlayCanvas 3D biplane CRASH game, play-money/demo.
+  //    Renderer swoop3d.js (PlayCanvas) reuses the AUDITED crash-engine.js for the
+  //    provably-fair bust point (1% edge) — the flying is purely cosmetic. ──
+  function ensureSwoopLoaded() {
+    if (window.SwoopGame) return Promise.resolve(true);
+    if (swoopLoadPromise) return swoopLoadPromise;
+    swoopLoadPromise = loadPlayCanvasOnce()
+      .then(() => loadScriptOnce("swoop3d.js?v=1195"))
+      .then(() => true)
+      .catch((e) => { swoopLoadPromise = null; throw e; });
+    return swoopLoadPromise;
+  }
+  function buildSwoop() {
+    if (swoopGame || !window.SwoopGame) return swoopGame;
+    const el = (id) => $(id);
+    const mount = $("swoop-stage"); if (!mount) return null;
+    const go = el("swoop-go"), mult = el("swoop-mult");
+    const usd = (n) => "$" + (Math.round((+n || 0) * 100) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const launchLabel = () => "LAUNCH  " + usd(swoopGame.unitBet);
+    swoopGame = new window.SwoopGame({
+      mount, width: 960, height: 600, ethUsd: ethUsd, initialBalance: demoUsd,
+      onBalance: (b) => { demoUsd = Math.round(b * 100) / 100; demoSave(); demoPaint(); }, // demo play-money
+      onWin: (i) => setLastResult({ won: true, game: "Sky Swoop", emoji: "✈️", amountUsd: i.profitUsd, detail: i.mult ? i.mult.toFixed(2) + "× cash-out" : "cash-out" }),
+      onTick: (m) => { if (mult) mult.textContent = m.toFixed(2) + "x"; },
+      onState: (s) => {
+        if (mult) mult.classList.remove("win", "bust");
+        if (s.state === "idle") { if (mult) mult.textContent = ""; if (go) { go.textContent = launchLabel(); go.className = "swoop-go"; } }
+        else if (s.state === "climbing") { if (go) { go.textContent = "CASH OUT"; go.className = "swoop-go cash"; } }
+        else if (s.state === "cashed") { if (mult) { mult.classList.add("win"); mult.textContent = s.mult.toFixed(2) + "x"; } if (go) { go.textContent = "✓ +" + usd(s.won); go.className = "swoop-go dead"; } }
+        else if (s.state === "crashed") { if (mult) { mult.classList.add("bust"); mult.textContent = "BUST @ " + (s.bust || s.mult).toFixed(2) + "x"; } if (go) { go.textContent = "💥 CRASHED"; go.className = "swoop-go dead"; } }
+      },
+      els: { fsBtn: el("swoop-fs") },
+    });
+    { const b = el("swoop-bet"), bv = el("swoop-bet-val"); if (b) b.addEventListener("input", () => { swoopGame.setBet(parseFloat(b.value) || 10); if (bv) bv.textContent = usd(swoopGame.unitBet).replace(".00", ""); if (swoopGame._state === "idle" && go) go.textContent = launchLabel(); }); }
+    // the single one-action button: LAUNCH when idle, CASH OUT while climbing
+    if (go) go.addEventListener("click", () => { if (swoopGame._state === "idle") swoopGame.launch(); else if (swoopGame._state === "climbing") swoopGame.cashOut(); });
+    try { swoopGame.setFullscreenTarget($("layer-swoop")); } catch (e) {}
+    { const fb = $("swoop-fs"); if (fb) fb.addEventListener("click", () => { try { swoopGame.toggleFullscreen($("layer-swoop")); } catch (e) {} }); }
+    { const fx = $("swoop-fs-exit"); if (fx) fx.addEventListener("click", () => { try { swoopGame.toggleFullscreen($("layer-swoop")); } catch (e) {} }); }
+    setupSwoopTiltFullscreen();
+    try { window.__swoop = swoopGame; } catch (e) {} // debug/support handle
+    return swoopGame;
+  }
+  function setupSwoopTiltFullscreen() {
+    if (setupSwoopTiltFullscreen.done) return;
+    setupSwoopTiltFullscreen.done = true;
+    const isMobile = () => /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (window.matchMedia && window.matchMedia("(max-width: 900px)").matches);
+    const isLandscape = () => window.matchMedia ? window.matchMedia("(orientation: landscape)").matches : window.innerWidth > window.innerHeight;
+    const sync = () => { if (!swoopGame || currentGame !== "swoop" || !isMobile()) return; try { swoopGame.autoFullscreen(isLandscape(), $("layer-swoop")); } catch (e) {} };
+    const afterTilt = () => [80, 220, 520, 900].forEach((ms) => setTimeout(sync, ms));
+    window.addEventListener("orientationchange", afterTilt, { passive: true });
+    window.addEventListener("resize", afterTilt, { passive: true });
+    document.addEventListener("visibilitychange", sync);
+    setTimeout(sync, 0);
+  }
+  function ensureSwoopReady() {
+    let kicked = 0;
+    const boot = () => ensureSwoopLoaded().then(() => {
+      const g = buildSwoop(); if (!g) return;
+      g.setActive(true); g.setEthUsd(ethUsd);
+      if (demoOn) g.setBalance(demoUsd); g.setEnabled(true); // play-money: always enabled
+      setupSwoopTiltFullscreen();
+    }).catch(() => { swoopLoadPromise = null; });
+    boot();
+    let tries = 0;
+    const settle = () => {
+      if (currentGame !== "swoop") return; // user navigated away — stop
+      const promo = !!(window.TV && TV._promoPlaying);
+      const canvas = document.querySelector("#swoop-stage canvas");
+      if (window.TV && !promo) { try { TV.idle(); } catch (e) {} }
+      if (canvas && window.TV && TV._phase === "swoop") return;     // revealed — done
+      if (!promo) {
+        tries++;
+        if (!canvas && tries === 12 && kicked < 2) { kicked++; swoopLoadPromise = null; boot(); }
+        if (tries >= 44 && kicked >= 2 && !canvas) { toast("Couldn't load Sky Swoop — tap the channel again", "err"); return; }
+      }
+      if (tries < 48) setTimeout(settle, 200);
+    };
+    settle();
+  }
+
+  // ── Fish Shooter (CH 19, key "fishshooter"): PixiJS top-down fish-table with the
+  //    Grok-generated animated art pack, play-money/demo. Reuses fishtable-engine.js
+  //    UNCHANGED for the money/RTP (same engine as Reef Raiders). ──
+  function ensureFishShooterLoaded() {
+    if (window.FishShooter) return Promise.resolve(true);
+    if (fishshooterLoadPromise) return fishshooterLoadPromise;
+    fishshooterLoadPromise = loadPixiOnce()
+      .then(() => loadScriptOnce("fishtable-engine.js?v=1195"))
+      .then(() => loadScriptOnce("fishshooter.js?v=1195"))
+      .then(() => true)
+      .catch((e) => { fishshooterLoadPromise = null; throw e; });
+    return fishshooterLoadPromise;
+  }
+  function buildFishShooter() {
+    if (fishshooterGame || !window.FishShooter) return fishshooterGame;
+    const el = (id) => $(id);
+    const mount = $("fishshooter-stage"); if (!mount) return null;
+    fishshooterGame = new window.FishShooter({
+      mount, ethUsd: ethUsd, initialBalance: demoUsd,
+      onBalance: (b) => { demoUsd = Math.round(b * 100) / 100; demoSave(); demoPaint(); },
+      onWin: (i) => setLastResult({ won: true, game: "Fish Shooter", emoji: "🎣", amountUsd: i.profitUsd, detail: i.bonus ? "bonus" : (i.mult ? Math.round(i.mult) + "× catch" : "big catch") }),
+      els: {
+        betSlider: el("fsh-bet"), betVal: el("fsh-bet-val"), cost: el("fsh-cost"), power: el("fsh-power"),
+        powerUp: el("fsh-pup"), powerDown: el("fsh-pdn"), autoBtn: el("fsh-auto"), lockBtn: el("fsh-lock"), fsBtn: el("fsh-fs"),
+      },
+    });
+    try { fishshooterGame.setFullscreenTarget($("layer-fishshooter")); } catch (e) {}
+    { const fb = $("fsh-fs"); if (fb) fb.addEventListener("click", () => { try { fishshooterGame.toggleFullscreen($("layer-fishshooter")); } catch (e) {} }); }
+    { const fx = $("fsh-fs-exit"); if (fx) fx.addEventListener("click", () => { try { fishshooterGame.toggleFullscreen($("layer-fishshooter")); } catch (e) {} }); }
+    setupFishShooterTiltFullscreen();
+    try { window.__fshoot = fishshooterGame; } catch (e) {}
+    return fishshooterGame;
+  }
+  function setupFishShooterTiltFullscreen() {
+    if (setupFishShooterTiltFullscreen.done) return;
+    setupFishShooterTiltFullscreen.done = true;
+    const isMobile = () => /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (window.matchMedia && window.matchMedia("(max-width: 900px)").matches);
+    const isLandscape = () => window.matchMedia ? window.matchMedia("(orientation: landscape)").matches : window.innerWidth > window.innerHeight;
+    const sync = () => { if (!fishshooterGame || currentGame !== "fishshooter" || !isMobile()) return; try { fishshooterGame.autoFullscreen(isLandscape(), $("layer-fishshooter")); } catch (e) {} };
+    const afterTilt = () => [80, 220, 520, 900].forEach((ms) => setTimeout(sync, ms));
+    window.addEventListener("orientationchange", afterTilt, { passive: true });
+    window.addEventListener("resize", afterTilt, { passive: true });
+    document.addEventListener("visibilitychange", sync);
+    setTimeout(sync, 0);
+  }
+  function ensureFishShooterReady() {
+    let kicked = 0;
+    const boot = () => ensureFishShooterLoaded().then(() => {
+      const g = buildFishShooter(); if (!g) return;
+      g.setActive(true); g.setEthUsd(ethUsd);
+      if (demoOn) g.setBalance(demoUsd); g.setEnabled(true);
+      try { g._resize(); } catch (e) {}
+      setupFishShooterTiltFullscreen();
+    }).catch(() => { fishshooterLoadPromise = null; });
+    boot();
+    let tries = 0;
+    const settle = () => {
+      if (currentGame !== "fishshooter") return;
+      const promo = !!(window.TV && TV._promoPlaying);
+      const canvas = document.querySelector("#fishshooter-stage canvas");
+      if (window.TV && !promo) { try { TV.idle(); } catch (e) {} }
+      if (canvas && window.TV && TV._phase === "fishshooter") { try { fishshooterGame && fishshooterGame._resize(); } catch (e) {} return; }
+      if (!promo) {
+        tries++;
+        if (!canvas && tries === 12 && kicked < 2) { kicked++; fishshooterLoadPromise = null; boot(); }
+        if (tries >= 44 && kicked >= 2 && !canvas) { toast("Couldn't load Fish Shooter — tap the channel again", "err"); return; }
+      }
+      if (tries < 48) setTimeout(settle, 200);
+    };
+    settle();
+  }
+
   // ── Coin Flip (CH 8): premium Three.js 3D coin. Lazy-loaded; the CSS coin is
   //    the fallback if WebGL/Three isn't available. tv.js drives it via TV._coin3d.
   function loadCoinFlip3dOnce() {
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1174"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1195"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -2464,7 +2629,7 @@
   function loadRail3dOnce() {
     if (window.Rail3D) return Promise.resolve(true);
     if (rail3dLoadPromise) return rail3dLoadPromise;
-    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1174")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
+    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1195")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
     return rail3dLoadPromise;
   }
   function buildRail3d() {
@@ -2485,7 +2650,7 @@
   function loadDice2_3dOnce() {
     if (window.TwoDice3D) return Promise.resolve(true);
     if (d2_3dLoadPromise) return d2_3dLoadPromise;
-    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1174")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
+    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1195")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
     return d2_3dLoadPromise;
   }
   function buildDice2_3d() {
@@ -2614,6 +2779,8 @@
     if (planeGame) try { planeGame.setEthUsd(ethUsd); if (demoOn) planeGame.setBalance(demoUsd); } catch (e) {}
     if (slots3dGame) try { slots3dGame.setEthUsd(ethUsd); if (demoOn) slots3dGame.setBalance(demoUsd); } catch (e) {}
     if (fishGame) try { fishGame.setEthUsd(ethUsd); if (demoOn) fishGame.setBalance(demoUsd); } catch (e) {}
+    if (swoopGame) try { swoopGame.setEthUsd(ethUsd); if (demoOn) swoopGame.setBalance(demoUsd); } catch (e) {}
+    if (fishshooterGame) try { fishshooterGame.setEthUsd(ethUsd); if (demoOn) fishshooterGame.setBalance(demoUsd); } catch (e) {}
     try {
       setupSliders();
       if (currentGame === "dice") diceReadouts();
@@ -2647,6 +2814,8 @@
     if (planeGame) { planeGame.setMode("demo"); planeGame.setBalance(demoUsd); planeGame.setEnabled(true); }
     if (slots3dGame) { slots3dGame.setBalance(demoUsd); slots3dGame.setEnabled(true); }
     if (fishGame) { fishGame.setBalance(demoUsd); fishGame.setEnabled(true); }
+    if (swoopGame) { swoopGame.setBalance(demoUsd); swoopGame.setEnabled(true); }
+    if (fishshooterGame) { fishshooterGame.setBalance(demoUsd); fishshooterGame.setEnabled(true); }
     demoSyncBalance();
   }
   function exitDemo() {
@@ -2669,6 +2838,8 @@
     if (pressureGame) { pressureGame.setBalance(demoUsd); pressureGame.setEnabled(true); }
     if (slots3dGame) { slots3dGame.setBalance(demoUsd); slots3dGame.setEnabled(true); }
     if (fishGame) { fishGame.setBalance(demoUsd); fishGame.setEnabled(true); }
+    if (swoopGame) { swoopGame.setBalance(demoUsd); swoopGame.setEnabled(true); }
+    if (fishshooterGame) { fishshooterGame.setBalance(demoUsd); fishshooterGame.setEnabled(true); }
     // Plane DOES have a real-money mode → keep it, switch to single-shot real.
     document.body.classList.add("plane-real");
     if (planeGame) { planeGame.setMode("real"); planeGame.setBalance(weiToUsd(gameWei)); planeGame.setEnabled(!!(account && contract)); }
@@ -2792,9 +2963,9 @@
 
   // ── Game switcher ("change the channel") ──
   // Poker is temporarily disabled (hidden from the channel bar) — to be revisited.
-  const GAME_CHANNEL = { flip: 8, dice: 9, twodice: 10, crash: 11, pressure: 13, plane: 14, slots3d: 15, blackjack: 16, fish: 17 };
-  const GAME_TITLE = { flip: "CRYPTO TV FLIP", dice: "CRYPTO TV 0-100", twodice: "CRYPTO TV DICE #2", crash: "CRYPTO TV CRASH", pressure: "BALLOON POP", plane: "CRYPTO TV PLANE", slots3d: "GEM VAULT", blackjack: "BLACKJACK", fish: "REEF RAIDERS" };
-  const GAME_ORDER = ["flip", "dice", "twodice", "crash", "pressure", "plane", "slots3d", "fish", "blackjack"];
+  const GAME_CHANNEL = { flip: 8, dice: 9, twodice: 10, crash: 11, pressure: 13, plane: 14, slots3d: 15, blackjack: 16, fish: 17, swoop: 18, fishshooter: 19 };
+  const GAME_TITLE = { flip: "CRYPTO TV FLIP", dice: "CRYPTO TV 0-100", twodice: "CRYPTO TV DICE #2", crash: "CRYPTO TV CRASH", pressure: "BALLOON POP", plane: "CRYPTO TV PLANE", slots3d: "GEM VAULT", blackjack: "BLACKJACK", fish: "REEF RAIDERS", swoop: "SKY SWOOP", fishshooter: "FISH SHOOTER" };
+  const GAME_ORDER = ["flip", "dice", "twodice", "crash", "pressure", "plane", "slots3d", "fish", "fishshooter", "blackjack"]; // Sky Swoop hidden for now
   function paintGameTabs(game) {
     document.body.classList.toggle("game-dice", game === "dice");
     document.body.classList.toggle("game-twodice", game === "twodice");
@@ -2804,6 +2975,8 @@
     document.body.classList.toggle("game-plane", game === "plane");
     document.body.classList.toggle("game-slots3d", game === "slots3d");
     document.body.classList.toggle("game-fish", game === "fish");
+    document.body.classList.toggle("game-swoop", game === "swoop");
+    document.body.classList.toggle("game-fishshooter", game === "fishshooter");
     document.body.classList.toggle("game-blackjack", game === "blackjack");
     document.body.classList.toggle("game-poker", game === "poker"); // CSS hides the TV layout, shows #poker-view
     const bar = $("game-nav"); if (bar) bar.dataset.game = game;
@@ -2830,6 +3003,8 @@
     if (game !== "plane" && planeGame) planeGame.setActive(false);
     if (game !== "slots3d" && slots3dGame) slots3dGame.setActive(false);
     if (game !== "fish" && fishGame) fishGame.setActive(false);
+    if (game !== "swoop" && swoopGame) swoopGame.setActive(false);
+    if (game !== "fishshooter" && fishshooterGame) fishshooterGame.setActive(false);
     if (game !== "flip" && coinFlip3d) coinFlip3d.setActive(false);
     if (game !== "dice" && rail3d) rail3d.setActive(false);
     if (game !== "twodice" && d2_3d) d2_3d.setActive(false);
@@ -2848,6 +3023,8 @@
     else if (game === "plane") { refreshDiceHouse(); ensurePlaneReady(); }
     else if (game === "slots3d") { ensureSlots3dReady(); }
     else if (game === "fish") { ensureFishReady(); }
+    else if (game === "swoop") { ensureSwoopReady(); }
+    else if (game === "fishshooter") { ensureFishShooterReady(); }
     else if (game === "blackjack") { ensureBlackjackReady(); }
   }
   // ── Blackjack channel (CH 16): the live felt runs in an isolated iframe (its own
@@ -2914,7 +3091,7 @@
     if (f && !f.getAttribute("src")) {
       // No &bal= seed — the table starts from its own server default ($1,000), NOT the demo balance.
       const tableWallet = account || bjGuestId();
-      let src = "blackjack.html?tv=1&v=1174&guest=" + encodeURIComponent(tableWallet);
+      let src = "blackjack.html?tv=1&v=1195&guest=" + encodeURIComponent(tableWallet);
       let tokenHash = "";
       if (account) { try { const tok = localStorage.getItem(bjBridgeTokenKey()) || ""; if (tok) tokenHash = "#bjtoken=" + encodeURIComponent(tok); } catch {} }
       if (bjPendingTable) { src += "&table=" + encodeURIComponent(bjPendingTable); bjPendingTable = null; }
@@ -3271,6 +3448,7 @@
     initPoker();
     // restore the last-played game silently (no CRT animation on load)
     let saved = "flip"; try { saved = localStorage.getItem("ctf_game") || "flip"; } catch {}
+    if (saved === "swoop") saved = "flip"; // Sky Swoop hidden for now — don't restore onto it
     // A shared link (?game=blackjack[&bjtable=…]) drops you straight onto that channel/table.
     try {
       const qp = new URLSearchParams(location.search);
@@ -3298,6 +3476,8 @@
     // never built and the loading screen hangs forever — the only recovery was
     // switching channels and back. THIS is the "reef stuck on loading after refresh" bug.
     if (saved === "fish") ensureFishReady();
+    if (saved === "swoop") ensureSwoopReady(); // build the PlayCanvas biplane on reload too
+    if (saved === "fishshooter") ensureFishShooterReady(); // build the Fish Shooter on reload too
     if (saved === "flip") ensureCoinFlip3dReady(); // build the 3D coin on reload too
     if (saved === "dice") ensureDice3dReady();     // build the 0-100 neon rail on reload too
     if (saved === "twodice") ensureDice2_3dReady(); // build the 3D dice on reload too
