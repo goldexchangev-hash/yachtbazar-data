@@ -168,6 +168,10 @@ function makeTokenService(opts) {
     const txKey = txHash.toLowerCase();
     if (usedBuyIns.has(txKey)) throw new Error("buy-in transaction was already used");
     const buyInWei = positiveWei(body && body.buyInWei, "buy-in");
+    // Don't grant tokens at a guessed price: if the live ETH/USD hasn't synced yet (cold start),
+    // the wei→token valuation would use the stale fallback and inflate the grant (~2x). Make the
+    // player retry a moment later instead of crediting the wrong amount.
+    if (opts.ethUsdReady && !opts.ethUsdReady()) throw new Error("price is still syncing — try the buy-in again in a few seconds");
     verifyWalletSignature("start", body, { player, contract, chainId, buyInWei: buyInWei.toString() });
     const proof = await verifyBuyIn({ txHash, player, contract, chainId, buyInWei });
     const lockedWei = BigInt(proof.lockedWei);
