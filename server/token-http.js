@@ -100,6 +100,18 @@ function makeOnChainVerifier(rpcUrlFor, minConfirmations) {
   };
 }
 
+// Read a wallet's current on-chain bjLocked (for stranded-lock recovery). Injectable for tests.
+function makeBjLockedReader(rpcUrlFor) {
+  return async function readBjLocked(contract, chainId, player) {
+    const url = rpcUrlFor(chainId);
+    if (!url) throw new Error("bridge RPC not configured");
+    const fr = new ethers.FetchRequest(url); fr.timeout = 12000;
+    const provider = new ethers.JsonRpcProvider(fr, undefined, { staticNetwork: true });
+    const c = new ethers.Contract(contract, BUYIN_ABI, provider);
+    return BigInt((await c.bjLocked(player)).toString());
+  };
+}
+
 /**
  * Build the token service (pure-ish orchestration — no Express). Testable directly.
  * opts: { signer:{sign}, verifyBuyIn(o)->{lockedWei}, ethUsd():number, persist, now():number }
@@ -108,6 +120,7 @@ function makeTokenService(opts) {
   opts = opts || {};
   const ethUsdFn = typeof opts.ethUsd === "function" ? opts.ethUsd : () => Number(opts.ethUsd) || 3400;
   const verifyBuyIn = opts.verifyBuyIn || makeOnChainVerifier(opts.rpcUrlFor || (() => ""), opts.minConfirmations || 1);
+  const readBjLocked = opts.readBjLocked || makeBjLockedReader(opts.rpcUrlFor || (() => ""));
 
   // ── durable replay guard + open-session map ──────────────────────────────
   // A restart MUST preserve usedBuyIns (so a confirmed buy-in tx can never re-fund a
@@ -286,6 +299,26 @@ function makeTokenService(opts) {
     return settlement; // includes netWei, signature, serverSeedReveal (now safe), commit
   }
 
+  // Recover a STRANDED on-chain lock — a session the server no longer has (e.g. lost on a restart
+  // before a durable disk was mounted). The PLAYER signs to prove ownership; the house signs a
+  // net=0 settlement so settleBlackjack returns EXACTLY the locked principal to their balance (no
+  // P&L, no house gain/loss). REFUSED while an open session exists (those settle normally), so this
+  // can never be used to escape a losing active session — only to unwind a truly orphaned lock.
+  async function doRelease(body) {
+    const player = address(body && body.player, "player");
+    const contract = address(body && body.contract, "contract");
+    const chainId = Number(body && body.chainId);
+    if (!Number.isSafeInteger(chainId) || chainId <= 0) throw new Error("chain id is invalid");
+    verifyWalletSignature("release", body, { player, contract, chainId });
+    if (openByPlayer.has(player)) throw new Error("you have an active token session — cash out normally instead of recovering");
+    const lockedWei = await readBjLocked(contract, chainId, player);
+    if (!(lockedWei > 0n)) throw new Error("no locked funds found for this wallet");
+    if (!opts.signer || !opts.signer.sign) throw new Error("signer not configured");
+    const nonce = BigInt("0x" + crypto.randomBytes(16).toString("hex")).toString(); // fresh settle nonce
+    const signature = await opts.signer.sign(player, 0n, nonce, chainId, contract);
+    return { ok: true, netWei: "0", nonce, signature, lockedWei: lockedWei.toString() };
+  }
+
   function status() { return { ok: true, enabled: true, signerAddress: (opts.signerAddress ? opts.signerAddress() : null), ethUsd: (opts.ethUsd ? opts.ethUsd() : null), games: bridge.games(), model: "server commit-reveal token bridge (no VRF)" }; }
 
   // Owner-facing AGGREGATE of every OPEN token session — so the house can see its live
@@ -323,7 +356,7 @@ function makeTokenService(opts) {
     return bridge.session(sid) || null;
   }
 
-  return { doStart, doPlay, doTopUp, doSettle, doSession, status, houseState, verifySession, _bridge: bridge };
+  return { doStart, doPlay, doTopUp, doSettle, doSession, doRelease, status, houseState, verifySession, _bridge: bridge };
 }
 
 // Wire the service onto an Express app, behind a flag. Live demo is untouched.
@@ -346,6 +379,7 @@ function attachTokenBridge(app, opts) {
   app.post("/api/token/play", (req, res) => { if (!guard(res)) return; try { res.json(svc.doPlay(req.body || {})); } catch (e) { fail(res, e); } });
   app.post("/api/token/topup", async (req, res) => { if (!guard(res)) return; try { res.json(await svc.doTopUp(req.body || {})); } catch (e) { fail(res, e); } });
   app.post("/api/token/settle", async (req, res) => { if (!guard(res)) return; try { res.json(await svc.doSettle(req.body || {})); } catch (e) { fail(res, e); } });
+  app.post("/api/token/release", async (req, res) => { if (!guard(res)) return; try { res.json(await svc.doRelease(req.body || {})); } catch (e) { fail(res, e); } });
   return svc;
 }
 
@@ -425,6 +459,19 @@ if (require.main === module) {
     eq("top-up rejects a reused txHash", topReused === 1);
     let topBadTok = 0; try { await svc.doTopUp({ ...topBody, sessionToken: "nope", txHash: "0x" + "1".repeat(64) }); } catch (e) { topBadTok = 1; }
     eq("top-up rejects a wrong session token", topBadTok === 1);
+
+    // RELEASE (stranded-lock recovery): house signs a net=0 settlement returning the locked principal.
+    const relSvc = makeTokenService({ signer, ethUsd: () => 4000, verifyBuyIn: async (o) => ({ lockedWei: o.buyInWei }), readBjLocked: async () => lockedWei });
+    const relw = ethers.Wallet.createRandom(); const relp = relw.address;
+    const relSig = await relw.signMessage(tokenAuthMessage("release", { player: relp, contract, chainId }));
+    const rel = await relSvc.doRelease({ player: relp, contract, chainId, signature: relSig });
+    eq("release signs a net=0 settlement for the locked principal", rel.netWei === "0" && BigInt(rel.lockedWei) === lockedWei);
+    const relRec = ethers.verifyMessage(ethers.getBytes(settlementHash(relp, 0n, BigInt(rel.nonce), chainId, contract)), rel.signature);
+    eq("release settlement recovers to the house signer", relRec === house.address);
+    let relNone = 0; try { const s0 = makeTokenService({ signer, ethUsd: () => 4000, verifyBuyIn: async (o) => ({ lockedWei: o.buyInWei }), readBjLocked: async () => 0n }); const sig0 = await relw.signMessage(tokenAuthMessage("release", { player: relp, contract, chainId })); await s0.doRelease({ player: relp, contract, chainId, signature: sig0 }); } catch (e) { relNone = 1; }
+    eq("release rejects when nothing is locked", relNone === 1);
+    let relBadSig = 0; try { await relSvc.doRelease({ player: relp, contract, chainId, signature: "0x" + "0".repeat(130) }); } catch (e) { relBadSig = 1; }
+    eq("release rejects a bad signature", relBadSig === 1);
 
     // settle: wallet sig required, net pinned to lockedWei, signature recovers to house
     const settleSig = await sign("settle", { player, contract, chainId, sessionId: started.sessionId });

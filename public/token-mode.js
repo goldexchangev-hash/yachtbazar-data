@@ -116,6 +116,23 @@
     // Let games push a one-off message through the same toast pipe.
     notify: function (msg, kind) { note(msg, kind); },
 
+    // Recover a stranded on-chain lock (a session the server forgot) back to your game credits.
+    releaseStuck: async function () {
+      if (busy) return;
+      if (!client) return note("Connect your wallet first", "err");
+      busy = true; render();
+      try {
+        note("Recovering your locked funds…", "ok");
+        var r = await client.releaseStuck();
+        var eth = Number(r.lockedWei) / 1e18;
+        note("Released " + eth.toFixed(4) + " ETH back to your game credits ✅", "ok");
+        _clearSession();
+        changed();
+      } catch (e) {
+        note(friendly(e), "err");
+      } finally { busy = false; render(); }
+    },
+
     // Top up an OPEN session: lock MORE game credits → more tokens, without cashing out. For when
     // you run dry mid-game (e.g. $2 tokens but $14/shot) and want to keep playing immediately.
     topUp: async function (amountUsd) {

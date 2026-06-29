@@ -137,6 +137,17 @@
     return settled;
   };
 
+  // RECOVER a STRANDED lock: the server signs a net=0 settlement (returns the locked principal to
+  // THIS wallet's balance); we submit settleBlackjack. The server refuses if an open session exists.
+  TokenBridgeClient.prototype.releaseStuck = async function () {
+    const d = this.d, player = d.account, contract = d.contractAddr, chainId = Number(d.chainId);
+    const signature = await d.signer.signMessage(tokenAuthMessage("release", { player, contract, chainId }, d.ethers.getAddress));
+    const r = await this._post("/api/token/release", { player, contract, chainId, signature });
+    const tx = await d.contract.settleBlackjack(player, BigInt(r.netWei), BigInt(r.nonce), r.signature, { gasLimit: 200000n });
+    const receipt = await tx.wait();
+    return { ...r, claimTx: receipt.hash };
+  };
+
   const API = { TokenBridgeClient: TokenBridgeClient, tokenAuthMessage: tokenAuthMessage };
   if (typeof module !== "undefined" && module.exports) module.exports = API;
   root.TokenBridgeClient = TokenBridgeClient;
