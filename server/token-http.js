@@ -226,6 +226,18 @@ function makeTokenService(opts) {
     return { ok: true, ...r }; // NOTE: never includes serverSeed — only the commit is exposed pre-settle
   }
 
+  // Resume after a page refresh: verify the (sessionId, bearer) pair and return the live balance so
+  // the client can RECONNECT to an existing open session instead of orphaning it. Returns
+  // { ok:false } if the server no longer has it (so the client clears its stale local copy cleanly).
+  function doSession(q) {
+    const sessionId = String((q && q.sessionId) || "");
+    const token = String((q && q.sessionToken) || "");
+    if (!token || tokenForSession.get(sessionId) !== token) return { ok: false };
+    const s = bridge.session(sessionId);
+    if (!s || s.closed) return { ok: false };
+    return { ok: true, sessionId: s.id, tokens: s.tokens, buyInUnits: s.buyInUnits, commit: s.commit };
+  }
+
   // TOP UP an OPEN session without cashing out: the player locked MORE on-chain (a second
   // blackjackBuyIn, which ACCUMULATES bjLocked) → verify that new lock tx + add its value to the
   // session's principal + tokens. Reuses the SAME on-chain verifier + replay guard as start.
@@ -311,7 +323,7 @@ function makeTokenService(opts) {
     return bridge.session(sid) || null;
   }
 
-  return { doStart, doPlay, doTopUp, doSettle, status, houseState, verifySession, _bridge: bridge };
+  return { doStart, doPlay, doTopUp, doSettle, doSession, status, houseState, verifySession, _bridge: bridge };
 }
 
 // Wire the service onto an Express app, behind a flag. Live demo is untouched.
@@ -329,6 +341,7 @@ function attachTokenBridge(app, opts) {
     signerAddress: (function () { try { return opts.signerAddress ? opts.signerAddress() : null; } catch (e) { return null; } })(),
   }));
   app.get("/api/token/house-state", (req, res) => { if (!guard(res)) return; try { res.json(svc.houseState()); } catch (e) { fail(res, e); } });
+  app.get("/api/token/session", (req, res) => { if (!guard(res)) return; try { res.json(svc.doSession(req.query || {})); } catch (e) { fail(res, e); } });
   app.post("/api/token/start", async (req, res) => { if (!guard(res)) return; try { res.json(await svc.doStart(req.body || {})); } catch (e) { fail(res, e); } });
   app.post("/api/token/play", (req, res) => { if (!guard(res)) return; try { res.json(svc.doPlay(req.body || {})); } catch (e) { fail(res, e); } });
   app.post("/api/token/topup", async (req, res) => { if (!guard(res)) return; try { res.json(await svc.doTopUp(req.body || {})); } catch (e) { fail(res, e); } });
@@ -394,6 +407,11 @@ if (require.main === module) {
     let leaked = false;
     for (let i = 0; i < 50; i++) { const r = svc.doPlay({ sessionId: started.sessionId, sessionToken: started.sessionToken, game: "coinflip", betUnits: 10, params: { side: i % 2 }, clientSeed: "c" + i }); if (r.serverSeed) leaked = true; }
     eq("play never leaks the serverSeed", !leaked);
+
+    // RESUME (page-refresh reconnect): a valid (sessionId, bearer) returns the live balance; a bad one doesn't.
+    const resumeOk = svc.doSession({ sessionId: started.sessionId, sessionToken: started.sessionToken });
+    eq("resume verifies a live session (returns tokens)", resumeOk.ok === true && typeof resumeOk.tokens === "number");
+    eq("resume rejects a wrong bearer", svc.doSession({ sessionId: started.sessionId, sessionToken: "nope" }).ok === false);
 
     // TOP UP: a second on-chain lock adds tokens to the SAME open session (no cash-out needed)
     const topTx = "0x" + "f".repeat(64);

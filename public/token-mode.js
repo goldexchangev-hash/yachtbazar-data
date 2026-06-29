@@ -26,6 +26,14 @@
   function note(msg, kind) { try { deps && deps.toast ? deps.toast(msg, kind || "ok") : console.log(msg); } catch (e) {} }
   function changed() { try { deps && deps.onChange && deps.onChange(); } catch (e) {} render(); }
 
+  // Remember the open session across a page REFRESH so we can reconnect to it (the server still has
+  // it) instead of orphaning a funded session. Scoped to the account so we never restore a session
+  // for a different wallet. (Testnet-acceptable: the bearer in localStorage is bounded by the lock.)
+  var SKEY = "ctf_token_session";
+  function _saveSession() { try { if (client && client.session) localStorage.setItem(SKEY, JSON.stringify({ sessionId: client.session.sessionId, sessionToken: client.session.sessionToken, account: (deps && deps.account) || "" })); } catch (e) {} }
+  function _clearSession() { try { localStorage.removeItem(SKEY); } catch (e) {} }
+  function _loadSession() { try { return JSON.parse(localStorage.getItem(SKEY) || "null"); } catch (e) { return null; } }
+
   var TokenMode = {
     // Called by app.js right after a successful wallet connect (and on disconnect with null).
     init: function (d) {
@@ -35,6 +43,14 @@
       render();
       // Probe the server flag once so the UI knows whether to offer token play.
       if (client) client.status().then(function (s) { enabled = !!(s && s.enabled); render(); }).catch(function () { enabled = false; render(); });
+      // Reconnect to a session that survived a page refresh (the server still has it) — or clear it
+      // cleanly if the server lost it (so we never show ghost tokens after a refresh).
+      try {
+        var saved = _loadSession();
+        if (client && saved && saved.account && d.account && String(saved.account).toLowerCase() === String(d.account).toLowerCase()) {
+          client.resume(saved).then(function (okk) { if (okk) changed(); else _clearSession(); }).catch(function () {});
+        } else if (saved) { _clearSession(); }
+      } catch (e) {}
     },
 
     available: function () { return !!client && enabled !== false; },
@@ -60,6 +76,9 @@
       if (busy) return;
       if (!client) return note("Connect your wallet first", "err");
       if (enabled === false) return note("Token games aren't enabled on the server yet", "err");
+      // The house wallet IS the bankroll/dealer — letting it buy in means betting against itself
+      // (no real win/loss) and locks the house's OWN credits into a self-play session. Block it.
+      if (deps.isHouseWallet && deps.isHouseWallet()) return note("You're the HOUSE wallet — switch to a player account in MetaMask to play with tokens (the house can't bet against itself).", "err");
       var usd = Math.round((+amountUsd || 0) * 100) / 100;
       if (!(usd > 0)) return note("Enter how much to buy in", "err");
       // blackjackBuyIn locks from your PRE-DEPOSITED game credits (not raw ETH), so make
@@ -73,6 +92,7 @@
         var r = await client.buyIn(amountWei);
         note("Bought in — " + fmt(r.tokens) + " tokens. Play any game, no more popups 🎟️", "ok");
         changed();
+        _saveSession(); // survive a page refresh
       } catch (e) {
         note(friendly(e), "err");
       } finally { busy = false; render(); }
@@ -101,6 +121,7 @@
     topUp: async function (amountUsd) {
       if (busy) return;
       if (!client) return note("Connect your wallet first", "err");
+      if (deps.isHouseWallet && deps.isHouseWallet()) return note("You're the HOUSE wallet — switch to a player account to play with tokens.", "err");
       if (!this.active()) return note("Buy in first, then you can top up", "err");
       var usd = Math.round((+amountUsd || 0) * 100) / 100;
       if (!(usd > 0)) return note("Enter how much to add", "err");
@@ -130,6 +151,7 @@
         var netEth = Number(s.netWei) / 1e18;
         note("Cashed out. Net " + (netEth >= 0 ? "+" : "") + netEth.toFixed(4) + " ETH claimed ✅", "ok");
         changed();
+        _clearSession();
       } catch (e) {
         note(friendly(e), "err");
       } finally { busy = false; render(); }
@@ -144,10 +166,18 @@
   function _betError(e) {
     var msg = (e && (e.shortMessage || e.message)) || "";
     var lost = /invalid session token|no such session|session is closed/i.test(msg);
+    if (lost) {
+      // The server lost this session (e.g. a restart on non-durable storage). Immediately clear the
+      // dead client session so the UI resets to "Buy in" instead of showing a STALE balance and
+      // erroring on every bet (the "$1,051 ghost tokens" problem). No reload needed.
+      try { if (client) { client.session = null; client.tokens = 0; } } catch (e2) {}
+      _clearSession();
+      changed();
+    }
     var now = (typeof Date !== "undefined" && Date.now) ? Date.now() : 0;
     if (now - _lastBetErrAt > 2500) {
       _lastBetErrAt = now;
-      if (lost) note("Your token session ended (the server restarted). Reload the page to keep playing — your locked funds are safe on-chain.", "err");
+      if (lost) note("Your token session ended (the server restarted) — buy in again to keep playing. Any locked funds stay on-chain.", "err");
       else if (/timed out|timeout|aborted|failed to fetch|network/i.test(msg)) note("Connection hiccup — that bet didn't go through. Try again.", "err");
       else note("Bet didn't settle: " + msg, "err");
     }
@@ -180,6 +210,13 @@
         '</div>';
       var tu = $("token-topup-btn"); if (tu) tu.onclick = function () { var v = parseFloat(($("token-topup") || {}).value); TokenMode.topUp(v); };
       var co = $("token-cashout"); if (co) co.onclick = function () { TokenMode.cashOut(); };
+    } else if (deps && deps.isHouseWallet && deps.isHouseWallet()) {
+      // House wallet = the bankroll/dealer. It must NOT play with tokens (betting against itself).
+      mount.innerHTML =
+        '<div class="token-bar">' +
+        '<span class="token-bal">🏠 You\'re the house wallet</span>' +
+        '<span class="token-hint">switch to a player account in MetaMask to play with tokens</span>' +
+        '</div>';
     } else {
       mount.innerHTML =
         '<div class="token-bar">' +

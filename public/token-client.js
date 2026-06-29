@@ -58,6 +58,27 @@
     return (await f((this.d.apiBase || "") + "/api/token/status", opts)).json();
   };
 
+  // RESUME: after a page refresh the in-memory session is gone, but the SERVER may still have it.
+  // Verify a saved (sessionId, bearer) and reconnect to it (returns true) instead of orphaning the
+  // funded session. Returns false if the server no longer has it (caller clears the stale local copy).
+  TokenBridgeClient.prototype.resume = async function (saved) {
+    if (!saved || !saved.sessionId || !saved.sessionToken) return false;
+    const f = this.d.fetch || root.fetch.bind(root);
+    const opts = {};
+    try { if (typeof AbortSignal !== "undefined" && AbortSignal.timeout) opts.signal = AbortSignal.timeout(10000); } catch (e) {}
+    let j = null;
+    try {
+      const res = await f((this.d.apiBase || "") + "/api/token/session?sessionId=" + encodeURIComponent(saved.sessionId) + "&sessionToken=" + encodeURIComponent(saved.sessionToken), opts);
+      j = await res.json().catch(() => null);
+    } catch (e) { return false; }
+    if (j && j.ok) {
+      this.session = { sessionId: saved.sessionId, sessionToken: saved.sessionToken, commit: j.commit, tokens: j.tokens, buyInUnits: j.buyInUnits };
+      this.tokens = j.tokens;
+      return true;
+    }
+    return false;
+  };
+
   // BUY IN: lock `amountWei` on-chain (ONE popup) → open a server token session.
   TokenBridgeClient.prototype.buyIn = async function (amountWei) {
     const d = this.d;
