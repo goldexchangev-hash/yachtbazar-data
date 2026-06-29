@@ -94,7 +94,9 @@ function makeOnChainVerifier(rpcUrlFor, minConfirmations) {
     const contract = new ethers.Contract(o.contract, BUYIN_ABI, provider);
     const currentLocked = BigInt((await contract.bjLocked(o.player)).toString());
     if (currentLocked < eventLocked) throw new Error("buy-in is no longer locked on-chain");
-    return { lockedWei: o.buyInWei };
+    // eventLocked = the player's TOTAL on-chain bjLocked right after this buy-in. Returned so the
+    // caller can detect a SECOND concurrent session (cross-session-drain guard).
+    return { lockedWei: o.buyInWei, eventLocked: eventLocked.toString() };
   };
 }
 
@@ -179,6 +181,13 @@ function makeTokenService(opts) {
     verifyWalletSignature("start", body, { player, contract, chainId, buyInWei: buyInWei.toString() });
     const proof = await verifyBuyIn({ txHash, player, contract, chainId, buyInWei });
     const lockedWei = BigInt(proof.lockedWei);
+    // CROSS-SESSION-DRAIN GUARD: the contract's bjLocked is ONE per-player accumulator shared with
+    // the on-chain blackjack bridge. If anything was already locked BEFORE this buy-in, the player
+    // has another open session (blackjack, or a stranded one) — opening a 2nd would let a single
+    // settlement claim the COMBINED lock. A token session always starts clean (openByPlayer already
+    // guarantees no other token session), so require a FRESH lock here. (Top-up: see doTopUp.)
+    if (proof.eventLocked != null && (BigInt(proof.eventLocked) - lockedWei) > 0n)
+      throw new Error("you have funds locked in another session — cash out / finish it before buying in");
     const buyInUnits = weiToUsd(lockedWei, ethUsdFn());
     if (!(buyInUnits > 0)) throw new Error("buy-in USD value is invalid");
 
@@ -221,6 +230,10 @@ function makeTokenService(opts) {
     verifyWalletSignature("topup", body, { player, contract, chainId, sessionId, buyInWei: addWei.toString() });
     const proof = await verifyBuyIn({ txHash, player, contract, chainId, buyInWei: addWei });
     const addLockedWei = BigInt(proof.lockedWei);
+    // CROSS-SESSION-DRAIN GUARD: the prior on-chain lock must be EXACTLY this session's current
+    // lock — anything more means a second (blackjack) session is mixed into bjLocked.
+    if (proof.eventLocked != null && s.lockedWei != null && (BigInt(proof.eventLocked) - addLockedWei) > BigInt(s.lockedWei))
+      throw new Error("an unexpected on-chain lock was found — top-up blocked for safety");
     const addUnits = weiToUsd(addLockedWei, ethUsdFn());
     if (!(addUnits > 0)) throw new Error("top-up USD value is invalid");
     const r = bridge.topUp({ sessionId, addUnits, addLockedWei: addLockedWei.toString() });
@@ -344,6 +357,15 @@ if (require.main === module) {
     // reused txHash rejected
     let reused = 0; try { await svc.doStart(startBody); } catch (e) { reused++; }
     eq("reused buy-in txHash rejected", reused === 1);
+
+    // CROSS-SESSION-DRAIN GUARD: a buy-in landing on a player who ALREADY has a prior on-chain lock
+    // (eventLocked > this buy-in) is rejected — else a single settle could claim the combined lock.
+    const svcG = makeTokenService({ signer, ethUsd: () => 4000, verifyBuyIn: async (o) => ({ lockedWei: o.buyInWei, eventLocked: (BigInt(o.buyInWei) * 2n).toString() }) });
+    const gw = ethers.Wallet.createRandom(); const gp = gw.address;
+    const gBody = { player: gp, contract, chainId, txHash: "0x" + "9".repeat(64), buyInWei: lockedWei.toString() };
+    gBody.signature = await gw.signMessage(tokenAuthMessage("start", { player: gp, contract, chainId, buyInWei: lockedWei.toString() }));
+    let drainGuard = 0; try { await svcG.doStart(gBody); } catch (e) { drainGuard = 1; }
+    eq("cross-session guard: rejects a buy-in stacked on a prior lock", drainGuard === 1);
 
     // play requires the session token
     let badtok = 0; try { svc.doPlay({ sessionId: started.sessionId, sessionToken: "nope", game: "coinflip", betUnits: 1 }); } catch (e) { badtok++; }

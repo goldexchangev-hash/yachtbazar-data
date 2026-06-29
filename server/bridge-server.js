@@ -171,7 +171,8 @@ async function verifyBuyIn(o) {
     const contract = new ethers.Contract(o.contract, BRIDGE_ABI, provider);
     const currentLocked = BigInt((await contract.bjLocked(o.player)).toString());
     if (currentLocked < eventLocked) throw new Error("buy-in is no longer locked on-chain");
-    return true;
+    // eventLocked = the player's TOTAL bjLocked right after this buy-in (cross-session-drain guard).
+    return { eventLocked: eventLocked.toString() };
   }
   throw new Error("buy-in event was not found in the transaction");
 }
@@ -242,11 +243,20 @@ function attachBridge(app, opts) {
         verifyBridgeSignature("start", req.body, { player, contract, chainId, buyInWei: buyInWei.toString() });
         const buyInUsd = buyInUsdFromWei(buyInWei);
         if (!(buyInUsd > 0)) throw new Error("buy-in USD value is invalid");
-        await verifyBuyIn({ txHash, player, contract, chainId, buyInWei });
+        const vb = await verifyBuyIn({ txHash, player, contract, chainId, buyInWei });
         const existing = sessionFor(player);
         if (existing) {
           if (existing.contract.toLowerCase() !== contract.toLowerCase()) throw new Error("open bridge session uses a different contract");
           if (Number(existing.chainId) !== chainId) throw new Error("open bridge session uses a different chain");
+        }
+        // CROSS-SESSION-DRAIN GUARD: bjLocked is ONE per-player accumulator shared with the token
+        // bridge. The prior on-chain lock must equal THIS bridge's own recorded lock — anything more
+        // means a second (token) session is mixed in, and one settlement could claim the combined
+        // lock. (A blackjack re-buy legitimately stacks on its OWN existing lock — that's allowed.)
+        if (vb && vb.eventLocked != null) {
+          const prior = BigInt(vb.eventLocked) - buyInWei;
+          const ownLock = existing ? BigInt(existing.buyInWei) : 0n;
+          if (prior > ownLock) throw new Error("you have funds locked in another game — finish it before buying in here");
         }
         if (blackjack.bridge.hasOpenExposure(player)) throw new Error("finish the current hand before changing bridge funds");
         let session = existing;
