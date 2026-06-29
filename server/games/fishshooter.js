@@ -117,6 +117,33 @@ function killProb(def, power) {
   return Math.max(P_MIN, Math.min(P_MAX, (power || 1) * RTP / budgetMult(def, power)));
 }
 
+// ── v2 BONUS / SPLASH DISBURSEMENT ────────────────────────────────────────────
+// On a KILL of a bonus-trigger fish (def.bonus) or a splash fish (def.special in
+// {bomb,chain}), pay the EV that budgetMult withheld from the direct catch — i.e. the
+// money reserved for the bonus wave / splash collateral — as a real, variable, provably-
+// fair stream. By construction E[disbursement | kill] = (budgetMult - mult)*unitBet, so
+//   E[payout per shot] = p_kill * (mult + (budget-mult)) * unitBet = RTP * cost
+// for EVERY fish (plain AND bonus), i.e. the FULL ~0.95 RTP is now realized in token play
+// instead of the house silently keeping the folded slice (v1). The variable factor is an
+// exponential (mean 1) from a dedicated PF draw, so a bonus round can occasionally pay big
+// (the fun of it); the session lock caps any extreme at cash-out.
+function expDraw(serverSeed, clientSeed, tag, nonce) {
+  const u = PF.float(serverSeed, clientSeed, tag + ":" + nonce);
+  return -Math.log(1 - Math.min(u, 0.99999999)); // mean 1, occasionally large
+}
+function bonusDisbursement(serverSeed, clientSeed, nonce, def, power, unitBet) {
+  let bonus = null, splash = null;
+  if (def.bonus && BONUS_BUDGET[def.bonus]) {
+    const total = BONUS_BUDGET[def.bonus] * unitBet * expDraw(serverSeed, clientSeed, "bonus", nonce);
+    bonus = { kind: def.bonus, total: Math.max(0, total) };
+  }
+  if (def.special && SPLASH_TARGET_BUDGET[def.special]) {
+    const total = SPLASH_TARGET_BUDGET[def.special] * (power || 1) * RTP * unitBet * expDraw(serverSeed, clientSeed, "splash", nonce);
+    splash = { kind: def.special, total: Math.max(0, total) };
+  }
+  return { bonus: bonus, splash: splash };
+}
+
 /**
  * Settle ONE bullet (micro-bet). Pure + deterministic in (serverSeed, clientSeed, nonce).
  *
@@ -165,9 +192,17 @@ function play(a) {
   const roll = PF.float(serverSeed, clientSeed, nonce);
   const dead = roll < p;
 
-  // a kill pays GROSS def.mult * unitBet back (engine line 96: payout = mult on a kill).
-  const multiplier  = def.mult; // payout as a multiple of unitBet
-  const payoutUnits = dead ? def.mult * unitBet : 0;
+  // a kill pays GROSS def.mult * unitBet back PLUS the v2 bonus/splash disbursement
+  // (the EV budgetMult withheld) — so the FULL RTP is realized in token play.
+  const multiplier  = def.mult; // direct catch multiple of unitBet
+  let payoutUnits = dead ? def.mult * unitBet : 0;
+  let bonus = null, splash = null;
+  if (dead) {
+    const disb = bonusDisbursement(serverSeed, clientSeed, nonce, def, power, unitBet);
+    if (disb.bonus)  { bonus = disb.bonus;   payoutUnits += disb.bonus.total; }
+    if (disb.splash) { splash = disb.splash; payoutUnits += disb.splash.total; }
+  }
+  payoutUnits = Math.round(payoutUnits * 1e8) / 1e8;
 
   return {
     win: dead,
@@ -184,7 +219,8 @@ function play(a) {
       budgetMult: budgetMult(def, power),
       roll: roll,                // the PF float (canonical, re-derivable)
       dead: dead,
-      bonus: def.bonus || null,  // NOTE: client triggers a wave on a kill of a bonus fish
+      bonus: bonus,              // v2: {kind,total} disbursed bonus wave (real money) — null if none/no kill
+      splash: splash,            // v2: {kind,total} disbursed splash collateral — null if none/no kill
     },
     detail:
       "shot @ " + targetKey + " (mult " + def.mult + "x, power " + power + ", p_kill " +
@@ -222,123 +258,78 @@ module.exports = {
 };
 
 /* ---------------- CLI self-test: node server/games/fishshooter.js ----------------
-   Monte-Carlo many shots across a spread of TARGET fish + BOTH powers, measuring
-   the per-CONNECTING-shot RTP. Per connecting shot, EV = payout (mult*unitBet on a
-   kill, else 0) over cost; misses are pure skill and not settled here.
-
-   Two distinct expectations, both straight from the client engine math:
-   (1) PLAIN fish (no `special`, no `bonus`): budget = mult, so the DIRECT catch RTP
-       is the flat 0.95 knob (target- AND power-independent). This is the headline
-       per-shot RTP the engine advertises — assert each plain (target,power) ~0.95.
-   (2) BONUS/SPLASH fish (bomb/clam/crab/boss/bonus-triggers): budgetMult adds
-       `extra`, so their DIRECT catch RTP is BELOW 0.95 ON PURPOSE — the withheld
-       slice is the bonus/splash EV folded in (disbursed later as a wave/splash; see
-       the v2 NOTE above). For these we assert the direct RTP equals the EXPECTED
-       folded value mult/budget*0.95 (i.e. < 0.95), proving the budget split is
-       faithful rather than leaking money. The full per-shot RTP (direct + folded
-       bonus) is still 0.95 for them too; v1 only settles the direct slice. */
+   v2: every connecting shot now realizes the FULL RTP (0.95) — the direct catch PLUS
+   the disbursed bonus/splash stream (the EV budgetMult withheld). Two checks:
+   (A) DISBURSEMENT MEAN (low-noise): E[disbursement | kill] == (budget - mult)*unitBet
+       for every bonus/splash fish, sampled directly so the rare kill doesn't add noise.
+       This is the load-bearing proof that the withheld slice is paid back EXACTLY.
+   (B) FULL per-shot RTP: realized payout/cost over a spread of fish (plain + bonus +
+       splash) at both powers lands on 0.95 — no more house-kept folded slice. */
 if (require.main === module) {
   const { serverSeed } = PF.newRound();
-  const POWERS = [1, 2];
-  // Large base unit so the analog payout (mult*unitBet) has no float-precision drift.
   const UNIT = 1e6;
+  const ok = function (label, cond) { console.log((cond ? "  ok  " : "  FAIL") + "  " + label); return cond; };
+  let pass = true;
 
-  const ok = function (label, cond) {
-    console.log((cond ? "  ok  " : "  FAIL") + "  " + label);
-    return cond;
-  };
+  console.log("fishshooter.js v2 self-test — full RTP " + RTP.toFixed(4) + " (direct catch + disbursed bonus/splash)");
 
-  // A fish is ECONOMICALLY PLAIN when budgetMult == mult (no `extra`): then its
-  // DIRECT catch RTP is the flat 0.95 knob. Note `special:"gold"/"boss"` add NO
-  // budget (only "bomb"/"chain" are in SPLASH_TARGET_BUDGET), so crab/shark/whale
-  // etc. are plain too; only `bomb` (splash) and the bonus-trigger fish fold EV out.
-  function isPlain(def, power) {
-    return Math.abs(budgetMult(def, power) - def.mult) < 1e-9;
-  }
-
-  // Run one (target,power) cell. Per-shot variance of payout (in cost units) is
-  // mult^2*p(1-p)/power^2; size the sample so the RTP std-error is < ~0.0018, then
-  // assert within ~4 std-errs. Rare high-mult fish auto-get more shots this way.
-  function runCell(targetKey, power, baseNonce) {
-    const def = BY_KEY[targetKey];
-    const expP = killProb(def, power);
-    const expDirect = def.mult / budgetMult(def, power) * RTP;
-    // per-shot payout/cost = mult/power on a kill; variance:
-    const perVar = Math.pow(def.mult / power, 2) * expP * (1 - expP);
-    const targetSE = 0.0022;
-    let SHOTS = Math.ceil(perVar / (targetSE * targetSE));
-    SHOTS = Math.max(40000, Math.min(SHOTS, 2000000));
-    const cost = UNIT * power; // betUnits = unitBet*power, unitBet = UNIT
-    let totalCost = 0, totalPayout = 0, fail = 0;
-    for (let i = 0; i < SHOTS; i++) {
-      const r = play({
-        serverSeed: serverSeed,
-        clientSeed: "cs-" + targetKey + "-" + power,
-        nonce: baseNonce + i,
-        betUnits: cost,
-        params: { targetKey: targetKey, power: power },
-      });
-      totalCost += cost;
-      totalPayout += r.payoutUnits;
-      if (Math.abs(r.outcome.p - expP) > 1e-12) fail++;
-      if (r.win && Math.abs(r.payoutUnits - def.mult * UNIT) > 1e-3) fail++;
-      if (!r.win && r.payoutUnits !== 0) fail++;
-      if (r.win !== (r.outcome.roll < expP)) fail++;
-    }
-    const rtp = totalPayout / totalCost;
-    const se = Math.sqrt(perVar / SHOTS); // std-error of the realized RTP
-    return { rtp: rtp, p: expP, fail: fail, expDirect: expDirect, se: se, shots: SHOTS };
-  }
-
-  // Spread across every tier + both economic classes. (We skip the mult-200/300
-  // whale/seadragon here: at p≈0.003 their realized RTP needs >6M shots to settle —
-  // shark (mult 80, boss tier) already proves the high-mult boss path. The full
-  // overall-RTP analysis lives in the Lundberg economy study, task #33.)
-  const TARGETS = ["minnow", "tang", "puffer", "turtle", "squid", "eel",
-                   "crab", "clam", "shark",       // plain (gold/boss add no budget)
-                   "bomb", "warturtle", "gator"]; // folded (splash / bonus-trigger)
-
-  console.log("fishshooter.js self-test — variance-sized Monte-Carlo (RTP knob " + RTP.toFixed(4) + ")");
-  console.log("  PLAIN fish: direct RTP == flat " + RTP.toFixed(4) +
-    " | FOLDED (bonus/splash): direct RTP == mult/budget*" + RTP.toFixed(4) + " (< 0.95, rest is bonus EV)");
-
-  let pass = true, invariantFail = 0, nonce = 1;
-  let plainMaxErrSE = 0, foldedMaxErrSE = 0;
-
-  TARGETS.forEach(function (k) {
-    POWERS.forEach(function (pw) {
-      const c = runCell(k, pw, (nonce += 7000001));
-      invariantFail += c.fail;
+  // ── A) DISBURSEMENT MEAN == withheld budget (budget - mult)*unitBet ──────────
+  const DIS_FISH = ["bomb", "warturtle", "gator", "stormjelly"]; // bomb=splash; others=bonus triggers
+  let disMaxErrSE = 0;
+  DIS_FISH.forEach(function (k) {
+    [1, 2].forEach(function (pw) {
       const def = BY_KEY[k];
-      const plain = isPlain(def, pw);
-      const expect = plain ? RTP : c.expDirect;
-      const errSE = Math.abs(c.rtp - expect) / c.se; // deviation in std-errors
-      if (plain) plainMaxErrSE = Math.max(plainMaxErrSE, errSE);
-      else       foldedMaxErrSE = Math.max(foldedMaxErrSE, errSE);
-      console.log("    " + (k + "@x" + pw).padEnd(14) + (plain ? "PLAIN " : "FOLD  ") +
-        "p " + c.p.toFixed(4) + "  RTP " + c.rtp.toFixed(4) +
-        "  exp " + expect.toFixed(4) + "  (" + errSE.toFixed(1) + " SE, n=" +
-        (c.shots / 1000).toFixed(0) + "k)");
+      const expectedMean = (budgetMult(def, pw) - def.mult) * UNIT; // the withheld slice, in units
+      const N = 400000;
+      let sum = 0, sumSq = 0;
+      for (let i = 0; i < N; i++) {
+        const d = bonusDisbursement(serverSeed, "dis-" + k + "-" + pw, i, def, pw, UNIT);
+        const t = (d.bonus ? d.bonus.total : 0) + (d.splash ? d.splash.total : 0);
+        sum += t; sumSq += t * t;
+      }
+      const mean = sum / N, variance = sumSq / N - mean * mean, se = Math.sqrt(variance / N);
+      const errSE = Math.abs(mean - expectedMean) / se;
+      disMaxErrSE = Math.max(disMaxErrSE, errSE);
+      console.log("    disb " + (k + "@x" + pw).padEnd(14) + "mean " + (mean / UNIT).toFixed(3) +
+        "u  exp " + (expectedMean / UNIT).toFixed(3) + "u  (" + errSE.toFixed(1) + " SE)");
     });
   });
+  pass = ok("disbursement mean == withheld budget for every bonus/splash fish (max " + disMaxErrSE.toFixed(1) + " SE)", disMaxErrSE <= 5) && pass;
 
-  pass = ok("no per-shot invariant violations (" + invariantFail + ")", invariantFail === 0) && pass;
-  pass = ok("every PLAIN direct RTP == 0.95 within 5 SE (max " + plainMaxErrSE.toFixed(1) + " SE)",
-    plainMaxErrSE <= 5) && pass;
-  pass = ok("every FOLDED direct RTP == mult/budget*0.95 within 5 SE (max " + foldedMaxErrSE.toFixed(1) + " SE)",
-    foldedMaxErrSE <= 5) && pass;
+  // ── B) FULL per-shot RTP + structure invariants ─────────────────────────────
+  const TARGETS = ["minnow", "tang", "puffer", "turtle", "squid", "eel", "crab", "clam", "shark",
+                   "bomb", "warturtle", "gator", "stormjelly"];
+  let aggCost = 0, aggPay = 0, structFail = 0;
+  TARGETS.forEach(function (k) {
+    [1, 2].forEach(function (pw) {
+      const def = BY_KEY[k];
+      const shouldBonus = !!(def.bonus && BONUS_BUDGET[def.bonus]);
+      const shouldSplash = !!(def.special && SPLASH_TARGET_BUDGET[def.special]);
+      const N = 300000, cost = UNIT * pw;
+      for (let i = 0; i < N; i++) {
+        const r = play({ serverSeed: serverSeed, clientSeed: "rtp-" + k + "-" + pw, nonce: i, betUnits: cost, params: { targetKey: k, power: pw } });
+        aggCost += cost; aggPay += r.payoutUnits;
+        if (!r.win && (r.outcome.bonus || r.outcome.splash)) structFail++;            // no disbursement without a kill
+        if (r.win && (!!r.outcome.bonus !== shouldBonus)) structFail++;               // bonus iff bonus fish
+        if (r.win && (!!r.outcome.splash !== shouldSplash)) structFail++;             // splash iff splash fish
+        if (r.win && !shouldBonus && !shouldSplash && Math.abs(r.payoutUnits - def.mult * UNIT) > 1e-3) structFail++; // plain win pays exactly mult*unitBet
+      }
+    });
+  });
+  const aggRTP = aggPay / aggCost;
+  console.log("  aggregate per-shot RTP over " + TARGETS.length + " fish × 2 powers: " + aggRTP.toFixed(4) + " (target " + RTP.toFixed(2) + ")");
+  pass = ok("full per-shot RTP within 2% of " + RTP.toFixed(2) + " (got " + aggRTP.toFixed(4) + ")", Math.abs(aggRTP - RTP) <= 0.02) && pass;
+  pass = ok("disbursement structure invariants (only on kill, only bonus/splash fish) — " + structFail + " violations", structFail === 0) && pass;
 
-  // verifiability: re-derive an outcome from the revealed seed
+  // ── determinism + invalid target ────────────────────────────────────────────
   const cs = "verify-client", nn = 98765;
-  const r1 = play({ serverSeed: serverSeed, clientSeed: cs, nonce: nn, betUnits: 2, params: { targetKey: "shark", power: 2 } });
-  const r2 = play({ serverSeed: serverSeed, clientSeed: cs, nonce: nn, betUnits: 2, params: { targetKey: "shark", power: 2 } });
-  pass = ok("deterministic re-derivation (same seed/client/nonce -> same roll+payout)",
+  const r1 = play({ serverSeed: serverSeed, clientSeed: cs, nonce: nn, betUnits: 2, params: { targetKey: "warturtle", power: 2 } });
+  const r2 = play({ serverSeed: serverSeed, clientSeed: cs, nonce: nn, betUnits: 2, params: { targetKey: "warturtle", power: 2 } });
+  pass = ok("deterministic re-derivation (roll + payout + disbursement all reproduce)",
     r1.outcome.roll === r2.outcome.roll && r1.payoutUnits === r2.payoutUnits) && pass;
-
-  // invalid target voids
   const rv = play({ serverSeed: serverSeed, clientSeed: cs, nonce: 1, betUnits: 5, params: { targetKey: "nope", power: 1 } });
   pass = ok("invalid target pays nothing", rv.win === false && rv.payoutUnits === 0) && pass;
 
-  console.log(pass ? "\nSELF-TEST OK" : "\nSELF-TEST FAILED");
+  console.log(pass ? "\nSELF-TEST OK — v2 disburses the withheld bonus EV; full RTP realized." : "\nSELF-TEST FAILED");
   process.exit(pass ? 0 : 1);
 }

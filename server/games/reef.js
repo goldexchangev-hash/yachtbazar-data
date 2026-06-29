@@ -89,6 +89,28 @@ function killProb(def, power) {
   return Math.max(P_MIN, Math.min(P_MAX, (P * RTP) / budgetMult(def, P)));
 }
 
+// ── v2 BONUS / SPLASH DISBURSEMENT (mirror of fishshooter.js) ─────────────────
+// On a KILL of a bonus-trigger (def.bonus) or splash (def.special bomb/chain) fish, pay
+// back the EV budgetMult withheld — (budgetMult - mult)*unitBet in expectation — as a real,
+// variable, provably-fair stream, so the FULL 0.85 RTP is realized in token play (v1 kept
+// the folded slice). Variable factor = exponential (mean 1) from a dedicated PF draw.
+function expDraw(serverSeed, clientSeed, tag, nonce) {
+  const u = PF.float(serverSeed, clientSeed, tag + ":" + nonce);
+  return -Math.log(1 - Math.min(u, 0.99999999)); // mean 1, occasionally large
+}
+function bonusDisbursement(serverSeed, clientSeed, nonce, def, power, unitBet) {
+  let bonus = null, splash = null;
+  if (def.bonus && BONUS_BUDGET[def.bonus]) {
+    const total = BONUS_BUDGET[def.bonus] * unitBet * expDraw(serverSeed, clientSeed, "bonus", nonce);
+    bonus = { kind: def.bonus, total: Math.max(0, total) };
+  }
+  if (def.special && SPLASH_TARGET_BUDGET[def.special]) {
+    const total = SPLASH_TARGET_BUDGET[def.special] * (power || 1) * RTP * unitBet * expDraw(serverSeed, clientSeed, "splash", nonce);
+    splash = { kind: def.special, total: Math.max(0, total) };
+  }
+  return { bonus: bonus, splash: splash };
+}
+
 /**
  * Resolve one bullet (power `power`) hitting fish `targetKey`. Pure + deterministic
  * in (serverSeed, clientSeed, nonce). The bullet HIT is assumed (the bridge calls
@@ -132,10 +154,17 @@ function play(a) {
   const dead = roll < p;
 
   // payout is in unitBet multiples; bullet cost (betUnits) = power * unitBet, so
-  // GROSS payout units back = def.mult * unitBet = def.mult * (betUnits / power).
+  // GROSS direct payout = def.mult * unitBet, PLUS the v2 bonus/splash disbursement.
   const unitBet     = power > 0 ? betUnits / power : betUnits;
-  const payoutUnits = dead ? def.mult * unitBet : 0;
-  const multiplier  = dead ? def.mult : 0; // payout multiple of unitBet
+  const multiplier  = dead ? def.mult : 0; // direct catch multiple of unitBet
+  let payoutUnits = dead ? def.mult * unitBet : 0;
+  let bonus = null, splash = null;
+  if (dead) {
+    const disb = bonusDisbursement(serverSeed, clientSeed, nonce, def, power, unitBet);
+    if (disb.bonus)  { bonus = disb.bonus;   payoutUnits += disb.bonus.total; }
+    if (disb.splash) { splash = disb.splash; payoutUnits += disb.splash.total; }
+  }
+  payoutUnits = Math.round(payoutUnits * 1e8) / 1e8;
 
   return {
     win: dead,
@@ -148,8 +177,8 @@ function play(a) {
       p: p,
       roll: roll,
       dead: dead,
-      bonus: def.bonus || null,
-      special: def.special || null,
+      bonus: bonus,    // v2: {kind,total} disbursed bonus wave (real money) — null if none/no kill
+      splash: splash,  // v2: {kind,total} disbursed splash collateral — null if none/no kill
     },
     detail:
       "shot power " + power + " at " + targetKey + " (mult " + def.mult +
@@ -231,15 +260,36 @@ if (require.main === module) {
     pass = ok("  " + key + " per-shot RTP ~0.85 (got " + rtp.toFixed(4) + ")", Math.abs(rtp - RTP) <= 0.03) && pass; // 3% band: squid/turtle have ~1% SE at this sample size (a real bug would be >=5% off)
   }
 
-  // ---- bonus creatures return BELOW 0.85 (shaved EV funds bonus rounds) ----
+  // ---- v2: bonus/splash creatures now DISBURSE the withheld EV → full 0.85 RTP ----
+  // (A) the disbursement mean equals the withheld budget (budgetMult - mult)*unitBet,
+  //     sampled directly (low-noise, not gated by the rare kill).
+  let disMaxErrSE = 0;
+  for (const key of ["bomb", "eel", "crab", "clam"]) { // bomb=splash; eel/crab/clam=bonus
+    for (const power of [1, 2]) {
+      const def = BY_KEY[key];
+      const expectedMean = (budgetMult(def, power) - def.mult) * UNIT;
+      const N = 400000;
+      let sum = 0, sumSq = 0;
+      for (let i = 0; i < N; i++) {
+        const d = bonusDisbursement(serverSeed, "dis-" + key + "-" + power, i, def, power, UNIT);
+        const t = (d.bonus ? d.bonus.total : 0) + (d.splash ? d.splash.total : 0);
+        sum += t; sumSq += t * t;
+      }
+      const mean = sum / N, variance = sumSq / N - mean * mean, se = Math.sqrt(variance / N);
+      disMaxErrSE = Math.max(disMaxErrSE, Math.abs(mean - expectedMean) / se);
+    }
+  }
+  pass = ok("disbursement mean == withheld budget for every bonus/splash fish (max " + disMaxErrSE.toFixed(1) + " SE)", disMaxErrSE <= 5) && pass;
+
+  // (B) a bonus creature's FULL per-shot RTP now lands on 0.85 (direct + disbursement).
   for (const key of ["eel", "crab", "clam"]) {
     let c = 0, pay = 0;
-    for (let i = 0; i < 200000; i++) {
+    for (let i = 0; i < 400000; i++) {
       const r = play({ serverSeed: serverSeed, clientSeed: "b-" + key, nonce: i, betUnits: UNIT, params: { targetKey: key, power: 1 } });
       c += UNIT; pay += r.payoutUnits;
     }
     const rtp = pay / c;
-    pass = ok("  bonus '" + key + "' base RTP < 0.85 (got " + rtp.toFixed(4) + ")", rtp < RTP) && pass;
+    pass = ok("  bonus '" + key + "' FULL RTP ~0.85 with disbursement (got " + rtp.toFixed(4) + ")", Math.abs(rtp - RTP) <= 0.05) && pass; // wider band: exp disbursement adds variance
   }
 
   // ---- determinism / verifiability from the revealed seed ----
