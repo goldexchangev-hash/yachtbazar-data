@@ -11,3 +11,8 @@ typechain-types/
 public/deployment.json
 npm-debug.log*
 .DS_Store
+
+# blackjack durable guest-bank state (runtime, never commit)
+.bj-bank.json
+.bj-bank*.json
+server/.bj-bank.json

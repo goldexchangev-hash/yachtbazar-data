@@ -79,7 +79,7 @@
       if (m.you) { self.you = { roomId: m.you.roomId, seat: m.you.seat }; self.spectating = null; if (m.you.balance != null) { self.balance = m.you.balance; self._renderBalance(); } }
       self._onSnapshot(m);
     });
-    this.net.on("bj:turn", function (m) { if (self.you && m.seat === self.you.seat) { self.legal = m.legalActions || []; self.needFunds = m.needFunds || []; self.handBet = m.bet || 0; self.activeHand = m.hand; self._dockSig = null; } self._renderDock(); });
+    this.net.on("bj:turn", function (m) { self._clearActWatch(); if (self.you && m.seat === self.you.seat) { self.legal = m.legalActions || []; self.needFunds = m.needFunds || []; self.handBet = m.bet || 0; self.activeHand = m.hand; self._dockSig = null; } self._renderDock(); });
     this.net.on("bj:insurance:offer", function () { self._insuranceDone = false; self._renderDock(); });
     this.net.on("bj:insurance:result", function (m) { self.toast(m.dealerBlackjack ? "Dealer had blackjack — insurance pays" : "No dealer blackjack — insurance off"); });
     this.net.on("bj:settle", function (m) { self._onSettle(m); });
@@ -89,6 +89,7 @@
       if (m.kind === "bust" && self.room) self._flashSeat(m.seat);
     });
     this.net.on("bj:error", function (m) {
+      self._clearActWatch();
       // a failed reconnect-rejoin (table full / gone) → fall back to the lobby cleanly
       if (self._reconnectRoom && (m.intent === "join" || m.code === "table_full" || m.code === "no_room" || m.code === "lobby_full")) { self._reconnectRoom = null; self.toast("Reconnected — pick a table to jump back in"); self.showLobby(); return; }
       if (self.embed && m.code === "auth_required") self._emitDockError(m.msg || m.message || "Lock credits before joining blackjack");
@@ -187,12 +188,19 @@
     // disable buttons to prevent a double-send, but KEEP this.legal so a server
     // rejection (bj:error) can restore the same controls — no lockout until auto-stand.
     var btns = this.E.dockRow.querySelectorAll(".btn"); for (var i = 0; i < btns.length; i++) btns[i].disabled = true;
+    // WATCHDOG: if NO server response (snapshot/turn/settle/error) arrives within 7s after our
+    // action, the socket/server likely died mid-hand — pull a fresh snapshot so the felt + dock
+    // recover instead of freezing forever. Cleared by _clearActWatch on any of those messages.
+    var self = this; clearTimeout(this._actWatch);
+    this._actWatch = setTimeout(function () { try { self.resume(); } catch (e) {} }, 7000);
   };
+  BlackjackClient.prototype._clearActWatch = function () { if (this._actWatch) { clearTimeout(this._actWatch); this._actWatch = null; } };
   BlackjackClient.prototype.sendInsurance = function (take) { this._insuranceDone = true; this.net.send({ type: "bj:insurance", take: !!take }); this._renderDock(); };
 
   /* ---------------- snapshot render ---------------- */
   BlackjackClient.prototype._resetRoundVis = function () { this.seen = {}; this.holeShown = false; this._insuranceDone = false; this._mySettle = null; };
   BlackjackClient.prototype._onSnapshot = function (m) {
+    this._clearActWatch(); // a fresh server state arrived → our last action was processed
     if (this.view !== "table") this.showTable();
     this._reconnectRoom = null; // a snapshot means we're live again
     if (m.handNumber !== this.handNo) { this.handNo = m.handNumber; this._resetRoundVis(); this.reveal = null; }
@@ -478,6 +486,7 @@
 
   /* ---------------- settle / fx ---------------- */
   BlackjackClient.prototype._onSettle = function (m) {
+    this._clearActWatch();
     if (!this.you) return;
     var ps = null, list = m.perSeat || []; for (var i = 0; i < list.length; i++) if (list[i].seat === this.you.seat) ps = list[i];
     this._mySettle = ps || null; // authoritative net (includes insurance) for the dock banner

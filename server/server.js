@@ -12,6 +12,7 @@
  * Run:  npm run serve     (PORT and PUBLIC_HOST are optional env vars)
  */
 const path = require("path");
+const fs = require("fs");
 const http = require("http");
 const os = require("os");
 require("dotenv").config();
@@ -39,11 +40,30 @@ const wss = new WebSocketServer({ server, maxPayload: 64 * 1024 });
 
 // Multiplayer Blackjack (TV channel) — server-authoritative engine attached to the
 // SAME ws server. Players are identified by their connection's stamped wallet.
+// Durable store for GUEST (play-money) blackjack balances so a crash / deploy / idle spin-down
+// can't reset a player's grown balance to $1,000. Atomic write (tmp + rename), guest keys only.
+// NOTE: on an ephemeral filesystem (Render free tier) this survives a process restart/crash within
+// the same container; for durability across a cold spin-down, point BJ_BANK_FILE at a mounted disk.
+const BJ_BANK_FILE = String(process.env.BJ_BANK_FILE || path.join(__dirname, ".bj-bank.json"));
+const bjPersist = {
+  load() { try { return JSON.parse(fs.readFileSync(BJ_BANK_FILE, "utf8")); } catch (e) { return {}; } },
+  save(obj) { try { const tmp = BJ_BANK_FILE + ".tmp"; fs.mkdirSync(path.dirname(BJ_BANK_FILE), { recursive: true }); fs.writeFileSync(tmp, JSON.stringify(obj)); fs.renameSync(tmp, BJ_BANK_FILE); } catch (e) {} },
+};
 const blackjack = attachBlackjack({
   startBalance: 1000, // match the site's default play-money demo balance ($1,000)
+  persist: bjPersist,
   timers: { dealReveal: 450, dealPace: 430, dealerReveal: 800, dealerPace: 900 },
 });
 attachBridge(app, { blackjack });
+
+// LAST-RESORT process guards: even with every engine timer wrapped (blackjack-server.js setT), a
+// stray throw/rejection anywhere must NOT silently exit and wipe the in-memory bank. Log it, flush
+// balances to disk, and keep serving. Also flush on a graceful shutdown (Render sends SIGTERM on
+// deploy/spin-down) so the last balances are persisted.
+function flushBjBank() { try { blackjack.bank && blackjack.bank.flush && blackjack.bank.flush(); } catch (e) {} }
+process.on("uncaughtException", (e) => { try { console.error("uncaughtException:", (e && e.stack) || e); } catch (_) {} flushBjBank(); });
+process.on("unhandledRejection", (e) => { try { console.error("unhandledRejection:", (e && e.stack) || e); } catch (_) {} });
+["SIGTERM", "SIGINT"].forEach((sig) => process.on(sig, () => { flushBjBank(); process.exit(0); }));
 
 // SPA-ish fallback so deep links like /?room=12 still serve index.html.
 app.get("*", (req, res) => {
@@ -101,6 +121,7 @@ wss.on("connection", (ws) => {
     } catch {
       return;
     }
+    if (data.type === "bj:ping") { try { ws.send(JSON.stringify({ type: "bj:pong" })); } catch {} return; } // liveness probe so the client can detect a half-open socket + recover a frozen felt
     if (typeof data.type === "string" && data.type.startsWith("bj:")) {
       const allowedBeforeHello = data.type === "bj:lobby:subscribe" || data.type === "bj:lobby:unsubscribe";
       if (!ws.bjHelloSeen && !allowedBeforeHello) {

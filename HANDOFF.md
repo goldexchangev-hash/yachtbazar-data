@@ -1,7 +1,29 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v11.96**.
+Last updated at build **v11.97**.
+
+> **NOTE FOR CLAUDE/CHATGPT (v11.97):** Blackjack crash/reset fix (the "I hit on 16 all-in and it froze + reset my $16k").
+> Root cause (confirmed by a 7-agent audit + adversarial verify, 16 findings): the engine is timer-driven
+> (server.js passes dealPace/dealerPace), but server.js only try/catches the SYNCHRONOUS `handle()` — a throw
+> inside ANY setTimeout callback (dealStep/dealerStep/settle/turn-auto-stand/between-hands) was an UNCAUGHT
+> exception → Node process exit → the in-memory bank Map wiped → all guests reset to $1,000. Fixes:
+> (1) **server/blackjack-server.js** — every engine timer now runs through a `safeT` guard (try/catch); `draw()`
+> reshuffles a fresh shoe if exhausted so it can NEVER return undefined (the most likely throw → handValue crash);
+> `makeBank(start, persist)` now PERSISTS guest (play-money) balances write-through (debounced) and restores them on
+> boot — real (0x) wallets are never persisted (bridged on-chain); `bank.flush()` exposed. `seedGuest` is floor-only
+> (a Reload/reseed can raise an idle guest to the default but never LOWER a grown balance — was already in code).
+> (2) **server/server.js** — wires a durable bank file (`BJ_BANK_FILE`, default `server/.bj-bank.json`, atomic write);
+> adds `process.on(uncaughtException/unhandledRejection)` (log + flush, don't exit) and SIGTERM/SIGINT flush; adds a
+> `bj:ping`→`bj:pong` liveness shortcut. (3) **public/blackjack-rules.js** — handValue skips falsy cards (defensive).
+> (4) **public/blackjack-net.js** — app-level heartbeat (ping every 15s; if no inbound for 35s the half-open socket
+> is dropped → reconnect → fresh snapshot, so a frozen felt recovers). (5) **public/blackjack-ui.js** — action
+> watchdog: after a HIT with no server response in 7s, pull a fresh snapshot instead of freezing the dock forever.
+> Verified: `_bj-test.js` (11/11: persistence survives a restart, full hand accounts, exhausting-shoe reshuffles
+> w/o throwing) + `_bj-live.js` (WS join/bet/snapshot, ping→pong, balance written to disk). NOTE: on Render free-tier
+> the FS is ephemeral — persistence survives a crash/restart in the SAME container but NOT a cold idle spin-down;
+> for full durability point BJ_BANK_FILE at a mounted disk or a Redis-backed store. Cache/build bumped to 1197
+> (incl. blackjack.html scripts, which were still pinned at v=1174).
 
 > **NOTE FOR CLAUDE/CHATGPT (v11.96):** Fish Shooter audit-fix pass + new eel + bonus finale.
 > (1) **Multi-agent audit** (7 reviewers × adversarial verify) → **12 confirmed, all fixed, all house-edge-neutral.**

@@ -19,10 +19,20 @@
   const Rules = (typeof require !== "undefined") ? require("../public/blackjack-rules.js") : root.BlackjackRules;
   const Shuffle = (typeof require !== "undefined") ? require("../public/blackjack-shuffle.js") : root.BlackjackShuffle;
 
-  function makeBank(start) {
+  function makeBank(start, persist) {
     const realWallet = (w) => /^0x[0-9a-fA-F]{40}$/.test(String(w || ""));
-    const m = new Map(); const get = (w) => { if (!m.has(w)) m.set(w, realWallet(w) ? 0 : (start == null ? 5000 : start)); return m.get(w); };
-    return { get, all: m, credit: (w, a) => m.set(w, Math.round((get(w) + a) * 100) / 100), debit: (w, a) => { if (get(w) < a) return false; m.set(w, Math.round((get(w) - a) * 100) / 100); return true; } };
+    const m = new Map();
+    // DURABILITY: persist GUEST (play-money) balances out of process so a crash / deploy / idle
+    // spin-down can't wipe a player's grown balance. Real (0x) wallets are bridged on-chain — never
+    // persisted here. Write-through is debounced; every balance mutation routes through m.set.
+    let saveT = null;
+    const doSave = () => { saveT = null; if (!persist || !persist.save) return; try { const o = {}; for (const [k, v] of m) if (/^guest:/.test(k)) o[k] = v; persist.save(o); } catch (e) {} };
+    const scheduleSave = () => { if (!persist || !persist.save || saveT) return; saveT = setTimeout(doSave, 800); };
+    const rawSet = m.set.bind(m);
+    m.set = (k, v) => { const out = rawSet(k, v); if (/^guest:/.test(String(k))) scheduleSave(); return out; };
+    if (persist && persist.load) { try { const data = persist.load() || {}; for (const k in data) { const v = data[k]; if (/^guest:/.test(k) && typeof v === "number" && isFinite(v) && v >= 0) rawSet(k, Math.round(v * 100) / 100); } } catch (e) {} }
+    const get = (w) => { if (!m.has(w)) m.set(w, realWallet(w) ? 0 : (start == null ? 5000 : start)); return m.get(w); };
+    return { get, all: m, flush: doSave, credit: (w, a) => m.set(w, Math.round((get(w) + a) * 100) / 100), debit: (w, a) => { if (get(w) < a) return false; m.set(w, Math.round((get(w) - a) * 100) / 100); return true; } };
   }
   const r2 = (n) => Math.round(n * 100) / 100;
   function newHand(bet, opts) { return Object.assign({ cards: [], bet: bet, done: false, doubled: false, fromSplit: false, isAceSplit: false, surrendered: false, result: null }, opts || {}); }
@@ -31,7 +41,7 @@
     opts = opts || {};
     const config = Object.assign({}, Rules.DEFAULT_CONFIG, opts.config || {});
     const T = Object.assign({ betting: 15000, turn: 20000, insurance: 12000, idle: 300000, between: 3500, dealReveal: 0, dealPace: 0, dealerReveal: 0, dealerPace: 0 }, opts.timers || {});
-    const bank = opts.bank || makeBank(opts.startBalance);
+    const bank = opts.bank || makeBank(opts.startBalance, opts.persist);
     const balanceWatchers = new Set();
     function openExposure(wallet) {
       let out = 0;
@@ -59,7 +69,12 @@
       bank._bjWatched = true;
     }
     const MAX_ROOMS = opts.maxRooms || 50;
-    const setT = opts.setTimeout || ((f, ms) => setTimeout(f, ms));
+    const _setT = opts.setTimeout || ((f, ms) => setTimeout(f, ms));
+    // CRASH SAFETY: every engine timer runs through this guard. server.js only try/catches the
+    // SYNCHRONOUS handle(); a throw inside a setTimeout callback (dealStep/dealerStep/settle/turn
+    // auto-stand/between-hands) was an UNCAUGHT exception → Node process exit → the in-memory bank
+    // was wiped → "reset everything". This contains any such throw to a logged, non-fatal error.
+    const setT = (f, ms) => _setT(() => { try { f(); } catch (e) { try { console.error("bj timer error:", (e && e.stack) || e); } catch (_) {} } }, ms);
     const clrT = opts.clearTimeout || clearTimeout;
     const now = opts.now || (() => Date.now());
     const makeShoe = opts.makeShoe || Shuffle.shuffle; // injectable for deterministic tests / VRF-derived shoe
@@ -77,7 +92,15 @@
 
     const inRound = (s) => !!(s && s.baseBet > 0);
     const seatStake = (s) => !s ? 0 : (s.hands && s.hands.length ? s.hands.reduce((a, h) => a + h.bet, 0) : (s.baseBet || 0)) + (s.insurance || 0);
-    const draw = (r) => r.shoe[r.pos++];
+    const draw = (r) => {
+      // Shoe exhausted mid-hand (rare: many splits + a long dealer draw) → reshuffle a fresh shoe so
+      // draw() NEVER returns undefined (an undefined card → Rules.handValue crash → process crash).
+      if (!r.shoe || r.pos >= r.shoe.length) {
+        const seeds = r.seats.map((s) => inRound(s) ? (s.clientSeed || "") : "");
+        r.shoe = makeShoe(r.serverSeed, Shuffle.joinClientSeeds(seeds), String(r.shoeId) + ":x" + r.pos, config.decks); r.pos = 0;
+      }
+      return r.shoe[r.pos++];
+    };
 
     /* ---------------- lobby ---------------- */
     function roomPublic(r) {
@@ -527,7 +550,10 @@
         const i = seatOf(r, sock);
         if (i >= 0) { const s = r.seats[i]; if (s && (s.baseBet > 0 || r.phase !== "betting")) return; } // not mid-hand
       }
-      bank.all.set(w, r2(amount));
+      // Top-up only: a re-seed (e.g. the ⟳ Reload button) may RAISE an idle guest to the
+      // floor but must never DESTROY winnings by lowering them. Otherwise a guest who ground
+      // up to $16k and clicked Reload would be wiped back to $1,000.
+      bank.all.set(w, r2(Math.max(amount, bank.get(w))));
       pushWallet(sock, w);
       for (const r of rooms.values()) { if (seatOf(r, sock) >= 0) { broadcastState(r); break; } } // refresh betMax
     }

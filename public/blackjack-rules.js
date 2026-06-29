@@ -26,7 +26,7 @@
   // value of a hand: highest total <= 21 using aces as 1 or 11
   function handValue(cards) {
     let total = 0, aces = 0;
-    for (const c of cards) { const r = c.rank; if (r === "A") { aces++; total += 11; } else total += rankValue(r); }
+    for (const c of cards) { if (!c || c.rank == null) continue; const r = c.rank; if (r === "A") { aces++; total += 11; } else total += rankValue(r); } // skip falsy/short cards so a malformed shoe can never throw
     while (total > 21 && aces > 0) { total -= 10; aces--; }       // demote aces from 11 to 1
     const softAces = aces;                                         // aces still counted as 11
     return {
