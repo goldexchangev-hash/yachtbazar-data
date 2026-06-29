@@ -50,7 +50,7 @@ const bjPersist = {
   save(obj) { try { const tmp = BJ_BANK_FILE + ".tmp"; fs.mkdirSync(path.dirname(BJ_BANK_FILE), { recursive: true }); fs.writeFileSync(tmp, JSON.stringify(obj)); fs.renameSync(tmp, BJ_BANK_FILE); } catch (e) {} },
 };
 const blackjack = attachBlackjack({
-  startBalance: 1000, // match the site's default play-money demo balance ($1,000)
+  startBalance: 5000, // match the site-wide $5,000 play-money demo balance
   persist: bjPersist,
   timers: { dealReveal: 450, dealPace: 430, dealerReveal: 800, dealerPace: 900 },
 });

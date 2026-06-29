@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#0c0d16" />
     <meta name="referrer" content="same-origin" />
-    <link rel="manifest" href="manifest.webmanifest?v=1197" />
+    <link rel="manifest" href="manifest.webmanifest?v=1198" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -28,7 +28,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=1197" />
+    <link rel="stylesheet" href="styles.css?v=1198" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -38,13 +38,13 @@
     <!-- ───────────────────────── Header ───────────────────────── -->
     <header class="topbar">
       <button id="rail-toggle" class="rail-toggle" aria-label="Open menu" title="Menu">☰</button>
-      <span class="build-tag-m" id="build-tag-m" title="Live build version — confirms the deploy is up to date">v11.97</span>
+      <span class="build-tag-m" id="build-tag-m" title="Live build version — confirms the deploy is up to date">v11.98</span>
       <div class="brand">
         <span class="brand-tv">📺</span>
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v11.97</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v11.98</span>
       </div>
       <div class="topbar-right">
         <div class="tb-tools">
@@ -430,7 +430,7 @@
 
                 <!-- Promo intro reel — autoplays once (muted) on first load, then fades
                      to black and hands off to the game. Replay button under the TV. -->
-                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=1197"></video>
+                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=1198"></video>
 
                 <!-- Shown while a bet tx is being signed + mined (esp. slow on mobile) -->
                 <div id="tv-pending" class="tv-pending hidden">⏳ SENDING BET…<br />confirm in your wallet, then hold tight</div>
@@ -1002,6 +1002,39 @@
           <p class="muted" style="font-size:.82rem">Tip: ⛶ Fullscreen for the full arcade feel · 🔥 Auto-fire holds the trigger · 🎯 Lock-on tracks the best target.</p>
         </div>
 
+        <!-- Fish Shooter (CH 19): session tracker + how-to-play / bonus-round help -->
+        <div class="card dice-panel fish-panel" id="fishshooter-panel" data-game="fishshooter">
+          <div class="ph-head">
+            <h2 class="card-title">🎣 Fish Shooter <span class="ch-tag">CH 19</span></h2>
+            <span class="ph-bankroll muted">Balance: <strong id="fsh-balance">$0</strong> · ~95% RTP</span>
+          </div>
+          <p class="muted td-intro">Aim the cannon and <strong>shoot fish to catch them for coins</strong>. Each shot costs <em>power × base bet</em>; bigger fish pay more but take more shots to land. Catch a glowing <strong>BONUS creature</strong> to launch a bonus round. <strong>~95% RTP</strong> · provably fair.</p>
+          <div class="side-row"><span class="side-label">Last catch</span><strong class="fish-winval" id="fsh-win">$0.00</strong></div>
+          <div class="fish-flow" id="fsh-flow">
+            <span class="ff-label">This session</span>
+            <span class="ff-item">shots <strong id="fsh-ses-spent">$0.00</strong></span>
+            <span class="ff-item">caught <strong id="fsh-ses-won">$0.00</strong></span>
+            <span class="ff-item">net <strong id="fsh-ses-net" class="ff-net">+$0.00</strong></span>
+          </div>
+          <details class="fish-help">
+            <summary>❔ How to play · Power · Bonus rounds</summary>
+            <div class="fish-help-body">
+              <p><strong>🎯 Goal.</strong> Land fish to win coins. Tap the tank to aim &amp; fire, or use <strong>🔥 Auto-fire</strong> + <strong>🎯 Lock-on</strong>. Each connecting shot returns ~95% on average no matter which fish you shoot — big fish just take more shots.</p>
+              <p><strong>⚡ Power (×1–×3) is a MULTIPLIER, not your bet.</strong> It does <em>not</em> change your base bet. It multiplies <em>both</em> the cost and the payout of each shot by the same amount, so a power-3 shot costs 3× and pays 3× — your % return is identical at every power. Higher power just lands big fish faster. (Capped at ×3 to keep the odds fair.)</p>
+              <p><strong>💵 Base bet</strong> (the slider) sets your stake. Cost per shot = <em>power × base bet</em>. <strong>Bigger base bet → bigger bonus rounds</strong> (a bonus pays around 25× your base bet on average).</p>
+              <p><strong>🎁 Bonus rounds</strong> — rare, and they <em>pay when you land the bonus creature</em>:</p>
+              <ul>
+                <li><strong>⚡ Feeding Frenzy</strong> — a burst of free shots.</li>
+                <li><strong>💰 Treasure Vault</strong> — free shots + a treasure chest.</li>
+                <li><strong>🌩 Lightning Storm</strong> — free shots where every kill chains lightning to nearby fish.</li>
+                <li><strong>🐉 Dragon Boss</strong> — fill the Jackpot meter (or land the Sea Dragon) to blast the dragon for the whole jackpot pool.</li>
+              </ul>
+              <p>Bonus payouts are <strong>variable</strong> — you keep what you catch, so a lucky big fish pays big and a cold run pays small. They're pre-funded, so the odds stay fair.</p>
+            </div>
+          </details>
+          <p class="muted" style="font-size:.82rem">Tip: ⛶ Fullscreen for the full arcade feel · 🔥 Auto-fire holds the trigger · 🎯 Lock-on tracks the best target.</p>
+        </div>
+
         <!-- Host tools (owner only): adjust limits, fund house, redeploy -->
         <div class="card host-tools" id="host-tools" hidden>
           <details class="dropdown">
@@ -1448,18 +1481,18 @@
       </div>
     </aside>
 
-    <script defer src="vendor/ethers.umd.min.js?v=1197"></script>
-    <script defer src="config.js?v=1197"></script>
-    <script defer src="contract.js?v=1197"></script>
-    <script defer src="chiptune.js?v=1197"></script>
-    <script defer src="scenes.js?v=1197"></script>
-    <script defer src="tv.js?v=1197"></script>
-    <script defer src="poker-engine.js?v=1197"></script>
-    <script defer src="poker-bots.js?v=1197"></script>
-    <script defer src="poker-ui.js?v=1197"></script>
-    <script defer src="crash-engine.js?v=1197"></script>
-    <script defer src="crash-render.js?v=1197"></script>
-    <script defer src="profile.js?v=1197"></script>
-    <script defer src="app.js?v=1197"></script>
+    <script defer src="vendor/ethers.umd.min.js?v=1198"></script>
+    <script defer src="config.js?v=1198"></script>
+    <script defer src="contract.js?v=1198"></script>
+    <script defer src="chiptune.js?v=1198"></script>
+    <script defer src="scenes.js?v=1198"></script>
+    <script defer src="tv.js?v=1198"></script>
+    <script defer src="poker-engine.js?v=1198"></script>
+    <script defer src="poker-bots.js?v=1198"></script>
+    <script defer src="poker-ui.js?v=1198"></script>
+    <script defer src="crash-engine.js?v=1198"></script>
+    <script defer src="crash-render.js?v=1198"></script>
+    <script defer src="profile.js?v=1198"></script>
+    <script defer src="app.js?v=1198"></script>
   </body>
 </html>

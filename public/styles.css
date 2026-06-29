@@ -2324,6 +2324,19 @@ body.rr-fs-on #layer-fishshooter, body.rr-fs-on #layer-fishshooter * { visibilit
 .fish-flow .ff-item strong { color: var(--s-text, #cfe2ff); }
 .fish-flow .ff-net.up { color: #45f0a6; }
 .fish-flow .ff-net.down { color: #ff6f8a; }
+/* Fish Shooter help accordion (#fishshooter-panel) */
+.fish-help { margin: 6px 0 4px; border: 1px solid rgba(57,231,255,.18); border-radius: 10px; background: rgba(57,231,255,.05); overflow: hidden; }
+.fish-help > summary { cursor: pointer; list-style: none; padding: 8px 11px; font-weight: 800; font-size: .84rem; color: var(--s-gold, #ffd23f); user-select: none; }
+.fish-help > summary::-webkit-details-marker { display: none; }
+.fish-help > summary::after { content: "▸"; float: right; transition: transform .15s; opacity: .7; }
+.fish-help[open] > summary::after { transform: rotate(90deg); }
+.fish-help[open] > summary { border-bottom: 1px solid rgba(57,231,255,.14); }
+.fish-help-body { padding: 4px 12px 10px; font-size: .8rem; line-height: 1.45; color: var(--s-muted, #8fa3c8); }
+.fish-help-body p { margin: 8px 0; }
+.fish-help-body strong { color: var(--s-text, #cfe2ff); }
+.fish-help-body em { color: var(--s-gold, #ffd23f); font-style: normal; }
+.fish-help-body ul { margin: 6px 0; padding-left: 18px; }
+.fish-help-body li { margin: 3px 0; }
 
 /* Blackjack (CH 16) felt runs in an isolated iframe filling the 4:3 screen */
 .bj-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; background: #06091a; }

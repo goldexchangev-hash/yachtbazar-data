@@ -15,9 +15,9 @@
    ============================================================ */
 (function (root) {
   "use strict";
-  var PIXI = root.PIXI, E = root.FishTableEngine;
+  var PIXI = root.PIXI, E = root.FishShooterEngine; // OWN engine, decoupled from Reef Raiders (fishtable-engine.js)
   var DIR = "/assets/fishshooter/";
-  var MIN_BET = 1, MAX_BET = 50, MAX_POWER = 7;
+  var MIN_BET = 1, MAX_BET = 50, MAX_POWER = 3; // power 3 cap: above this, high per-shot kill-prob makes auto-fire OVERKILL fish (extra in-flight/culled bullets wasted), which craters realized RTP. The bet slider is the main stake dial; power is a modest speed/stake boost.
   var FISH_KEYS = ["minnow", "clown", "tang", "puffer", "turtle", "squid", "eel", "bomb", "crab", "clam", "shark", "kraken", "whale", "lobster", "armadillo", "anglerfish", "seadragon"];
   // per-creature animation frame count (default 4); the new creatures are authored at 8 for smoother motion
   var FRAMES = { eel: 8, lobster: 8, armadillo: 8, anglerfish: 8, seadragon: 8 };
@@ -308,11 +308,11 @@
     var core = new PIXI.Sprite(this.tex.bullet); core.anchor.set(0.5); core.tint = 0xc8ffd6; core.scale.set(bs, bs * 1.8); b.addChild(core);
     this.bulletLayer.addChild(b);
     var speed = 680 + sp * 30;
-    while (this.bullets.length > 44) this._rmBullet(this.bullets[0]);
+    while (this.bullets.length > 120) this._rmBullet(this.bullets[0]); // higher cap → bullets ricochet until they connect instead of being culled (culled = paid-but-wasted, which craters realized RTP)
     this.bullets.push({ s: b, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed, r: 7 + sp * 1.1, hit: false, unitBet: su, power: sp, cost: paid, free: free, frenzyId: free ? this._frenzyId : 0, bossId: (this._boss && this._boss.started) ? this._bossId : 0 });
     this._recoil = 7; this._muzzle(tx, ty);
     if (root.Chiptune && root.Chiptune.blip) try { root.Chiptune.blip(); } catch (e) {}
-    this._fireCd = this.auto ? 0.16 - sp * 0.008 : 0.09;
+    this._fireCd = this.auto ? 0.16 : 0.09; // flat auto-fire rate (no power speed-up) → fewer in-flight bullets overshooting a fish that already died = less wasted spend at higher power
   };
   FishShooter.prototype._muzzle = function (x, y) {
     var mk = (this._cannonK || 1) * 1.5; // muzzle flash tracks the (now small) barrel
@@ -324,7 +324,10 @@
   FishShooter.prototype._resolveHit = function (b, fish) {
     b.hit = true;
     if (this._boss) { this._catchCosmetic(fish, b.s.x, b.s.y); return; } // boss round: minions pop for show only
-    if (b.free && (this._frenzy <= 0 || b.frenzyId !== this._frenzyId || this._frenzyWon >= this._frenzyBudget)) { this._net(b.s.x, b.s.y, fish.def.color); return; }
+    if (b.free && (this._frenzy <= 0 || b.frenzyId !== this._frenzyId)) { this._net(b.s.x, b.s.y, fish.def.color); return; } // stale free bullet after the wave → no catch
+    if (b.free) { // accumulate the EXPECTED value this connecting free shot delivers; the wave ends when it reaches the budget (variable realized payout)
+      this._frenzyExpected = (this._frenzyExpected || 0) + fish.def.mult * this.engine.killProb(fish.def, b.power) * (b.unitBet || this._frenzyUnit || 1);
+    }
     var shot = { unitBet: b.unitBet, power: b.power, cost: b.cost, free: !!b.free };
     var res = this.engine.resolveHit(fish.def, shot.power);
     this._net(b.s.x, b.s.y, fish.def.color);
@@ -335,11 +338,10 @@
     var unitBet = shot.unitBet || this.unitBet;
     var payout = Math.round(fish.def.mult * unitBet * 100) / 100;
     if (shot.free) {
-      // Bonus-wave win: cap to the remaining pre-paid budget and ACCUMULATE it, but do NOT bank it
-      // now — the whole total is deposited in the finale (_endBonusWave → _updateBonusFinale) so the
-      // player clearly sees the reveal + deposit instead of the balance ticking up mid-wave.
-      var rem = Math.max(0, Math.round((this._frenzyBudget - this._frenzyWon) * 100) / 100);
-      payout = Math.min(payout, rem); this._frenzyWon = Math.round((this._frenzyWon + payout) * 100) / 100;
+      // UNCAPPED real winnings → VARIABLE bonus payout. The wave is bounded by the EXPECTED-value
+      // budget (see _resolveHit / _frame), not by clamping each catch, so a lucky big fish really
+      // pays big. Accumulated here, deposited all at once in the finale (_updateBonusFinale).
+      this._frenzyWon = Math.round((this._frenzyWon + payout) * 100) / 100;
     } else {
       this.balance = Math.round((this.balance + payout) * 100) / 100; this._sesWon = Math.round((this._sesWon + payout) * 100) / 100;
     }
@@ -379,15 +381,23 @@
     fish.death = 0;
     // (frenzy no longer ends early on the budget — it runs its full timer; payouts stay capped in _resolveHit)
   };
+  // One splash/chain kill-roll. For a FREE (bonus-wave) roll, accrue its expected value toward the
+  // wave budget too — otherwise the bomb/storm-chain extra kills would pay on top of the budget and
+  // break the house edge. (E[payout] per roll = mult*p, so accruing mult*p keeps it unbiased.)
+  FishShooter.prototype._splashRoll = function (def, power, free, unitBet) {
+    var sr = this.engine.resolveSplash(def, power);
+    if (free) this._frenzyExpected = (this._frenzyExpected || 0) + def.mult * sr.p * (unitBet || this._frenzyUnit || 1);
+    return sr.dead;
+  };
   FishShooter.prototype._bomb = function (src, shot) {
     this._explosion(src.cont.x, src.cont.y, 0xff7a3d);
     var t = this.fish.filter(function (o) { return o.alive && o !== src; }).map(function (o) { return { o: o, d: Math.hypot(o.cont.x - src.cont.x, o.cont.y - src.cont.y) }; }).filter(function (z) { return z.d < 160; }).sort(function (a, b) { return a.d - b.d; }).slice(0, 4);
-    for (var i = 0; i < t.length; i++) { var o = t[i].o; if (this.engine.resolveSplash(o.def, shot.power).dead) this._catch(o, shot, true); }
+    for (var i = 0; i < t.length; i++) { var o = t[i].o; if (this._splashRoll(o.def, shot.power, shot.free, shot.unitBet)) this._catch(o, shot, true); }
   };
   FishShooter.prototype._chain = function (src, shot) {
     var t = this.fish.filter(function (o) { return o.alive && o !== src; }).map(function (o) { return { o: o, d: Math.hypot(o.cont.x - src.cont.x, o.cont.y - src.cont.y) }; }).sort(function (a, b) { return a.d - b.d; }).slice(0, 3);
     var px = src.cont.x, py = src.cont.y;
-    for (var i = 0; i < t.length; i++) { var o = t[i].o; this._lightning(px, py, o.cont.x, o.cont.y); px = o.cont.x; py = o.cont.y; if (this.engine.resolveSplash(o.def, shot.power).dead) this._catch(o, shot, true); }
+    for (var i = 0; i < t.length; i++) { var o = t[i].o; this._lightning(px, py, o.cont.x, o.cont.y); px = o.cont.x; py = o.cont.y; if (this._splashRoll(o.def, shot.power, shot.free, shot.unitBet)) this._catch(o, shot, true); }
   };
   FishShooter.prototype._awardJackpot = function () {
     var amt = Math.round(this._jackpotPool * 100) / 100; this._jackpot = 0;
@@ -405,18 +415,36 @@
     vault:  { name: "VAULT",  bg: "bg_vault",  title: "💰 TREASURE VAULT 💰", sub: "FREE SHOTS!", color: 0xffd23f },
     storm:  { name: "STORM",  bg: "bg_storm",  title: "🌩 LIGHTNING STORM 🌩", sub: "FREE CHAIN SHOTS!", color: 0x2bd6ff },
   };
+  // Bonus-wave spawn roster: PLAIN fish only (EV per connecting shot = RTP*cost, so the expected-
+  // value budget stays an unbiased estimator), with the mid-bosses (shark/kraken) BOOSTED so you get
+  // real shots at BIG fish during a bonus. NO bonus/splash creatures (they'd re-arm a round or skew
+  // the accounting), and not the very top bosses (bounds the variance).
+  var WAVE_SPAWN = [
+    { key: "minnow", w: 9 }, { key: "clown", w: 8 }, { key: "tang", w: 7 }, { key: "puffer", w: 6 },
+    { key: "turtle", w: 5 }, { key: "squid", w: 4 }, { key: "shark", w: 2.4 }, { key: "kraken", w: 1.1 },
+  ];
+  var WAVE_TOTW = WAVE_SPAWN.reduce(function (a, x) { return a + x.w; }, 0);
+  FishShooter.prototype._pickWaveFish = function () {
+    var r = Math.random() * WAVE_TOTW, acc = 0;
+    for (var i = 0; i < WAVE_SPAWN.length; i++) { acc += WAVE_SPAWN[i].w; if (r < acc) return E.BY_KEY[WAVE_SPAWN[i].key]; }
+    return E.BY_KEY.minnow;
+  };
   FishShooter.prototype._startFrenzy = function (dur, shot, kind) {
     if (this._frenzy > 0 || this._boss) return; // never stack a wave on an active boss round
     kind = kind || "frenzy"; this._frenzyKind = kind;
     var th = BONUS_THEME[kind] || BONUS_THEME.frenzy;
-    this._frenzyId++; this._frenzy = dur; this._frenzyMax = dur; this._frenzyWon = 0;
-    this._frenzyUnit = shot.unitBet || this.unitBet; this._frenzyPow = shot.power || this.power;
+    this._frenzyId++; this._frenzy = dur; this._frenzyMax = dur; this._frenzyWon = 0; this._frenzyExpected = 0;
+    this._frenzyUnit = shot.unitBet || this.unitBet;
+    this._frenzyPow = 1; // free shots are POWER 1 → the wave is a CONSISTENT length at every bet/power
+    // VARIABLE PAYOUT (no more "always 1250"): the wave pays the player's REAL, UNCAPPED free-shot
+    // winnings and ends when the EXPECTED value delivered (accumulated in _resolveHit) reaches the
+    // pre-paid budget (25× unitBet). So E[payout] = budget EXACTLY (house edge intact, power-neutral),
+    // but the realized amount SWINGS — a lucky shark/kraken pays big, a cold run pays small.
     this._frenzyBudget = Math.round(this._frenzyUnit * 25 * 100) / 100;
     if (this.bgWorld && this.tex[th.bg]) { try { this.bgWorld.texture = this.tex[th.bg]; this._layout(); } catch (e) {} } // swap to this round's world
     this._flashBanner(th.title, th.sub, th.color);
     this._screenFlash(th.color);
-    var small = E.FISH.filter(function (f) { return f.tier !== "boss" && !f.bonus; });
-    for (var i = 0; i < 8; i++) { (function (self) { setTimeout(function () { if (self._active && self._frenzy > 0) self._spawnFish(small[(Math.random() * small.length) | 0]); }, i * 130); })(this); }
+    for (var i = 0; i < 8; i++) { (function (self) { setTimeout(function () { if (self._active && self._frenzy > 0) self._spawnFish(self._pickWaveFish()); }, i * 120); })(this); }
   };
   // ── shared bonus-WAVE launcher: 3-2-1 countdown → world crossfade → free-shot wave ──
   FishShooter.prototype._canBonus = function () { return this._frenzy <= 0 && !this._boss && !this._bonus && !this._bonusFinale; };
@@ -432,7 +460,7 @@
       bz.countT += dt;
       var num = 3 - Math.floor(bz.countT);
       if (num !== bz.lastNum) { bz.lastNum = num; if (num > 0) { this._flashBanner(String(num), "GET READY!", 0xffe08a); this._shake = Math.max(this._shake, 4 + (3 - num) * 3); var Cc = root.Chiptune; if (Cc && Cc.blip) try { Cc.blip(); } catch (e) {} } }
-      if (bz.countT >= 3) { bz.started = true; this._startFrenzy(6, bz.shot, bz.kind); }
+      if (bz.countT >= 3) { bz.started = true; this._startFrenzy(10, bz.shot, bz.kind); } // 10s = safety cap; the wave normally ends earlier when the expected budget is delivered
       return;
     }
     if (this._frenzy <= 0) this._endBonusWave(); // wave finished → finale + revert
@@ -613,7 +641,7 @@
     this._t += dt; var W = this.W, H = this.H;
 
     this._spawnT -= dt;
-    if (this._spawnT <= 0) { this._spawnT = this._frenzy > 0 ? rand(0.2, 0.45) : rand(0.6, 1.3); if (this.fish.length < 5 || Math.random() < 0.6) this._spawnFish(); }
+    if (this._spawnT <= 0) { this._spawnT = this._frenzy > 0 ? rand(0.2, 0.45) : rand(0.6, 1.3); if (this.fish.length < 5 || Math.random() < 0.6) this._spawnFish(this._frenzy > 0 ? this._pickWaveFish() : undefined); }
 
     this._fireCd -= dt;
     if (this.lock) this._autoAim();
@@ -624,8 +652,16 @@
     this.barrel.rotation = this._barrelAng + Math.PI / 2;
     this._recoil = (this._recoil || 0) * 0.8; this.barrel.y = this._recoil; // simple axial recoil; barrel bottom stays pinned to cannon.y (= screen bottom)
 
-    // frenzy timer
-    if (this._frenzy > 0) { this._frenzy -= dt; if (this._frenzy <= 0) { this._frenzy = 0; for (var bi = this.bullets.length - 1; bi >= 0; bi--) { var bb = this.bullets[bi]; if (bb.free && !bb.hit && bb.frenzyId !== this._frenzyId) this._rmBullet(bb); } } } // CONSTANT time — ends only when the timer runs out, not when winnings hit the cap
+    // frenzy timer — ends when the pre-paid EXPECTED budget has been delivered (variable realized
+    // payout) OR the safety timer runs out. On end, drop ALL unfired/in-flight free bullets so a
+    // bonus shot can never ricochet into normal play and pop a creature.
+    if (this._frenzy > 0) {
+      this._frenzy -= dt;
+      if (this._frenzy <= 0 || (this._frenzyExpected || 0) >= this._frenzyBudget) {
+        this._frenzy = 0;
+        for (var bi = this.bullets.length - 1; bi >= 0; bi--) { var bb = this.bullets[bi]; if (bb.free && !bb.hit) this._rmBullet(bb); }
+      }
+    }
     if (this._bonus) this._updateBonus(dt); // bonus-world 3-2-1 countdown → wave
     if (this._bonusFinale) this._updateBonusFinale(dt); // reveal total → deposit to bank
     this._depositPulse = (this._depositPulse || 0) * 0.9; if (this._depositPulse < 0.01) this._depositPulse = 0;
@@ -723,14 +759,14 @@
     var finale = !!this._bonusFinale; // end-of-round reveal + deposit
     var bth = finale ? (this._bonusFinale.th || BONUS_THEME.frenzy) : (BONUS_THEME[this._frenzyKind] || BONUS_THEME.frenzy);
     // bonus wave = TIME bar (constant); countdown fills the bar; finale = full; else boss HP or the jackpot meter.
-    var fr = this._frenzy > 0 ? (this._frenzy / this._frenzyMax)
+    var fr = this._frenzy > 0 ? clamp((this._frenzyExpected || 0) / (this._frenzyBudget || 1), 0, 1) // fills toward the pre-paid budget (payout itself is variable)
       : counting ? clamp(this._bonus.countT / 3, 0, 1)
       : finale ? 1
       : (inBoss && this._boss.hpMax ? Math.max(0, this._boss.hp / this._boss.hpMax) : this._jackpot);
     var barCol = (this._frenzy > 0 || counting || finale) ? bth.color : (inBoss ? 0xff4d6a : 0xffd23f);
     g.beginFill(barCol); g.drawRoundedRect(x, y, bw * fr, bh, 5); g.endFill();
     this.jpText.x = W / 2; this.jpText.y = y + bh + 2;
-    this.jpText.text = this._frenzy > 0 ? (bth.name + "  " + this._frenzy.toFixed(1) + "s   +$" + this._frenzyWon.toFixed(0))
+    this.jpText.text = this._frenzy > 0 ? (bth.name + "  +$" + (this._frenzyWon || 0).toFixed(0))
       : counting ? (bth.name + " INCOMING…")
       : finale ? (bth.name + " COMPLETE   YOU WON $" + (this._bonusFinale.won || 0).toFixed(2))
       : (inBoss ? (this._boss.started ? ("BOSS  " + Math.max(0, Math.ceil(this._boss.hp)) + " HP   ·   BONUS +$" + (this._boss.won || 0).toFixed(2)) : "JACKPOT ROUND")
@@ -757,6 +793,12 @@
     if (e.betVal) e.betVal.textContent = this._usd(this.unitBet);
     if (e.power) e.power.textContent = "Power " + this.power;
     if (e.cost) e.cost.textContent = this._usd(this.cost()) + "/shot";
+    // Reef-style session tracker panel (#fishshooter-panel)
+    if (e.balance) e.balance.textContent = this._usd(this.balance);
+    if (e.win) e.win.textContent = this._usd(this._won || 0);
+    if (e.sesSpent) e.sesSpent.textContent = this._usd(this._sesSpent || 0);
+    if (e.sesWon) e.sesWon.textContent = this._usd(this._sesWon || 0);
+    if (e.sesNet) { var net = Math.round(((this._sesWon || 0) - (this._sesSpent || 0)) * 100) / 100; e.sesNet.textContent = (net >= 0 ? "+" : "−") + this._usd(Math.abs(net)); }
   };
   FishShooter.prototype._save = function () { if (this.onBalance) try { this.onBalance(this.balance); } catch (e) {} };
 
@@ -795,7 +837,7 @@
   FishShooter.prototype._teardownRounds = function () {
     if (this._boss && this._boss.spr) { try { this.bossLayer.removeChild(this._boss.spr); this._boss.spr.destroy(); } catch (e) {} }
     this._boss = null; this._bonus = null; this._bonusFinale = null;
-    this._frenzyId++; this._frenzy = 0; this._frenzyMax = 0; this._frenzyWon = 0; // bump id → any in-flight free bullet is rejected
+    this._frenzyId++; this._frenzy = 0; this._frenzyMax = 0; this._frenzyWon = 0; this._frenzyExpected = 0; // bump id → any in-flight free bullet is rejected
     this._holding = false;
     for (var i = this.bullets.length - 1; i >= 0; i--) { var b = this.bullets[i]; if (b && (b.free || b.bossId)) this._rmBullet(b); }
     if (this.bgBoss) this.bgBoss.alpha = 0; if (this.bgWorld) this.bgWorld.alpha = 0;

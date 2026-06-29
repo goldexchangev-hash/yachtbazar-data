@@ -1,7 +1,28 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v11.97**.
+Last updated at build **v11.98**.
+
+> **NOTE FOR CLAUDE/CHATGPT (v11.98):** Fish Shooter economy overhaul + own engine + UI; blackjack demo→$5k.
+> (1) **DECOUPLED ENGINE** — Fish Shooter now has its OWN `public/fishshooter-engine.js` (`FishShooterEngine`,
+> RTP 0.95); Reef Raiders' `fishtable-engine.js` reverted to its original 0.85 + x2 minnow + MAX_POWER 7. The two
+> are independent now. app.js loads `fishshooter-engine.js` for CH 19. (2) **95% RTP, POWER-NEUTRAL** — owner-chosen.
+> Floor mults raised (minnow 2→6, clown 3→7, tang 5→8) so no P_MAX clamp; **MAX_POWER capped at 3** + **bullet FIFO
+> cap 44→120** + **flat auto-fire rate** to kill the *overkill waste* (high-power auto-fire pours bullets at a fish
+> that dies in 1-2 hits; the extras/culled bullets are paid-but-wasted) that craters realized RTP at high power.
+> Result: realized full-game RTP **94.9% (pwr1) → 97.7% (pwr3)** — flat (measured headless, `_fsh-rtp.js`). lobster
+> sizeMul 0.5. (3) **VARIABLE BONUS** — wave wins are now REAL/UNCAPPED; the wave ends when the EXPECTED value
+> delivered reaches the budget (25×unitBet) → E[payout]=budget (house edge intact) but realized SWINGS ($0–$260 in
+> sim, was always the cap). Wave spawns boosted mid-bosses (shark/kraken) so you can land BIG fish. Storm chain +
+> bomb splash now accrue expected too (`_splashRoll`) so they can't over-pay. `_fsh-bonusvar.js` verifies. (4) NEW
+> 8-frame **eel re-matte** (faint cell-box stripped, `_eel8b.py`). (5) Stray bonus bullets: wave-end now drops ALL
+> unhit free bullets. (6) **Session panel + help** — `#fishshooter-panel` (shots/caught/net/last-catch, mirrors
+> Reef) + a `<details>` "How to play · Power · Bonus rounds" explaining power is a per-shot MULTIPLIER (not the base
+> bet) and bigger base bet = bigger bonus. (7) **Blackjack demo chips $1k→$5k** (`BJ_START` + server `startBalance`;
+> reload floors to $5k). Cache/build 1198. **OPEN (designed, not yet built):** owner wants 3 NEW dedicated bonus
+> creatures (War-Shell Bastion→Vault, Voltjaw Gator→Storm, Storm Jelly Sovereign→Frenzy, all mult 18 weight 0.45 =
+> rare) replacing the bonus triggers on eel/clam/crab/lobster/armadillo (→plain fish) — design + math + Grok prompts
+> in the workflow output; refresh-exploit analysis = NO edge (EV is target-independent). Implement next.
 
 > **NOTE FOR CLAUDE/CHATGPT (v11.97):** Blackjack crash/reset fix (the "I hit on 16 all-in and it froze + reset my $16k").
 > Root cause (confirmed by a 7-agent audit + adversarial verify, 16 findings): the engine is timer-driven
