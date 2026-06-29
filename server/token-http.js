@@ -130,18 +130,29 @@ function makeTokenService(opts) {
   // Rehydrate the HTTP-layer guard state from the durable store.
   const httpPersist = nsPersist("http");
   const usedBuyIns = new Set();
-  const tokenForSession = new Map(); // sessionId -> bearer token (in-memory: a bearer is per-process)
+  const tokenForSession = new Map(); // sessionId -> bearer token
   const openByPlayer = new Map();    // player -> sessionId (one open session per player)
   if (httpPersist) {
     try {
       const st = httpPersist.load() || {};
       for (const tx of st.usedBuyIns || []) usedBuyIns.add(String(tx));
       for (const [p, sid] of st.openByPlayer || []) openByPlayer.set(String(p), String(sid));
+      // CRITICAL (the "frozen balance" bug): the per-session bearer MUST survive a process
+      // restart/redeploy. The bridge sessions are persisted, but if the bearer is lost every
+      // /play 400s "invalid session token" while the session still looks open client-side —
+      // the balance freezes silently. Rehydrate the bearers alongside the open sessions.
+      for (const [sid, tok] of st.tokenForSession || []) tokenForSession.set(String(sid), String(tok));
     } catch (e) {}
   }
   function saveHttp() {
     if (!httpPersist) return;
-    try { httpPersist.save({ usedBuyIns: Array.from(usedBuyIns), openByPlayer: Array.from(openByPlayer.entries()) }); } catch (e) {}
+    try {
+      httpPersist.save({
+        usedBuyIns: Array.from(usedBuyIns),
+        openByPlayer: Array.from(openByPlayer.entries()),
+        tokenForSession: Array.from(tokenForSession.entries()),
+      });
+    } catch (e) {}
   }
 
   const bridge = makeTokenBridge({ signer: opts.signer || null, persist: nsPersist("bridge") });
@@ -166,9 +177,9 @@ function makeTokenService(opts) {
     const started = bridge.start({ player, chainId, contract, buyInUnits, lockedWei: lockedWei.toString(), now: (opts.now && opts.now()) || 0 });
     usedBuyIns.add(txKey);
     openByPlayer.set(player, started.sessionId);
-    saveHttp(); // durably record the spent txHash + open session BEFORE handing back a token
     const sessionToken = crypto.randomBytes(24).toString("hex");
     tokenForSession.set(started.sessionId, sessionToken);
+    saveHttp(); // durably record the spent txHash + open session + bearer BEFORE handing it back
     return { ok: true, sessionId: started.sessionId, sessionToken, commit: started.commit, tokens: started.tokens, buyInUnits, games: started.games };
   }
 
@@ -188,12 +199,37 @@ function makeTokenService(opts) {
     verifyWalletSignature("settle", body, { player, contract: s.contract, chainId: s.chainId, sessionId: s.id });
     const settlement = await bridge.settle({ sessionId: s.id });
     openByPlayer.delete(player);
-    saveHttp(); // the session is no longer open — persist the freed slot (txHash stays spent)
     tokenForSession.delete(s.id);
+    saveHttp(); // the session is no longer open — persist the freed slot + dropped bearer (txHash stays spent)
     return settlement; // includes netWei, signature, serverSeedReveal (now safe), commit
   }
 
   function status() { return { ok: true, enabled: true, signerAddress: (opts.signerAddress ? opts.signerAddress() : null), ethUsd: (opts.ethUsd ? opts.ethUsd() : null), games: bridge.games(), model: "server commit-reveal token bridge (no VRF)" }; }
+
+  // Owner-facing AGGREGATE of every OPEN token session — so the house can see its live
+  // exposure at a glance (locked principal it can't withdraw yet + unrealized P&L that
+  // only hits the on-chain bankroll at cash-out). Aggregate-only: NO player addresses, so
+  // it's safe to expose. unrealized = Σ(buyIn − tokens): positive = players are down (house
+  // ahead, pending settle); negative = players are up (house behind, pending settle).
+  function houseState() {
+    let lockedWei = 0n, buyInUnits = 0, tokens = 0, open = 0;
+    try {
+      for (const s of bridge._sessions.values()) {
+        if (!s || s.closed) continue;
+        open++;
+        buyInUnits += Number(s.buyInUnits) || 0;
+        tokens += Number(s.tokens) || 0;
+        if (s.lockedWei != null) { try { lockedWei += BigInt(s.lockedWei); } catch (e) {} }
+      }
+    } catch (e) {}
+    const r2 = (n) => Math.round(n * 100) / 100;
+    return {
+      ok: true, openSessions: open, lockedWei: lockedWei.toString(),
+      buyInUnits: r2(buyInUnits), currentTokens: r2(tokens),
+      houseUnrealizedUnits: r2(buyInUnits - tokens),
+      ethUsd: (opts.ethUsd ? opts.ethUsd() : null),
+    };
+  }
 
   // Validate a (sessionId, bearer-token) pair WITHOUT mutating anything — the ws crash
   // round-runner uses this to authorize cr:start over the socket, reusing the exact same
@@ -205,7 +241,7 @@ function makeTokenService(opts) {
     return bridge.session(sid) || null;
   }
 
-  return { doStart, doPlay, doSettle, status, verifySession, _bridge: bridge };
+  return { doStart, doPlay, doSettle, status, houseState, verifySession, _bridge: bridge };
 }
 
 // Wire the service onto an Express app, behind a flag. Live demo is untouched.
@@ -222,6 +258,7 @@ function attachTokenBridge(app, opts) {
     flagSet: (opts.flag ? !!opts.flag() : (process.env.ENABLE_TOKEN_BRIDGE === "1")),
     signerAddress: (function () { try { return opts.signerAddress ? opts.signerAddress() : null; } catch (e) { return null; } })(),
   }));
+  app.get("/api/token/house-state", (req, res) => { if (!guard(res)) return; try { res.json(svc.houseState()); } catch (e) { fail(res, e); } });
   app.post("/api/token/start", async (req, res) => { if (!guard(res)) return; try { res.json(await svc.doStart(req.body || {})); } catch (e) { fail(res, e); } });
   app.post("/api/token/play", (req, res) => { if (!guard(res)) return; try { res.json(svc.doPlay(req.body || {})); } catch (e) { fail(res, e); } });
   app.post("/api/token/settle", async (req, res) => { if (!guard(res)) return; try { res.json(await svc.doSettle(req.body || {})); } catch (e) { fail(res, e); } });
@@ -317,6 +354,14 @@ if (require.main === module) {
     sb2b.signature = await sign2("start", { player: p2, contract, chainId, buyInWei: lockedWei.toString() });
     let openSurvived = 0; try { await svcB.doStart(sb2b); } catch (e) { openSurvived = 1; }
     eq("PERSIST: the open-session lock survives restart", openSurvived === 1);
+
+    // THE FROZEN-BALANCE REGRESSION: the per-session BEARER must survive the restart too, so a
+    // mid-session player keeps playing after a redeploy instead of every /play silently 400ing.
+    let playAfterRestart = false;
+    try { const pr = svcB.doPlay({ sessionId: started2.sessionId, sessionToken: started2.sessionToken, game: "coinflip", betUnits: 10, params: { side: 0 }, clientSeed: "post-restart" }); playAfterRestart = !!pr.ok; } catch (e) { playAfterRestart = false; }
+    eq("PERSIST: play() works after restart (bearer survived → no frozen balance)", playAfterRestart === true);
+    let staleTokRejected = 0; try { svcB.doPlay({ sessionId: started2.sessionId, sessionToken: "wrong-token", game: "coinflip", betUnits: 10 }); } catch (e) { staleTokRejected = 1; }
+    eq("PERSIST: a wrong bearer is still rejected after restart", staleTokRejected === 1);
 
     // and the bridge session itself survived — settle works on the restarted service
     const settleSig2 = await sign2("settle", { player: p2, contract, chainId, sessionId: started2.sessionId });

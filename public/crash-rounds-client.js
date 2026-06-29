@@ -48,6 +48,16 @@
       : function (f) { return setTimeout(function () { f(nowMs()); }, 16); });
     var caf = opts.caf || (root.cancelAnimationFrame ? root.cancelAnimationFrame.bind(root)
       : function (h) { clearTimeout(h); });
+    // Watchdog clock: a dropped socket / server crash mid-round must NOT hang the promise
+    // forever (that strands the channel — revealLock stuck, balance frozen). Bound the wait
+    // for the start-ack and for the result; on timeout we reject so the channel's .catch
+    // refunds + unlocks. Injectable for the deterministic self-test.
+    var setTo = opts.setTimeout || (root.setTimeout ? root.setTimeout.bind(root) : setTimeout);
+    var clearTo = opts.clearTimeout || (root.clearTimeout ? root.clearTimeout.bind(root) : clearTimeout);
+    var ackMs = opts.ackTimeoutMs || 12000;     // server must ack cr:start within this
+    var roundMs = opts.roundTimeoutMs || 120000; // a round must resolve within this (it always busts well before)
+    function arm(ms, fn) { var h = setTo(fn, ms); if (h && h.unref) h.unref(); return h; }
+    function clearTimers(l) { if (!l) return; if (l.ackT) clearTo(l.ackT); if (l.resT) clearTo(l.resT); l.ackT = 0; l.resT = 0; }
     var live = null; // the in-flight round, or null
 
     // Route an incoming cr:* message. A channel pipes every cr:* frame here.
@@ -67,11 +77,12 @@
       var pending = {
         game: o.game || "crash",
         onTick: typeof o.onTick === "function" ? o.onTick : function () {},
-        roundId: null, startedAt: 0, k: 0, localBase: 0, rafH: 0,
+        roundId: null, startedAt: 0, k: 0, localBase: 0, rafH: 0, ackT: 0, resT: 0,
         resolve: null, reject: null,
       };
       var p = new Promise(function (res, rej) { pending.resolve = res; pending.reject = rej; });
       live = pending;
+      pending.ackT = arm(ackMs, function () { failRound("Round didn't start — connection lost. Your stake was not taken."); });
       send({
         type: "cr:start",
         sessionId: o.sessionId, sessionToken: o.sessionToken,
@@ -82,8 +93,19 @@
       return p;
     }
 
+    // Reject + tear down a stuck round (timeout). Mirrors onError's cleanup.
+    function failRound(message) {
+      if (!live) return;
+      var l = live; live = null;
+      if (l.rafH) caf(l.rafH);
+      clearTimers(l);
+      l.reject(new Error(message));
+    }
+
     function onStarted(msg) {
       if (!live || live.roundId) return;          // ignore a stray/duplicate start
+      if (live.ackT) { clearTo(live.ackT); live.ackT = 0; }
+      live.resT = arm(roundMs, function () { failRound("Round timed out — connection lost."); });
       live.roundId = msg.roundId;
       live.startedAt = msg.startedAt;
       live.k = msg.k;
@@ -106,6 +128,7 @@
       if (!live) return;
       var l = live; live = null;
       if (l.rafH) caf(l.rafH);
+      clearTimers(l);
       // Snap the visual to the revealed crash point so the explosion/cash-out lands exactly.
       try { l.onTick(msg.crashPoint, null, msg); } catch (e) {}
       l.resolve(msg);
@@ -115,6 +138,7 @@
       if (!live) return;
       var l = live; live = null;
       if (l.rafH) caf(l.rafH);
+      clearTimers(l);
       l.reject(new Error((msg && msg.message) || "round error"));
     }
 

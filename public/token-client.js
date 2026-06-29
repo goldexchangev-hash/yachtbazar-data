@@ -39,16 +39,22 @@
 
   TokenBridgeClient.prototype._post = async function (path, body) {
     const f = this.d.fetch || root.fetch.bind(root);
-    const res = await f((this.d.apiBase || "") + path, {
-      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body || {}),
-    });
+    const opts = { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body || {}) };
+    // A hung request must NOT freeze the game forever (a per-shot bet that never resolves
+    // leaves the balance stuck). Bound every call with a timeout so the caller's catch fires.
+    try { if (typeof AbortSignal !== "undefined" && AbortSignal.timeout) opts.signal = AbortSignal.timeout(12000); } catch (e) {}
+    const res = await f((this.d.apiBase || "") + path, opts);
     const j = await res.json().catch(() => ({}));
-    if (!res.ok || j.ok === false) throw new Error(j.error || ("request failed: " + path));
+    // Surface the HTTP status in the message so a server 500 / HTML error page is diagnosable
+    // (was a bare "request failed").
+    if (!res.ok || j.ok === false) throw new Error(j.error || ("request failed: " + path + " (" + res.status + ")"));
     return j;
   };
   TokenBridgeClient.prototype.status = async function () {
     const f = this.d.fetch || root.fetch.bind(root);
-    return (await f((this.d.apiBase || "") + "/api/token/status")).json();
+    const opts = {};
+    try { if (typeof AbortSignal !== "undefined" && AbortSignal.timeout) opts.signal = AbortSignal.timeout(10000); } catch (e) {}
+    return (await f((this.d.apiBase || "") + "/api/token/status", opts)).json();
   };
 
   // BUY IN: lock `amountWei` on-chain (ONE popup) → open a server token session.

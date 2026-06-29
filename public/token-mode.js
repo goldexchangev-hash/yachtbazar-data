@@ -79,12 +79,22 @@
     },
 
     // ONE bet → authoritative server outcome (no popup). Games call this.
+    // Surfaces failures (was SILENT in the fish games — a failed per-shot bet just left the
+    // balance frozen with no toast, no log, so a lost session looked like a hung game).
     bet: async function (game, stakeUnits, params, clientSeed) {
       if (!this.active()) throw new Error("buy in with tokens first");
-      var r = await client.play(game, stakeUnits, params || {}, clientSeed || randSeed());
-      changed();
-      return r;
+      try {
+        var r = await client.play(game, stakeUnits, params || {}, clientSeed || randSeed());
+        changed();
+        return r;
+      } catch (e) {
+        _betError(e);
+        throw e; // callers still handle their own UI (re-sync balance, unlock reveal, etc.)
+      }
     },
+
+    // Let games push a one-off message through the same toast pipe.
+    notify: function (msg, kind) { note(msg, kind); },
 
     // Cash out: server signs the net → submit the claim on-chain (ONE popup).
     cashOut: async function () {
@@ -104,6 +114,22 @@
 
     _render: render,
   };
+
+  // Throttled bet-error surfacing: a fast-fire burst (fish shooter) can fail many bets at once;
+  // show at most one toast every few seconds so the user is told WHY without 30 stacked toasts.
+  var _lastBetErrAt = 0;
+  function _betError(e) {
+    var msg = (e && (e.shortMessage || e.message)) || "";
+    var lost = /invalid session token|no such session|session is closed/i.test(msg);
+    var now = (typeof Date !== "undefined" && Date.now) ? Date.now() : 0;
+    if (now - _lastBetErrAt > 2500) {
+      _lastBetErrAt = now;
+      if (lost) note("Your token session ended (the server restarted). Reload the page to keep playing — your locked funds are safe on-chain.", "err");
+      else if (/timed out|timeout|aborted|failed to fetch|network/i.test(msg)) note("Connection hiccup — that bet didn't go through. Try again.", "err");
+      else note("Bet didn't settle: " + msg, "err");
+    }
+    try { console.warn("[TokenMode] bet failed:", msg); } catch (_) {}
+  }
 
   function fmt(n) { return "$" + (Math.round((+n || 0) * 100) / 100).toLocaleString(); }
   function randSeed() { var s = ""; for (var i = 0; i < 8; i++) s += (Math.random() * 16 | 0).toString(16); return s; }
