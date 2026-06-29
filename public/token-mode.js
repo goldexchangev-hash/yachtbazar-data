@@ -48,6 +48,10 @@
       if (enabled === false) return note("Token games aren't enabled on the server yet", "err");
       var usd = Math.round((+amountUsd || 0) * 100) / 100;
       if (!(usd > 0)) return note("Enter how much to buy in", "err");
+      // blackjackBuyIn locks from your PRE-DEPOSITED game credits (not raw ETH), so make
+      // sure they're funded first — otherwise the lock reverts InsufficientBalance.
+      if (deps.gameBalanceUsd && usd > deps.gameBalanceUsd() + 0.001)
+        return note("Deposit at least " + fmt(usd) + " into game credits first (the Deposit box), then buy in.", "err");
       busy = true; render();
       try {
         var amountWei = deps.usdToWei(usd);
@@ -114,7 +118,7 @@
       mount.innerHTML =
         '<div class="token-bar">' +
         '<span class="token-bal">🎟️ Play with tokens</span>' +
-        '<span class="token-hint">lock ETH once → no per-bet popups</span>' +
+        '<span class="token-hint">lock game credits once → no per-bet popups</span>' +
         '<input id="token-buyin" class="token-input" type="number" min="1" step="1" value="50" aria-label="Buy-in amount in dollars" />' +
         '<button id="token-buyin-btn" class="btn btn-primary token-btn"' + (busy ? " disabled" : "") + '>' + (busy ? "…" : "Buy in") + '</button>' +
         '</div>';
