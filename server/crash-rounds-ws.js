@@ -143,7 +143,7 @@ if (require.main === module) {
   // stub bridge with a FIXED crash point so pacing + settlement agree
   let CRASH = 4.0, tokens = 1000;
   const bridge = {
-    crashPointPeek: () => ({ nonce: 0, crashPoint: CRASH }),
+    pointPeek: () => ({ nonce: 0, point: CRASH, crashPoint: CRASH }),
     play: (p) => { const c = p.params.cashOutAt; const win = CRASH >= c; const pay = win ? p.betUnits * c : 0; tokens = Math.round((tokens - p.betUnits + pay) * 100) / 100; return { win, payoutUnits: pay, multiplier: win ? c : 0, outcome: { crashPoint: CRASH }, tokens }; },
   };
   // stub socket: captures every message it's sent

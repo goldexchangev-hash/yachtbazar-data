@@ -44,12 +44,17 @@
     // source of truth — we mutate this.balance and push it back via onBalance.
     // In REAL the host owns the on-chain balance; this.balance is display-only and
     // each launch is a single on-chain tx (onRealBet) — no live tap-to-cashout.
-    this.mode = opts.mode || "demo";        // "demo" | "real"
+    this.mode = opts.mode || "demo";        // "demo" | "real" | "token"
     this.ethUsd = opts.ethUsd || 3400;
     this.onBalance = opts.onBalance || null; // (usd) → sync demo play-money
     this.onWin = opts.onWin || null;         // ({profitUsd,mult}) → share-win card
     this.onRealBet = opts.onRealBet || null; // (betUsd,targetX100) → Promise<result|null>
     this.onRealDone = opts.onRealDone || null; // () → host refreshes balance after the flight
+    // TOKEN mode (server-paced live round via CrashRounds): the upgrade the single-tx
+    // on-chain model couldn't offer — real LIVE manual cash-out. onTokenLaunch starts the
+    // server round and drives the climb via onTick; onTokenCashOut is the manual tap.
+    this.onTokenLaunch = opts.onTokenLaunch || null;   // (stake,autoTargetOr0,onTick) → Promise<result>
+    this.onTokenCashOut = opts.onTokenCashOut || null; // () → request the server cash-out
     this.balance = opts.initialBalance != null ? opts.initialBalance : 5000;
     this._active = false; this._enabled = (this.mode === "demo");
     this._realBusy = false; this._realRes = null;
@@ -67,7 +72,9 @@
 
     this._wire();
     this._renderHud(); this.bets.forEach((b) => this._syncPanel(b));
-    if (this.mode === "real") this._startRealIdle(); else this._startBetting();
+    if (this.mode === "real") this._startRealIdle();
+    else if (this.mode === "token") this._startTokenIdle();
+    else this._startBetting();
   }
 
   /* ---------- helpers ---------- */
@@ -135,8 +142,13 @@
     } else if (this.state === "real-end") {
       this._pause -= dt; if (this._pause <= 0) this._endRealRound();
       return;
+    } else if (this.state === "token-flying") {
+      return; // the climb is driven by the SERVER round (onTokenLaunch's onTick), not local time
+    } else if (this.state === "token-end") {
+      this._pause -= dt; if (this._pause <= 0) this._startTokenIdle();
+      return;
     }
-    if (this.mode !== "demo") return; // real mode idles between launches
+    if (this.mode !== "demo") return; // real/token modes idle between launches
     if (this.state === "betting") {
       this.countdown -= dt;
       if (this.countdown <= TAKEOFF_BEAT) { this._enterTakeoff(); return; }
@@ -195,7 +207,7 @@
   // The stake is editable only before a round commits (demo betting window, or
   // real-mode idle) — never once it's taking off / flying / settling.
   PlaneGame.prototype._canEditBet = function () {
-    return this.state === "betting" || this.state === "real-idle";
+    return this.state === "betting" || this.state === "real-idle" || this.state === "token-idle";
   };
 
   /* ---------- buttons ---------- */
@@ -211,6 +223,17 @@
       if (this._realBusy) { txt = this.state === "real-flying" ? "✈️ IN FLIGHT…" : "LAUNCHING…"; kind = "wait"; dis = true; }
       else if (!this._enabled) { txt = "CONNECT TO PLAY"; kind = "wait"; dis = true; }
       else { txt = "🚀 LAUNCH " + this._usd(b.stake) + " @ " + b.autoTarget.toFixed(2) + "x"; kind = "bet"; dis = this.balance < b.stake; }
+      btn.textContent = txt; btn.dataset.kind = kind; btn.disabled = dis; return;
+    }
+    // TOKEN single-shot live round: bet A launches; CASH OUT is the live manual tap.
+    if (this.mode === "token") {
+      if (b.id !== "A") { btn.textContent = "DEMO ONLY"; btn.dataset.kind = "wait"; btn.disabled = true; return; }
+      if (this.state === "token-flying") {
+        if (b.autoOn) { txt = "AUTO @ " + b.autoTarget.toFixed(2) + "x"; kind = "auto"; dis = true; }
+        else { txt = "CASH OUT " + this._usd(b.stake * (live || this.r.getRenderedMultiplier() || 1)); kind = "cashout"; dis = false; }
+      } else if (this.state === "token-end") { txt = "ROUND OVER"; kind = "wait"; dis = true; }
+      else if (!this._enabled) { txt = "BUY IN TO PLAY"; kind = "wait"; dis = true; }
+      else { txt = "🎟️ LAUNCH " + this._usd(b.stake) + (b.autoOn ? " @ " + b.autoTarget.toFixed(2) + "x" : ""); kind = "bet"; dis = this.balance < b.stake; }
       btn.textContent = txt; btn.dataset.kind = kind; btn.disabled = dis; return;
     }
     if (this.state === "betting") {
@@ -230,6 +253,12 @@
 
   PlaneGame.prototype._onAction = function (b) {
     if (this.mode === "real") { if (b.id === "A") this._realLaunch(); return; }
+    if (this.mode === "token") {
+      if (b.id !== "A") return; // single live bet in token mode
+      if (this.state === "token-flying") { if (!b.autoOn && this.onTokenCashOut) this.onTokenCashOut(); } // manual tap
+      else this._tokenLaunch();
+      return;
+    }
     if (this.state === "betting") {
       if (b.betPlaced) { b.betPlaced = false; }
       else if (this.balance >= b.stake) { b.betPlaced = true; }
@@ -298,6 +327,65 @@
     this._realBusy = false;
     if (this.onRealDone) { try { this.onRealDone(); } catch (e) {} } // host refreshes balance
     this._startRealIdle();
+  };
+
+  /* ---------- TOKEN (server-paced live round via CrashRounds) ---------- */
+  PlaneGame.prototype._startTokenIdle = function () {
+    this._realEpoch = (this._realEpoch || 0) + 1; // invalidate any older in-flight round resolution
+    this.state = "token-idle"; this._realBusy = false; this._miles = {};
+    this.r.reset(); this.r.setCountdown(0, BET_WINDOW);
+    this._msg("Set your bet + (optional) auto-cash-out, then LAUNCH 🎟️", "");
+    this._renderButtons();
+  };
+  PlaneGame.prototype._tokenLaunch = function () {
+    if (this.mode !== "token" || this._realBusy || !this._active) return;
+    if (!this._enabled) { this._msg("Buy in with tokens to play", ""); return; }
+    if (!this.onTokenLaunch) return;
+    const b = this.bets[0];
+    const stake = b.stake;
+    const autoTarget = b.autoOn ? Math.max(1.01, Math.min(this.cap, b.autoTarget)) : 0; // 0 = MANUAL (the default)
+    if (this.balance < stake) { this._msg("Not enough tokens — buy in 👇", "lose"); return; }
+    this._realBusy = true; this._miles = {}; this.nonce += 1;
+    const epoch = this._realEpoch;
+    // Debit the stake locally for an immediate readout; the server debits the same on its
+    // ledger. The authoritative token balance is reconciled from res.tokens on settle.
+    this.balance = Math.round((this.balance - stake) * 100) / 100;
+    this.state = "token-flying"; this.flightT = 0;
+    this.r.takeoff(); this.r.flying(); Riser.start(); this._sfx("blip");
+    this._renderHud(); this._renderButtons();
+    // The climb is driven by the SERVER round: onTick gives the live multiplier.
+    const onTick = (m, elapsed, result) => {
+      if (epoch !== this._realEpoch || !this._active) return;
+      if (result) return; // the settle frame is handled by the .then below
+      this.r.setLive(m); Riser.set(m);
+      [10, 50, 100].forEach((n) => { if (m >= n && !this._miles[n]) { this._miles[n] = 1; this.r.milestone(n); this._sfx("coin"); } });
+      this._renderButtons(m);
+    };
+    Promise.resolve(this.onTokenLaunch(stake, autoTarget, onTick)).then((res) => {
+      if (epoch !== this._realEpoch) return; // superseded (mode switch / new idle) — drop a stale resolve
+      this._realBusy = false;
+      if (!res) { this.balance = Math.round((this.balance + stake) * 100) / 100; this._startTokenIdle(); return; }
+      this.crash = res.crashPoint;
+      if (typeof res.tokens === "number") this.balance = Math.round(res.tokens * 100) / 100; // authoritative
+      this.history.unshift(res.crashPoint); this.history = this.history.slice(0, 20); this._renderHistory();
+      this.lastRound = { nonce: this.nonce, crash: res.crashPoint }; this._updatePfLast();
+      if (res.busted) {
+        const instant = res.crashPoint <= 1.01; this.r.crash(res.crashPoint, instant);
+        this._msg("✈️ Flew away @ " + res.crashPoint.toFixed(2) + "x — lost " + this._usd(stake), "lose"); this._sfx("lose");
+      } else {
+        const co = res.cashOutAt || 1, profit = Math.max(0, (res.payoutUnits || 0) - stake);
+        this.r.cashOut(profit, co, stake);
+        this._sfx("coin"); this._sfx(profit >= 300 ? "jackpot" : profit >= 100 ? "bigwin" : "win");
+        this._msg("💰 Cashed " + co.toFixed(2) + "x  →  +" + this._usd(profit) + " (tokens)", "win");
+        if (this.onWin && profit > 0) { try { this.onWin({ profitUsd: profit, mult: co }); } catch (e) {} }
+      }
+      this.state = "token-end"; this._pause = CRASH_PAUSE; Riser.stop();
+      this._renderHud(); this._renderButtons();
+    }).catch((e) => {
+      if (epoch !== this._realEpoch) return;
+      this._realBusy = false; this.balance = Math.round((this.balance + stake) * 100) / 100; // failed start costs nothing
+      this._startTokenIdle(); this._msg((e && e.message) || "Round failed — try again", "lose"); this._renderHud();
+    });
   };
 
   /* ---------- wiring ---------- */
@@ -374,10 +462,14 @@
       if (this.state === "real-flying") { if (this._realRes.won) this._realCashOut(); else this._realCrash(); this._endRealRound(); }
       else if (this.state === "real-end") { this._endRealRound(); }
     }
+    // Leaving mid-TOKEN-flight: request a cash-out so the player banks the live multiplier
+    // instead of riding it to a bust they can't see. The server validates against its clock
+    // (already-busted → it settles as a bust), and the .then resolves regardless of the ticker.
+    if (!on && this.state === "token-flying" && this.onTokenCashOut) { try { this.onTokenCashOut(); } catch (e) {} }
     try { if (on) this.r.resume(); else this.r.pause(); } catch (e) {}
     // Resume the climb audio if we're returning to a frozen-mid-flight round
     // (the ticker was paused on leave); silence it when leaving.
-    if (on) { if (this.state === "flying" || this.state === "real-flying") { try { Riser.start(); } catch (e) {} } }
+    if (on) { if (this.state === "flying" || this.state === "real-flying" || this.state === "token-flying") { try { Riser.start(); } catch (e) {} } }
     else { try { Riser.stop(); } catch (e) {} }
   };
   PlaneGame.prototype.setEnabled = function (on) { this._enabled = !!on; this._renderButtons(); };
@@ -395,7 +487,7 @@
   };
   PlaneGame.prototype.setEthUsd = function (n) { if (n > 0) { this.ethUsd = n; this._renderHud(); this.bets.forEach((b) => this._syncPanel(b)); } };
   PlaneGame.prototype.setMode = function (m) {
-    if (m !== "real" && m !== "demo") return;
+    if (m !== "real" && m !== "demo" && m !== "token") return;
     if (m === this.mode) return;
     // If a DEMO round is mid-flight when we switch (e.g. wallet just connected),
     // its stake was already debited — refund the still-active bets so the play
@@ -411,6 +503,7 @@
     this.bets.forEach((b) => { b.betPlaced = false; b.active = false; b.cashed = false; b.autoBet = false; this._syncPanel(b); });
     this._realBusy = false; this._realRes = null;
     if (m === "real") { this._enabled = false; this._startRealIdle(); }
+    else if (m === "token") { this._enabled = true; this._startTokenIdle(); }
     else { this._enabled = true; this._startBetting(); }
   };
 

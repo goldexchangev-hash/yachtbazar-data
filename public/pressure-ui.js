@@ -29,7 +29,7 @@
     this.valveFraction = E.DEFAULTS.valveFraction;
     this.pumpSpeed = "normal";
     this.autoMult = E.DEFAULTS.autoRelease;
-    this.autoOn = true;
+    this.autoOn = (opts.autoOn != null) ? !!opts.autoOn : true; // token mode passes false (manual default)
 
     // provably-fair seed chain (one server seed for the session in this demo)
     this.serverSeed = E.randomSeed(24);
@@ -43,6 +43,11 @@
     this.ethUsd = opts.ethUsd > 0 ? opts.ethUsd : ETH_USD;
     this.onBalance = typeof opts.onBalance === "function" ? opts.onBalance : null;
     this.onWin = typeof opts.onWin === "function" ? opts.onWin : null;
+    // TOKEN mode (server-paced live round via CrashRounds): HOLD starts the round, RELEASE
+    // is the manual cash-out, the pop is the server's committed burst. The hold-and-release
+    // mechanic the on-chain model couldn't settle provably-fairly.
+    this.onTokenLaunch = typeof opts.onTokenLaunch === "function" ? opts.onTokenLaunch : null;   // (stake,autoTargetOr0,onTick)→Promise<result>
+    this.onTokenCashOut = typeof opts.onTokenCashOut === "function" ? opts.onTokenCashOut : null; // ()→request server cash-out
     this._disabled = false;
     this._active = false; // only true while this channel is on-screen (gates global input)
     this.balance = (opts.initialBalance != null && isFinite(opts.initialBalance)) ? opts.initialBalance : this._loadBalance();
@@ -190,13 +195,19 @@
     }
   };
 
+  // True when a token session is open and this game was wired for it → server-paced rounds.
+  PressureGame.prototype._tokenActive = function () {
+    return !!(this.onTokenLaunch && root.TokenMode && root.TokenMode.active());
+  };
+
   // ---------------- round lifecycle ----------------
   PressureGame.prototype._press = function () {
     if (!this._active) return; // off-channel: ignore global SPACE / pointer input
     if (document.querySelector(".modal:not(.hidden)")) return; // a dialog is open over the canvas
-    if (this._disabled) { this._msg("🎈 Pressure is play-money only — disconnect to play it in demo."); return; }
     if (this.pressing) return;
     if (this.state !== "armed" && this.state !== "idle") return;
+    if (this._disabled && !this._tokenActive()) { this._msg("🎈 Pressure is play-money only — disconnect to play it in demo."); return; }
+    if (this._tokenActive()) return this._pressToken(); // token mode: server-paced hold/release
     if (this.balance < this.bet) { this._msg("Not enough balance — add funds"); this._renderHud(); return; }
 
     // commit money + derive the SEALED burst (hidden from the renderer)
@@ -216,7 +227,70 @@
     if (root.Chiptune && Chiptune.blip) try { Chiptune.blip(); } catch (e) {}
   };
 
+  // TOKEN HOLD: start a server-paced round. The climb is driven by onTick (server clock);
+  // RELEASE (or leaving the channel) requests the cash-out; the pop is the server's burst.
+  PressureGame.prototype._pressToken = function () {
+    var TM = root.TokenMode;
+    if (TM.tokens() < this.bet) { this._msg("Not enough tokens — buy in"); this._renderHud(); return; }
+    var stake = this.bet;
+    var autoTarget = this.autoOn ? this.autoMult : 0; // 0 = MANUAL release (the default in token mode)
+    this.nonce += 1; this.floors = []; this.heldSec = 0; this.burst = 0;
+    this.pressing = true; this.state = "inflating";
+    this.r.reset(); if (this._b3d) this._b3d.reset();
+    this.r.setState("inflating");
+    if (this.r.setAutoLine) this.r.setAutoLine(autoTarget || 0);
+    this.balance = Math.round((TM.tokens() - stake) * 100) / 100; // anchor to tokens, debit the stake
+    this._renderHud();
+    this._msg(autoTarget ? "Pumping… auto-banks at " + autoTarget.toFixed(2) + "x" : "Pumping… release to bank before it pops!");
+    if (root.Chiptune && Chiptune.blip) try { Chiptune.blip(); } catch (e) {}
+    var self = this, epoch = (this._tokenEpoch = (this._tokenEpoch || 0) + 1);
+    var onTick = function (m, elapsed, result) {
+      if (epoch !== self._tokenEpoch || !self._active || self.state !== "inflating") return;
+      if (result) return; // settle frame handled by .then
+      var progress = Math.min(1, Math.log(Math.max(1, m)) / Math.log(REF_MULT));
+      self.r.setLive(m, progress);
+      if (self._b3d) self._b3d.setPressure(progress);
+    };
+    Promise.resolve(this.onTokenLaunch(stake, autoTarget, onTick)).then(function (res) {
+      if (epoch !== self._tokenEpoch) return;       // superseded (left + re-entered)
+      if (!res) { self.pressing = false; self.balance = TM.tokens(); self._toArmed(); return; }
+      self._resolveToken(res, stake);
+    }).catch(function (e) {
+      if (epoch !== self._tokenEpoch) return;
+      self.pressing = false; self.balance = TM.tokens(); self._msg("Round failed — try again"); self._toArmed();
+    });
+  };
+
+  // Render the SERVER result of a token round through the existing pop/win/refund visuals.
+  PressureGame.prototype._resolveToken = function (res, stake) {
+    this.pressing = false; this.state = "resolving";
+    this.burst = res.crashPoint || 0; // the revealed pop-point
+    if (typeof res.tokens === "number") this.balance = Math.round(res.tokens * 100) / 100; // authoritative
+    var co = res.cashOutAt || 0, payout = res.payoutUnits || 0, profit = Math.max(0, payout - stake);
+    var voided = !res.busted && co > 0 && co < MIN_CASHOUT && Math.abs(payout - stake) < 1e-6; // server refunded
+    this.lastRound = { nonce: this.nonce, releaseMult: res.busted ? this.burst : co, burst: this.burst, payout: payout, exit: res.busted ? "pop" : (voided ? "void" : "release") };
+    if (res.busted) {
+      this.r.pop(); if (this._b3d) this._b3d.pop();
+      this.r.showReceipt("POP @ " + this.burst.toFixed(2) + "x", false);
+      this._msg("💥 POP at " + this.burst.toFixed(2) + "x — lost the bet");
+      if (root.Chiptune && Chiptune.lose) try { Chiptune.lose(); } catch (e) {}
+    } else if (voided) {
+      this.r.refund();
+      this._msg("Let go too early (" + co.toFixed(2) + "x) — bet refunded. Reach " + MIN_CASHOUT.toFixed(2) + "x to win.");
+    } else {
+      this.r.win({ finalMult: co, payout: payout, profit: profit });
+      if (this._b3d) this._b3d.bank(profit >= 300 ? "mega" : profit >= 100 ? "big" : "normal");
+      this._msg("💰 Banked " + co.toFixed(2) + "x  →  " + this._usd(payout));
+      try { var C = root.Chiptune; if (C) { if (profit >= 500 && C.jackpot) C.jackpot(); else if (profit >= 100 && C.bigwin) C.bigwin(); else if (C.win) C.win(); } } catch (e) {}
+      if (this.onWin && profit > 0) try { this.onWin({ profitUsd: profit, mult: co }); } catch (e) {}
+    }
+    this.state = "result"; this._renderHud(); this._updatePfLast();
+    clearTimeout(this._resetTimer);
+    this._resetTimer = setTimeout(this._toArmed.bind(this), res.busted ? RESET_MS : 3600);
+  };
+
   PressureGame.prototype._tick = function (dt) {
+    if (this._tokenActive()) return; // token mode: the climb is driven by the server (onTick), not local time
     if (this.state !== "inflating" || !this.pressing) return;
     this.heldSec += dt;
     const mult = E.multiplierAtTime(this.heldSec, this.pumpSpeed);
@@ -244,6 +318,7 @@
 
   PressureGame.prototype._release = function () {
     if (this.state !== "inflating" || !this.pressing) return;
+    if (this._tokenActive()) { if (this.onTokenCashOut) this.onTokenCashOut(); return; } // server settles at its clock
     const m = Math.floor(this.r.getRenderedMultiplier() * 100) / 100; // snap DOWN to last drawn frame
     if (m >= this.burst) this._resolve("pop", this.burst);
     else if (m < MIN_CASHOUT) this._resolve("void", m);   // let go too early → refund, no win/loss

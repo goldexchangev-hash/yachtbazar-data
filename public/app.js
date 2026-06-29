@@ -2197,21 +2197,21 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1213").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1214").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   // PlayCanvas engine (~2.2MB) — only loaded when the Sky Swoop channel is first opened.
   function loadPlayCanvasOnce() {
     if (window.pc) return Promise.resolve();
     if (playcanvasLoadPromise) return playcanvasLoadPromise;
-    playcanvasLoadPromise = loadScriptOnce("vendor/playcanvas.min.js?v=1213").catch((e) => { playcanvasLoadPromise = null; throw e; });
+    playcanvasLoadPromise = loadScriptOnce("vendor/playcanvas.min.js?v=1214").catch((e) => { playcanvasLoadPromise = null; throw e; });
     return playcanvasLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=1213"))
+      .then(() => loadScriptOnce("slots.js?v=1214"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -2221,11 +2221,11 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=1213"))
-      .then(() => loadScriptOnce("pressure-render.js?v=1213"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=1213"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=1214"))
+      .then(() => loadScriptOnce("pressure-render.js?v=1214"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=1214"))
       // optional 3D red balloon (Three.js) — falls back to the 2D balloon if it can't load
-      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1213")).catch(() => {}))
+      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1214")).catch(() => {}))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -2243,11 +2243,21 @@
     if (window.Balloon3D) { const b3m = $("pressure3d-stage"); if (b3m) try { balloon3d = new window.Balloon3D({ mount: b3m, width: 800, height: 600 }); } catch (e) { balloon3d = null; } }
     pressureGame = new window.PressureGame({
       mount, width: 800, height: 600,
+      autoOn: (window.TokenMode && TokenMode.active()) ? false : true, // manual default in token mode (owner rule)
       balloon3d: balloon3d,
       ethUsd: ethUsd,
-      initialBalance: demoUsd,
-      onBalance: (b) => { demoUsd = Math.round(b * 100) / 100; demoSave(); demoPaint(); },
+      initialBalance: (window.TokenMode && TokenMode.active()) ? TokenMode.tokens() : demoUsd,
+      onBalance: (b) => { if (window.TokenMode && TokenMode.active()) return; demoUsd = Math.round(b * 100) / 100; demoSave(); demoPaint(); }, // demo only (token mode: balance owned by TokenMode)
       onWin: (i) => setLastResult({ won: true, game: "Balloon Pop", emoji: "🎈", amountUsd: i.profitUsd, detail: i.mult.toFixed(2) + "× banked" }), // Balloon Pop shows its own rich in-canvas win — no result overlay (would collide)
+      // TOKEN mode: HOLD starts a server-paced round (pressure burst = 3% edge), RELEASE is
+      // the manual cash-out. Settles through the pressure engine on the round-runner.
+      onTokenLaunch: (stake, autoTarget, onTick) => {
+        if (!window.CrashRounds || !(window.TokenMode && TokenMode.active())) return Promise.resolve(null);
+        const sess = TokenMode.session(); if (!sess) return Promise.resolve(null);
+        return CrashRounds.start({ sessionId: sess.sessionId, sessionToken: sess.sessionToken, game: "pressure", betUnits: stake, autoTarget: autoTarget || 0, onTick: onTick })
+          .then((res) => { try { if (res && typeof res.tokens === "number") TokenMode.syncTokens(res.tokens); } catch (e) {} return res; });
+      },
+      onTokenCashOut: () => { if (window.CrashRounds) CrashRounds.cashOut(); },
       els: {
         balance: el("pr-balance"),
         betSlider: el("pr-bet-slider"), betVal: el("pr-bet-val"), betEth: el("pr-bet-eth"),
@@ -2270,8 +2280,11 @@
       const g = buildPressureGame(); if (!g) return;
       g.setActive(true);
       g.setEthUsd(ethUsd);
-      if (demoOn) { g.setBalance(demoUsd); g.setEnabled(true); }
-      else { g.setBalance(demoUsd); g.setEnabled(true); }
+      if (window.TokenMode && TokenMode.active()) {
+        // Token mode: default auto OFF so HOLD/RELEASE is fully manual (owner rule).
+        g.autoOn = false; if (g.els.autoToggle) { g.els.autoToggle.textContent = "AUTO OFF"; g.els.autoToggle.classList.remove("active"); }
+        g.setBalance(TokenMode.tokens()); g.setEnabled(true);
+      } else { g.setBalance(demoUsd); g.setEnabled(true); }
       // Now the canvas exists → reveal the layer (idle may have shown the ready
       // room while it was still loading, e.g. right after the promo ended).
       if (window.TV && currentGame === "pressure" && !TV._promoPlaying) try { TV.idle(); } catch (e) {}
@@ -2283,10 +2296,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=1213"))
-      .then(() => loadScriptOnce("plane-render.js?v=1213"))
-      .then(() => loadScriptOnce("plane-feed.js?v=1213"))
-      .then(() => loadScriptOnce("plane-ui.js?v=1213"))
+      .then(() => loadScriptOnce("plane-engine.js?v=1214"))
+      .then(() => loadScriptOnce("plane-render.js?v=1214"))
+      .then(() => loadScriptOnce("plane-feed.js?v=1214"))
+      .then(() => loadScriptOnce("plane-ui.js?v=1214"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2306,12 +2319,21 @@
     planeGame = new window.PlaneGame({
       mount, width: 800, height: 600,
       ethUsd: ethUsd, houseEdge: CRASH_EDGE, // 1% — identical to the on-chain crash it settles through
-      mode: demoOn ? "demo" : "real",
-      initialBalance: demoOn ? demoUsd : weiToUsd(gameWei),
-      onBalance: (b) => { demoUsd = Math.round(b * 100) / 100; demoSave(); demoPaint(); }, // demo only
+      mode: (window.TokenMode && TokenMode.active()) ? "token" : (demoOn ? "demo" : "real"),
+      initialBalance: (window.TokenMode && TokenMode.active()) ? TokenMode.tokens() : (demoOn ? demoUsd : weiToUsd(gameWei)),
+      onBalance: (b) => { if (window.TokenMode && TokenMode.active()) return; demoUsd = Math.round(b * 100) / 100; demoSave(); demoPaint(); }, // demo only (token mode: balance owned by TokenMode)
       onWin: (i) => setLastResult({ won: true, game: "Plane", emoji: "✈️", amountUsd: i.profitUsd, detail: i.mult.toFixed(2) + "× cashed" }), // Plane shows its own in-canvas cash-out win — no result overlay (would collide)
       onRealBet: (betUsd, targetX100) => doPlanePlay(betUsd, targetX100),       // single on-chain round
       onRealDone: () => { unlockReveal(); refreshBalances().then(() => { if (planeGame) planeGame.setBalance(weiToUsd(gameWei)); }); refreshDiceHouse(); try { refreshStats(); } catch (e) {} },
+      // TOKEN mode: a server-paced live round (CrashRounds) settles through the same crash
+      // engine. onTick drives the climb; the cash-out is a manual tap (auto opt-in).
+      onTokenLaunch: (stake, autoTarget, onTick) => {
+        if (!window.CrashRounds || !(window.TokenMode && TokenMode.active())) return Promise.resolve(null);
+        const sess = TokenMode.session(); if (!sess) return Promise.resolve(null);
+        return CrashRounds.start({ sessionId: sess.sessionId, sessionToken: sess.sessionToken, game: "plane", betUnits: stake, autoTarget: autoTarget || 0, onTick: onTick })
+          .then((res) => { try { if (res && typeof res.tokens === "number") TokenMode.syncTokens(res.tokens); } catch (e) {} return res; });
+      },
+      onTokenCashOut: () => { if (window.CrashRounds) CrashRounds.cashOut(); },
       els: {
         balance: el("plane-balance"), message: el("plane-message"),
         history: el("plane-history"), feed: el("plane-feed"),
@@ -2330,7 +2352,14 @@
       const g = buildPlaneGame(); if (!g) return;
       g.setActive(true);
       g.setEthUsd(ethUsd);
-      if (demoOn) { g.setMode("demo"); g.setBalance(demoUsd); g.setEnabled(true); }
+      if (window.TokenMode && TokenMode.active()) {
+        g.setMode("token");
+        // Manual cash-out is the DEFAULT (owner rule): force bet A's auto OFF on entry so
+        // LAUNCH climbs until the player taps CASH OUT. They can still opt into auto.
+        if (g.bets && g.bets[0]) { g.bets[0].autoOn = false; try { g._syncPanel(g.bets[0]); } catch (e) {} }
+        g.setBalance(TokenMode.tokens()); g.setEnabled(true);
+      }
+      else if (demoOn) { g.setMode("demo"); g.setBalance(demoUsd); g.setEnabled(true); }
       else { g.setMode("real"); g.setBalance(weiToUsd(gameWei)); g.setEnabled(!!(account && contract)); }
       // Now the canvas exists → reveal the layer (idle may have shown the ready
       // room while it was still loading, e.g. right after the promo ended).
@@ -2371,15 +2400,15 @@
   function loadThreeOnce() {
     if (window.THREE) return Promise.resolve();
     if (threeLoadPromise) return threeLoadPromise;
-    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1213").catch((e) => { threeLoadPromise = null; throw e; });
+    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1214").catch((e) => { threeLoadPromise = null; throw e; });
     return threeLoadPromise;
   }
   function ensureSlots3dLoaded() {
     if (window.Slots3D) return Promise.resolve(true);
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("slots3d-engine.js?v=1213"))
-      .then(() => loadScriptOnce("slots3d.js?v=1213"))
+      .then(() => loadScriptOnce("slots3d-engine.js?v=1214"))
+      .then(() => loadScriptOnce("slots3d.js?v=1214"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2389,7 +2418,7 @@
     const el = (id) => $(id);
     const mount = $("slots3d-stage"); if (!mount) return null;
     slots3dGame = new window.Slots3D({
-      mount, width: 800, height: 600, ethUsd: ethUsd, initialBalance: demoUsd,
+      mount, width: 800, height: 600, ethUsd: ethUsd, initialBalance: (window.TokenMode && TokenMode.active()) ? TokenMode.tokens() : demoUsd,
       onBalance: (b) => { if (window.TokenMode && TokenMode.active()) return; demoUsd = Math.round(b * 100) / 100; demoSave(); demoPaint(); }, // demo play-money (token mode: balance is owned by TokenMode)
       onWin: (i) => setLastResult({ won: true, game: "Gem Vault", emoji: "💎", amountUsd: i.profitUsd, detail: i.mult.toFixed(2) + "× spin" }),
       els: {
@@ -2421,8 +2450,8 @@
     if (window.FishTable) return Promise.resolve(true);
     if (fishLoadPromise) return fishLoadPromise;
     fishLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishtable-engine.js?v=1213"))
-      .then(() => loadScriptOnce("fishtable.js?v=1213"))
+      .then(() => loadScriptOnce("fishtable-engine.js?v=1214"))
+      .then(() => loadScriptOnce("fishtable.js?v=1214"))
       .then(() => true)
       .catch((e) => { fishLoadPromise = null; throw e; });
     return fishLoadPromise;
@@ -2504,7 +2533,7 @@
     if (window.SwoopGame) return Promise.resolve(true);
     if (swoopLoadPromise) return swoopLoadPromise;
     swoopLoadPromise = loadPlayCanvasOnce()
-      .then(() => loadScriptOnce("swoop3d.js?v=1213"))
+      .then(() => loadScriptOnce("swoop3d.js?v=1214"))
       .then(() => true)
       .catch((e) => { swoopLoadPromise = null; throw e; });
     return swoopLoadPromise;
@@ -2585,8 +2614,8 @@
     if (window.FishShooter) return Promise.resolve(true);
     if (fishshooterLoadPromise) return fishshooterLoadPromise;
     fishshooterLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishshooter-engine.js?v=1213")) // OWN engine (decoupled from Reef's fishtable-engine.js)
-      .then(() => loadScriptOnce("fishshooter.js?v=1213"))
+      .then(() => loadScriptOnce("fishshooter-engine.js?v=1214")) // OWN engine (decoupled from Reef's fishtable-engine.js)
+      .then(() => loadScriptOnce("fishshooter.js?v=1214"))
       .then(() => true)
       .catch((e) => { fishshooterLoadPromise = null; throw e; });
     return fishshooterLoadPromise;
@@ -2661,7 +2690,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1213"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1214"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -2688,7 +2717,7 @@
   function loadRail3dOnce() {
     if (window.Rail3D) return Promise.resolve(true);
     if (rail3dLoadPromise) return rail3dLoadPromise;
-    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1213")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
+    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1214")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
     return rail3dLoadPromise;
   }
   function buildRail3d() {
@@ -2709,7 +2738,7 @@
   function loadDice2_3dOnce() {
     if (window.TwoDice3D) return Promise.resolve(true);
     if (d2_3dLoadPromise) return d2_3dLoadPromise;
-    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1213")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
+    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1214")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
     return d2_3dLoadPromise;
   }
   function buildDice2_3d() {
@@ -2864,8 +2893,8 @@
     try { diceHouseWei = usdToWei(1000000); } catch {} // the "house" always covers in demo
     dicePayoutCapBps = 10000n;
     demoPaint();
-    if (pressureGame) try { pressureGame.setEthUsd(ethUsd); } catch (e) {}
-    if (planeGame) try { planeGame.setEthUsd(ethUsd); if (demoOn) planeGame.setBalance(demoUsd); } catch (e) {}
+    if (pressureGame) try { pressureGame.setEthUsd(ethUsd); if (window.TokenMode && TokenMode.active()) pressureGame.setBalance(TokenMode.tokens()); } catch (e) {}
+    if (planeGame) try { planeGame.setEthUsd(ethUsd); if (window.TokenMode && TokenMode.active()) planeGame.setBalance(TokenMode.tokens()); else if (demoOn) planeGame.setBalance(demoUsd); } catch (e) {}
     if (slots3dGame) try { slots3dGame.setEthUsd(ethUsd); if (window.TokenMode && TokenMode.active()) slots3dGame.setBalance(TokenMode.tokens()); else if (demoOn) slots3dGame.setBalance(demoUsd); } catch (e) {}
     if (fishGame) try { fishGame.setEthUsd(ethUsd); if (demoOn) fishGame.setBalance(demoUsd); } catch (e) {}
     if (swoopGame) try { swoopGame.setEthUsd(ethUsd); if (demoOn) swoopGame.setBalance(demoUsd); } catch (e) {}
@@ -3252,7 +3281,7 @@
     if (f && !f.getAttribute("src")) {
       // No &bal= seed — the table starts from its own server default ($1,000), NOT the demo balance.
       const tableWallet = account || bjGuestId();
-      let src = "blackjack.html?tv=1&v=1213&guest=" + encodeURIComponent(tableWallet);
+      let src = "blackjack.html?tv=1&v=1214&guest=" + encodeURIComponent(tableWallet);
       let tokenHash = "";
       if (account) { try { const tok = localStorage.getItem(bjBridgeTokenKey()) || ""; if (tok) tokenHash = "#bjtoken=" + encodeURIComponent(tok); } catch {} }
       if (bjPendingTable) { src += "&table=" + encodeURIComponent(bjPendingTable); bjPendingTable = null; }

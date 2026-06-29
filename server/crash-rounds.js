@@ -46,9 +46,12 @@ function makeCrashRounds(opts) {
     const bet = Math.round((Number(o.betUnits) || 0) * 100) / 100;
     if (!(bet > 0)) throw new Error("bet must be positive");
     const clientSeed = String(o.clientSeed || ("rnd-" + (++_seq)));
-    // Derive the SECRET crash point (server only) + the moment it busts.
-    const peek = bridge.crashPointPeek({ sessionId: sessionId, clientSeed: clientSeed });
-    const crashPoint = peek.crashPoint;
+    // Derive the SECRET bust/pop point (server only) + the moment it busts. GAME-AWARE:
+    // pressure pops on its own 3%-edge point, the crash family on the crash point.
+    const peek = bridge.pointPeek
+      ? bridge.pointPeek({ sessionId: sessionId, clientSeed: clientSeed, game: gameKey })
+      : bridge.crashPointPeek({ sessionId: sessionId, clientSeed: clientSeed }); // back-compat
+    const crashPoint = peek.point != null ? peek.point : peek.crashPoint;
     const crashMs = CE.msToReach(crashPoint, K);
     const atCap = crashPoint >= crashEngine.MAX_CRASH_X;
     // Optional auto-cash-out (opt-in; default OFF = manual).
@@ -125,7 +128,7 @@ if (require.main === module) {
   // stub bridge with a FIXED crash point so pacing + settlement use the same value
   let CRASH = 4.00; let tokens = 1000;
   const bridge = {
-    crashPointPeek: () => ({ nonce: 0, crashPoint: CRASH }),
+    pointPeek: () => ({ nonce: 0, point: CRASH, crashPoint: CRASH }),
     play: (p) => { const c = p.params.cashOutAt; const win = CRASH >= c; const pay = win ? p.betUnits * c : 0; tokens = Math.round((tokens - p.betUnits + pay) * 100) / 100; return { win: win, payoutUnits: pay, tokens: tokens }; },
   };
   const cr = makeCrashRounds({ bridge: bridge, now: now, setTimer: setTimer, clearTimer: clearTimer });

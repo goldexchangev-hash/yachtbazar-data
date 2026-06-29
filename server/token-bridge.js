@@ -211,20 +211,27 @@ function makeTokenBridge(opts) {
 
   function session(id) { return sessions.get(id) || null; }
 
-  // Derive the crash point for the session's NEXT bet (peek — does not burn the nonce),
-  // so a live crash round-runner can pace the curve. The eventual play("crash", ...,
-  // clientSeed) with the SAME clientSeed computes the identical point. Trusted server use
-  // only — never expose the serverSeed or the crash point to the client before it busts.
-  function crashPointPeek(o) {
+  // Derive the secret bust/pop point for the session's NEXT bet (peek — does not burn the
+  // nonce), so a live round-runner can pace the curve. GAME-AWARE: the crash family
+  // (crash/plane/swoop) uses the crash engine's crashPointOf; pressure (Balloon Pop) is the
+  // SAME inverse-CDF with a 3% edge, exposed as deriveBurst. The eventual play(game, …,
+  // clientSeed) at the SAME nonce+clientSeed computes the identical point, so pacing and
+  // settlement always agree. Trusted server use only — never expose the point before it busts.
+  function pointPeek(o) {
     const s = sessions.get(o && o.sessionId);
     if (!s) throw new Error("no such session");
     if (s.closed) throw new Error("session is closed");
     const clientSeed = String(o.clientSeed == null ? "" : o.clientSeed);
-    const crashPoint = ENGINES.crash.crashPointOf(s.serverSeed, clientSeed, s.betNonce);
-    return { nonce: s.betNonce, crashPoint: crashPoint };
+    const game = String((o && o.game) || "crash");
+    const point = (game === "pressure")
+      ? ENGINES.pressure.deriveBurst(s.serverSeed, clientSeed, s.betNonce)
+      : ENGINES.crash.crashPointOf(s.serverSeed, clientSeed, s.betNonce); // crash / plane / swoop
+    return { nonce: s.betNonce, point: point, crashPoint: point }; // crashPoint kept for back-compat
   }
+  // Back-compat alias (crash family only) — older callers used crashPointPeek.
+  function crashPointPeek(o) { return pointPeek(Object.assign({ game: "crash" }, o || {})); }
 
-  return { start, play, settle, rederive, verifyRederive, session, games, hasGame, crashPointPeek, _sessions: sessions };
+  return { start, play, settle, rederive, verifyRederive, session, games, hasGame, pointPeek, crashPointPeek, _sessions: sessions };
 }
 
 module.exports = { makeTokenBridge, games, hasGame, ENGINES };
