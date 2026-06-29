@@ -23,6 +23,32 @@ contract CoinFlipBetting {
         _;
     }
 
+    // ─────────────────────────────────────────────────────────────────────── //
+    //  Security patch (2026-06-29): block the same-tx revert-drain + circuit-breaker
+    //  A wrapper CONTRACT could call a settling play*() entrypoint, read its own
+    //  win/loss in the same transaction, and revert() the losers — keeping only
+    //  wins for a guaranteed bankroll drain. _betGuard() forbids contract callers
+    //  (EOA only) on every settling entrypoint; `paused` lets the owner halt all
+    //  betting instantly without a redeploy. (Errors declared here to keep the
+    //  whole patch self-contained.) NOTE: this stops the GUARANTEED drain; it does
+    //  NOT remove same-block static-call predictability — the complete fix is to
+    //  move settlement off-chain to the server commit-reveal bridge.
+    // ─────────────────────────────────────────────────────────────────────── //
+    error ContractCaller();
+    error Paused();
+    bool public paused;
+    event PausedSet(bool paused);
+
+    function setPaused(bool p) external onlyOwner {
+        paused = p;
+        emit PausedSet(p);
+    }
+
+    function _betGuard() internal view {
+        if (msg.sender != tx.origin) revert ContractCaller();
+        if (paused) revert Paused();
+    }
+
     // --------------------------------------------------------------------- //
     //  Constants / config
     // --------------------------------------------------------------------- //
@@ -383,6 +409,7 @@ contract CoinFlipBetting {
 
     /// @notice Join an open room, escrow your matching bet, and flip immediately.
     function joinRoom(uint256 roomId) external {
+        _betGuard();
         Room storage room = rooms[roomId];
         if (room.id == 0) revert UnknownRoom();
         if (room.status != Status.Open) revert RoomNotOpen();
@@ -490,6 +517,7 @@ contract CoinFlipBetting {
     ///         house bankroll; winner takes the pot minus the 3% fee. You are
     ///         "heads" (player1). Settles instantly.
     function playHouse(uint256 betAmount, bool wantsHeads) external returns (uint256 roomId) {
+        _betGuard();
         if (betAmount < MIN_BET) revert BetTooSmall();
         if (betAmount > maxBet) revert BetTooHigh();
         if (balances[msg.sender] < betAmount) revert InsufficientBalance();
@@ -658,6 +686,7 @@ contract CoinFlipBetting {
     ///         creator (the house) is "tails" and matches your bet from their bank.
     ///         The creator always collects the 3% rake. Settles instantly.
     function playHostRoom(uint256 roomId, uint256 betAmount, bool wantsHeads) external returns (bool playerWon) {
+        _betGuard();
         HostRoom storage hr = hostRooms[roomId];
         if (hr.id == 0 || !hr.open) revert HostRoomNotOpen();
         if (msg.sender == hr.creator) revert CannotPlayOwnTable();
@@ -740,6 +769,7 @@ contract CoinFlipBetting {
         external
         returns (uint256 gameId, uint16 roll, bool won, uint256 payout)
     {
+        _betGuard();
         if (betAmount < MIN_BET) revert BetTooSmall();
         if (betAmount > maxBet) revert BetTooHigh();
         if (target > DICE_OUTCOMES - 1) revert DiceBadTarget();
@@ -847,6 +877,7 @@ contract CoinFlipBetting {
         external
         returns (uint256 gameId, uint8 d1, uint8 d2, bool won, uint256 payout)
     {
+        _betGuard();
         if (betAmount < MIN_BET) revert BetTooSmall();
         if (betAmount > maxBet) revert BetTooHigh();
         if (target < 2 || target > 12) revert DiceBadTarget();
@@ -932,6 +963,7 @@ contract CoinFlipBetting {
         external
         returns (uint256 gameId, uint256 crashX100, bool won, uint256 payout)
     {
+        _betGuard();
         if (betAmount < MIN_BET) revert BetTooSmall();
         if (betAmount > maxBet) revert BetTooHigh();
         if (targetX100 < CRASH_MIN_X100 || targetX100 > CRASH_MAX_X100) revert DiceBadTarget();
@@ -1013,6 +1045,7 @@ contract CoinFlipBetting {
         external
         returns (uint256 gameId, uint256 gridPacked, uint256 payout)
     {
+        _betGuard();
         if (betAmount < MIN_BET) revert BetTooSmall();
         if (betAmount > maxBet) revert BetTooHigh();
         if (balances[msg.sender] < betAmount) revert InsufficientBalance();
