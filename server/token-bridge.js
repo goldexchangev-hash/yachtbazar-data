@@ -74,6 +74,7 @@ function makeTokenBridge(opts) {
     const s = {
       id: id, player: player, chainId: Number(o.chainId) || 0, contract: o.contract || "",
       buyInUnits: buyInUnits, tokens: buyInUnits,
+      lockedWei: o.lockedWei != null ? BigInt(o.lockedWei).toString() : null, // the EXACT on-chain locked wei this buy-in represents (pins settle net→wei)
       serverSeed: rnd.serverSeed, commit: rnd.commit, settleNonce: o.settleNonce != null ? String(o.settleNonce) : uintNonce(),
       betNonce: 0, bets: [], closed: false, settlement: null, startedAt: o.now || 0,
     };
@@ -122,7 +123,20 @@ function makeTokenBridge(opts) {
     let netUnits = round2(s.tokens - s.buyInUnits);
     if (netUnits < -s.buyInUnits) netUnits = -s.buyInUnits; // never lose more than locked
     s.closed = true;
-    const netWei = toWei(netUnits);
+    // Net→wei PINNED to the exact on-chain locked wei (audit Critical-3): integer math
+    //   netWei = lockedWei * netCents / buyInCents,  floored at -lockedWei
+    // so a rounding/rate drift can't sign a loss bigger than the player actually locked,
+    // and the win is bounded by the same ratio. Falls back to the injectable toWei (tests).
+    let netWei;
+    if (s.lockedWei != null) {
+      const lockedWei = BigInt(s.lockedWei);
+      const netCents = BigInt(Math.round(netUnits * 100));
+      const buyInCents = BigInt(Math.round(s.buyInUnits * 100));
+      netWei = buyInCents > 0n ? (lockedWei * netCents) / buyInCents : 0n;
+      if (netWei < -lockedWei) netWei = -lockedWei;
+    } else {
+      netWei = toWei(netUnits);
+    }
     let signature = null;
     if (signer && signer.sign) signature = await signer.sign(s.player, netWei, s.settleNonce, s.chainId, s.contract);
     s.settlement = {

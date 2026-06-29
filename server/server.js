@@ -61,6 +61,32 @@ const blackjack = attachBlackjack({
 });
 attachBridge(app, { blackjack });
 
+// ── Server-side TOKEN bridge (the new commit-reveal token games: coinflip/dice/dice2/
+//    crash/pressure/slots/slots3d). FLAG-GATED + OFF by default, so the live demo is
+//    untouched. Enable with ENABLE_TOKEN_BRIDGE=1 plus HOUSE_SIGNER_KEY (signer) and an
+//    RPC URL. Shares the same buy-in/settle contract slots as blackjack, so one open
+//    bridge session per player until the per-session-lock contract upgrade ships.
+const realmoney = require("./realmoney.js");
+const { attachTokenBridge } = require("./token-http.js");
+const TOKEN_STATE_FILE = String(process.env.TOKEN_BRIDGE_FILE || path.join(__dirname, ".token-bridge.json"));
+const tokenPersist = {
+  load() { try { return JSON.parse(fs.readFileSync(TOKEN_STATE_FILE, "utf8")); } catch (e) { return {}; } },
+  save(obj) { try { const tmp = TOKEN_STATE_FILE + ".tmp"; fs.mkdirSync(path.dirname(TOKEN_STATE_FILE), { recursive: true }); fs.writeFileSync(tmp, JSON.stringify(obj)); fs.renameSync(tmp, TOKEN_STATE_FILE); } catch (e) {} },
+};
+function tokenRpcUrl(chainId) {
+  if (chainId === 11155111) return process.env.SEPOLIA_RPC_URL || process.env.RPC_URL || "";
+  if (chainId === 31337) return process.env.LOCAL_RPC_URL || process.env.RPC_URL || "http://127.0.0.1:8545";
+  return process.env.RPC_URL || "";
+}
+attachTokenBridge(app, {
+  enabled: () => process.env.ENABLE_TOKEN_BRIDGE === "1" && realmoney.enabled(),
+  signer: { sign: (p, net, nonce, cid, c) => realmoney.signSettlement(p, net, nonce, cid, c) },
+  rpcUrlFor: tokenRpcUrl,
+  ethUsd: () => Number(process.env.BRIDGE_ETH_USD || process.env.ETH_USD || 3400),
+  persist: tokenPersist,
+  minConfirmations: Number(process.env.TOKEN_MIN_CONFIRMATIONS || 1),
+});
+
 // LAST-RESORT process guards: even with every engine timer wrapped (blackjack-server.js setT), a
 // stray throw/rejection anywhere must NOT silently exit and wipe the in-memory bank. Log it, flush
 // balances to disk, and keep serving. Also flush on a graceful shutdown (Render sends SIGTERM on
