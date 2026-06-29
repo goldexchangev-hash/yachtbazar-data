@@ -253,6 +253,7 @@
   /* ---------- spin ---------- */
   Slots3D.prototype._spin = function () {
     if (!this._active || this._spinning || this._bonus) return; // no manual spins during a free-spins round
+    if (root.TokenMode && root.TokenMode.active()) return this._spinToken(); // token mode: server settles the whole spin
     if (!this._enabled) { this._msg("Connect a wallet to play for real", ""); return; }
     if (this.balance < this.bet) { this._msg("Not enough balance — add funds 👇", "lose"); return; }
     const bet = this.bet;
@@ -269,6 +270,50 @@
     this._launchReels(grid, false);
     this._renderSpinBtn();
   };
+
+  // TOKEN MODE spin: the SERVER settles the entire spin (base + any free-spins bonus) in
+  // ONE provably-fair bet, then the client REPLAYS the server's grid + bonus plan through
+  // the exact same animation as demo. Because the client's E.evaluate(grid) reproduces the
+  // server's wins byte-for-byte, the local balance arithmetic (debit stake in here, credit
+  // each win in _settle) lands precisely on the server's r.tokens — so the in-game readout
+  // animates naturally while the token ledger stays authoritative. EDIT: this is the only
+  // slots3d code that knows about tokens; demo path is untouched.
+  Slots3D.prototype._spinToken = function () {
+    if (this._spinning || this._bonus) return;
+    var TM = root.TokenMode, bet = this.bet;
+    if (TM.tokens() < bet) { this._msg("Not enough tokens — buy in 👇", "lose"); return; }
+    // anchor the local mirror to the authoritative balance, then debit the stake (mirrors demo)
+    this.balance = Math.round((TM.tokens() - bet) * 100) / 100;
+    this._save(); this._renderHud();
+    this._clearWinFx(); this._hideOverlay();
+    this._betThisSpin = bet; this.state = "spinning"; this._spinning = true;
+    this._msg("Spinning…", "");
+    if (root.Chiptune && root.Chiptune.blip) try { root.Chiptune.blip(); } catch (e) {}
+    this._renderSpinBtn();
+    var self = this;
+    TM.bet("slots3d", bet, {}).then(function (r) {
+      if (!self._spinning) return; // channel left mid-flight
+      var grid = (r.outcome && r.outcome.grid) || [[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]];
+      self.nonce += 1;
+      self._result = E.evaluate(grid, bet); // identical to the server's base result (same grid+paytable)
+      self._landedGrid = grid;
+      // stash the server's bonus plan so _beginBonus renders the SERVER free spins, not a
+      // locally-derived one (remap each result.win → the client's winUsd field name).
+      self._tokenBonusPlan = (r.outcome && r.outcome.bonus)
+        ? { spins: r.outcome.bonus.spins, mult: r.outcome.bonus.mult,
+            results: (r.outcome.bonus.results || []).map(function (x) {
+              return { grid: x.grid, lines: x.lines, scatter: x.scatter, winUsd: x.win };
+            }) }
+        : null;
+      self._launchReels(grid, false);
+      self._renderSpinBtn();
+    }).catch(function (e) {
+      self._spinning = false; self.state = "idle";
+      self.balance = TM.tokens(); self._renderHud(); // re-sync to the untouched ledger (TRANSACTIONAL: a failed bet costs nothing)
+      self._msg("Spin failed — try again", "lose"); self._renderSpinBtn();
+    });
+  };
+
   // Write the result cells (3) into a reel's strip at a fresh land position some
   // `turns` ahead of the current pos, scrambling the few cells just before the
   // landing window so the approach reads as random. Sets start/land/t for the ease.
@@ -382,7 +427,9 @@
   // derives from this commit). Each spin auto-plays, wins are ×-multiplied and
   // banked toward a running grand total that stays on screen.
   Slots3D.prototype._beginBonus = function (scatterCount) {
-    const plan = E.deriveBonus(this.serverSeed, this.clientSeed, this.nonce, this._betThisSpin, scatterCount);
+    // Token mode: render the SERVER's free-spins plan (settled in the same bet). Demo: derive locally.
+    const plan = this._tokenBonusPlan || E.deriveBonus(this.serverSeed, this.clientSeed, this.nonce, this._betThisSpin, scatterCount);
+    this._tokenBonusPlan = null;
     if (!plan.spins) { clearTimeout(this._idleT); this._idleT = setTimeout(() => { this.state = "idle"; this._msg("Tap SPIN", ""); this._renderSpinBtn(); }, 1600); return; }
     this._bonus = { plan: plan, i: 0, total: 0, count: scatterCount };
     this._renderSpinBtn();

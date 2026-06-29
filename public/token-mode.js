@@ -41,6 +41,20 @@
     active: function () { return !!(client && client.session); },
     tokens: function () { return client ? Math.round((client.tokens || 0) * 100) / 100 : 0; },
 
+    // The session handle the ws crash round-runner needs to authorize cr:start. Returns
+    // only the two fields the wire needs (never the commit/seed). null if no open session.
+    session: function () {
+      return (client && client.session)
+        ? { sessionId: client.session.sessionId, sessionToken: client.session.sessionToken }
+        : null;
+    },
+
+    // Sync the local token balance after an OUT-OF-BAND settle — e.g. a live crash round
+    // that settled over the ws (not via client.play), so client.tokens didn't auto-update.
+    // The cr:result frame carries the authoritative new balance; pass it here to keep the
+    // token bar + any balance readout correct.
+    syncTokens: function (n) { if (client && typeof n === "number" && isFinite(n)) { client.tokens = n; changed(); } },
+
     // Lock `amountUsd` worth of ETH on-chain (ONE popup) → open a token session.
     buyIn: async function (amountUsd) {
       if (busy) return;
