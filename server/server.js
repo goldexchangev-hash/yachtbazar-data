@@ -28,6 +28,11 @@ const PUBLIC_HOST = process.env.PUBLIC_HOST || ""; // e.g. your public IP for in
 const app = express();
 const publicDir = path.join(__dirname, "..", "public");
 app.use(express.json({ limit: "64kb" }));
+// Don't expose the dev/engine test harnesses (public/_*.html, *-preview.html) publicly.
+app.use((req, res, next) => {
+  if (/\/_[^/]*\.html$/i.test(req.path) || /-preview\.html$/i.test(req.path)) return res.status(404).end();
+  next();
+});
 app.use(express.static(publicDir));
 
 // Tiny health/info endpoint the frontend can use to learn its share base.

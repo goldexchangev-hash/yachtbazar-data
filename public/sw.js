@@ -3,7 +3,7 @@
    are picked up immediately and users never get a stale build online), caching
    each response, and falls back to cache only when offline. Cross-origin
    requests (RPC node, fonts, price API, MetaMask) are left untouched. */
-const CACHE = "ctf-v12.07";
+const CACHE = "ctf-v12.08";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 
 self.addEventListener("install", (e) => {
@@ -50,11 +50,15 @@ self.addEventListener("fetch", (e) => {
     return;
   }
 
+  // Never cache API responses — they're live state (e.g. bridge/status, balances); a
+  // cached copy would serve stale data after the network comes back.
+  const isApi = url.pathname.startsWith("/api/");
+
   // NETWORK-FIRST for everything else (HTML, unversioned files) so deploys land.
   e.respondWith(
     fetch(req)
       .then((res) => {
-        if (res && res.ok && res.type === "basic") {
+        if (res && res.ok && res.type === "basic" && !isApi) {
           const copy = res.clone();
           caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
         }

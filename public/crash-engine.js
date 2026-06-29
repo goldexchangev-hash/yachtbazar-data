@@ -24,7 +24,7 @@
     const edge = houseEdge == null ? 0.01 : houseEdge;
     const rtp = 1 - edge;                       // 0.99 at 1% edge
     const m = Math.floor((100 * rtp) / (1 - x)) / 100;
-    return Math.max(1.0, m);                     // floor at 1.00x = instant bust
+    return Math.min(1000, Math.max(1.0, m));     // floor at 1.00x = instant bust; cap at 1000x to match the contract/server max (demo must not show a tail the real path never pays)
   }
 
   // Take the top 52 bits of a hex digest as the uniform draw (Bustabit form).
