@@ -1,7 +1,20 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v12.00**.
+Last updated at build **v12.01**.
+
+> **NOTE FOR CLAUDE/CHATGPT (v12.01):** Fish Shooter fairness — 3 owner questions, all in fishshooter.js.
+> (1) **"Boss round cost me shots"** — the boss-fight start (`_updateBoss`) clears pre-boss bullets so they don't
+> dump damage on the dragon; that DELETED the player's in-flight PAID shots. Fix: REFUND their `cost` to balance
+> (and subtract from `_sesSpent`) + a "shots refunded +$X" floater, then clear. (2) **In-flight shots when a bonus
+> starts** — the WAVE bonus already handles this fairly (paid bullets aren't cleared; they keep bouncing and resolve/
+> pay normally during the wave, and `_clearRoundBullets` only drops free/bossId bullets), so no change needed there;
+> only the boss path was unfair (now refunded). (3) **"Rapid tapping fires faster than hold — advantage?"** — NOT an
+> EV advantage (every connecting shot is RTP*cost, so faster firing just loses faster), but manual taps called
+> `_fire()` directly and BYPASSED the cooldown (unbounded → autoclicker spam). Fix: `_fire()` now returns early if
+> `_fireCd > 0` (rate-limits every path), and PAID shots share one cooldown (0.16, manual==hold) while bonus/boss
+> FREE shots stay snappy (0.09). Verified `_fsh-fairness.js` (1/12 instant taps fire; boss refunds the 5 paid shots),
+> boss invariant intact. Cache/build 1201.
 
 > **NOTE FOR CLAUDE/CHATGPT (v12.00):** Site-wide session tracker + Fish Shooter bonus-bullet fix.
 > (1) **SESSION TRACKER ON EVERY GAME** — owner loved the Reef/Fish session bar and wanted it everywhere. Added

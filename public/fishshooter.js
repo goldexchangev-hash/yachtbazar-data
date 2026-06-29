@@ -291,6 +291,7 @@
   FishShooter.prototype.cost = function () { return Math.round(this.unitBet * this.power * 100) / 100; };
   FishShooter.prototype._fire = function () {
     if (!this._active || !this._enabled || !this._ready) return;
+    if ((this._fireCd || 0) > 0) return; // rate-limit EVERY fire path incl. rapid manual taps — no tapping faster than hold (it's RTP-neutral anyway, but this stops autoclicker spam)
     if (this._boss && !this._boss.started) return;   // hold fire during the boss 3-2-1 countdown
     if (this._bonus && !this._bonus.started) return; // hold fire during the bonus-world 3-2-1 countdown
     if (this._bonusFinale) return;                   // hold fire during the end-of-round reveal + deposit
@@ -312,7 +313,7 @@
     this.bullets.push({ s: b, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed, r: 7 + sp * 1.1, hit: false, unitBet: su, power: sp, cost: paid, free: free, frenzyId: free ? this._frenzyId : 0, bossId: (this._boss && this._boss.started) ? this._bossId : 0 });
     this._recoil = 7; this._muzzle(tx, ty);
     if (root.Chiptune && root.Chiptune.blip) try { root.Chiptune.blip(); } catch (e) {}
-    this._fireCd = this.auto ? 0.16 : 0.09; // flat auto-fire rate (no power speed-up) → fewer in-flight bullets overshooting a fish that already died = less wasted spend at higher power
+    this._fireCd = free ? 0.09 : 0.16; // PAID shots (manual tap OR auto-hold) share ONE rate (0.16) so tapping is never faster than holding; bonus/boss FREE shots stay snappy (0.09)
   };
   FishShooter.prototype._muzzle = function (x, y) {
     var mk = (this._cannonK || 1) * 1.5; // muzzle flash tracks the (now small) barrel
@@ -560,8 +561,12 @@
         bz.started = true; bz.t = 0;
         this._flashBanner("FIGHT!", "BLAST THE DRAGON", 0xff4d6a);
         this._spawnBoss(); this._shake = 24;
-        // clear pre-bonus ricochets so they don't dump damage / clutter the arena
-        for (var bi = this.bullets.length - 1; bi >= 0; bi--) { if (this._boss && this.bullets[bi].bossId !== this._boss.id) this._rmBullet(this.bullets[bi]); }
+        // The boss arena clears your in-flight PAID shots (so they don't clutter / dump damage on the
+        // dragon). They never got to resolve, so REFUND their cost — the boss round must never "cost
+        // you shots". Then drop all pre-boss bullets.
+        var refund = 0;
+        for (var bi = this.bullets.length - 1; bi >= 0; bi--) { var pbb = this.bullets[bi]; if (this._boss && pbb.bossId !== this._boss.id) { if (!pbb.free && pbb.cost > 0) refund += pbb.cost; this._rmBullet(pbb); } }
+        if (refund > 0) { refund = Math.round(refund * 100) / 100; this.balance = Math.round((this.balance + refund) * 100) / 100; this._sesSpent = Math.round((this._sesSpent - refund) * 100) / 100; this._save(); this._renderHud(); this._floatText("shots refunded +$" + refund.toFixed(2), this.W / 2, this.H * 0.58, 0x45f0a6); }
         var Cg = root.Chiptune; if (Cg && Cg.bigwin) try { Cg.bigwin(); } catch (e) {}
       }
       return;
