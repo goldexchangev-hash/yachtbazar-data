@@ -498,13 +498,15 @@
       this._show("swoop");
     },
 
-    // Fish Shooter (CH 19): PixiJS top-down fish-table. Reveal once its canvas mounts.
+    // Fish Shooter (CH 19): PixiJS top-down fish-table. Reveal once its canvas mounts AND the
+    // renderer is READY (critical assets built). The canvas is created synchronously at build, so
+    // checking only "canvas exists" would reveal a BLANK (black) canvas while the assets are still
+    // downloading — especially in the gap right after the promo fades. Keep the LOADING screen up
+    // until __fshoot._ready, so first-load (and any cold load) shows "LOADING…", never a black gap.
     _fishshooterIdle() {
-      // Lazy-load: until the Pixi canvas has mounted, show the LOADING screen — checked
-      // BEFORE the signed-out/static branch so a cold first visit (engine still
-      // downloading) shows "LOADING…" instead of a black/static screen.
       const stage = $("fishshooter-stage");
-      if (!stage || !stage.querySelector("canvas")) return this._loadingScreen();
+      const game = (typeof window !== "undefined") ? window.__fshoot : null;
+      if (!stage || !stage.querySelector("canvas") || !(game && game._ready)) return this._loadingScreen();
       if (!this._connected) return this._staticIdle();
       this._setStatic(0.03);
       this._show("fishshooter");
