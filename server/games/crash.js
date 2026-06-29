@@ -97,7 +97,14 @@ function play({ serverSeed, clientSeed, nonce, betUnits, params }) {
   };
 }
 
-module.exports = { play: play, RTP: RTP, CRASH_EDGE: CRASH_EDGE };
+// Derive a round's crash point from the committed seed — the SAME value play() will
+// compute — so a live round-runner can pace the rising curve and fire the bust at the
+// exact moment. Pacing and settlement therefore always agree.
+function crashPointOf(serverSeed, clientSeed, nonce) {
+  return crashFromUnit(unitFromFloats(PF.floats(serverSeed, clientSeed, nonce, 2)));
+}
+
+module.exports = { play: play, crashPointOf: crashPointOf, RTP: RTP, CRASH_EDGE: CRASH_EDGE, MAX_CRASH_X: MAX_CRASH_X, MIN_TARGET_X: MIN_TARGET_X };
 
 /* ---------------- CLI self-test: node server/games/crash.js ----------------- */
 if (require.main === module) {

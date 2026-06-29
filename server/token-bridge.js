@@ -211,7 +211,20 @@ function makeTokenBridge(opts) {
 
   function session(id) { return sessions.get(id) || null; }
 
-  return { start, play, settle, rederive, verifyRederive, session, games, hasGame, _sessions: sessions };
+  // Derive the crash point for the session's NEXT bet (peek — does not burn the nonce),
+  // so a live crash round-runner can pace the curve. The eventual play("crash", ...,
+  // clientSeed) with the SAME clientSeed computes the identical point. Trusted server use
+  // only — never expose the serverSeed or the crash point to the client before it busts.
+  function crashPointPeek(o) {
+    const s = sessions.get(o && o.sessionId);
+    if (!s) throw new Error("no such session");
+    if (s.closed) throw new Error("session is closed");
+    const clientSeed = String(o.clientSeed == null ? "" : o.clientSeed);
+    const crashPoint = ENGINES.crash.crashPointOf(s.serverSeed, clientSeed, s.betNonce);
+    return { nonce: s.betNonce, crashPoint: crashPoint };
+  }
+
+  return { start, play, settle, rederive, verifyRederive, session, games, hasGame, crashPointPeek, _sessions: sessions };
 }
 
 module.exports = { makeTokenBridge, games, hasGame, ENGINES };
