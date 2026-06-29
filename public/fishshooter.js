@@ -18,9 +18,9 @@
   var PIXI = root.PIXI, E = root.FishShooterEngine; // OWN engine, decoupled from Reef Raiders (fishtable-engine.js)
   var DIR = "/assets/fishshooter/";
   var MIN_BET = 1, MAX_BET = 50, MAX_POWER = 3; // power 3 cap: above this, high per-shot kill-prob makes auto-fire OVERKILL fish (extra in-flight/culled bullets wasted), which craters realized RTP. The bet slider is the main stake dial; power is a modest speed/stake boost.
-  var FISH_KEYS = ["minnow", "clown", "tang", "puffer", "turtle", "squid", "eel", "bomb", "crab", "clam", "shark", "kraken", "whale", "lobster", "armadillo", "anglerfish", "seadragon"];
+  var FISH_KEYS = ["minnow", "clown", "tang", "puffer", "turtle", "squid", "eel", "bomb", "crab", "clam", "shark", "kraken", "whale", "lobster", "armadillo", "anglerfish", "seadragon", "warturtle", "gator", "stormjelly"];
   // per-creature animation frame count (default 4); the new creatures are authored at 8 for smoother motion
-  var FRAMES = { eel: 8, lobster: 8, armadillo: 8, anglerfish: 8, seadragon: 8 };
+  var FRAMES = { eel: 8, lobster: 8, armadillo: 8, anglerfish: 8, seadragon: 8, warturtle: 8, gator: 8, stormjelly: 8 };
   function frameCount(k) { return FRAMES[k] || 4; }
 
   var clamp = function (v, a, b) { return Math.max(a, Math.min(b, v)); };

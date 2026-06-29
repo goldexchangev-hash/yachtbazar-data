@@ -1,7 +1,22 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v11.98**.
+Last updated at build **v11.99**.
+
+> **NOTE FOR CLAUDE/CHATGPT (v11.99):** Fish Shooter — 3 NEW dedicated bonus creatures + bonus-trigger rework.
+> Owner wanted bonus rounds RARER and on dedicated "BONUS!" creatures. Done (multi-agent design + Grok art):
+> **War-Shell Bastion** (`warturtle`, armored vault-shell turtle) → Treasure Vault (`bonus:"chest"`); **Voltjaw Gator**
+> (`gator`, electric alligator) → Lightning Storm (`bonus:"storm"`); **Storm Jelly Sovereign** (`stormjelly`,
+> bioluminescent jelly) → Feeding Frenzy (`bonus:"frenzy"`). All in `fishshooter-engine.js`: mult 18, weight 0.45 each
+> (≈9× rarer than the old triggers → "not so often"), `special:"gold"` glow, 8-frame art (`warturtle_/gator_/
+> stormjelly_0..7.png`, `_creatures3.py`), keys added to FISH_KEYS + FRAMES in fishshooter.js. The OLD triggers
+> (eel/clam/crab/lobster/armadillo) had their `bonus` field REMOVED → they're plain catches now (EV 0.95). MATH: a
+> bonus creature is structurally a mult-43 fish (18 + 25 budget) whose payout splits into an 18 instant + the wave;
+> splitting EV doesn't change EV, so no over-pay and rarity doesn't move the edge (verified `_fsh-econ.js`: every EV ≤
+> 0.95). Realized RTP held ~95% with bonuses now ~13–39/run (was 100+) — `_fsh-rtp.js`. Verified `_fsh-newcreatures.js`
+> (each new creature 8-frame, animates, triggers its round; old creatures no longer trigger). REFRESH-EXPLOIT
+> (owner asked): NO edge — EV per connecting shot is RTP×cost, target-independent, so refreshing for a high-mult fish
+> just buys variance at the same RTP; the jackpot meter resets unfavorably for a refresher. Cache/build 1199.
 
 > **NOTE FOR CLAUDE/CHATGPT (v11.98):** Fish Shooter economy overhaul + own engine + UI; blackjack demo→$5k.
 > (1) **DECOUPLED ENGINE** — Fish Shooter now has its OWN `public/fishshooter-engine.js` (`FishShooterEngine`,

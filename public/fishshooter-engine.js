@@ -36,17 +36,23 @@
     { id: 3, key: "puffer",   name: "Pufferfish",    mult: 8,   tier: "medium",  weight: 11, r: 24, color: 0xffe08a, accent: 0x7a5400 },
     { id: 4, key: "turtle",   name: "Sea Turtle",    mult: 12,  tier: "medium",  weight: 8,  r: 30, color: 0x45f0a6, accent: 0x0b5e3c, sizeMul: 0.6 },
     { id: 5, key: "squid",    name: "Squid",         mult: 16,  tier: "medium",  weight: 6,  r: 28, color: 0xff5d9e, accent: 0x6e0440 },
-    { id: 6, key: "eel",      name: "Electric Eel",  mult: 20,  tier: "special", weight: 4,  r: 26, color: 0xfff15a, accent: 0x39e7ff, bonus: "storm", sizeMul: 0.6 },
+    { id: 6, key: "eel",      name: "Electric Eel",  mult: 20,  tier: "special", weight: 4,  r: 26, color: 0xfff15a, accent: 0x39e7ff, sizeMul: 0.6 },
     { id: 7, key: "bomb",     name: "Bomb Fish",     mult: 14,  tier: "special", weight: 4,  r: 26, color: 0xff4d4d, accent: 0x2a0606, special: "bomb" },
-    { id: 8, key: "crab",     name: "Gold Crab",     mult: 28,  tier: "special", weight: 3,  r: 30, color: 0xffd23f, accent: 0x7a4a00, special: "gold", bonus: "chest", sizeMul: 0.8 },
-    { id: 11, key: "clam",    name: "Treasure Clam", mult: 8,   tier: "special", weight: 2.6, r: 30, color: 0xff8ad0, accent: 0x6e1f56, special: "clam", bonus: "frenzy", sizeMul: 0.5 },
+    { id: 8, key: "crab",     name: "Gold Crab",     mult: 28,  tier: "special", weight: 3,  r: 30, color: 0xffd23f, accent: 0x7a4a00, special: "gold", sizeMul: 0.8 },
+    { id: 11, key: "clam",    name: "Treasure Clam", mult: 8,   tier: "special", weight: 2.6, r: 30, color: 0xff8ad0, accent: 0x6e1f56, special: "clam", sizeMul: 0.5 },
     { id: 9, key: "shark",    name: "Gold Shark",    mult: 80,  tier: "boss",    weight: 1.3, r: 52, color: 0xcfe2ff, accent: 0x33507a, special: "boss" },
     { id: 10, key: "kraken",  name: "Kraken Boss",   mult: 160, tier: "boss",    weight: 0.5, r: 70, color: 0xb14dff, accent: 0x2b0b54, special: "boss" },
     { id: 12, key: "whale",   name: "Golden Whale",  mult: 300, tier: "boss",    weight: 0.28, r: 80, color: 0xfff0c0, accent: 0xffd23f, special: "boss", sizeMul: 0.7 },
-    { id: 13, key: "lobster",   name: "Magma Lobster",     mult: 40,  tier: "special", weight: 1.6, r: 32, color: 0xff7a2d, accent: 0x39e7ff, special: "gold", bonus: "frenzy", sizeMul: 0.5 },
-    { id: 14, key: "armadillo", name: "Armored Reef Crab", mult: 60,  tier: "special", weight: 1.1, r: 36, color: 0xffb84d, accent: 0x7a4a00, special: "gold", bonus: "chest" },
+    { id: 13, key: "lobster",   name: "Magma Lobster",     mult: 40,  tier: "special", weight: 1.6, r: 32, color: 0xff7a2d, accent: 0x39e7ff, special: "gold", sizeMul: 0.5 },
+    { id: 14, key: "armadillo", name: "Armored Reef Crab", mult: 60,  tier: "special", weight: 1.1, r: 36, color: 0xffb84d, accent: 0x7a4a00, special: "gold" },
     { id: 15, key: "anglerfish",name: "Abyssal Angler",    mult: 100, tier: "boss",    weight: 0.8, r: 44, color: 0x39e7ff, accent: 0x1a0b3a, special: "boss", sizeMul: 0.75 },
     { id: 16, key: "seadragon", name: "Royal Sea Dragon",  mult: 200, tier: "boss",    weight: 0.4, r: 60, color: 0x2fe0a0, accent: 0xffd23f, special: "boss" },
+    // ── DEDICATED bonus-round creatures (RARE, weight 0.45 each ≈ 9× rarer than the old triggers).
+    // Catching one IS the trigger + pays its mult; budgetMult = 18+25 = 43 pre-funds the wave. The old
+    // creatures above (eel/clam/crab/lobster/armadillo) are now plain catches (bonus field removed).
+    { id: 17, key: "warturtle", name: "War-Shell Bastion",  mult: 18, tier: "special", weight: 0.45, r: 38, color: 0xffc24d, accent: 0x7a4a00, special: "gold", bonus: "chest",  sizeMul: 0.9 },  // → Treasure Vault
+    { id: 18, key: "gator",     name: "Voltjaw Gator",      mult: 18, tier: "special", weight: 0.45, r: 38, color: 0x2bd6ff, accent: 0x1e5e3a, special: "gold", bonus: "storm",  sizeMul: 0.9 },  // → Lightning Storm
+    { id: 19, key: "stormjelly",name: "Storm Jelly Sovereign",mult:18, tier: "special", weight: 0.45, r: 36, color: 0xb14dff, accent: 0x39e7ff, special: "gold", bonus: "frenzy", sizeMul: 0.85 }, // → Feeding Frenzy
   ];
   const BY_KEY = {}; FISH.forEach((f) => (BY_KEY[f.key] = f));
   const TOTAL_WEIGHT = FISH.reduce((s, f) => s + f.weight, 0);
