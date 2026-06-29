@@ -121,6 +121,27 @@ function makeTokenBridge(opts) {
     return { sessionId: s.id, nonce: nonce, game: o.game, win: rec.win, multiplier: rec.multiplier, payoutUnits: payout, outcome: res.outcome, detail: res.detail, tokens: s.tokens, commit: s.commit };
   }
 
+  // TOP UP an OPEN session: the player locked MORE on-chain (a second blackjackBuyIn, which
+  // ACCUMULATES bjLocked) — add it to this session's principal + tokens. Keeping lockedWei AND
+  // buyInUnits both reflecting the new total preserves the settle invariant exactly:
+  //   netWei = lockedWei_total * (tokens − buyInUnits_total)·100 / (buyInUnits_total·100),
+  // floored at −lockedWei_total, so the player still can never lose more than the (now larger)
+  // total they locked, and the contract returns bjLocked_total + net at cash-out.
+  function topUp(o) {
+    const s = sessions.get(o.sessionId);
+    if (!s) throw new Error("no such session");
+    if (s.closed) throw new Error("session is closed");
+    const addUnits = round2(o.addUnits);
+    if (!(addUnits > 0)) throw new Error("top-up must be positive");
+    s.buyInUnits = round2(s.buyInUnits + addUnits);
+    s.tokens = round2(s.tokens + addUnits);
+    if (o.addLockedWei != null && s.lockedWei != null) {
+      s.lockedWei = (BigInt(s.lockedWei) + BigInt(o.addLockedWei)).toString();
+    }
+    save();
+    return { sessionId: s.id, tokens: s.tokens, buyInUnits: s.buyInUnits, lockedWei: s.lockedWei };
+  }
+
   // Cash out: compute net, sign it for the contract, reveal the seed.
   async function settle(o) {
     const s = sessions.get(o.sessionId);
@@ -231,7 +252,7 @@ function makeTokenBridge(opts) {
   // Back-compat alias (crash family only) — older callers used crashPointPeek.
   function crashPointPeek(o) { return pointPeek(Object.assign({ game: "crash" }, o || {})); }
 
-  return { start, play, settle, rederive, verifyRederive, session, games, hasGame, pointPeek, crashPointPeek, _sessions: sessions };
+  return { start, play, topUp, settle, rederive, verifyRederive, session, games, hasGame, pointPeek, crashPointPeek, _sessions: sessions };
 }
 
 module.exports = { makeTokenBridge, games, hasGame, ENGINES };
@@ -333,6 +354,20 @@ if (require.main === module) {
     // the wrapper truly defers to the pure verifier — same honest result
     const rd2 = tb.rederive(st.sessionId);
     eq("wrapper == pure verifier on the live session", rd2.ok === tb.verifyRederive(pureArgs()).ok && rd2.payoutsMatch && rd2.ledgerMatches);
+
+    // TOP UP: adds locked principal + tokens to an open session, keeping the settle ratio exact.
+    const tu = makeTokenBridge({ signer: signer2, toWei: (u) => BigInt(Math.round(u * 1e6)) });
+    const tus = tu.start({ player, chainId: 11155111, contract, buyInUnits: 100, lockedWei: (1n * 10n ** 18n).toString(), settleNonce: NONCE });
+    tu.play({ sessionId: tus.sessionId, game: "coinflip", betUnits: 100, params: { side: 0 }, clientSeed: "drain" }); // likely lose toward 0
+    const beforeTop = tu.session(tus.sessionId).tokens;
+    const topped = tu.topUp({ sessionId: tus.sessionId, addUnits: 250, addLockedWei: (25n * 10n ** 17n).toString() }); // +$250, +2.5 ETH
+    eq("top-up adds tokens", topped.tokens === round2(beforeTop + 250));
+    eq("top-up adds buyInUnits (settle ratio stays consistent)", tu.session(tus.sessionId).buyInUnits === 350);
+    eq("top-up accumulates lockedWei", tu.session(tus.sessionId).lockedWei === ((1n * 10n ** 18n) + (25n * 10n ** 17n)).toString());
+    const tstl = await tu.settle({ sessionId: tus.sessionId });
+    eq("topped-up session never signs a loss beyond total locked", BigInt(tstl.netWei) >= -((1n * 10n ** 18n) + (25n * 10n ** 17n)));
+    let topClosed = 0; try { tu.topUp({ sessionId: tus.sessionId, addUnits: 10 }); } catch (e) { topClosed = 1; }
+    eq("top-up rejected after settle (closed session)", topClosed === 1);
 
     // settle signs a recoverable net + reveals the seed
     const stl = await tb.settle({ sessionId: st.sessionId });

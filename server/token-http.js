@@ -53,6 +53,7 @@ function tokenAuthMessage(intent, o) {
   ];
   if (intent === "start") lines.push("Buy-in wei: " + String(o.buyInWei || "0"));
   else if (intent === "settle") lines.push("Session: " + String(o.sessionId || ""));
+  else if (intent === "topup") { lines.push("Session: " + String(o.sessionId || "")); lines.push("Buy-in wei: " + String(o.buyInWei || "0")); }
   return lines.join("\n");
 }
 function verifyWalletSignature(intent, body, o) {
@@ -195,6 +196,36 @@ function makeTokenService(opts) {
     return { ok: true, ...r }; // NOTE: never includes serverSeed — only the commit is exposed pre-settle
   }
 
+  // TOP UP an OPEN session without cashing out: the player locked MORE on-chain (a second
+  // blackjackBuyIn, which ACCUMULATES bjLocked) → verify that new lock tx + add its value to the
+  // session's principal + tokens. Reuses the SAME on-chain verifier + replay guard as start.
+  async function doTopUp(body) {
+    const sessionId = String((body && body.sessionId) || "");
+    const token = String((body && body.sessionToken) || "");
+    if (!token || tokenForSession.get(sessionId) !== token) throw new Error("invalid session token");
+    const s = bridge.session(sessionId);
+    if (!s || s.closed) throw new Error("no open session to top up");
+    const player = address(body && body.player, "player");
+    if (s.player.toLowerCase() !== player.toLowerCase()) throw new Error("session does not belong to player");
+    const contract = address(s.contract, "contract");
+    const chainId = Number(s.chainId);
+    const txHash = String((body && body.txHash) || "");
+    if (!/^0x[0-9a-fA-F]{64}$/.test(txHash)) throw new Error("top-up transaction hash is invalid");
+    const txKey = txHash.toLowerCase();
+    if (usedBuyIns.has(txKey)) throw new Error("top-up transaction was already used");
+    const addWei = positiveWei(body && body.buyInWei, "top-up");
+    if (opts.ethUsdReady && !opts.ethUsdReady()) throw new Error("price is still syncing — try the top-up again in a few seconds");
+    verifyWalletSignature("topup", body, { player, contract, chainId, sessionId, buyInWei: addWei.toString() });
+    const proof = await verifyBuyIn({ txHash, player, contract, chainId, buyInWei: addWei });
+    const addLockedWei = BigInt(proof.lockedWei);
+    const addUnits = weiToUsd(addLockedWei, ethUsdFn());
+    if (!(addUnits > 0)) throw new Error("top-up USD value is invalid");
+    const r = bridge.topUp({ sessionId, addUnits, addLockedWei: addLockedWei.toString() });
+    usedBuyIns.add(txKey);
+    saveHttp(); // durably record the spent top-up txHash
+    return { ok: true, ...r };
+  }
+
   async function doSettle(body) {
     const player = address(body && body.player, "player");
     const s = bridge.session(body && body.sessionId);
@@ -245,7 +276,7 @@ function makeTokenService(opts) {
     return bridge.session(sid) || null;
   }
 
-  return { doStart, doPlay, doSettle, status, houseState, verifySession, _bridge: bridge };
+  return { doStart, doPlay, doTopUp, doSettle, status, houseState, verifySession, _bridge: bridge };
 }
 
 // Wire the service onto an Express app, behind a flag. Live demo is untouched.
@@ -265,6 +296,7 @@ function attachTokenBridge(app, opts) {
   app.get("/api/token/house-state", (req, res) => { if (!guard(res)) return; try { res.json(svc.houseState()); } catch (e) { fail(res, e); } });
   app.post("/api/token/start", async (req, res) => { if (!guard(res)) return; try { res.json(await svc.doStart(req.body || {})); } catch (e) { fail(res, e); } });
   app.post("/api/token/play", (req, res) => { if (!guard(res)) return; try { res.json(svc.doPlay(req.body || {})); } catch (e) { fail(res, e); } });
+  app.post("/api/token/topup", async (req, res) => { if (!guard(res)) return; try { res.json(await svc.doTopUp(req.body || {})); } catch (e) { fail(res, e); } });
   app.post("/api/token/settle", async (req, res) => { if (!guard(res)) return; try { res.json(await svc.doSettle(req.body || {})); } catch (e) { fail(res, e); } });
   return svc;
 }
@@ -318,6 +350,19 @@ if (require.main === module) {
     let leaked = false;
     for (let i = 0; i < 50; i++) { const r = svc.doPlay({ sessionId: started.sessionId, sessionToken: started.sessionToken, game: "coinflip", betUnits: 10, params: { side: i % 2 }, clientSeed: "c" + i }); if (r.serverSeed) leaked = true; }
     eq("play never leaks the serverSeed", !leaked);
+
+    // TOP UP: a second on-chain lock adds tokens to the SAME open session (no cash-out needed)
+    const topTx = "0x" + "f".repeat(64);
+    const topBody = { player, sessionId: started.sessionId, sessionToken: started.sessionToken, txHash: topTx, buyInWei: lockedWei.toString() };
+    topBody.signature = await sign("topup", { player, contract, chainId, sessionId: started.sessionId, buyInWei: lockedWei.toString() });
+    const beforeTopTokens = svc._bridge.session(started.sessionId).tokens;
+    const topped = await svc.doTopUp(topBody);
+    eq("top-up adds another $1000 of tokens to the open session", Math.round((topped.tokens - beforeTopTokens) * 100) / 100 === 1000);
+    eq("top-up doubles buyInUnits to $2000", svc._bridge.session(started.sessionId).buyInUnits === 2000);
+    let topReused = 0; try { await svc.doTopUp(topBody); } catch (e) { topReused = 1; }
+    eq("top-up rejects a reused txHash", topReused === 1);
+    let topBadTok = 0; try { await svc.doTopUp({ ...topBody, sessionToken: "nope", txHash: "0x" + "1".repeat(64) }); } catch (e) { topBadTok = 1; }
+    eq("top-up rejects a wrong session token", topBadTok === 1);
 
     // settle: wallet sig required, net pinned to lockedWei, signature recovers to house
     const settleSig = await sign("settle", { player, contract, chainId, sessionId: started.sessionId });

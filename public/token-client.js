@@ -25,6 +25,7 @@
     ];
     if (intent === "start") lines.push("Buy-in wei: " + String(o.buyInWei || "0"));
     else if (intent === "settle") lines.push("Session: " + String(o.sessionId || ""));
+    else if (intent === "topup") { lines.push("Session: " + String(o.sessionId || "")); lines.push("Buy-in wei: " + String(o.buyInWei || "0")); }
     return lines.join("\n");
   }
 
@@ -84,6 +85,22 @@
     return r; // { win, multiplier, payoutUnits, outcome, detail, tokens }
   };
 
+  // TOP UP: lock MORE into the OPEN session (ONE popup) without cashing out. blackjackBuyIn
+  // ACCUMULATES bjLocked, so the server just adds the new value to the live session's tokens.
+  TokenBridgeClient.prototype.topUp = async function (amountWei) {
+    if (!this.session) throw new Error("no open session");
+    const d = this.d, player = d.account, contract = d.contractAddr, chainId = Number(d.chainId);
+    const sessionId = this.session.sessionId;
+    const addWei = (typeof amountWei === "bigint" ? amountWei : BigInt(amountWei)).toString();
+    const signature = await d.signer.signMessage(tokenAuthMessage("topup", { player, contract, chainId, sessionId, buyInWei: addWei }, d.ethers.getAddress));
+    const tx = await d.contract.blackjackBuyIn(addWei, { gasLimit: 200000n });
+    const receipt = await tx.wait();
+    const r = await this._post("/api/token/topup", { player, sessionId, sessionToken: this.session.sessionToken, txHash: receipt.hash, buyInWei: addWei, signature });
+    this.tokens = r.tokens;
+    if (this.session) this.session.tokens = r.tokens;
+    return r;
+  };
+
   // CASH OUT: server signs the net → submit settleBlackjack on-chain (ONE popup).
   TokenBridgeClient.prototype.cashOut = async function () {
     if (!this.session) throw new Error("no open session");
@@ -118,6 +135,8 @@ if (typeof require !== "undefined" && require.main === module) {
   const settleO = { player, contract, chainId: 11155111, sessionId: "abc123" };
   eq("start message matches server byte-for-byte", client.tokenAuthMessage("start", startO, ethers.getAddress) === server.tokenAuthMessage("start", startO));
   eq("settle message matches server byte-for-byte", client.tokenAuthMessage("settle", settleO, ethers.getAddress) === server.tokenAuthMessage("settle", settleO));
+  const topupO = { player, contract, chainId: 11155111, sessionId: "abc123", buyInWei: "250000000000000000" };
+  eq("topup message matches server byte-for-byte", client.tokenAuthMessage("topup", topupO, ethers.getAddress) === server.tokenAuthMessage("topup", topupO));
   // a signature made client-side recovers to the player on the server's message (round-trip)
   (async () => {
     const w = ethers.Wallet.createRandom();

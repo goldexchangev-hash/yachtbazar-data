@@ -96,6 +96,29 @@
     // Let games push a one-off message through the same toast pipe.
     notify: function (msg, kind) { note(msg, kind); },
 
+    // Top up an OPEN session: lock MORE game credits → more tokens, without cashing out. For when
+    // you run dry mid-game (e.g. $2 tokens but $14/shot) and want to keep playing immediately.
+    topUp: async function (amountUsd) {
+      if (busy) return;
+      if (!client) return note("Connect your wallet first", "err");
+      if (!this.active()) return note("Buy in first, then you can top up", "err");
+      var usd = Math.round((+amountUsd || 0) * 100) / 100;
+      if (!(usd > 0)) return note("Enter how much to add", "err");
+      // Locks from your pre-deposited game credits, same as the initial buy-in.
+      if (deps.gameBalanceUsd && usd > deps.gameBalanceUsd() + 0.001)
+        return note("You have " + fmt(deps.gameBalanceUsd()) + " in game credits to add. Deposit more first (the Deposit box).", "err");
+      busy = true; render();
+      try {
+        var amountWei = deps.usdToWei(usd);
+        note("Confirm the top-up in your wallet (one time)…", "ok");
+        var r = await client.topUp(amountWei);
+        note("Topped up — now " + fmt(r.tokens) + " tokens. Keep playing 🎟️", "ok");
+        changed();
+      } catch (e) {
+        note(friendly(e), "err");
+      } finally { busy = false; render(); }
+    },
+
     // Cash out: server signs the net → submit the claim on-chain (ONE popup).
     cashOut: async function () {
       if (busy) return;
@@ -151,8 +174,11 @@
         '<div class="token-bar">' +
         '<span class="token-bal">🎟️ <strong>' + fmt(TokenMode.tokens()) + '</strong> tokens</span>' +
         '<span class="token-hint">play any game — no popups</span>' +
+        '<input id="token-topup" class="token-input" type="number" min="1" step="1" value="50" aria-label="Top-up amount in dollars" title="Add more tokens from your game credits" />' +
+        '<button id="token-topup-btn" class="btn btn-primary token-btn"' + (busy ? " disabled" : "") + '>' + (busy ? "…" : "+ Add") + '</button>' +
         '<button id="token-cashout" class="btn btn-ghost token-btn"' + (busy ? " disabled" : "") + '>Cash out</button>' +
         '</div>';
+      var tu = $("token-topup-btn"); if (tu) tu.onclick = function () { var v = parseFloat(($("token-topup") || {}).value); TokenMode.topUp(v); };
       var co = $("token-cashout"); if (co) co.onclick = function () { TokenMode.cashOut(); };
     } else {
       mount.innerHTML =
