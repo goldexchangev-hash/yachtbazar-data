@@ -29,6 +29,9 @@
   // per-creature animation frame count (default 4); the new creatures are authored at 8 for smoother motion
   var FRAMES = { eel: 8, lobster: 8, armadillo: 8, anglerfish: 8, seadragon: 8, warturtle: 8, gator: 8, stormjelly: 8 };
   function frameCount(k) { return FRAMES[k] || 4; }
+  // The high-weight common fish that fill the board at start → load these (+ background, cannon,
+  // shot/catch FX) in the CRITICAL first phase. Every other creature loads in the background.
+  var FSH_COMMON = ["minnow", "clown", "tang", "puffer", "turtle", "squid"];
 
   var clamp = function (v, a, b) { return Math.max(a, Math.min(b, v)); };
   var rand = function (a, b) { return a + Math.random() * (b - a); };
@@ -49,6 +52,7 @@
     this.ethUsd = opts.ethUsd || 3400;
     this.onBalance = opts.onBalance || null;
     this.onWin = opts.onWin || null;
+    this.onReady = opts.onReady || null; // host hides the loading screen + reveals the channel when this fires
     this.balance = opts.initialBalance != null ? opts.initialBalance : 5000;
     this.unitBet = MIN_BET; this.power = 1; this.fireSpeed = "fast"; // slow | medium | fast (caps EVERY fire path)
     this._active = false; this._enabled = true; this.auto = false; this.lock = false;
@@ -138,25 +142,67 @@
   };
 
   /* ---------- assets ---------- */
+  // TWO-PHASE LOAD. The old path did ONE PIXI.Assets.load() over the whole 77MB pack, which
+  // (a) blocked first paint until everything downloaded and (b) was all-or-nothing — a single
+  // 404/stalled file rejected the batch, leaving _ready=false → a black screen until a refresh
+  // happened to succeed ("needs a few refreshes"). Now:
+  //   CRITICAL — the minimum to paint a playable board (background, cannon, the COMMON fish,
+  //              shot/catch FX). Loaded first → _build() + _ready + onReady fire fast (~a few MB).
+  //   DEFERRED — rare creatures, boss, bonus-world backgrounds, burst/chest FX. Loaded in the
+  //              BACKGROUND after first paint; per-asset, failures tolerated (guarded at use).
+  // Either phase loads PER-ASSET so one bad file can never block the rest.
   FishShooter.prototype._load = function () {
-    var self = this, list = [];
-    FISH_KEYS.forEach(function (n) { var fc = frameCount(n); for (var i = 0; i < fc; i++) list.push({ alias: n + "_" + i, src: DIR + n + "_" + i + ".png" }); });
-    ["background", "seaweed", "cannon_base", "cannon_barrel", "bullet", "muzzle", "net", "coin"].forEach(function (n) { list.push({ alias: n, src: DIR + n + ".png" }); });
-    list.push({ alias: "bg_bonus", src: DIR + "bg_bonus.jpg" }); // (unused now — frenzy keeps the normal bg)
-    list.push({ alias: "boss", src: DIR + "boss.png" });           // dragon boss for the jackpot bonus round
-    list.push({ alias: "bg_boss", src: DIR + "bg_boss.jpg" });     // boss-fight arena background
-    for (var cb = 0; cb < 9; cb++) list.push({ alias: "coinburst_" + cb, src: DIR + "coinburst_" + cb + ".png" });
-    for (var ch = 0; ch < 4; ch++) list.push({ alias: "chest_" + ch, src: DIR + "chest_" + ch + ".png" }); // crab/armadillo chest-burst
-    list.push({ alias: "bg_vault", src: DIR + "bg_vault.jpg" });   // Treasure Vault world
-    list.push({ alias: "bg_frenzy", src: DIR + "bg_frenzy.jpg" }); // Feeding Frenzy world
-    list.push({ alias: "bg_storm", src: DIR + "bg_storm.jpg" });   // Lightning Storm world
-    for (var c = 0; c < 4; c++) list.push({ alias: "coinspin_" + c, src: DIR + "coinspin_" + c + ".png" });
-    PIXI.Assets.load(list).then(function (res) {
-      self.tex = res;
+    var self = this, critical = [], deferred = [];
+    FISH_KEYS.forEach(function (n) {
+      var fc = frameCount(n), into = FSH_COMMON.indexOf(n) >= 0 ? critical : deferred;
+      for (var i = 0; i < fc; i++) into.push({ alias: n + "_" + i, src: DIR + n + "_" + i + ".png" });
+    });
+    ["background", "seaweed", "cannon_base", "cannon_barrel", "bullet", "muzzle", "net", "coin"].forEach(function (n) { critical.push({ alias: n, src: DIR + n + ".png" }); });
+    for (var csp = 0; csp < 4; csp++) critical.push({ alias: "coinspin_" + csp, src: DIR + "coinspin_" + csp + ".png" }); // catch-coin FX — wanted on the very first catch
+    deferred.push({ alias: "boss", src: DIR + "boss.png" });                          // dragon boss (jackpot round, ~45s+ in)
+    ["bg_bonus", "bg_boss", "bg_vault", "bg_frenzy", "bg_storm"].forEach(function (n) { deferred.push({ alias: n, src: DIR + n + ".jpg" }); }); // world backgrounds (bonus rounds)
+    for (var cb = 0; cb < 9; cb++) deferred.push({ alias: "coinburst_" + cb, src: DIR + "coinburst_" + cb + ".png" });
+    for (var ch = 0; ch < 4; ch++) deferred.push({ alias: "chest_" + ch, src: DIR + "chest_" + ch + ".png" });
+
+    self.tex = {};
+    self._loadAssets(critical, true, function () {                 // PHASE 1 — must complete to paint
       self._build();
       self._ready = true;
-      if (self._active) self.app.ticker.start();
-    }).catch(function (e) { if (root.console) console.error("[fishshooter] load failed", e); });
+      if (self._active) { try { self.app.ticker.start(); } catch (e) {} }
+      if (self.onReady) { try { self.onReady(); } catch (e) {} }   // host: hide the loading screen + reveal
+      self._loadAssets(deferred, false, function () { self._refreshBgSprites(); }); // PHASE 2 — background
+    });
+  };
+  // Load a list PER-ASSET so one failure can't reject the batch (PIXI.Assets.load(array) is
+  // all-or-nothing). Successes merge into this.tex; a CRITICAL failure gets a neutral placeholder
+  // so _build()/render never hit an undefined texture; a DEFERRED failure is left absent (guarded
+  // at use). done() fires once EVERY item settles (success or failure). Never rejects.
+  FishShooter.prototype._loadAssets = function (list, placeholderOnFail, done) {
+    var self = this, left = list.length;
+    if (!left) { if (done) done(); return; }
+    list.forEach(function (item) {
+      PIXI.Assets.load(item.src)
+        .then(function (t) { self.tex[item.alias] = t; })
+        .catch(function (e) {
+          if (root.console) console.warn("[fishshooter] asset failed" + (placeholderOnFail ? " (placeholder)" : "") + ": " + item.alias, e && e.message);
+          if (placeholderOnFail) self.tex[item.alias] = self._placeholderTex();
+        })
+        .then(function () { if (--left === 0 && done) done(); });
+    });
+  };
+  FishShooter.prototype._placeholderTex = function () {
+    if (this._phTex) return this._phTex;
+    var c = document.createElement("canvas"); c.width = c.height = 16; var x = c.getContext("2d");
+    x.fillStyle = "rgba(70,110,150,0.5)"; x.fillRect(0, 0, 16, 16); this._phTex = PIXI.Texture.from(c); return this._phTex;
+  };
+  // Re-point the persistent background sprites once the deferred world backgrounds arrive (they
+  // were built against the critical `background` texture as a valid stand-in, so _layout never
+  // divides by a zero-width EMPTY texture). bgWorld is left alone if a round is currently showing.
+  FishShooter.prototype._refreshBgSprites = function () {
+    if (this.bgBonus && this.tex.bg_bonus) this.bgBonus.texture = this.tex.bg_bonus;
+    if (this.bgBoss && this.tex.bg_boss) this.bgBoss.texture = this.tex.bg_boss;
+    if (this.bgWorld && this.tex.bg_frenzy && !(this._bonus || this._bonusFinale)) this.bgWorld.texture = this.tex.bg_frenzy;
+    try { this._layout(); } catch (e) {}
   };
 
   FishShooter.prototype._frames = function (key, n) { var a = []; for (var i = 0; i < n; i++) a.push(this.tex[key + "_" + i]); return a; };
@@ -169,10 +215,13 @@
     // letterbox margins show seabed (not bars). NOT inside the scaled world.
     this.bgLayer = new PIXI.Container(); app.stage.addChild(this.bgLayer);
     this.bg = new PIXI.Sprite(this.tex.background); this.bg.anchor.set(0.5); this.bgLayer.addChild(this.bg);
-    this.bgBonus = new PIXI.Sprite(this.tex.bg_bonus); this.bgBonus.anchor.set(0.5); this.bgBonus.alpha = 0; this.bgLayer.addChild(this.bgBonus); // (unused — frenzy keeps normal bg)
-    this.bgBoss = new PIXI.Sprite(this.tex.bg_boss); this.bgBoss.anchor.set(0.5); this.bgBoss.alpha = 0; this.bgLayer.addChild(this.bgBoss);   // boss-arena crossfade
+    // The world backgrounds are DEFERRED — until they arrive, stand them up against the critical
+    // `background` texture (alpha 0, so invisible) so _layout never divides by a 0-width EMPTY
+    // texture. _refreshBgSprites() re-points them to the real art when the deferred load finishes.
+    this.bgBonus = new PIXI.Sprite(this.tex.bg_bonus || this.tex.background); this.bgBonus.anchor.set(0.5); this.bgBonus.alpha = 0; this.bgLayer.addChild(this.bgBonus); // (unused — frenzy keeps normal bg)
+    this.bgBoss = new PIXI.Sprite(this.tex.bg_boss || this.tex.background); this.bgBoss.anchor.set(0.5); this.bgBoss.alpha = 0; this.bgLayer.addChild(this.bgBoss);   // boss-arena crossfade
     // Bonus-round WORLD (Feeding Frenzy / Treasure Vault / Lightning Storm) — texture swapped per round, crossfaded in.
-    this.bgWorld = new PIXI.Sprite(this.tex.bg_frenzy); this.bgWorld.anchor.set(0.5); this.bgWorld.alpha = 0; this.bgLayer.addChild(this.bgWorld);
+    this.bgWorld = new PIXI.Sprite(this.tex.bg_frenzy || this.tex.background); this.bgWorld.anchor.set(0.5); this.bgWorld.alpha = 0; this.bgLayer.addChild(this.bgWorld);
     // WORLD container — holds ALL gameplay; contain-fit scaled + centered in _layout, so
     // the SAME 4:3 board shows in every view (portrait / landscape / TV frame).
     this.world = new PIXI.Container(); app.stage.addChild(this.world);
