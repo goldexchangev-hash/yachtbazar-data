@@ -2337,6 +2337,13 @@ body.rr-fs-on #layer-fishshooter, body.rr-fs-on #layer-fishshooter * { visibilit
 /* Site-wide session tracker bar (#demo-session) — shown under the TV on every channel in demo mode */
 .demo-session { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; justify-content: center; margin: 6px auto 0; max-width: 760px; padding: 7px 12px; border-radius: 12px; background: rgba(57,231,255,.06); border: 1px solid rgba(57,231,255,.18); font-size: .82rem; }
 .demo-session.hidden { display: none; }
+/* Token-mode bar — lock ETH once → play every game popup-free → cash out. */
+#token-mount[hidden] { display: none; }
+.token-bar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: center; margin: 6px auto 0; max-width: 620px; padding: 8px 12px; border-radius: 12px; background: rgba(45,224,160,.08); border: 1px solid rgba(45,224,160,.35); }
+.token-bal { font-weight: 800; color: #2de0a0; }
+.token-hint { color: var(--muted); font-size: 12px; }
+.token-input { width: 84px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--panel-line); background: var(--panel); color: #fff; font-weight: 700; text-align: right; }
+.token-btn { padding: 6px 14px; }
 .demo-session .ds-label { font-family: var(--display, inherit); font-weight: 800; letter-spacing: .02em; color: var(--gold, #ffd23f); text-transform: uppercase; font-size: .74rem; }
 .demo-session .ds-item { color: var(--muted, #8fa3c8); }
 .demo-session .ds-item strong { color: var(--text, #cfe2ff); margin-left: 2px; }
