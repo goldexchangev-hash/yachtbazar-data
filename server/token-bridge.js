@@ -25,7 +25,11 @@
    ============================================================ */
 "use strict";
 
+const crypto = require("crypto");
 const PF = require("./provablyfair.js");
+
+// A uint256 nonce as a decimal string (matches the on-chain settle digest key + bridge-server.js).
+function uintNonce() { return BigInt("0x" + crypto.randomBytes(16).toString("hex")).toString(); }
 
 // ── game registry: only games with a server-authoritative engine may take tokens ──
 const ENGINES = {
@@ -70,7 +74,7 @@ function makeTokenBridge(opts) {
     const s = {
       id: id, player: player, chainId: Number(o.chainId) || 0, contract: o.contract || "",
       buyInUnits: buyInUnits, tokens: buyInUnits,
-      serverSeed: rnd.serverSeed, commit: rnd.commit, settleNonce: o.settleNonce || PF.randomSeed(16),
+      serverSeed: rnd.serverSeed, commit: rnd.commit, settleNonce: o.settleNonce != null ? String(o.settleNonce) : uintNonce(),
       betNonce: 0, bets: [], closed: false, settlement: null, startedAt: o.now || 0,
     };
     sessions.set(id, s);
@@ -89,13 +93,21 @@ function makeTokenBridge(opts) {
     if (!(bet > 0)) throw new Error("bet must be positive");
     if (bet > s.tokens + 1e-9) throw new Error("insufficient tokens");
 
-    const nonce = s.betNonce++;                       // unique + fixed per bet → verifiable
+    const nonce = s.betNonce;                          // PEEK — don't burn the nonce until the bet commits
     const clientSeed = String(o.clientSeed == null ? "" : o.clientSeed);
-    s.tokens = round2(s.tokens - bet);                // debit the stake first
-    const res = ENGINES[o.game].play({ serverSeed: s.serverSeed, clientSeed: clientSeed, nonce: nonce, betUnits: bet, params: o.params || {} });
-    const payout = round2(Math.max(0, Number(res.payoutUnits) || 0)); // gross back, never negative
-    s.tokens = round2(s.tokens + payout);
+    // TRANSACTIONAL: run the engine FIRST with NO state mutation. If it throws (e.g. an
+    // invalid dice line — the contract would revert) or returns a non-finite payout, we
+    // bail WITHOUT debiting the stake or burning the nonce — the bet is simply rejected,
+    // exactly like an on-chain revert. (Was: debit-then-run, which lost the stake on a throw.)
+    let res;
+    try { res = ENGINES[o.game].play({ serverSeed: s.serverSeed, clientSeed: clientSeed, nonce: nonce, betUnits: bet, params: o.params || {} }); }
+    catch (e) { throw new Error("bet rejected: " + (e && e.message ? e.message : e)); }
+    const payout = round2(Math.max(0, Number(res && res.payoutUnits)));
+    if (!Number.isFinite(payout)) throw new Error("bet rejected: engine produced a non-finite payout");
 
+    // Commit atomically now that the result is valid: burn the nonce + move tokens together.
+    s.betNonce = nonce + 1;
+    s.tokens = round2(s.tokens - bet + payout);
     const rec = { nonce: nonce, game: o.game, betUnits: bet, params: o.params || {}, clientSeed: clientSeed, payoutUnits: payout, win: !!res.win, multiplier: res.multiplier };
     s.bets.push(rec);
     save();
@@ -195,6 +207,18 @@ if (require.main === module) {
     try { tb.play({ sessionId: st.sessionId, game: "coinflip", betUnits: -5 }); } catch (e) { threw++; }
     try { tb.play({ sessionId: st.sessionId, game: "coinflip", betUnits: 1e12 }); } catch (e) { threw++; }
     eq("rejects unknown game / negative / over-bet", threw === 3);
+
+    // TRANSACTIONAL: an invalid bet (bad dice2 line → engine throws) is rejected with NO
+    // stake lost and NO nonce burned — mirrors an on-chain revert (was: stake silently eaten).
+    const bT = tb.session(st.sessionId).tokens, bN = tb.session(st.sessionId).betNonce;
+    let rejected = false; try { tb.play({ sessionId: st.sessionId, game: "dice2", betUnits: 50, params: { target: 99, over: true } }); } catch (e) { rejected = true; }
+    const aT = tb.session(st.sessionId).tokens, aN = tb.session(st.sessionId).betNonce;
+    eq("invalid bet rejected, no stake lost + nonce intact", rejected && aT === bT && aN === bN);
+
+    // settleNonce default is a uint256 decimal string (contract-compatible), not hex.
+    const probe = makeTokenBridge({}).start({ player, chainId: 1, contract, buyInUnits: 1 });
+    const ps = makeTokenBridge({}); const psid = ps.start({ player, chainId: 1, contract, buyInUnits: 1 }).sessionId;
+    eq("default settleNonce is a uint256 decimal", /^[0-9]+$/.test(ps.session(psid).settleNonce));
 
     // provably-fair re-derivation matches the whole ledger
     const rd = tb.rederive(st.sessionId);
