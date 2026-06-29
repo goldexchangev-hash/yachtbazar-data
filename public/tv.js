@@ -66,6 +66,7 @@
       this.resultEmoji = $("result-emoji");
       this.resultHeadline = $("result-headline");
       this.resultMoney = $("result-money");
+      this.srLive = $("sr-live"); // screen-reader announcement target
       this.resultSub = $("result-sub");
       this.resultCoin = $("result-coin");
       this.winBanner = $("win-banner");
@@ -862,6 +863,13 @@
         this.resultCoin.textContent = "RESULT: " + res.side;
       }
       this._animateMoney(res);
+      // a11y: announce the outcome to screen readers (the result overlay is visual-only).
+      try {
+        if (this.srLive) {
+          var amt = (res && typeof res.amountUsd === "number") ? (" $" + (Math.round(res.amountUsd * 100) / 100)) : "";
+          this.srLive.textContent = (this.resultHeadline.textContent || "") + ". " + (this.resultSub.textContent || "") + amt;
+        }
+      } catch (e) {}
       this._show("result");
       // While a full-motion cinematic reel is playing, hold the outcome cues
       // (balance unlock + win/loss sound) until the reel hits its climax — the

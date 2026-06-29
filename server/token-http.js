@@ -163,6 +163,23 @@ function makeTokenService(opts) {
 
   const bridge = makeTokenBridge({ signer: opts.signer || null, persist: nsPersist("bridge") });
 
+  // Per-session rate limit on /play so a malicious flood can't pin the single-instance event loop.
+  // Generous token bucket — fish-shooter bills only CONNECTING shots (a few/sec), so legit fast
+  // auto-fire never trips it; a few-hundred/sec flood does. In-memory (per-process) is fine.
+  const PLAY_RATE = Number(opts.playRatePerSec) || 30;   // sustained plays/sec/session
+  const PLAY_BURST = Number(opts.playBurst) || 60;        // bucket capacity
+  const playBuckets = new Map();                          // sessionId -> { tokens, ts }
+  function rateOk(sessionId) {
+    const now = Date.now();
+    let b = playBuckets.get(sessionId);
+    if (!b) { b = { tokens: PLAY_BURST, ts: now }; playBuckets.set(sessionId, b); }
+    b.tokens = Math.min(PLAY_BURST, b.tokens + ((now - b.ts) / 1000) * PLAY_RATE);
+    b.ts = now;
+    if (b.tokens < 1) return false;
+    b.tokens -= 1;
+    return true;
+  }
+
   async function doStart(body) {
     const player = address(body && body.player, "player");
     if (openByPlayer.has(player)) throw new Error("finish your open token session before buying in again");
@@ -204,6 +221,7 @@ function makeTokenService(opts) {
     const sessionId = String((body && body.sessionId) || "");
     const token = String((body && body.sessionToken) || "");
     if (!token || tokenForSession.get(sessionId) !== token) throw new Error("invalid session token");
+    if (!rateOk(sessionId)) throw new Error("too many bets too fast — slow down a moment");
     const r = bridge.play({ sessionId, game: body.game, betUnits: body.betUnits, params: body.params, clientSeed: body.clientSeed });
     return { ok: true, ...r }; // NOTE: never includes serverSeed — only the commit is exposed pre-settle
   }
@@ -251,6 +269,7 @@ function makeTokenService(opts) {
     const settlement = await bridge.settle({ sessionId: s.id });
     openByPlayer.delete(player);
     tokenForSession.delete(s.id);
+    playBuckets.delete(s.id);
     saveHttp(); // the session is no longer open — persist the freed slot + dropped bearer (txHash stays spent)
     return settlement; // includes netWei, signature, serverSeedReveal (now safe), commit
   }
@@ -446,6 +465,16 @@ if (require.main === module) {
     const svcC = mkSvc();
     let stillSpent = 0; try { await svcC.doStart(sb2); } catch (e) { stillSpent = 1; }
     eq("PERSIST: spent txHash stays spent even after the session is settled", stillSpent === 1);
+
+    // RATE LIMIT (isolated tiny-bucket service): a rapid /play flood is throttled after the burst.
+    const rlSvc = makeTokenService({ signer, ethUsd: () => 4000, verifyBuyIn: async (o) => ({ lockedWei: o.buyInWei }), playBurst: 3, playRatePerSec: 1 });
+    const rlw = ethers.Wallet.createRandom(); const rlp = rlw.address;
+    const rlBody = { player: rlp, contract, chainId, txHash: "0x" + "7".repeat(64), buyInWei: lockedWei.toString() };
+    rlBody.signature = await rlw.signMessage(tokenAuthMessage("start", { player: rlp, contract, chainId, buyInWei: lockedWei.toString() }));
+    const rlStart = await rlSvc.doStart(rlBody);
+    let rlOk2 = 0, rlThrottled = false;
+    for (let i = 0; i < 10; i++) { try { rlSvc.doPlay({ sessionId: rlStart.sessionId, sessionToken: rlStart.sessionToken, game: "coinflip", betUnits: 1, params: { side: 0 }, clientSeed: "f" + i }); rlOk2++; } catch (e) { if (/too many bets/.test(e.message)) { rlThrottled = true; break; } } }
+    eq("per-session rate limit: burst allowed then throttled", rlOk2 === 3 && rlThrottled === true);
 
     console.log(ok ? "\nSELF-TEST OK — token HTTP service: verified buy-in → token-gated play → wallet-authed signed settle (+ persisted replay guard)." : "\nSELF-TEST FAILED");
     process.exit(ok ? 0 : 1);
