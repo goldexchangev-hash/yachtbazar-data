@@ -1,7 +1,17 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v12.01**.
+Last updated at build **v12.02**.
+
+> **NOTE FOR CLAUDE/CHATGPT (v12.02):** Fish Shooter shooting-speed control (caps the dragon tap-spam).
+> Owner: rapid tapping during the boss let you "hit the dragon super fast for crazy money" — house-edge-safe (boss
+> still total === pool) but FELT exploity. Added a **Slow / Medium / Fast** segmented control in the dock
+> (`fishshooter.js#FIRE_CD = { slow:0.30, medium:0.18, fast:0.11 }` s/shot, default Fast = ~9 shots/sec hard cap).
+> ONE rate governs EVERY fire path — manual taps, auto-hold, AND bonus/boss FREE shots — so tap-spamming during
+> the boss/wave can NEVER exceed the chosen speed. Setter: `setFireSpeed(s)`; UI: `#fsh-spd-slow/-med/-fast` in
+> the dock + help-accordion explainer ("RTP identical at every speed, just paced"). Verified `_fsh-speed.js`
+> (1/25 instant taps fire at every speed; free shots @ slow stay rate-limited during a boss round; boss invariant
+> intact). Cache/build 1202.
 
 > **NOTE FOR CLAUDE/CHATGPT (v12.01):** Fish Shooter fairness — 3 owner questions, all in fishshooter.js.
 > (1) **"Boss round cost me shots"** — the boss-fight start (`_updateBoss`) clears pre-boss bullets so they don't

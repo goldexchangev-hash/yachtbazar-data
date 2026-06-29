@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#0c0d16" />
     <meta name="referrer" content="same-origin" />
-    <link rel="manifest" href="manifest.webmanifest?v=1201" />
+    <link rel="manifest" href="manifest.webmanifest?v=1202" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -28,7 +28,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=1201" />
+    <link rel="stylesheet" href="styles.css?v=1202" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -38,13 +38,13 @@
     <!-- ───────────────────────── Header ───────────────────────── -->
     <header class="topbar">
       <button id="rail-toggle" class="rail-toggle" aria-label="Open menu" title="Menu">☰</button>
-      <span class="build-tag-m" id="build-tag-m" title="Live build version — confirms the deploy is up to date">v12.01</span>
+      <span class="build-tag-m" id="build-tag-m" title="Live build version — confirms the deploy is up to date">v12.02</span>
       <div class="brand">
         <span class="brand-tv">📺</span>
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v12.01</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v12.02</span>
       </div>
       <div class="topbar-right">
         <div class="tb-tools">
@@ -430,7 +430,7 @@
 
                 <!-- Promo intro reel — autoplays once (muted) on first load, then fades
                      to black and hands off to the game. Replay button under the TV. -->
-                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=1201"></video>
+                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=1202"></video>
 
                 <!-- Shown while a bet tx is being signed + mined (esp. slow on mobile) -->
                 <div id="tv-pending" class="tv-pending hidden">⏳ SENDING BET…<br />confirm in your wallet, then hold tight</div>
@@ -553,6 +553,12 @@
             <button type="button" class="fish-btn fish-pwr" id="fsh-pup">PWR +</button>
             <button type="button" class="fish-btn" id="fsh-auto">🔥 Auto-fire</button>
             <button type="button" class="fish-btn" id="fsh-lock">🎯 Lock-on</button>
+          </div>
+          <div class="fish-speed" role="group" aria-label="Shooting speed">
+            <span class="fish-speed-lbl">Speed</span>
+            <button type="button" class="fish-speed-btn" id="fsh-spd-slow" title="Slow — ~3 shots/sec">🐢 Slow</button>
+            <button type="button" class="fish-speed-btn" id="fsh-spd-med"  title="Medium — ~5 shots/sec">🐠 Medium</button>
+            <button type="button" class="fish-speed-btn on" id="fsh-spd-fast" title="Fast — ~9 shots/sec, the cap">⚡ Fast</button>
           </div>
           <div class="muted dice-roll-hint" id="fsh-message">Aim & tap the tank to shoot · bigger fish pay more · land the Jackpot meter for a frenzy</div>
         </div>
@@ -1029,6 +1035,7 @@
               <p><strong>🎯 Goal.</strong> Land fish to win coins. Tap the tank to aim &amp; fire, or use <strong>🔥 Auto-fire</strong> + <strong>🎯 Lock-on</strong>. Each connecting shot returns ~95% on average no matter which fish you shoot — big fish just take more shots.</p>
               <p><strong>⚡ Power (×1–×3) is a MULTIPLIER, not your bet.</strong> It does <em>not</em> change your base bet. It multiplies <em>both</em> the cost and the payout of each shot by the same amount, so a power-3 shot costs 3× and pays 3× — your % return is identical at every power. Higher power just lands big fish faster. (Capped at ×3 to keep the odds fair.)</p>
               <p><strong>💵 Base bet</strong> (the slider) sets your stake. Cost per shot = <em>power × base bet</em>. <strong>Bigger base bet → bigger bonus rounds</strong> (a bonus pays around 25× your base bet on average).</p>
+              <p><strong>🎚 Shooting speed</strong> (Slow / Medium / Fast) caps how fast you can fire — including manual tapping, hold, and bonus/boss free shots. Faster wagers and wins the same money faster (RTP is identical), but it's also a stronger spend rate, so pick a pace you're comfortable with. Fast (~9 shots/sec) is the hard cap — no tap-spam can exceed it.</p>
               <p><strong>🎁 Bonus rounds</strong> — rare, and they <em>pay when you land the bonus creature</em>:</p>
               <ul>
                 <li><strong>⚡ Feeding Frenzy</strong> — a burst of free shots.</li>
@@ -1488,18 +1495,18 @@
       </div>
     </aside>
 
-    <script defer src="vendor/ethers.umd.min.js?v=1201"></script>
-    <script defer src="config.js?v=1201"></script>
-    <script defer src="contract.js?v=1201"></script>
-    <script defer src="chiptune.js?v=1201"></script>
-    <script defer src="scenes.js?v=1201"></script>
-    <script defer src="tv.js?v=1201"></script>
-    <script defer src="poker-engine.js?v=1201"></script>
-    <script defer src="poker-bots.js?v=1201"></script>
-    <script defer src="poker-ui.js?v=1201"></script>
-    <script defer src="crash-engine.js?v=1201"></script>
-    <script defer src="crash-render.js?v=1201"></script>
-    <script defer src="profile.js?v=1201"></script>
-    <script defer src="app.js?v=1201"></script>
+    <script defer src="vendor/ethers.umd.min.js?v=1202"></script>
+    <script defer src="config.js?v=1202"></script>
+    <script defer src="contract.js?v=1202"></script>
+    <script defer src="chiptune.js?v=1202"></script>
+    <script defer src="scenes.js?v=1202"></script>
+    <script defer src="tv.js?v=1202"></script>
+    <script defer src="poker-engine.js?v=1202"></script>
+    <script defer src="poker-bots.js?v=1202"></script>
+    <script defer src="poker-ui.js?v=1202"></script>
+    <script defer src="crash-engine.js?v=1202"></script>
+    <script defer src="crash-render.js?v=1202"></script>
+    <script defer src="profile.js?v=1202"></script>
+    <script defer src="app.js?v=1202"></script>
   </body>
 </html>

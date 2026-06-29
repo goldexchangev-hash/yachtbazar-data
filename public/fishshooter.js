@@ -18,6 +18,10 @@
   var PIXI = root.PIXI, E = root.FishShooterEngine; // OWN engine, decoupled from Reef Raiders (fishtable-engine.js)
   var DIR = "/assets/fishshooter/";
   var MIN_BET = 1, MAX_BET = 50, MAX_POWER = 3; // power 3 cap: above this, high per-shot kill-prob makes auto-fire OVERKILL fish (extra in-flight/culled bullets wasted), which craters realized RTP. The bet slider is the main stake dial; power is a modest speed/stake boost.
+  // Shooting-speed cooldowns (seconds/shot). ONE rate governs EVERY fire path — manual taps, auto-fire,
+  // AND bonus/boss free shots — so you can never tap-spam the dragon faster than the chosen speed. FAST
+  // ≈ 9 shots/s = a brisk "fast clicking" cap, never faster.
+  var FIRE_CD = { slow: 0.30, medium: 0.18, fast: 0.11 };
   var FISH_KEYS = ["minnow", "clown", "tang", "puffer", "turtle", "squid", "eel", "bomb", "crab", "clam", "shark", "kraken", "whale", "lobster", "armadillo", "anglerfish", "seadragon", "warturtle", "gator", "stormjelly"];
   // per-creature animation frame count (default 4); the new creatures are authored at 8 for smoother motion
   var FRAMES = { eel: 8, lobster: 8, armadillo: 8, anglerfish: 8, seadragon: 8, warturtle: 8, gator: 8, stormjelly: 8 };
@@ -43,7 +47,7 @@
     this.onBalance = opts.onBalance || null;
     this.onWin = opts.onWin || null;
     this.balance = opts.initialBalance != null ? opts.initialBalance : 5000;
-    this.unitBet = MIN_BET; this.power = 1;
+    this.unitBet = MIN_BET; this.power = 1; this.fireSpeed = "fast"; // slow | medium | fast (caps EVERY fire path)
     this._active = false; this._enabled = true; this.auto = false; this.lock = false;
     this.engine = E.create();
 
@@ -313,7 +317,7 @@
     this.bullets.push({ s: b, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed, r: 7 + sp * 1.1, hit: false, unitBet: su, power: sp, cost: paid, free: free, frenzyId: free ? this._frenzyId : 0, bossId: (this._boss && this._boss.started) ? this._bossId : 0 });
     this._recoil = 7; this._muzzle(tx, ty);
     if (root.Chiptune && root.Chiptune.blip) try { root.Chiptune.blip(); } catch (e) {}
-    this._fireCd = free ? 0.09 : 0.16; // PAID shots (manual tap OR auto-hold) share ONE rate (0.16) so tapping is never faster than holding; bonus/boss FREE shots stay snappy (0.09)
+    this._fireCd = FIRE_CD[this.fireSpeed] || FIRE_CD.fast; // ONE rate governs EVERY path (manual tap, auto-hold, bonus/boss free shots) — tap-spamming the dragon can NEVER exceed the chosen speed
   };
   FishShooter.prototype._muzzle = function (x, y) {
     var mk = (this._cannonK || 1) * 1.5; // muzzle flash tracks the (now small) barrel
@@ -835,6 +839,9 @@
       if (el.powerDown) el.powerDown.addEventListener("click", function () { self.setPower(self.power - 1); });
       if (el.autoBtn) el.autoBtn.addEventListener("click", function () { self.toggleAuto(); });
       if (el.lockBtn) el.lockBtn.addEventListener("click", function () { self.toggleLock(); });
+      if (el.speedSlow) el.speedSlow.addEventListener("click", function () { self.setFireSpeed("slow"); });
+      if (el.speedMed) el.speedMed.addEventListener("click", function () { self.setFireSpeed("medium"); });
+      if (el.speedFast) el.speedFast.addEventListener("click", function () { self.setFireSpeed("fast"); });
     };
     setTimeout(this._bindLater, 0);
   };
@@ -867,6 +874,15 @@
   FishShooter.prototype.setMode = function () {};
   FishShooter.prototype.setBet = function (v) { this.unitBet = clamp(Math.round((+v || MIN_BET) * 100) / 100, MIN_BET, MAX_BET); this._renderHud(); };
   FishShooter.prototype.setPower = function (p) { this.power = clamp(p | 0, 1, MAX_POWER); this._renderHud(); };
+  FishShooter.prototype.setFireSpeed = function (s) {
+    s = String(s || "fast").toLowerCase(); if (!FIRE_CD[s]) s = "fast";
+    this.fireSpeed = s;
+    // re-render the speed-segment UI active state
+    var e = this.els; if (e && e.speedSlow && e.speedMed && e.speedFast) {
+      e.speedSlow.classList.toggle("on", s === "slow"); e.speedMed.classList.toggle("on", s === "medium"); e.speedFast.classList.toggle("on", s === "fast");
+    }
+    this._renderHud();
+  };
   FishShooter.prototype.toggleAuto = function () { this.auto = !this.auto; this._holding = false; if (this.els.autoBtn) this.els.autoBtn.classList.toggle("on", this.auto); };
   FishShooter.prototype.toggleLock = function () { this.lock = !this.lock; if (this.els.lockBtn) this.els.lockBtn.classList.toggle("on", this.lock); };
   FishShooter.prototype.newSession = function () { this._sesSpent = 0; this._sesWon = 0; try { this._teardownRounds(); } catch (e) {} this._renderHud(); };

@@ -2315,6 +2315,11 @@ body.rr-fs-on #layer-fishshooter, body.rr-fs-on #layer-fishshooter * { visibilit
 .fish-btn { background: var(--s-surface, #15203a); color: var(--s-text, #cfe2ff); border: 1px solid rgba(57,231,255,.35); border-radius: 8px; padding: 8px 12px; font-weight: 800; cursor: pointer; flex: 1 1 auto; min-width: 92px; }
 .fish-btn:active { transform: translateY(1px); }
 .fish-btn.on { background: #39e7ff; color: #041326; border-color: #39e7ff; }
+.fish-speed { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; }
+.fish-speed-lbl { font-family: var(--display, inherit); font-weight: 800; letter-spacing: .02em; color: var(--gold, #ffd23f); text-transform: uppercase; font-size: .72rem; margin-right: 4px; }
+.fish-speed-btn { background: var(--s-surface, #15203a); color: var(--s-text, #cfe2ff); border: 1px solid rgba(57,231,255,.25); border-radius: 8px; padding: 6px 10px; font-weight: 800; cursor: pointer; flex: 1 1 auto; min-width: 78px; font-size: .82rem; }
+.fish-speed-btn:active { transform: translateY(1px); }
+.fish-speed-btn.on { background: #39e7ff; color: #041326; border-color: #39e7ff; }
 .fish-pwr { flex: 0 0 auto; min-width: 64px; }
 .fish-power { font-weight: 800; color: var(--s-gold, #ffe08a); min-width: 70px; text-align: center; }
 .fish-winval { color: #45f0a6; }
