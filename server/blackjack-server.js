@@ -341,14 +341,18 @@
       } else if (action === "stand") {
         h.done = true; advanceHand(r);
       } else if (action === "double") {
-        bank.debit(s.wallet, h.bet); h.bet = r2(h.bet * 2); h.doubled = true; pushWallet(s.sock, s.wallet);
+        // legalActions already requires the balance, but check the debit anyway — a failed debit
+        // must never leave a free doubled bet. Re-arm the turn so the player can pick again.
+        if (!bank.debit(s.wallet, h.bet)) { startTurn(r); return err(s.sock, "insufficient", "Not enough balance to double", "action"); }
+        h.bet = r2(h.bet * 2); h.doubled = true; pushWallet(s.sock, s.wallet);
         notifyBalance(s.wallet);
         h.cards.push(draw(r)); h.done = true;
         broadcast(r, { type: "bj:event", kind: "double", seat: seatIdx, hand: s.active }); advanceHand(r);
       } else if (action === "surrender") {
         h.surrendered = true; h.done = true; advanceHand(r);
       } else if (action === "split") {
-        bank.debit(s.wallet, h.bet); pushWallet(s.sock, s.wallet);
+        if (!bank.debit(s.wallet, h.bet)) { startTurn(r); return err(s.sock, "insufficient", "Not enough balance to split", "action"); }
+        pushWallet(s.sock, s.wallet);
         const isAce = h.cards[0].rank === "A";
         const moved = h.cards.pop();                       // second pair card seeds the new hand
         h.fromSplit = true; h.isAceSplit = isAce;          // the original hand is now a split hand

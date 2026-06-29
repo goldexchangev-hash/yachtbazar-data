@@ -69,7 +69,10 @@ function makeOnChainVerifier(rpcUrlFor, minConfirmations) {
   return async function verifyBuyIn(o) {
     const url = rpcUrlFor(o.chainId);
     if (!url) throw new Error("bridge RPC not configured");
-    const provider = new ethers.JsonRpcProvider(url);
+    // Bound every RPC call: without a timeout a slow/hung node lets an attacker flood
+    // /api/token/start with valid-looking txHashes and pin server requests open indefinitely.
+    const fr = new ethers.FetchRequest(url); fr.timeout = 12000;
+    const provider = new ethers.JsonRpcProvider(fr, undefined, { staticNetwork: true });
     const net = await provider.getNetwork();
     if (Number(net.chainId) !== o.chainId) throw new Error("bridge RPC is on the wrong chain");
     const receipt = await provider.getTransactionReceipt(o.txHash);

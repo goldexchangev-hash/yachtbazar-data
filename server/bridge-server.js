@@ -147,7 +147,9 @@ async function withPlayerLock(player, fn) {
 async function verifyBuyIn(o) {
   const url = rpcUrl(o.chainId);
   if (!url) throw new Error("bridge RPC not configured");
-  const provider = new ethers.JsonRpcProvider(url);
+  // Bound every RPC call so a slow/hung node can't pin buy-in requests open (DoS surface).
+  const fr = new ethers.FetchRequest(url); fr.timeout = 12000;
+  const provider = new ethers.JsonRpcProvider(fr, undefined, { staticNetwork: true });
   const net = await provider.getNetwork();
   if (Number(net.chainId) !== o.chainId) throw new Error("bridge RPC is on the wrong chain");
   const receipt = await provider.getTransactionReceipt(o.txHash);

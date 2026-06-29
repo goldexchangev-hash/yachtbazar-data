@@ -69,8 +69,25 @@ function makeTokenBridge(opts) {
   function save() { if (persist && persist.save) { try { persist.save({ sessions: Array.from(sessions.values()) }); } catch (e) {} } }
   if (persist && persist.load) { try { const st = persist.load(); for (const s of (st && st.sessions) || []) if (s && s.id) sessions.set(s.id, s); } catch (e) {} }
 
+  // Bound the session map: drop SETTLED sessions long past their cash-out so the map + persisted
+  // file don't grow forever. OPEN (unsettled) sessions are NEVER pruned — deleting one would strand
+  // its on-chain lock (the serverSeed/nonce would be gone and it could never settle). 24h is well
+  // past any settle retry, and the on-chain bjNonceUsed + txHash replay guard stop a double-claim.
+  const SETTLED_TTL_MS = Number(opts.settledTtlMs) || 24 * 3600 * 1000;
+  function nowMs() { try { return Date.now(); } catch (e) { return 0; } }
+  function gcClosed() {
+    const cutoff = nowMs() - SETTLED_TTL_MS;
+    let dropped = 0;
+    for (const s of sessions.values()) {
+      if (s && s.settlement && (Number(s.createdAt) || 0) > 0 && Number(s.createdAt) < cutoff) { sessions.delete(s.id); dropped++; }
+    }
+    if (dropped) save();
+    return dropped;
+  }
+
   // Begin a session. buyInUnits = tokens granted (the on-chain lock, verified upstream).
   function start(o) {
+    gcClosed(); // opportunistically prune old settled sessions whenever a new one opens
     const player = String(o.player || "").toLowerCase();
     if (!player) throw new Error("player required");
     const buyInUnits = round2(o.buyInUnits);
@@ -82,7 +99,7 @@ function makeTokenBridge(opts) {
       buyInUnits: buyInUnits, tokens: buyInUnits,
       lockedWei: o.lockedWei != null ? BigInt(o.lockedWei).toString() : null, // the EXACT on-chain locked wei this buy-in represents (pins settle net→wei)
       serverSeed: rnd.serverSeed, commit: rnd.commit, settleNonce: o.settleNonce != null ? String(o.settleNonce) : uintNonce(),
-      betNonce: 0, bets: [], closed: false, settlement: null, startedAt: o.now || 0,
+      betNonce: 0, bets: [], closed: false, settlement: null, startedAt: o.now || 0, createdAt: nowMs(),
     };
     sessions.set(id, s);
     save();
@@ -252,7 +269,7 @@ function makeTokenBridge(opts) {
   // Back-compat alias (crash family only) — older callers used crashPointPeek.
   function crashPointPeek(o) { return pointPeek(Object.assign({ game: "crash" }, o || {})); }
 
-  return { start, play, topUp, settle, rederive, verifyRederive, session, games, hasGame, pointPeek, crashPointPeek, _sessions: sessions };
+  return { start, play, topUp, settle, rederive, verifyRederive, session, games, hasGame, pointPeek, crashPointPeek, gcClosed, _sessions: sessions };
 }
 
 module.exports = { makeTokenBridge, games, hasGame, ENGINES };
@@ -368,6 +385,16 @@ if (require.main === module) {
     eq("topped-up session never signs a loss beyond total locked", BigInt(tstl.netWei) >= -((1n * 10n ** 18n) + (25n * 10n ** 17n)));
     let topClosed = 0; try { tu.topUp({ sessionId: tus.sessionId, addUnits: 10 }); } catch (e) { topClosed = 1; }
     eq("top-up rejected after settle (closed session)", topClosed === 1);
+
+    // GC: settled sessions past the TTL are pruned; OPEN sessions are NEVER pruned.
+    const gcb = makeTokenBridge({ signer: signer2, settledTtlMs: 1 }); // 1ms TTL → everything settled is instantly old
+    const gOpen = gcb.start({ player, chainId: 1, contract, buyInUnits: 100 }).sessionId;
+    const gSettled = gcb.start({ player, chainId: 1, contract, buyInUnits: 100, settleNonce: NONCE }).sessionId;
+    await gcb.settle({ sessionId: gSettled });
+    gcb.session(gSettled).createdAt = 1; // force it well past the 1ms TTL
+    const dropped = gcb.gcClosed();
+    eq("GC prunes the old settled session", dropped === 1 && !gcb.session(gSettled));
+    eq("GC never prunes an OPEN session (would strand its lock)", !!gcb.session(gOpen));
 
     // settle signs a recoverable net + reveals the seed
     const stl = await tb.settle({ sessionId: st.sessionId });

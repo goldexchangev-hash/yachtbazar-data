@@ -50,10 +50,22 @@ const wss = new WebSocketServer({ server, maxPayload: 64 * 1024 });
 // can't reset a player's grown balance to $1,000. Atomic write (tmp + rename), guest keys only.
 // NOTE: on an ephemeral filesystem (Render free tier) this survives a process restart/crash within
 // the same container; for durability across a cold spin-down, point BJ_BANK_FILE at a mounted disk.
+// Durable, corruption-proof JSON write: write to a temp file, fsync it to disk, VALIDATE it
+// parses, then atomically rename over the real file. If the write is interrupted (ENOSPC / EIO),
+// the throw leaves the existing good file untouched — never a half-written/truncated state file.
+function writeJsonAtomic(file, obj) {
+  const tmp = file + ".tmp";
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const data = JSON.stringify(obj);
+  const fd = fs.openSync(tmp, "w");
+  try { fs.writeFileSync(fd, data); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+  JSON.parse(fs.readFileSync(tmp, "utf8")); // readback: refuse to promote a corrupt temp
+  fs.renameSync(tmp, file);
+}
 const BJ_BANK_FILE = String(process.env.BJ_BANK_FILE || path.join(__dirname, ".bj-bank.json"));
 const bjPersist = {
   load() { try { return JSON.parse(fs.readFileSync(BJ_BANK_FILE, "utf8")); } catch (e) { return {}; } },
-  save(obj) { try { const tmp = BJ_BANK_FILE + ".tmp"; fs.mkdirSync(path.dirname(BJ_BANK_FILE), { recursive: true }); fs.writeFileSync(tmp, JSON.stringify(obj)); fs.renameSync(tmp, BJ_BANK_FILE); } catch (e) {} },
+  save(obj) { try { writeJsonAtomic(BJ_BANK_FILE, obj); } catch (e) {} },
 };
 const blackjack = attachBlackjack({
   startBalance: 5000, // match the site-wide $5,000 play-money demo balance
@@ -74,7 +86,7 @@ let _tokenPersistWarnedAt = 0;
 const tokenPersist = {
   load() { try { return JSON.parse(fs.readFileSync(TOKEN_STATE_FILE, "utf8")); } catch (e) { return {}; } },
   save(obj) {
-    try { const tmp = TOKEN_STATE_FILE + ".tmp"; fs.mkdirSync(path.dirname(TOKEN_STATE_FILE), { recursive: true }); fs.writeFileSync(tmp, JSON.stringify(obj)); fs.renameSync(tmp, TOKEN_STATE_FILE); }
+    try { writeJsonAtomic(TOKEN_STATE_FILE, obj); }
     catch (e) {
       // A SILENT persist failure here is exactly how a token session "freezes" after a restart: the
       // bearer is granted in memory but never written, so on reboot every /play 400s. Make it LOUD so
