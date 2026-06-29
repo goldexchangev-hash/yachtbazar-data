@@ -1,7 +1,27 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v11.95**.
+Last updated at build **v11.96**.
+
+> **NOTE FOR CLAUDE/CHATGPT (v11.96):** Fish Shooter audit-fix pass + new eel + bonus finale.
+> (1) **Multi-agent audit** (7 reviewers × adversarial verify) → **12 confirmed, all fixed, all house-edge-neutral.**
+> Key: `setActive(false)`/`restartDemo`/`newSession` now call a new `_teardownRounds()` that hard-discards any
+> in-progress bonus/boss/finale WITHOUT paying (jackpot rake stays in `_jackpotPool` and rolls forward) and drops
+> free/boss bullets — fixes a real **stranded auto-firing round** surviving a channel leave/return. Added one-round
+> guards so the jackpot boss can't collide with a pending bonus wave (`_startBossRound` checks `_bonus`/`_bonusFinale`;
+> `_startFrenzy` checks `_boss`; the jackpot meter bump now also excludes `_bonus`/`_bonusFinale`/splash). Cached the
+> per-spawn glow + per-explosion radial textures by color (`_glowCache`/`_explCache`) — were leaking a 256px texture
+> every spawn/explosion. `visibilitychange` now stops/restarts the ticker (no background auto-fire) and no longer
+> re-pins the music track (was double-scheduling a bar + clobbering a user's track choice); Coral is pinned ONCE via
+> `_musicPinned`. Seaweed X/scale now refit on resize. `demoReset()` (app.js) now also resets the Fish Shooter.
+> (2) **New 8-frame electric eel** (Grok-regenerated: flowing horizontal slither + stronger lightning) replaces the
+> 4-frame one — `eel:8` in the FRAMES map, `eel_0..7.png`.
+> (3) **Bonus-round FINALE**: wave winnings now ACCUMULATE during the round (not banked live) and at the end the round
+> holds for a clear "<WORLD> COMPLETE — YOU WON $X" reveal (~1.9s), THEN deposits the total into the bottom-right
+> balance with a coin stream + count-up + pulse (`_endBonusWave` → `_bonusFinale` → `_updateBonusFinale`). The jackpot
+> BOSS keeps its live per-hit accrual (a prior explicit owner request) — only the frenzy/vault/storm WAVES use the
+> deferred deposit. House edge unchanged (free payouts still clamped to `_frenzyBudget`=25×unit; boss still total===pool;
+> both re-verified headless with 0 console errors; Reef CH 17 shared-engine smoke still clean). Cache/build bumped to 1196.
 
 > **NOTE FOR CLAUDE/CHATGPT (v11.95):** Fish Shooter (CH 19) bonus-round build + two site fixes.
 > CH 19 "Fish Shooter" (`public/fishshooter.js`, PixiJS top-down fish-table, demo-only) now has

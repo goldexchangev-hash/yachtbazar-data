@@ -20,7 +20,7 @@
   var MIN_BET = 1, MAX_BET = 50, MAX_POWER = 7;
   var FISH_KEYS = ["minnow", "clown", "tang", "puffer", "turtle", "squid", "eel", "bomb", "crab", "clam", "shark", "kraken", "whale", "lobster", "armadillo", "anglerfish", "seadragon"];
   // per-creature animation frame count (default 4); the new creatures are authored at 8 for smoother motion
-  var FRAMES = { lobster: 8, armadillo: 8, anglerfish: 8, seadragon: 8 };
+  var FRAMES = { eel: 8, lobster: 8, armadillo: 8, anglerfish: 8, seadragon: 8 };
   function frameCount(k) { return FRAMES[k] || 4; }
 
   var clamp = function (v, a, b) { return Math.max(a, Math.min(b, v)); };
@@ -54,6 +54,7 @@
     this._frenzy = 0; this._frenzyMax = 0; this._frenzyWon = 0; this._frenzyBudget = 0; this._frenzyId = 0; this._frenzyUnit = MIN_BET; this._frenzyPow = 1;
     this._boss = null; this._bossId = 0; // active jackpot boss bonus round (id bumps each round)
     this._bonus = null; this._frenzyKind = "frenzy"; // active wave bonus round (frenzy/vault/storm) + its theme
+    this._bonusFinale = null; this._depositPulse = 0; // end-of-round reveal → deposit-to-bank sequence
     this._holding = false; this._ready = false; this.tex = {};
 
     this._initPixi();
@@ -125,7 +126,7 @@
     }
     // Re-fit every live fish to the CURRENT screen (prevents any stuck/growing sizes).
     for (var fi3 = 0; fi3 < this.fish.length; fi3++) { var ff3 = this.fish[fi3]; if (!ff3 || !ff3.frameW) continue; var dw3 = this._fishDispW(ff3.def); ff3.scale = dw3 / ff3.frameW; ff3.r = dw3 * 0.294; this._sizeLabel(ff3); }
-    for (var i = 0; i < this.weeds.length; i++) { this.weeds[i].s.y = H + 6; }
+    for (var i = 0; i < this.weeds.length; i++) { var wq = this.weeds[i]; wq.s.x = W * (wq.frac != null ? wq.frac : 0.5); wq.s.y = H + 6; wq.s.scale.set((wq.baseScale != null ? wq.baseScale : 0.6) * this.uiScale); } // refit weed X + scale to current width (was pinned to old width on rotate)
     this._drawHud();
   };
 
@@ -174,7 +175,7 @@
     for (var i = 0; i < 6; i++) { var c = new PIXI.Sprite(cg); c.anchor.set(0.5); c.alpha = 0.09; c.x = rand(0, W); c.y = rand(0, H); c.scale.set(rand(1.6, 3)); c._vx = rand(-7, 7); c._ph = rand(0, 6.28); this.causticLayer.addChild(c); }
 
     this.weedLayer = new PIXI.Container(); this.world.addChild(this.weedLayer);
-    for (var w = 0; w < 2; w++) { var wd = new PIXI.Sprite(this.tex.seaweed); wd.anchor.set(0.5, 1); wd.scale.set(rand(0.4, 0.8)); wd.x = w === 0 ? W * 0.2 : W * 0.8; this.weedLayer.addChild(wd); this.weeds.push({ s: wd, ph: rand(0, 6.28), amp: rand(0.05, 0.12), spd: rand(0.5, 1.1) }); }
+    for (var w = 0; w < 2; w++) { var wd = new PIXI.Sprite(this.tex.seaweed); wd.anchor.set(0.5, 1); var wfrac = w === 0 ? 0.2 : 0.8, wbase = rand(0.4, 0.8); wd.scale.set(wbase * this.uiScale); wd.x = W * wfrac; this.weedLayer.addChild(wd); this.weeds.push({ s: wd, ph: rand(0, 6.28), amp: rand(0.05, 0.12), spd: rand(0.5, 1.1), frac: wfrac, baseScale: wbase }); }
 
     this.bubbleLayer = new PIXI.Container(); this.world.addChild(this.bubbleLayer);
     this.fishLayer = new PIXI.Container(); this.world.addChild(this.fishLayer);
@@ -257,7 +258,7 @@
     var cont = new PIXI.Container(); cont.addChild(spr);
     var dispW = this._fishDispW(def); var scale = dispW / frames[0].width; cont.scale.set(scale);
 
-    if (def.special) { var gl = new PIXI.Sprite(this._radial(def.color, 256)); gl.anchor.set(0.5); gl.alpha = 0.4; gl.blendMode = PIXI.BLEND_MODES.ADD; gl.scale.set((def.r * 6) / 256 / scale); cont.addChildAt(gl, 0); }
+    if (def.special) { this._glowCache = this._glowCache || {}; var gtex = this._glowCache[def.color] || (this._glowCache[def.color] = this._radial(def.color, 256)); var gl = new PIXI.Sprite(gtex); gl.anchor.set(0.5); gl.alpha = 0.4; gl.blendMode = PIXI.BLEND_MODES.ADD; gl.scale.set((def.r * 6) / 256 / scale); cont.addChildAt(gl, 0); } // cache glow texture by color (was leaking a 256px texture per spawn)
     var lbl = new PIXI.Text("x" + def.mult, { fontFamily: "Bungee, Arial", fontSize: 50, fontWeight: "700", fill: 0xffffff, stroke: 0x041326, strokeThickness: 7 });
     lbl.anchor.set(0.5); lbl.y = frames[0].height * 0.34; lbl.alpha = 0.9; cont.addChild(lbl); // just under the body; size kept CONSISTENT + flipped via _sizeLabel
 
@@ -292,6 +293,7 @@
     if (!this._active || !this._enabled || !this._ready) return;
     if (this._boss && !this._boss.started) return;   // hold fire during the boss 3-2-1 countdown
     if (this._bonus && !this._bonus.started) return; // hold fire during the bonus-world 3-2-1 countdown
+    if (this._bonusFinale) return;                   // hold fire during the end-of-round reveal + deposit
     var free = this._frenzy > 0 || !!this._boss;
     var su = free ? this._frenzyUnit : this.unitBet, sp = free ? this._frenzyPow : this.power;
     var paid = Math.round(su * sp * 100) / 100, cost = free ? 0 : paid;
@@ -332,8 +334,16 @@
     if (!fish.alive) return; fish.alive = false;
     var unitBet = shot.unitBet || this.unitBet;
     var payout = Math.round(fish.def.mult * unitBet * 100) / 100;
-    if (shot.free) { var rem = Math.max(0, Math.round((this._frenzyBudget - this._frenzyWon) * 100) / 100); payout = Math.min(payout, rem); this._frenzyWon = Math.round((this._frenzyWon + payout) * 100) / 100; }
-    this.balance = Math.round((this.balance + payout) * 100) / 100; this._won = payout; this._sesWon = Math.round((this._sesWon + payout) * 100) / 100; this._save(); this._renderHud();
+    if (shot.free) {
+      // Bonus-wave win: cap to the remaining pre-paid budget and ACCUMULATE it, but do NOT bank it
+      // now — the whole total is deposited in the finale (_endBonusWave → _updateBonusFinale) so the
+      // player clearly sees the reveal + deposit instead of the balance ticking up mid-wave.
+      var rem = Math.max(0, Math.round((this._frenzyBudget - this._frenzyWon) * 100) / 100);
+      payout = Math.min(payout, rem); this._frenzyWon = Math.round((this._frenzyWon + payout) * 100) / 100;
+    } else {
+      this.balance = Math.round((this.balance + payout) * 100) / 100; this._sesWon = Math.round((this._sesWon + payout) * 100) / 100;
+    }
+    this._won = payout; this._save(); this._renderHud();
     this._combo++; this._comboT = 1.2;
     this._net(fish.cont.x, fish.cont.y, fish.def.color, true);
     this._burst(fish.cont.x, fish.cont.y, clamp(0.55 + fish.def.mult * 0.02, 0.6, 2.6) * 0.49);
@@ -348,7 +358,7 @@
     if (this.onWin && payout >= Math.max(0.01, shot.cost || unitBet) * 8) try { this.onWin({ profitUsd: payout - (shot.free ? 0 : (shot.cost || 0)), mult: fish.def.mult }); } catch (e) {}
     // JACKPOT ROUND meter (self-funding pool). The Abyssal Angler SPIKES it; any boss-tier
     // kill SURGES it — so killing big creatures randomly pushes you into the jackpot round.
-    if (!shot.free && !this._boss) {
+    if (!shot.free && !this._boss && !this._bonus && !this._bonusFinale && !isSplash) {
       var bump = 0.0022 * (shot.power || 1);
       if (fish.def.key === "anglerfish") bump = 0.30;
       else if (fish.def.tier === "boss") bump += 0.10;
@@ -396,7 +406,7 @@
     storm:  { name: "STORM",  bg: "bg_storm",  title: "🌩 LIGHTNING STORM 🌩", sub: "FREE CHAIN SHOTS!", color: 0x2bd6ff },
   };
   FishShooter.prototype._startFrenzy = function (dur, shot, kind) {
-    if (this._frenzy > 0) return;
+    if (this._frenzy > 0 || this._boss) return; // never stack a wave on an active boss round
     kind = kind || "frenzy"; this._frenzyKind = kind;
     var th = BONUS_THEME[kind] || BONUS_THEME.frenzy;
     this._frenzyId++; this._frenzy = dur; this._frenzyMax = dur; this._frenzyWon = 0;
@@ -409,7 +419,7 @@
     for (var i = 0; i < 8; i++) { (function (self) { setTimeout(function () { if (self._active && self._frenzy > 0) self._spawnFish(small[(Math.random() * small.length) | 0]); }, i * 130); })(this); }
   };
   // ── shared bonus-WAVE launcher: 3-2-1 countdown → world crossfade → free-shot wave ──
-  FishShooter.prototype._canBonus = function () { return this._frenzy <= 0 && !this._boss && !this._bonus; };
+  FishShooter.prototype._canBonus = function () { return this._frenzy <= 0 && !this._boss && !this._bonus && !this._bonusFinale; };
   FishShooter.prototype._startBonus = function (kind, shot) {
     if (!this._canBonus()) return;
     this._bonus = { kind: kind, shot: { unitBet: shot.unitBet, power: shot.power, cost: shot.cost, free: !!shot.free }, countT: 0, lastNum: 99, started: false };
@@ -430,11 +440,37 @@
   FishShooter.prototype._endBonusWave = function () {
     var bz = this._bonus; if (!bz) return; var kind = bz.kind; this._bonus = null;
     var th = BONUS_THEME[kind] || BONUS_THEME.frenzy;
-    this._flashBanner(th.name + " WIN!", "+$" + (this._frenzyWon || 0).toFixed(2), th.color);
-    this._screenFlash(th.color); this._shake = 22;
-    for (var i = 0; i < 40; i++) this._rainCoin();
-    if (kind === "vault") this._openChest({ cont: { x: this.W / 2, y: this.H * 0.42 }, r: this.W * 0.12 }, bz.shot); // vault finale chest
+    var won = Math.round((this._frenzyWon || 0) * 100) / 100;
+    // Enter the FINALE: a few-second held reveal of the total, THEN the deposit-to-bank (the wave
+    // winnings were accumulated but not yet banked — see _catch). _updateBonusFinale drives it.
+    this._bonusFinale = { kind: kind, th: th, won: won, t: 0, dur: 4.4, paid: false, shot: bz.shot };
+    // clear leftover wave fish so the reveal panel reads cleanly
+    for (var i = this.fish.length - 1; i >= 0; i--) { var f = this.fish[i]; if (f && f.alive) { f.alive = false; f.death = 0; } }
+    this._flashBanner(th.name + " COMPLETE!", won > 0 ? "YOU WON  $" + won.toFixed(2) : "NO WIN THIS TIME", th.color);
+    this._screenFlash(th.color); this._shake = 18;
     var C = root.Chiptune; if (C && C.bigwin) try { C.bigwin(); } catch (e) {}
+  };
+  // FINALE: hold the "YOU WON $X" reveal, then bank the total into the bottom-right balance with a
+  // coin stream + count-up + pulse, so the deposit is unmistakable (and never too fast to read).
+  FishShooter.prototype._updateBonusFinale = function (dt) {
+    var fz = this._bonusFinale; if (!fz) return;
+    fz.t += dt;
+    // keep the WIN panel pinned up through the reveal (don't let the banner auto-fade yet)
+    if (fz.t < 1.9) { this.banner.alpha = 1; this.bannerSub.alpha = 1; this._bannerT = Math.min(this._bannerT, 0.9); }
+    // DEPOSIT at ~1.9s: bank the total, rain coins into the balance corner, pulse it, ka-ching.
+    if (!fz.paid && fz.t >= 1.9) {
+      fz.paid = true;
+      if (fz.won > 0) {
+        this.balance = Math.round((this.balance + fz.won) * 100) / 100;
+        this._sesWon = Math.round((this._sesWon + fz.won) * 100) / 100; this._won = fz.won; this._save();
+        if (fz.kind === "vault") this._openChest({ cont: { x: this.W / 2, y: this.H * 0.40 }, r: this.W * 0.12 }, fz.shot); // vault pops its chest on the deposit
+        this._flashBanner("YOU WON  $" + fz.won.toFixed(2), "DEPOSITED →", 0xffd23f);
+        this._depositPulse = 1; for (var i = 0; i < 70; i++) this._rainCoin();
+        var C = root.Chiptune; if (C && C.jackpot) try { C.jackpot(); } catch (e) {}
+      } else { this._flashBanner((fz.th.name || "BONUS") + " COMPLETE", "", fz.th.color); }
+      this._renderHud();
+    }
+    if (fz.t >= fz.dur) { this._bonusFinale = null; this._renderHud(); } // resume normal play; world bg fades via _frame
   };
 
 
@@ -459,7 +495,7 @@
 
   /* ---------- boss bonus round (fires when the BONUS ROUND meter fills) ---------- */
   FishShooter.prototype._startBossRound = function () {
-    if (this._boss || this._frenzy > 0) return;
+    if (this._boss || this._frenzy > 0 || this._bonus || this._bonusFinale) return; // one round at a time
     this._jackpot = 0;
     // pool = the accumulated jackpot rake; awarded on boss death (house edge preserved).
     this._bossId++;
@@ -564,7 +600,7 @@
     var s = new PIXI.Sprite(this.tex.net); s.anchor.set(0.5); s.x = x; s.y = y; s.tint = big ? 0xffffff : color; s.blendMode = PIXI.BLEND_MODES.ADD; s.scale.set(0.05);
     this.fxLayer.addChild(s); this.fx.push({ s: s, t: 0, dur: big ? 0.5 : 0.3, kind: "ring", to: big ? 0.44 : 0.224 }); // hit + kill rings another 30% smaller
   };
-  FishShooter.prototype._explosion = function (x, y, color) { var s = new PIXI.Sprite(this._radial(color, 256)); s.anchor.set(0.5); s.x = x; s.y = y; s.blendMode = PIXI.BLEND_MODES.ADD; s.scale.set(0.2); this.fxLayer.addChild(s); this.fx.push({ s: s, t: 0, dur: 0.4, kind: "ring", to: 1.6 }); this._shake = 14; };
+  FishShooter.prototype._explosion = function (x, y, color) { this._explCache = this._explCache || {}; var t = this._explCache[color] || (this._explCache[color] = this._radial(color, 256)); var s = new PIXI.Sprite(t); s.anchor.set(0.5); s.x = x; s.y = y; s.blendMode = PIXI.BLEND_MODES.ADD; s.scale.set(0.2); this.fxLayer.addChild(s); this.fx.push({ s: s, t: 0, dur: 0.4, kind: "ring", to: 1.6 }); this._shake = 14; }; // cache radial by color (was leaking per explosion)
   FishShooter.prototype._lightning = function (x1, y1, x2, y2) { var g = new PIXI.Graphics(); g.lineStyle(3, 0xfff15a, 0.95); var seg = 6; g.moveTo(x1, y1); for (var i = 1; i < seg; i++) { var t = i / seg; g.lineTo(lerp(x1, x2, t) + rand(-12, 12), lerp(y1, y2, t) + rand(-12, 12)); } g.lineTo(x2, y2); g.blendMode = PIXI.BLEND_MODES.ADD; this.fxLayer.addChild(g); this.fx.push({ s: g, t: 0, dur: 0.22, kind: "fade" }); };
   FishShooter.prototype._spawnCoin = function (x, y) { var s = new PIXI.AnimatedSprite(this._frames("coinspin", 4)); s.anchor.set(0.5); s.animationSpeed = 0.4; s.play(); s.x = x; s.y = y; s.scale.set(rand(0.18, 0.34)); this.fxLayer.addChild(s); var a = rand(-Math.PI, 0), sp = rand(120, 320); this.coins.push({ s: s, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 70, t: 0, life: rand(0.7, 1.1), tx: this.W - 38, ty: this.H - 18 }); };
   FishShooter.prototype._rainCoin = function () { var s = new PIXI.AnimatedSprite(this._frames("coinspin", 4)); s.anchor.set(0.5); s.animationSpeed = 0.4; s.play(); s.x = rand(0, this.W); s.y = -20; s.scale.set(rand(0.2, 0.4)); this.fxLayer.addChild(s); this.coins.push({ s: s, vx: rand(-30, 30), vy: rand(150, 340), t: 0, life: rand(1.6, 2.6), rain: true }); };
@@ -590,11 +626,13 @@
 
     // frenzy timer
     if (this._frenzy > 0) { this._frenzy -= dt; if (this._frenzy <= 0) { this._frenzy = 0; for (var bi = this.bullets.length - 1; bi >= 0; bi--) { var bb = this.bullets[bi]; if (bb.free && !bb.hit && bb.frenzyId !== this._frenzyId) this._rmBullet(bb); } } } // CONSTANT time — ends only when the timer runs out, not when winnings hit the cap
-    if (this._bonus) this._updateBonus(dt); // bonus-world 3-2-1 countdown → wave → finale
+    if (this._bonus) this._updateBonus(dt); // bonus-world 3-2-1 countdown → wave
+    if (this._bonusFinale) this._updateBonusFinale(dt); // reveal total → deposit to bank
+    this._depositPulse = (this._depositPulse || 0) * 0.9; if (this._depositPulse < 0.01) this._depositPulse = 0;
     if (this.bgBonus && this.bgBonus.alpha > 0) this.bgBonus.alpha = Math.max(0, this.bgBonus.alpha - dt * 3);
     if (this.bgBoss) { var bbt = this._boss ? 1 : 0; this.bgBoss.alpha += (bbt - this.bgBoss.alpha) * Math.min(1, dt * 2.6); }
-    // Bonus rounds (Frenzy / Vault / Storm) crossfade their OWN world in for the whole round (countdown + wave).
-    if (this.bgWorld) { var bwt = this._bonus ? 1 : 0; this.bgWorld.alpha += (bwt - this.bgWorld.alpha) * Math.min(1, dt * 2.6); }
+    // Bonus rounds (Frenzy / Vault / Storm) crossfade their OWN world in for the whole round (countdown + wave + finale).
+    if (this.bgWorld) { var bwt = (this._bonus || this._bonusFinale) ? 1 : 0; this.bgWorld.alpha += (bwt - this.bgWorld.alpha) * Math.min(1, dt * 2.6); }
     if (this._boss) this._updateBoss(dt);
 
     // fish
@@ -682,16 +720,19 @@
     g.beginFill(0x0c2840); g.drawRoundedRect(x, y, bw, bh, 5); g.endFill();
     var inBoss = !!this._boss;
     var counting = !!(this._bonus && !this._bonus.started); // bonus-world 3-2-1 pre-wave
-    var bth = BONUS_THEME[this._frenzyKind] || BONUS_THEME.frenzy;
-    // bonus wave = TIME bar (constant); countdown fills the bar; else boss HP or the jackpot meter.
+    var finale = !!this._bonusFinale; // end-of-round reveal + deposit
+    var bth = finale ? (this._bonusFinale.th || BONUS_THEME.frenzy) : (BONUS_THEME[this._frenzyKind] || BONUS_THEME.frenzy);
+    // bonus wave = TIME bar (constant); countdown fills the bar; finale = full; else boss HP or the jackpot meter.
     var fr = this._frenzy > 0 ? (this._frenzy / this._frenzyMax)
       : counting ? clamp(this._bonus.countT / 3, 0, 1)
+      : finale ? 1
       : (inBoss && this._boss.hpMax ? Math.max(0, this._boss.hp / this._boss.hpMax) : this._jackpot);
-    var barCol = (this._frenzy > 0 || counting) ? bth.color : (inBoss ? 0xff4d6a : 0xffd23f);
+    var barCol = (this._frenzy > 0 || counting || finale) ? bth.color : (inBoss ? 0xff4d6a : 0xffd23f);
     g.beginFill(barCol); g.drawRoundedRect(x, y, bw * fr, bh, 5); g.endFill();
     this.jpText.x = W / 2; this.jpText.y = y + bh + 2;
     this.jpText.text = this._frenzy > 0 ? (bth.name + "  " + this._frenzy.toFixed(1) + "s   +$" + this._frenzyWon.toFixed(0))
       : counting ? (bth.name + " INCOMING…")
+      : finale ? (bth.name + " COMPLETE   YOU WON $" + (this._bonusFinale.won || 0).toFixed(2))
       : (inBoss ? (this._boss.started ? ("BOSS  " + Math.max(0, Math.ceil(this._boss.hp)) + " HP   ·   BONUS +$" + (this._boss.won || 0).toFixed(2)) : "JACKPOT ROUND")
                 : ("JACKPOT ROUND  " + Math.floor(this._jackpot * 100) + "%"));
     // POWER bottom-LEFT, BALANCE bottom-RIGHT (replaced the old WIN readout), bottom
@@ -699,6 +740,12 @@
     // "+$" pop and the banner, so a persistent WIN number is redundant.
     this.powText.anchor.set(0, 1); this.powText.x = 12; this.powText.y = H - 4;
     this.balText.anchor.set(1, 1); this.balText.x = W - 12; this.balText.y = H - 4;
+    // During the bonus finale the banked total COUNTS UP into the balance (so the deposit reads clearly),
+    // and the balance label PULSES when the coins land. Normal play shows the live balance unchanged.
+    var balShow = this.balance, fz2 = this._bonusFinale;
+    if (fz2 && fz2.paid && fz2.won > 0) { var dpp = clamp((fz2.t - 1.95) / 1.3, 0, 1); balShow = this.balance - fz2.won * (1 - dpp); }
+    this.balText.text = "💰 " + this._usd(balShow);
+    this.balText.scale.set(1 + (this._depositPulse || 0) * 0.5);
     if (this.winText) this.winText.visible = false;
     this.banner.x = W / 2; this.banner.y = H * 0.4; this.bannerSub.x = W / 2; this.bannerSub.y = H * 0.4 + 34;
   };
@@ -725,7 +772,10 @@
       v.addEventListener("mousedown", down); v.addEventListener("touchstart", down, { passive: false });
       window.addEventListener("mouseup", up); window.addEventListener("touchend", up);
       window.addEventListener("touchcancel", up); window.addEventListener("pointercancel", up); window.addEventListener("blur", up);
-      document.addEventListener("visibilitychange", function () { if (document.hidden) self._holding = false; else if (self._active) { var C = root.Chiptune; if (C) { try { C.wake && C.wake(); } catch (e) {} try { C.playTrack && C.playTrack("coral"); } catch (e) {} } } });
+      document.addEventListener("visibilitychange", function () {
+        if (document.hidden) { self._holding = false; try { self.app.ticker.stop(); } catch (e) {} } // pause the loop when backgrounded — no background auto-fire / no frozen-mid-round resuming on return
+        else if (self._active) { if (self._ready) { try { self.app.ticker.start(); } catch (e) {} } var C = root.Chiptune; if (C) { try { C.wake && C.wake(); } catch (e) {} } } // resume + re-wake audio (chiptune.js owns the music resync; no playTrack here = no doubled bar / no track-choice clobber)
+      });
       window.addEventListener("focus", function () { if (self._active) { var C = root.Chiptune; if (C) { try { C.wake && C.wake(); } catch (e) {} } } }); // re-wake audio after app-switch
       var el = self.els;
       if (el.betSlider) el.betSlider.addEventListener("input", function () { self.setBet(parseFloat(el.betSlider.value) || MIN_BET); });
@@ -738,13 +788,26 @@
   };
 
   /* ---------- host bridge ---------- */
+  // Hard-discard any in-progress round on channel exit / demo restart WITHOUT paying out: the jackpot
+  // rake stays in _jackpotPool and rolls into the next boss round (house edge preserved); unbanked wave
+  // winnings are forfeited (house-favorable). Prevents a stranded auto-firing round from surviving a
+  // channel switch — the ticker freezes the round mid-flight otherwise and it resumes auto-firing on return.
+  FishShooter.prototype._teardownRounds = function () {
+    if (this._boss && this._boss.spr) { try { this.bossLayer.removeChild(this._boss.spr); this._boss.spr.destroy(); } catch (e) {} }
+    this._boss = null; this._bonus = null; this._bonusFinale = null;
+    this._frenzyId++; this._frenzy = 0; this._frenzyMax = 0; this._frenzyWon = 0; // bump id → any in-flight free bullet is rejected
+    this._holding = false;
+    for (var i = this.bullets.length - 1; i >= 0; i--) { var b = this.bullets[i]; if (b && (b.free || b.bossId)) this._rmBullet(b); }
+    if (this.bgBoss) this.bgBoss.alpha = 0; if (this.bgWorld) this.bgWorld.alpha = 0;
+    try { this._renderHud(); } catch (e) {}
+  };
   FishShooter.prototype.setActive = function (on) {
     on = !!on; if (on === this._active) return; this._active = on; var self = this;
     if (on) {
       if (this._ready) this.app.ticker.start();
       setTimeout(function () { try { self._resize(); } catch (e) {} }, 50);   // re-measure once the layer is shown
-      var C = root.Chiptune; if (C) { try { C.wake && C.wake(); } catch (e) {} if (C.playTrack) try { C.playTrack("coral"); } catch (e) {} } // wake audio ctx on entry so the FIRST shot has sound
-    } else { this.app.ticker.stop(); this._holding = false; try { this._fsExit(this._fsTarget); } catch (e) {} }
+      var C = root.Chiptune; if (C) { try { C.wake && C.wake(); } catch (e) {} if (C.playTrack && !this._musicPinned) { this._musicPinned = true; try { C.playTrack("coral"); } catch (e) {} } } // wake audio on entry; pin Coral ONCE so a user-chosen track isn't clobbered on re-entry
+    } else { try { this._teardownRounds(); } catch (e) {} this.app.ticker.stop(); this._holding = false; try { this._fsExit(this._fsTarget); } catch (e) {} }
   };
   FishShooter.prototype.setEnabled = function (on) { this._enabled = !!on; this._renderHud(); };
   FishShooter.prototype.setBalance = function (usd) { this.balance = Math.max(0, Math.round((+usd || 0) * 100) / 100); this._renderHud(); };
@@ -754,8 +817,8 @@
   FishShooter.prototype.setPower = function (p) { this.power = clamp(p | 0, 1, MAX_POWER); this._renderHud(); };
   FishShooter.prototype.toggleAuto = function () { this.auto = !this.auto; this._holding = false; if (this.els.autoBtn) this.els.autoBtn.classList.toggle("on", this.auto); };
   FishShooter.prototype.toggleLock = function () { this.lock = !this.lock; if (this.els.lockBtn) this.els.lockBtn.classList.toggle("on", this.lock); };
-  FishShooter.prototype.newSession = function () { this._sesSpent = 0; this._sesWon = 0; this._renderHud(); };
-  FishShooter.prototype.restartDemo = function () { this.auto = false; this.lock = false; this._holding = false; this._renderHud(); };
+  FishShooter.prototype.newSession = function () { this._sesSpent = 0; this._sesWon = 0; try { this._teardownRounds(); } catch (e) {} this._renderHud(); };
+  FishShooter.prototype.restartDemo = function () { this.auto = false; this.lock = false; this._holding = false; try { this._teardownRounds(); } catch (e) {} this._renderHud(); };
   FishShooter.prototype.start = function () { this.setActive(true); };
 
   /* fullscreen (reparent-to-body, mirrors Reef) */
