@@ -193,7 +193,7 @@ function makeTokenService(opts) {
     return settlement; // includes netWei, signature, serverSeedReveal (now safe), commit
   }
 
-  function status() { return { ok: true, enabled: true, games: bridge.games(), model: "server commit-reveal token bridge (no VRF)" }; }
+  function status() { return { ok: true, enabled: true, signerAddress: (opts.signerAddress ? opts.signerAddress() : null), games: bridge.games(), model: "server commit-reveal token bridge (no VRF)" }; }
 
   // Validate a (sessionId, bearer-token) pair WITHOUT mutating anything — the ws crash
   // round-runner uses this to authorize cr:start over the socket, reusing the exact same
@@ -216,7 +216,12 @@ function attachTokenBridge(app, opts) {
   const guard = (res) => { if (!enabled()) { res.status(503).json({ ok: false, error: "token bridge is not enabled" }); return false; } return true; };
   const fail = (res, e) => res.status(400).json({ ok: false, error: (e && e.message) || "request failed" });
 
-  app.get("/api/token/status", (req, res) => res.json(enabled() ? svc.status() : { ok: true, enabled: false }));
+  app.get("/api/token/status", (req, res) => res.json(enabled() ? svc.status() : {
+    ok: true, enabled: false,
+    // diagnostics so a stuck setup is self-explaining: which half is missing?
+    flagSet: (opts.flag ? !!opts.flag() : (process.env.ENABLE_TOKEN_BRIDGE === "1")),
+    signerAddress: (function () { try { return opts.signerAddress ? opts.signerAddress() : null; } catch (e) { return null; } })(),
+  }));
   app.post("/api/token/start", async (req, res) => { if (!guard(res)) return; try { res.json(await svc.doStart(req.body || {})); } catch (e) { fail(res, e); } });
   app.post("/api/token/play", (req, res) => { if (!guard(res)) return; try { res.json(svc.doPlay(req.body || {})); } catch (e) { fail(res, e); } });
   app.post("/api/token/settle", async (req, res) => { if (!guard(res)) return; try { res.json(await svc.doSettle(req.body || {})); } catch (e) { fail(res, e); } });

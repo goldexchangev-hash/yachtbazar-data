@@ -82,6 +82,8 @@ function tokenRpcUrl(chainId) {
 const tokenSvc = attachTokenBridge(app, {
   enabled: () => process.env.ENABLE_TOKEN_BRIDGE === "1" && realmoney.enabled(),
   signer: { sign: (p, net, nonce, cid, c) => realmoney.signSettlement(p, net, nonce, cid, c) },
+  signerAddress: () => { try { return realmoney.signerAddress(); } catch (e) { return null; } }, // public address (for /status diagnostics) — never the key
+  flag: () => process.env.ENABLE_TOKEN_BRIDGE === "1",
   rpcUrlFor: tokenRpcUrl,
   ethUsd: () => Number(process.env.BRIDGE_ETH_USD || process.env.ETH_USD || 3400),
   persist: tokenPersist,
