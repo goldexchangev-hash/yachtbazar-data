@@ -17,6 +17,9 @@
   "use strict";
   var PIXI = root.PIXI, E = root.FishShooterEngine; // OWN engine, decoupled from Reef Raiders (fishtable-engine.js)
   var DIR = "/assets/fishshooter/";
+  var JACKPOT_RAKE = 0.02; // % of every paid shot skimmed to the boss-jackpot pool. KEPT LOW (was 0.05) so the
+  // RTP is FELT on regular catches instead of being locked inside a rare boss round — the boss is a small
+  // cherry on top, not where most of your money hides. The bulk of the return rides the kill-prob knob (catches).
   var MIN_BET = 1, MAX_BET = 50, MAX_POWER = 2; // power 2 cap: at x3 with fast auto-fire, high per-shot kill-prob makes redundant bullets OVERKILL already-dead fish (wasted paid shots), cratering realized RTP to ~72% (renderer-measured). x1/x2 keep waste small → realized ~92%. The bet slider is the main stake dial; power is a modest speed/stake boost.
   // Shooting-speed cooldowns (seconds/shot). ONE rate governs EVERY fire path — manual taps, auto-fire,
   // AND bonus/boss free shots — so you can never tap-spam the dragon faster than the chosen speed. FAST
@@ -306,7 +309,7 @@
     var su = free ? this._frenzyUnit : this.unitBet, sp = free ? this._frenzyPow : this.power;
     var paid = Math.round(su * sp * 100) / 100, cost = free ? 0 : paid;
     if (!free && this.balance < cost) { this._flashBanner("INSUFFICIENT", "add funds", 0xff5d72); return; }
-    if (cost > 0) { this.balance = Math.round((this.balance - cost) * 100) / 100; this._sesSpent = Math.round((this._sesSpent + cost) * 100) / 100; this._jackpotPool = Math.round((this._jackpotPool + cost * 0.05) * 100) / 100; this._save(); this._renderHud(); }
+    if (cost > 0) { this.balance = Math.round((this.balance - cost) * 100) / 100; this._sesSpent = Math.round((this._sesSpent + cost) * 100) / 100; this._jackpotPool = Math.round((this._jackpotPool + cost * JACKPOT_RAKE) * 100) / 100; this._save(); this._renderHud(); }
     var ang = this._aim, md = (this._barrelTipLen || 44) * (this._cannonK || 1), tx = this.cannon.x + Math.cos(ang) * md, ty = this.cannon.y + Math.sin(ang) * md;
     // Little glowing bullet: a small stretched core + an additive glow halo, much
     // smaller than before, oriented along its travel direction.
@@ -315,7 +318,7 @@
     var glow = new PIXI.Sprite(this._glowTex); glow.anchor.set(0.5); glow.blendMode = PIXI.BLEND_MODES.ADD; glow.scale.set(bs * 3.6); glow.alpha = 0.5; b.addChild(glow);
     var core = new PIXI.Sprite(this.tex.bullet); core.anchor.set(0.5); core.tint = 0xc8ffd6; core.scale.set(bs, bs * 1.8); b.addChild(core);
     this.bulletLayer.addChild(b);
-    var speed = 680 + sp * 30;
+    var speed = 1040 + sp * 30; // faster bullets connect sooner → fewer redundant in-flight shots at a fish that already died (less auto-fire overkill → higher REALIZED rtp, esp. at power 2)
     while (this.bullets.length > 120) this._rmBullet(this.bullets[0]); // higher cap → bullets ricochet until they connect instead of being culled (culled = paid-but-wasted, which craters realized RTP)
     this.bullets.push({ s: b, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed, r: 7 + sp * 1.1, hit: false, unitBet: su, power: sp, cost: paid, free: free, frenzyId: free ? this._frenzyId : 0, bossId: (this._boss && this._boss.started) ? this._bossId : 0 });
     this._recoil = 7; this._muzzle(tx, ty);
@@ -372,7 +375,7 @@
     // JACKPOT ROUND meter (self-funding pool). The Abyssal Angler SPIKES it; any boss-tier
     // kill SURGES it — so killing big creatures randomly pushes you into the jackpot round.
     if (!shot.free && !this._boss && !this._bonus && !this._bonusFinale && !isSplash) {
-      var bump = 0.0022 * (shot.power || 1);
+      var bump = 0.0048 * (shot.power || 1); // fills ~2x faster → boss jackpot fires ~twice as often, so the (now smaller 2%) rake comes back in MORE FREQUENT, smaller bursts instead of one rare lump
       if (fish.def.key === "anglerfish") bump = 0.30;
       else if (fish.def.tier === "boss") bump += 0.10;
       this._jackpot = clamp(this._jackpot + bump, 0, 1); if (this._jackpot >= 1) this._startBossRound();

@@ -11,9 +11,9 @@
    — a flat RTP on every connecting shot, target-independent. Misses are skill.
 
    POWER IS ~RTP-NEUTRAL HERE: the smallest fish mult (6) ≥ MAX_POWER(2)*RTP/P_MAX
-   = 2*0.88/0.9 = 1.96, so NO fish ever hits the P_MAX clamp at the in-game power
-   range — every power returns a flat ~88% PER CONNECTING SHOT (realized adds the 5%
-   jackpot rake, minus a little overkill → ~90% low 90s). Power is capped at x2 because at x3 with fast auto-fire,
+   = 2*0.95/0.9 = 2.11, so NO fish ever hits the P_MAX clamp at the in-game power
+   range — every power returns a flat ~95% PER CONNECTING SHOT, so REGULAR CATCHES pay
+   ~90% (a small 2% rake funds the boss). Power is capped at x2 because at x3 with fast auto-fire,
    redundant bullets overkill fish that already died — wasted paid shots crater the
    realized RTP (x3-fast measured ~72%). (Reef's engine is separate: 85% + power-7.)
 
@@ -22,19 +22,16 @@
 (function (root) {
   "use strict";
 
-  // ~90% RTP overall (low 90s) = ~10% house edge on a play-money demo. TWO parts: the kill-prob knob
-  // below returns ~88% on every connecting shot (flat, target-independent), and the 5% jackpot rake is
-  // cycled back to players via the boss round (~+5% in big lumps) → ~90-93% realized. (So the rake is
-  // genuinely "the player's own money cycled back," as always claimed.) Power is capped at x2 in
-  // fishshooter.js: at x3 with fast auto-fire, redundant bullets overkill already-dead fish and waste
-  // paid shots, cratering realized RTP to ~72% — x1/x2 keep that small. Renderer + Monte-Carlo: x1 and
-  // BOTH powers at slow/medium fire land ~90-93% (low 90s); the ONE outlier is x2 + FAST auto-fire, which
-  // runs ~85-88% (richer for the house, NEVER player-favorable) — that residual is fire-speed overkill a
-  // single knob can't lift without pushing x2-slow over 100%; the clean fix is refunding non-connecting
-  // shots. Invariants: (1) min mult (6) ≥ MAX_POWER*RTP/P_MAX (=2*0.88/0.9 = 1.96 → floor 6) so no P_MAX
-  // clamp at any in-game power; (2) P_MIN < RTP/maxMult (whale
-  // 300 → 0.88/300 = 0.00293 > 0.0025 ✓).
-  const RTP = 0.88, P_MIN = 0.0025, P_MAX = 0.9;
+  // RTP is now tuned to be FELT, not hidden in a rare jackpot. The kill-prob knob (0.95) returns ~95% on
+  // every connecting shot (flat, target-independent), so REGULAR CATCHES alone pay ~90% (after a little
+  // auto-fire overkill) — the player wins steadily instead of bleeding between jackpots. Only a small 2%
+  // rake (was 5%, in fishshooter.js JACKPOT_RAKE) funds the boss round, which now fires ~2x more often, so
+  // it's a small frequent cherry, not where the money hides. Measured (fast auto-fire, $1): x1 = 95% total
+  // / 90% felt-on-catches; x2 = 90% total / ~85% felt (faster bullets cut its overkill). Power capped at x2
+  // (x3 fast-fire overkill cratered it to ~72%). Invariants: (1) min mult (6) ≥ MAX_POWER*RTP/P_MAX
+  // (=2*0.95/0.9 = 2.11 → floor 6) so no P_MAX clamp at any in-game power; (2) P_MIN < RTP/maxMult (whale
+  // 300 → 0.95/300 = 0.00317 > 0.0025 ✓).
+  const RTP = 0.95, P_MIN = 0.0025, P_MAX = 0.9;
   const BONUS_BUDGET = { chest: 25, frenzy: 25, storm: 25 };
   const SPLASH_TARGET_BUDGET = { bomb: 4, chain: 3 };
 
@@ -60,9 +57,9 @@
     // ── DEDICATED bonus-round creatures (RARE, weight 0.45 each ≈ 9× rarer than the old triggers).
     // Catching one IS the trigger + pays its mult; budgetMult = 18+25 = 43 pre-funds the wave. The old
     // creatures above (eel/clam/crab/lobster/armadillo) are now plain catches (bonus field removed).
-    { id: 17, key: "warturtle", name: "War-Shell Bastion",  mult: 18, tier: "special", weight: 0.45, r: 38, color: 0xffc24d, accent: 0x7a4a00, special: "gold", bonus: "chest",  sizeMul: 0.9 },  // → Treasure Vault
-    { id: 18, key: "gator",     name: "Voltjaw Gator",      mult: 18, tier: "special", weight: 0.45, r: 38, color: 0x2bd6ff, accent: 0x1e5e3a, special: "gold", bonus: "storm",  sizeMul: 0.9 },  // → Lightning Storm
-    { id: 19, key: "stormjelly",name: "Storm Jelly Sovereign",mult:18, tier: "special", weight: 0.45, r: 36, color: 0xb14dff, accent: 0x39e7ff, special: "gold", bonus: "frenzy", sizeMul: 0.85 }, // → Feeding Frenzy
+    { id: 17, key: "warturtle", name: "War-Shell Bastion",  mult: 18, tier: "special", weight: 0.8, r: 38, color: 0xffc24d, accent: 0x7a4a00, special: "gold", bonus: "chest",  sizeMul: 0.9 },  // → Treasure Vault
+    { id: 18, key: "gator",     name: "Voltjaw Gator",      mult: 18, tier: "special", weight: 0.8, r: 38, color: 0x2bd6ff, accent: 0x1e5e3a, special: "gold", bonus: "storm",  sizeMul: 0.9 },  // → Lightning Storm
+    { id: 19, key: "stormjelly",name: "Storm Jelly Sovereign",mult:18, tier: "special", weight: 0.8, r: 36, color: 0xb14dff, accent: 0x39e7ff, special: "gold", bonus: "frenzy", sizeMul: 0.85 }, // → Feeding Frenzy
   ];
   const BY_KEY = {}; FISH.forEach((f) => (BY_KEY[f.key] = f));
   const TOTAL_WEIGHT = FISH.reduce((s, f) => s + f.weight, 0);
