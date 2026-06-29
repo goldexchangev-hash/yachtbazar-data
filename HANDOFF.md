@@ -1,7 +1,21 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v12.04**.
+Last updated at build **v12.05**.
+
+> **NOTE FOR CLAUDE/CHATGPT (v12.05):** Fish Shooter mobile/load polish — 3 owner-reported bugs.
+> (1) **Black screen on first load** (no loading screen; refresh fixed it; phone OK): `tv.js#_fishshooterIdle`
+> checked `!_connected → _staticIdle()` BEFORE the canvas check, and the app.js settle loop is promo-gated, so
+> a cold first visit (engine still downloading, demo mode) showed static/black instead of the existing
+> `#layer-loading` screen. FIX: reorder `_fishshooterIdle` so the no-canvas → `_loadingScreen()` check runs
+> FIRST; plus `app.js#ensureFishShooterReady` now calls `TV._loadingScreen()` on entry if no canvas yet.
+> (2) **Scanline/CRT filter painted black lines over the game**: `.scanlines` + `.static-canvas` (in `#tv-screen`,
+> z-3) overlaid the game canvas (z-2). FIX in `styles.css`: `body[class*="game-"] .scanlines, ...static-canvas
+> { display:none !important }` — CRT look stays on idle/channel-surf, off live games. (Vignette kept.)
+> (3) **Audio took a few taps to start**: `chiptune.js` lazy-created the AudioContext only on first SOUND, so on
+> iOS it spun up "suspended" mid-shot. FIX: the global first-gesture listener now calls `ensureCtx()` before the
+> resume, so the context is created+running on the very first tap anywhere. Verified `_fsh-loadfix.js` (LOADING
+> shows before canvas on cold load; scanlines/static display:none in-game; 0 errors). Build 1205.
 
 > **NOTE FOR CLAUDE/CHATGPT (v12.04):** Fish Shooter — MAX POWER x2 + RTP retuned to the low 90s (~90%), and
 > a REAL RTP-definition bug found+documented. Owner asked for a risk-of-ruin analysis ($1–$10 × powers) and

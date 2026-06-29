@@ -500,9 +500,12 @@
 
     // Fish Shooter (CH 19): PixiJS top-down fish-table. Reveal once its canvas mounts.
     _fishshooterIdle() {
-      if (!this._connected) return this._staticIdle();
+      // Lazy-load: until the Pixi canvas has mounted, show the LOADING screen — checked
+      // BEFORE the signed-out/static branch so a cold first visit (engine still
+      // downloading) shows "LOADING…" instead of a black/static screen.
       const stage = $("fishshooter-stage");
       if (!stage || !stage.querySelector("canvas")) return this._loadingScreen();
+      if (!this._connected) return this._staticIdle();
       this._setStatic(0.03);
       this._show("fishshooter");
     },

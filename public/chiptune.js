@@ -631,10 +631,15 @@
     document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") recover(); });
     window.addEventListener("focus", recover);
     window.addEventListener("pageshow", recover);
-    // cheap belt-and-suspenders: any tap resumes a suspended context (iOS)
+    // The FIRST gesture anywhere CREATES the context (lazy-init used to wait until the
+    // first sound was requested, so on iOS the context spun up "suspended" mid-shot and
+    // the first few taps were silent until a later gesture resumed it — "sound takes a
+    // few taps to start"). Creating + resuming inside this first gesture means audio is
+    // live before the player's first shot.
     ["pointerdown", "touchend", "click", "keydown"].forEach((ev) =>
       window.addEventListener(ev, () => {
         try {
+          ensureCtx();
           if (ctx && ctx.state !== "running") { ctx.resume(); recover(); } // re-arm the scheduler too, not just the ctx
         } catch (e) {}
       }, { passive: true, capture: true }));

@@ -240,6 +240,11 @@ kbd { font-family: ui-monospace, monospace; font-size: 11px; background: rgba(25
 }
 @keyframes roll { to { background-position: 0 12px; } }
 .vignette { position: absolute; inset: 0; z-index: 3; pointer-events: none; box-shadow: inset 0 0 120px rgba(0, 0, 0, 0.85); border-radius: 14px / 18px; }
+/* Keep the CRT scanlines + static OFF the live game image — they painted faint
+   horizontal black lines over the canvas (most visible on Fish Shooter's bright art).
+   The TV idle / channel-surf screens still get the full CRT look. */
+body[class*="game-"] .scanlines,
+body[class*="game-"] .static-canvas { display: none !important; }
 
 .screen-layer {
   position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column; align-items: center; justify-content: center;
