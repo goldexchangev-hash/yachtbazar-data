@@ -195,7 +195,17 @@ function makeTokenService(opts) {
 
   function status() { return { ok: true, enabled: true, games: bridge.games(), model: "server commit-reveal token bridge (no VRF)" }; }
 
-  return { doStart, doPlay, doSettle, status, _bridge: bridge };
+  // Validate a (sessionId, bearer-token) pair WITHOUT mutating anything — the ws crash
+  // round-runner uses this to authorize cr:start over the socket, reusing the exact same
+  // per-session bearer the HTTP /play path checks (no second auth scheme). Returns the
+  // live bridge session on match, else null. EDIT: this is the single auth gate for ws play.
+  function verifySession(sessionId, token) {
+    const sid = String(sessionId || "");
+    if (!sid || tokenForSession.get(sid) !== String(token || "")) return null;
+    return bridge.session(sid) || null;
+  }
+
+  return { doStart, doPlay, doSettle, status, verifySession, _bridge: bridge };
 }
 
 // Wire the service onto an Express app, behind a flag. Live demo is untouched.

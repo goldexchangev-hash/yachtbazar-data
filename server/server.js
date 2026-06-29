@@ -20,6 +20,7 @@ const express = require("express");
 const { WebSocketServer } = require("ws");
 const { attachBlackjack } = require("./blackjack-server.js");
 const { attachBridge } = require("./bridge-server.js");
+const { makeCrashWs } = require("./crash-rounds-ws.js");
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const HOST = process.env.HOST || "0.0.0.0";
@@ -78,7 +79,7 @@ function tokenRpcUrl(chainId) {
   if (chainId === 31337) return process.env.LOCAL_RPC_URL || process.env.RPC_URL || "http://127.0.0.1:8545";
   return process.env.RPC_URL || "";
 }
-attachTokenBridge(app, {
+const tokenSvc = attachTokenBridge(app, {
   enabled: () => process.env.ENABLE_TOKEN_BRIDGE === "1" && realmoney.enabled(),
   signer: { sign: (p, net, nonce, cid, c) => realmoney.signSettlement(p, net, nonce, cid, c) },
   rpcUrlFor: tokenRpcUrl,
@@ -86,6 +87,14 @@ attachTokenBridge(app, {
   persist: tokenPersist,
   minConfirmations: Number(process.env.TOKEN_MIN_CONFIRMATIONS || 1),
 });
+
+// ── Live crash rounds over the ws (cr:* sub-protocol) ───────────────────────────
+// The server-paced round-runner that makes MANUAL tap-to-cash-out provably fair for the
+// crash family (crash/plane/swoop/pressure). Shares the SAME token-bridge ledger as the
+// HTTP /api/token/* path (tokenSvc._bridge) and reuses its per-session bearer for auth
+// (tokenSvc.verifySession). Dormant until ENABLE_TOKEN_BRIDGE=1 — with no open session,
+// verifySession returns null and every cr:start is rejected, so the live demo is untouched.
+const crashWs = makeCrashWs({ bridge: tokenSvc._bridge, verifySession: tokenSvc.verifySession });
 
 // LAST-RESORT process guards: even with every engine timer wrapped (blackjack-server.js setT), a
 // stray throw/rejection anywhere must NOT silently exit and wipe the in-memory bank. Log it, flush
@@ -153,6 +162,14 @@ wss.on("connection", (ws) => {
       return;
     }
     if (data.type === "bj:ping") { try { ws.send(JSON.stringify({ type: "bj:pong" })); } catch {} return; } // liveness probe so the client can detect a half-open socket + recover a frozen felt
+    if (typeof data.type === "string" && data.type.startsWith("cr:")) {
+      // Live crash rounds (token mode). Self-authorizing via the bridge session token in
+      // the message itself — no `hello` required. Errors are returned as cr:error, never thrown.
+      try { crashWs.handle(ws, data); } catch (e) {
+        try { ws.send(JSON.stringify({ type: "cr:error", code: "server", message: "crash message could not be processed" })); } catch {}
+      }
+      return;
+    }
     if (typeof data.type === "string" && data.type.startsWith("bj:")) {
       const allowedBeforeHello = data.type === "bj:lobby:subscribe" || data.type === "bj:lobby:unsubscribe";
       if (!ws.bjHelloSeen && !allowedBeforeHello) {
@@ -223,6 +240,7 @@ wss.on("connection", (ws) => {
 
   ws.on("close", () => {
     blackjack.onClose(ws); // free the player's seat / spectator slot
+    crashWs.onClose(ws);   // detach any live crash round (it still settles via the server timer)
     clients.delete(ws);
     broadcastPlayers();
   });

@@ -29,6 +29,11 @@ function makeCrashRounds(opts) {
   const now = opts.now || (() => Date.now());
   const setTimer = opts.setTimer || ((ms, fn) => setTimeout(fn, ms));
   const clearTimer = opts.clearTimer || ((t) => clearTimeout(t));
+  // onResolve(result, round) fires whenever a round settles — manual cash-out, a
+  // server-timer bust, or an auto-target. The ws layer hooks this to push the result
+  // to the player (esp. the timer-fired bust, which has no synchronous caller). EDIT
+  // HERE if you want a single place to log/broadcast every settlement. Default no-op.
+  const onResolve = typeof opts.onResolve === "function" ? opts.onResolve : function () {};
   const rounds = new Map();           // roundId -> round
   const activeBySession = new Map();  // sessionId -> roundId (ONE live round per session)
   let _seq = 0;
@@ -92,8 +97,11 @@ function makeCrashRounds(opts) {
     // bust loses by settling a target just ABOVE the crash point (crashPoint < target -> 0 payout).
     const target = busted ? round.crashPoint + 0.01 : cashOutAt;
     const res = bridge.play({ sessionId: round.sessionId, game: round.gameKey, betUnits: round.bet, params: { cashOutAt: target }, clientSeed: round.clientSeed });
-    return { roundId: round.id, busted: !!busted, win: !!res.win, cashOutAt: busted ? null : cashOutAt,
-      crashPoint: round.crashPoint, payoutUnits: res.payoutUnits, tokens: res.tokens };
+    const out = { roundId: round.id, sessionId: round.sessionId, gameKey: round.gameKey, busted: !!busted,
+      win: !!res.win, cashOutAt: busted ? null : cashOutAt, crashPoint: round.crashPoint,
+      bet: round.bet, payoutUnits: res.payoutUnits, tokens: res.tokens };
+    try { onResolve(out, round); } catch (e) {} // notify the ws layer (push cr:result); never let it break settlement
+    return out;
   }
 
   function active(sessionId) { const id = activeBySession.get(sessionId); return id ? rounds.get(id) : null; }
