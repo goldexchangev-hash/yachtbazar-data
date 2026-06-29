@@ -1,7 +1,20 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v11.99**.
+Last updated at build **v12.00**.
+
+> **NOTE FOR CLAUDE/CHATGPT (v12.00):** Site-wide session tracker + Fish Shooter bonus-bullet fix.
+> (1) **SESSION TRACKER ON EVERY GAME** — owner loved the Reef/Fish session bar and wanted it everywhere. Added
+> `#demo-session` ("This session · wagered · won · net") to the shared `#demo-below` strip under the TV, so it shows
+> on EVERY channel in demo mode. Logic in app.js: `recordSession(wager, returned)` is called from the 5 table-game
+> settles (flip/dice/twodice/crash/slots → EXACT gross figures); canvas games (fish/fishshooter/plane/pressure/
+> slots3d/swoop) move `demoUsd` without it, so `paintSession()` runs a **delta-watcher** (classifies each unhandled
+> `demoUsd` change: up→won, down→wagered) — so NET is exact for EVERY game (net = demoUsd − sessionBase). `sessionReset()`
+> on enterDemo + on the ↻ credit reset (so a top-up doesn't read as winnings); hidden in exitDemo. Verified live
+> (`_fsh-session.js`): bar shows + updates as you play. (2) **Fish Shooter bonus bullets** — a leftover free/boss
+> shot could ricochet into normal play after a round (esp. the boss round, which didn't clear its bullets). Added
+> `_clearRoundBullets()` (removes every `free||bossId` bullet) called at wave-end, `_endBonusWave`, AND `_endBossRound`.
+> Cache/build 1200 (build tag rolled v11.99 → **v12.00**).
 
 > **NOTE FOR CLAUDE/CHATGPT (v11.99):** Fish Shooter — 3 NEW dedicated bonus creatures + bonus-trigger rework.
 > Owner wanted bonus rounds RARER and on dedicated "BONUS!" creatures. Done (multi-agent design + Grok art):

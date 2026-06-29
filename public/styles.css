@@ -2324,6 +2324,16 @@ body.rr-fs-on #layer-fishshooter, body.rr-fs-on #layer-fishshooter * { visibilit
 .fish-flow .ff-item strong { color: var(--s-text, #cfe2ff); }
 .fish-flow .ff-net.up { color: #45f0a6; }
 .fish-flow .ff-net.down { color: #ff6f8a; }
+/* Site-wide session tracker bar (#demo-session) — shown under the TV on every channel in demo mode */
+.demo-session { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; justify-content: center; margin: 6px auto 0; max-width: 760px; padding: 7px 12px; border-radius: 12px; background: rgba(57,231,255,.06); border: 1px solid rgba(57,231,255,.18); font-size: .82rem; }
+.demo-session.hidden { display: none; }
+.demo-session .ds-label { font-family: var(--display, inherit); font-weight: 800; letter-spacing: .02em; color: var(--gold, #ffd23f); text-transform: uppercase; font-size: .74rem; }
+.demo-session .ds-item { color: var(--muted, #8fa3c8); }
+.demo-session .ds-item strong { color: var(--text, #cfe2ff); margin-left: 2px; }
+.demo-session .ds-net.up strong, .demo-session strong.ds-net.up { color: #45f0a6; }
+.demo-session .ds-net.down strong, .demo-session strong.ds-net.down { color: #ff6f8a; }
+.demo-session strong.ds-net.up { color: #45f0a6; }
+.demo-session strong.ds-net.down { color: #ff6f8a; }
 /* Fish Shooter help accordion (#fishshooter-panel) */
 .fish-help { margin: 6px 0 4px; border: 1px solid rgba(57,231,255,.18); border-radius: 10px; background: rgba(57,231,255,.05); overflow: hidden; }
 .fish-help > summary { cursor: pointer; list-style: none; padding: 8px 11px; font-weight: 800; font-size: .84rem; color: var(--s-gold, #ffd23f); user-select: none; }

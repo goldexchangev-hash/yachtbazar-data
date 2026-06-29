@@ -840,6 +840,7 @@
     document.body.classList.add("connected");
     { const bar = $("demo-bar"); if (bar) bar.classList.add("hidden"); }
     { const below = $("demo-below"); if (below) below.classList.add("hidden"); }
+    { const ses = $("demo-session"); if (ses) ses.classList.add("hidden"); }
     { const bdg = $("demo-tv-badge"); if (bdg) bdg.classList.add("hidden"); }
     $("connect-btn").classList.add("hidden");
     $("connect-btn").classList.remove("cta-pulse");
@@ -2143,21 +2144,21 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1199").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1200").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   // PlayCanvas engine (~2.2MB) — only loaded when the Sky Swoop channel is first opened.
   function loadPlayCanvasOnce() {
     if (window.pc) return Promise.resolve();
     if (playcanvasLoadPromise) return playcanvasLoadPromise;
-    playcanvasLoadPromise = loadScriptOnce("vendor/playcanvas.min.js?v=1199").catch((e) => { playcanvasLoadPromise = null; throw e; });
+    playcanvasLoadPromise = loadScriptOnce("vendor/playcanvas.min.js?v=1200").catch((e) => { playcanvasLoadPromise = null; throw e; });
     return playcanvasLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=1199"))
+      .then(() => loadScriptOnce("slots.js?v=1200"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -2167,11 +2168,11 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=1199"))
-      .then(() => loadScriptOnce("pressure-render.js?v=1199"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=1199"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=1200"))
+      .then(() => loadScriptOnce("pressure-render.js?v=1200"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=1200"))
       // optional 3D red balloon (Three.js) — falls back to the 2D balloon if it can't load
-      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1199")).catch(() => {}))
+      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1200")).catch(() => {}))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -2229,10 +2230,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=1199"))
-      .then(() => loadScriptOnce("plane-render.js?v=1199"))
-      .then(() => loadScriptOnce("plane-feed.js?v=1199"))
-      .then(() => loadScriptOnce("plane-ui.js?v=1199"))
+      .then(() => loadScriptOnce("plane-engine.js?v=1200"))
+      .then(() => loadScriptOnce("plane-render.js?v=1200"))
+      .then(() => loadScriptOnce("plane-feed.js?v=1200"))
+      .then(() => loadScriptOnce("plane-ui.js?v=1200"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2317,15 +2318,15 @@
   function loadThreeOnce() {
     if (window.THREE) return Promise.resolve();
     if (threeLoadPromise) return threeLoadPromise;
-    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1199").catch((e) => { threeLoadPromise = null; throw e; });
+    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1200").catch((e) => { threeLoadPromise = null; throw e; });
     return threeLoadPromise;
   }
   function ensureSlots3dLoaded() {
     if (window.Slots3D) return Promise.resolve(true);
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("slots3d-engine.js?v=1199"))
-      .then(() => loadScriptOnce("slots3d.js?v=1199"))
+      .then(() => loadScriptOnce("slots3d-engine.js?v=1200"))
+      .then(() => loadScriptOnce("slots3d.js?v=1200"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2367,8 +2368,8 @@
     if (window.FishTable) return Promise.resolve(true);
     if (fishLoadPromise) return fishLoadPromise;
     fishLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishtable-engine.js?v=1199"))
-      .then(() => loadScriptOnce("fishtable.js?v=1199"))
+      .then(() => loadScriptOnce("fishtable-engine.js?v=1200"))
+      .then(() => loadScriptOnce("fishtable.js?v=1200"))
       .then(() => true)
       .catch((e) => { fishLoadPromise = null; throw e; });
     return fishLoadPromise;
@@ -2450,7 +2451,7 @@
     if (window.SwoopGame) return Promise.resolve(true);
     if (swoopLoadPromise) return swoopLoadPromise;
     swoopLoadPromise = loadPlayCanvasOnce()
-      .then(() => loadScriptOnce("swoop3d.js?v=1199"))
+      .then(() => loadScriptOnce("swoop3d.js?v=1200"))
       .then(() => true)
       .catch((e) => { swoopLoadPromise = null; throw e; });
     return swoopLoadPromise;
@@ -2531,8 +2532,8 @@
     if (window.FishShooter) return Promise.resolve(true);
     if (fishshooterLoadPromise) return fishshooterLoadPromise;
     fishshooterLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishshooter-engine.js?v=1199")) // OWN engine (decoupled from Reef's fishtable-engine.js)
-      .then(() => loadScriptOnce("fishshooter.js?v=1199"))
+      .then(() => loadScriptOnce("fishshooter-engine.js?v=1200")) // OWN engine (decoupled from Reef's fishtable-engine.js)
+      .then(() => loadScriptOnce("fishshooter.js?v=1200"))
       .then(() => true)
       .catch((e) => { fishshooterLoadPromise = null; throw e; });
     return fishshooterLoadPromise;
@@ -2603,7 +2604,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1199"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1200"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -2630,7 +2631,7 @@
   function loadRail3dOnce() {
     if (window.Rail3D) return Promise.resolve(true);
     if (rail3dLoadPromise) return rail3dLoadPromise;
-    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1199")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
+    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1200")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
     return rail3dLoadPromise;
   }
   function buildRail3d() {
@@ -2651,7 +2652,7 @@
   function loadDice2_3dOnce() {
     if (window.TwoDice3D) return Promise.resolve(true);
     if (d2_3dLoadPromise) return d2_3dLoadPromise;
-    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1199")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
+    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1200")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
     return d2_3dLoadPromise;
   }
   function buildDice2_3d() {
@@ -2767,6 +2768,31 @@
     if (revealLock) return; // frozen mid-reveal so the balance can't spoil the outcome
     const b = $("game-balance"); if (b) b.textContent = usd(demoUsd);
     const d = $("demo-balance"); if (d) d.textContent = usd(demoUsd);
+    paintSession(); // keep the site-wide session net live (it tracks demoUsd for ALL games)
+  }
+  // ── Site-wide session tracker (#demo-session, shown under the TV on every channel in demo mode).
+  // NET is computed live from demoUsd so it's correct for EVERY game (table + canvas). wagered/won
+  // accumulate from the discrete table-game settles via recordSession().
+  let sessionBase = null, sesWagered = 0, sesWon = 0, _sesBal = null;
+  function sessionReset() { sessionBase = demoUsd; _sesBal = demoUsd; sesWagered = 0; sesWon = 0; paintSession(); }
+  function recordSession(wager, returned) { // table games report EXACT gross wagered + returned
+    sesWagered = Math.round((sesWagered + Math.max(0, +wager || 0)) * 100) / 100;
+    sesWon = Math.round((sesWon + Math.max(0, +returned || 0)) * 100) / 100;
+    _sesBal = demoUsd; paintSession(); // this settle already moved demoUsd → mark it counted so the watcher skips it
+  }
+  function paintSession() {
+    if (sessionBase == null) { sessionBase = demoUsd; _sesBal = demoUsd; }
+    // Canvas games (fish/plane/slots3d/swoop/…) move demoUsd without recordSession — classify the
+    // unhandled balance delta (up = won, down = wagered) so NET stays exact for EVERY game.
+    if (_sesBal != null && demoUsd !== _sesBal) {
+      const d = Math.round((demoUsd - _sesBal) * 100) / 100;
+      if (d > 0) sesWon = Math.round((sesWon + d) * 100) / 100; else sesWagered = Math.round((sesWagered - d) * 100) / 100;
+      _sesBal = demoUsd;
+    }
+    const w = $("ds-wagered"), wn = $("ds-won"), nt = $("ds-net");
+    if (w) w.textContent = usd(sesWagered);
+    if (wn) wn.textContent = usd(sesWon);
+    if (nt) { const net = Math.round((demoUsd - sessionBase) * 100) / 100; nt.textContent = (net >= 0 ? "+" : "−") + usd(Math.abs(net)); nt.className = "ds-net " + (net > 0 ? "up" : net < 0 ? "down" : ""); }
   }
   // Mirror demo credits into the same guards the live readouts use, so the
   // per-game affordability hints ("not enough credits") work unchanged.
@@ -2808,6 +2834,8 @@
     document.body.classList.remove("plane-real"); // demo → show the 2nd bet + feed + autobet
     { const bar = $("demo-bar"); if (bar) bar.classList.remove("hidden"); }
     { const below = $("demo-below"); if (below) below.classList.remove("hidden"); }
+    { const ses = $("demo-session"); if (ses) ses.classList.remove("hidden"); }
+    sessionReset(); // start the session tracker fresh from the current balance
     { const bdg = $("demo-tv-badge"); if (bdg) bdg.classList.remove("hidden"); }
     if (window.TV && TV.setConnected) TV.setConnected(true); // show game-ready previews, not SIGNAL LOST
     const mh = $("maxbet-hint"); if (mh) mh.textContent = "· demo · $10–$" + HARD_MAX_USD;
@@ -2825,6 +2853,7 @@
     document.body.classList.remove("demo-mode");
     { const bar = $("demo-bar"); if (bar) bar.classList.add("hidden"); }
     { const below = $("demo-below"); if (below) below.classList.add("hidden"); }
+    { const ses = $("demo-session"); if (ses) ses.classList.add("hidden"); }
     { const bdg = $("demo-tv-badge"); if (bdg) bdg.classList.add("hidden"); }
     // Balloon Pop, Gem Vault & Reef Raiders are PLAY-MONEY games. Connecting a
     // wallet used to hide them — but players want them to stay. Keep the channels
@@ -2854,6 +2883,7 @@
     if (fishGame && demoOn) try { fishGame.restartDemo(); } catch (e) {}
     if (fishshooterGame && demoOn) try { fishshooterGame.restartDemo(); } catch (e) {} // end any open Fish Shooter bonus/boss round on a demo top-up
     demoUsd = DEMO_START_USD; demoSave(); demoSyncBalance();
+    sessionReset(); // a credit top-up re-bases the session so it doesn't show as winnings
     if (pressureGame) pressureGame.setBalance(demoUsd);
     if (planeGame && demoOn) planeGame.setBalance(demoUsd);
     if (slots3dGame && demoOn) slots3dGame.setBalance(demoUsd);
@@ -2882,6 +2912,7 @@
     // Win pays the pot minus the 3% house cut = 1.94× stake → +0.94× profit.
     // Credit in plain USD to match the other demo games (no wei round-trip drift).
     demoUsd += (won ? 0.94 * v : -v); demoSave();
+    recordSession(v, won ? 1.94 * v : 0);
     demoFlipBusy = true;
     const fb = $("play-house-btn"); if (fb) fb.disabled = true;
     const release = () => { demoFlipBusy = false; if (fb) fb.disabled = false; };
@@ -2917,6 +2948,7 @@
     const profitUsd = won ? Math.max(0, v * (mult - 1)) : 0;
     rememberBet(v);
     demoUsd += (won ? profitUsd : -v); demoSave();
+    recordSession(v, won ? v + profitUsd : 0);
     lockReveal();
     TV.revealDice({ roll: roll / 100, target: T / 100, mode: over ? "over" : "under", youWon: won, mult, amountUsd: won ? profitUsd : v, tier: demoTier(profitUsd) });
   }
@@ -2934,6 +2966,7 @@
     const profitUsd = won ? v * (mult - 1) : 0;
     rememberBet(v);
     demoUsd += (won ? profitUsd : -v); demoSave();
+    recordSession(v, won ? v + profitUsd : 0);
     lockReveal();
     TV.revealTwoDice({ d1, d2, target: T, mode: over ? "over" : "under", youWon: won, mult, amountUsd: won ? profitUsd : v, tier: demoTier(profitUsd) });
   }
@@ -2946,6 +2979,7 @@
     const profitUsd = won ? v * (targetX - 1) : 0;
     rememberBet(v);
     demoUsd += (won ? profitUsd : -v); demoSave();
+    recordSession(v, won ? v + profitUsd : 0);
     lockReveal();
     TV.revealCrash({ crashX, targetX, won, amountUsd: won ? profitUsd : v, mult: targetX, tier: demoTier(profitUsd) });
   }
@@ -2958,6 +2992,7 @@
       const { grid, winUsd } = CryptoReels.simulate(v);
       const won = winUsd > 0;
       demoUsd += (won ? winUsd : 0) - v; demoSave();
+      recordSession(v, won ? winUsd : 0);
       lockReveal();
       TV.revealSlots({ grid, winUsd, betUsd: v, won });
     }).catch(() => toast("Couldn't load the slots engine — check your connection", "err"));
@@ -3093,7 +3128,7 @@
     if (f && !f.getAttribute("src")) {
       // No &bal= seed — the table starts from its own server default ($1,000), NOT the demo balance.
       const tableWallet = account || bjGuestId();
-      let src = "blackjack.html?tv=1&v=1199&guest=" + encodeURIComponent(tableWallet);
+      let src = "blackjack.html?tv=1&v=1200&guest=" + encodeURIComponent(tableWallet);
       let tokenHash = "";
       if (account) { try { const tok = localStorage.getItem(bjBridgeTokenKey()) || ""; if (tok) tokenHash = "#bjtoken=" + encodeURIComponent(tok); } catch {} }
       if (bjPendingTable) { src += "&table=" + encodeURIComponent(bjPendingTable); bjPendingTable = null; }

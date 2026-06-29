@@ -320,6 +320,9 @@
     this.fx.push({ s: s, t: 0, dur: 0.16, kind: "flash", mk: mk });
   };
   FishShooter.prototype._rmBullet = function (b) { if (!b) return; try { if (b.s) { this.bulletLayer.removeChild(b.s); b.s.destroy(); } } catch (e) {} var i = this.bullets.indexOf(b); if (i >= 0) this.bullets.splice(i, 1); };
+  // Remove EVERY bonus/boss (free) bullet — called the instant any round ends so a leftover round
+  // shot can never ricochet into normal play and pop a creature (it has no power off-round anyway).
+  FishShooter.prototype._clearRoundBullets = function () { for (var i = this.bullets.length - 1; i >= 0; i--) { var b = this.bullets[i]; if (b && (b.free || b.bossId)) this._rmBullet(b); } };
 
   FishShooter.prototype._resolveHit = function (b, fish) {
     b.hit = true;
@@ -467,6 +470,7 @@
   };
   FishShooter.prototype._endBonusWave = function () {
     var bz = this._bonus; if (!bz) return; var kind = bz.kind; this._bonus = null;
+    this._clearRoundBullets(); // wave over → no free bullet may linger into the finale / normal play
     var th = BONUS_THEME[kind] || BONUS_THEME.frenzy;
     var won = Math.round((this._frenzyWon || 0) * 100) / 100;
     // Enter the FINALE: a few-second held reveal of the total, THEN the deposit-to-bank (the wave
@@ -598,6 +602,7 @@
   };
   FishShooter.prototype._endBossRound = function () {
     var bz = this._boss; if (!bz) return; this._boss = null;
+    this._clearRoundBullets(); // boss over → drop its free shots so they don't bounce into normal play
     if (bz.spr) { this._burst(bz.spr.x, bz.spr.y, 3.0); this._explosion(bz.spr.x, bz.spr.y, 0xffd23f); try { this.bossLayer.removeChild(bz.spr); bz.spr.destroy(); } catch (e) {} }
     this._shake = 28;
     // Pay only the UNDISTRIBUTED remainder so the round total === bz.pool EXACTLY (house edge preserved).
@@ -659,7 +664,7 @@
       this._frenzy -= dt;
       if (this._frenzy <= 0 || (this._frenzyExpected || 0) >= this._frenzyBudget) {
         this._frenzy = 0;
-        for (var bi = this.bullets.length - 1; bi >= 0; bi--) { var bb = this.bullets[bi]; if (bb.free && !bb.hit) this._rmBullet(bb); }
+        this._clearRoundBullets(); // drop ALL in-flight free bullets so none carry into normal play
       }
     }
     if (this._bonus) this._updateBonus(dt); // bonus-world 3-2-1 countdown → wave
