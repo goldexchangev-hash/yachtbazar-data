@@ -1,7 +1,18 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v12.02**.
+Last updated at build **v12.03**.
+
+> **NOTE FOR CLAUDE/CHATGPT (v12.03):** Fish Shooter — owner REVERSED part of v12.02: bring back fast manual
+> clicking. "If it doesn't even matter I liked that I could click it faster than what is shooting, it's fun for
+> people." The v12.02 cap throttled EVERY fire path; now the cap is split by intent. `_fire(manual)` gate is
+> `if ((this._fireCd||0) > 0 && (free || !manual)) return;` — so: **MANUAL taps on PAID shots are UNGATED**
+> (`down` handler calls `_fire(true)`; click as fast as you physically can — fun, and RTP-neutral since every
+> shot still returns ~95%, just spends faster). **Auto/hold** (frame-loop `_fire()`, no arg) and **FREE shots**
+> (`free = _frenzy>0 || !!_boss`, bonus/boss) are STILL paced by `FIRE_CD[fireSpeed]` — so the dragon CANNOT be
+> tap-spammed (the v12.02 concern stays fixed). Speed control + help text reworded ("hold-to-fire pace; tap
+> faster anytime; bonus/boss shots paced"). Verified `_fsh-speed2.js`: PAID manual 25/25 fire at every speed;
+> auto/hold 1/25; BOSS manual tap-spam 1/50 (locked); boss invariant intact, 0 errors. Build 1203.
 
 > **NOTE FOR CLAUDE/CHATGPT (v12.02):** Fish Shooter shooting-speed control (caps the dragon tap-spam).
 > Owner: rapid tapping during the boss let you "hit the dragon super fast for crazy money" — house-edge-safe (boss

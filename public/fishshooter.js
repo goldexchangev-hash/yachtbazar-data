@@ -293,13 +293,16 @@
     this._aim = clamp(Math.atan2(dy, dx), -(Math.PI - 0.1), -0.1);
   };
   FishShooter.prototype.cost = function () { return Math.round(this.unitBet * this.power * 100) / 100; };
-  FishShooter.prototype._fire = function () {
+  FishShooter.prototype._fire = function (manual) {
     if (!this._active || !this._enabled || !this._ready) return;
-    if ((this._fireCd || 0) > 0) return; // rate-limit EVERY fire path incl. rapid manual taps — no tapping faster than hold (it's RTP-neutral anyway, but this stops autoclicker spam)
     if (this._boss && !this._boss.started) return;   // hold fire during the boss 3-2-1 countdown
     if (this._bonus && !this._bonus.started) return; // hold fire during the bonus-world 3-2-1 countdown
     if (this._bonusFinale) return;                   // hold fire during the end-of-round reveal + deposit
     var free = this._frenzy > 0 || !!this._boss;
+    // Cooldown gate. FREE (bonus/boss) shots are ALWAYS paced by the speed setting — no tap-spamming
+    // the dragon. Auto-fire/hold also respects it. But a MANUAL tap on a PAID shot fires as fast as
+    // you can click (it's fun, and RTP-neutral — every shot still returns ~95%, you just spend faster).
+    if ((this._fireCd || 0) > 0 && (free || !manual)) return;
     var su = free ? this._frenzyUnit : this.unitBet, sp = free ? this._frenzyPow : this.power;
     var paid = Math.round(su * sp * 100) / 100, cost = free ? 0 : paid;
     if (!free && this.balance < cost) { this._flashBanner("INSUFFICIENT", "add funds", 0xff5d72); return; }
@@ -820,7 +823,7 @@
   FishShooter.prototype._wireInput = function () {
     var self = this;
     var move = function (e) { var p = e.touches ? e.touches[0] : e; if (p) self._pointAt(p.clientX, p.clientY); };
-    var down = function (e) { if (!self._active) return; e.preventDefault(); var Cw = root.Chiptune; if (Cw && Cw.wake) { try { Cw.wake(); } catch (er) {} } var p = e.touches ? e.touches[0] : e; if (p) self._pointAt(p.clientX, p.clientY); self._holding = true; if (!self.auto) self._fire(); };
+    var down = function (e) { if (!self._active) return; e.preventDefault(); var Cw = root.Chiptune; if (Cw && Cw.wake) { try { Cw.wake(); } catch (er) {} } var p = e.touches ? e.touches[0] : e; if (p) self._pointAt(p.clientX, p.clientY); self._holding = true; if (!self.auto) self._fire(true); };
     var up = function () { self._holding = false; };
     this._bindLater = function () {
       var v = self.app.view;
