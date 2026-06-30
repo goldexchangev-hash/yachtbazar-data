@@ -782,3 +782,32 @@ Update this report: strike closed findings, note wave completed in HANDOFF.
 **What actually happened to live this session:** v12.45 (slots-stuck fix) + v12.46 (Balloon Pop `_idlePrompt` recursion fix — a regression I'd introduced in v12.44) are good and live. Commit **04cfa7f** ("Wave 1 server guards") was BROKEN — it committed `crash-rounds.js` calling `bridge.reserve()` that doesn't exist in committed `token-bridge.js` → crash/plane/pressure/swoop token rounds threw. Reverted by **61af21a**, restoring the working v12.46 server. No reserve/guard fixes are in the deployed code; the money-path criticals above are OPEN and must be implemented properly (reserve added to BOTH `token-bridge.js` AND `crash-rounds.js` together, probe-gated by `crash-reserve-probe.js`; `pendingBuyIns`+lock to `doStart`/`doTopUp`; the `s.closed && s.settlement` branch to `doRelease`).
 
 **Process lesson:** design agents have Edit access and CAN mutate the working tree. Verify "is it fixed?" against `git show HEAD:<file>` (committed), never the working tree, while agents are running — or run them worktree-isolated.
+
+---
+
+# Pass 6 — FIXES LANDED (Claude, 2026-06-30, probe-verified)
+
+Re-done PROPERLY (verified against committed code, applied consistently across files, gated on the probes). Commits on `claude/ethereum-betting-game-vrf-2dq50k`:
+
+**`ed9831b` — server money path (deployed):**
+| Findings | Fix | Probe gate |
+|---|---|---|
+| #1 #2 #13 #14 #82 #126 | `token-bridge.reserve()`/`resolveReserved()` (pin+BURN nonce, debit up front) + `crash-rounds` startRound/_resolve use them; prune | `crash-reserve-probe.js` OK; adversarial-suite 7→1 |
+| #4 #5 #16 #139 | `pendingBuyIns` + `withPlayerLock` on doStart/doTopUp | adversarial-suite TXHASH-*/DUAL gone; fuzzer TOPUP-REPLAY gone |
+| #209 #215 #210 | `doRelease` re-issues closed-session settlement + `findSettledSessionForPlayer`; `doAdminRelease` guarded | settlement-math-probe **0 criticals** |
+| #3 #15 #10 | live-round/live-hand guards on settle/play/release/doPlay (`setActiveCrashCheck`→`liveCrashSession`; `liveExternal`) | fuzzer CONC-BJ-PLAY gone; #15 verified blocked w/ real wiring |
+| #141 | `crash-rounds.drain()` in `gracefulShutdown` | self-test |
+
+**`f240e10` (v12.47) — client crash robustness (deployed):** #85 WS heartbeat, #86 fail-fast on dropped send, #22 `CrashRounds.cancel()` on channel leave, #108/#21 round-timeout reconcile-not-refund, #48 plane/pressure epoch bump. (No signed-money impact.)
+
+**Loss-escape CORE preserved** (`withPlayerLock` + `pendingSettle` + obligation re-issue, v12.34) — strengthened, never weakened.
+
+## Still OPEN after Pass 6 (deliberately not yet done)
+- **#220/#205/#204 sub-cent settle rounding** (Medium, ≤½¢/session house leak): a <1¢ loss → `netWei=0` → full lock returned. Fix changes the SIGNED on-chain amount (compute netWei from un-rounded net) → **deferred for explicit owner review** (not applying unreviewed signed-money math after the agent-injection incident).
+- **#206 #207 #208 #211/#227** settlement precision / micro-overbet (Low).
+- **Wave 3 rest:** #11 (applyNet failure swallowed), #12 (leave during dealing), #30/#31 (BJ connect order), #37 (invalid roomId), #42/#43 (anon hello). Re-verify vs committed code first.
+- **Waves 4-10:** client token UX (#17-25), canvas lifecycle (#23/#48/#194-197 — #48 done), contracts/staticCall (#6/#147/#148/#174-176), PvP/WS (#45/#200), wallet (#178-183), headers/rate-limits (#201-203/#58-60), polish.
+- **DEMO-WALLET-DESYNC** (adversarial-suite, Low): client display only.
+
+## Stale probes to rewrite (give false positives against current code)
+- `repro-crash-nonce-desync.js`, `concurrency-fuzzer.js` CONC-CRASH-INTERLEAVE — don't wire `setActiveCrashCheck`; the real `server.js` does (proven). The authoritative crash gate is `crash-reserve-probe.js`.
