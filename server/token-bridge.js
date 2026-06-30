@@ -159,6 +159,32 @@ function makeTokenBridge(opts) {
     return { sessionId: s.id, tokens: s.tokens, buyInUnits: s.buyInUnits, lockedWei: s.lockedWei };
   }
 
+  // Apply an EXTERNAL, house-attested result to a session's tokens — e.g. a multiplayer blackjack hand,
+  // whose outcome comes from BLACKJACK's OWN provably-fair shoe (a separate commit-reveal), NOT this
+  // bridge's seed. We record it as a ledger entry so the signed settle net stays exact and the ledger
+  // still reconciles; the player verifies the hand itself via the game's shoe reveal (carried in `ref`/
+  // `shoeCommit`). Trusted, in-process server use only (the game server is the authority on the result).
+  // Bounds: betUnits ≥ 0 and ≤ current tokens; payoutUnits ≥ 0; tokens can never go negative.
+  function applyExternal(o) {
+    const s = sessions.get(o && o.sessionId);
+    if (!s) throw new Error("no such session");
+    if (s.closed) throw new Error("session is closed");
+    if (s.settlement) throw new Error("session already settled");
+    const bet = round2(o.betUnits || 0);
+    const payout = round2(Math.max(0, o.payoutUnits || 0));
+    if (!(bet >= 0) || !Number.isFinite(bet)) throw new Error("invalid external bet");
+    if (!Number.isFinite(payout)) throw new Error("invalid external payout");
+    if (bet > s.tokens + 1e-9) throw new Error("insufficient tokens");
+    const nonce = s.betNonce;
+    s.betNonce = nonce + 1;                              // external entries advance the nonce (contiguous ledger)
+    s.tokens = round2(s.tokens - bet + payout);
+    if (s.tokens < 0) s.tokens = 0;
+    const rec = { nonce: nonce, kind: "external", game: String(o.game || "blackjack"), betUnits: bet, payoutUnits: payout, ref: o.ref != null ? String(o.ref) : "", shoeCommit: o.shoeCommit ? String(o.shoeCommit) : "" };
+    s.bets.push(rec);
+    save();
+    return { sessionId: s.id, tokens: s.tokens, nonce: nonce };
+  }
+
   // Cash out: compute net, sign it for the contract, reveal the seed.
   async function settle(o) {
     const s = sessions.get(o.sessionId);
@@ -219,6 +245,14 @@ function makeTokenBridge(opts) {
     for (let i = 0; i < orderedBets.length; i++) {
       const b = orderedBets[i];
       if (Number(b.nonce) !== i) noncesOk = false; // contiguous 0..n-1, in order
+      if (b.kind === "external") {
+        // House-attested external result (e.g. a blackjack hand). It is NOT re-derivable from THIS
+        // bridge's seed — its fairness is proven by the game's own shoe commit-reveal (b.shoeCommit/ref).
+        // We trust the recorded bet/payout for the ledger sum; the signed net is still bounded by lockedWei
+        // at settle, so this can never sign a loss past the lock or a win the contract can't pay.
+        ledger = round2(ledger - round2(b.betUnits) + round2(Math.max(0, b.payoutUnits)));
+        continue;
+      }
       if (!hasGame(b.game)) { payoutsMatch = false; continue; }
       const res = ENGINES[b.game].play({ serverSeed: revealedSeed, clientSeed: b.clientSeed, nonce: b.nonce, betUnits: b.betUnits, params: b.params });
       const payout = round2(Math.max(0, Number(res && res.payoutUnits) || 0));
@@ -269,7 +303,7 @@ function makeTokenBridge(opts) {
   // Back-compat alias (crash family only) — older callers used crashPointPeek.
   function crashPointPeek(o) { return pointPeek(Object.assign({ game: "crash" }, o || {})); }
 
-  return { start, play, topUp, settle, rederive, verifyRederive, session, games, hasGame, pointPeek, crashPointPeek, gcClosed, _sessions: sessions };
+  return { start, play, applyExternal, topUp, settle, rederive, verifyRederive, session, games, hasGame, pointPeek, crashPointPeek, gcClosed, _sessions: sessions };
 }
 
 module.exports = { makeTokenBridge, games, hasGame, ENGINES };
@@ -371,6 +405,27 @@ if (require.main === module) {
     // the wrapper truly defers to the pure verifier — same honest result
     const rd2 = tb.rederive(st.sessionId);
     eq("wrapper == pure verifier on the live session", rd2.ok === tb.verifyRederive(pureArgs()).ok && rd2.payoutsMatch && rd2.ledgerMatches);
+
+    // ── EXTERNAL RESULTS (token-funded blackjack): hands adjust the SAME session, ledger stays exact ──
+    const xb = makeTokenBridge({ signer: signer2, toWei: (u) => BigInt(Math.round(u * 1e6)) });
+    const xs = xb.start({ player, chainId: 11155111, contract, buyInUnits: 1000, lockedWei: (1n * 10n ** 18n).toString(), settleNonce: NONCE });
+    xb.play({ sessionId: xs.sessionId, game: "coinflip", betUnits: 10, params: { side: 0 }, clientSeed: "mix" }); // a normal token bet too
+    const xTokAfterPlay = xb.session(xs.sessionId).tokens;
+    const xWin = xb.applyExternal({ sessionId: xs.sessionId, game: "blackjack", betUnits: 100, payoutUnits: 250, ref: "hand#1", shoeCommit: "deadbeef" }); // blackjack hand: bet 100, won 250
+    eq("external result moves tokens by (payout − bet)", xWin.tokens === round2(xTokAfterPlay - 100 + 250));
+    const xLoss = xb.applyExternal({ sessionId: xs.sessionId, game: "blackjack", betUnits: 50, payoutUnits: 0, ref: "hand#2" }); // blackjack loss
+    eq("external loss debits the stake", xLoss.tokens === round2(xWin.tokens - 50));
+    let xOver = 0; try { xb.applyExternal({ sessionId: xs.sessionId, betUnits: 1e9, payoutUnits: 0 }); } catch (e) { xOver = 1; }
+    eq("external bet over balance is rejected (no negative tokens)", xOver === 1);
+    // the provably-fair verifier still reconciles with mixed token + external entries (external entries
+    // aren't re-derived from the seed — their fairness rides the game's own shoe — but the LEDGER is exact)
+    const xrd = xb.rederive(xs.sessionId);
+    eq("mixed token+external ledger reconciles to final tokens", xrd.ledgerMatches && xrd.noncesOk);
+    eq("token bets in a mixed session still re-derive (payouts match)", xrd.payoutsMatch);
+    const xstl = await xb.settle({ sessionId: xs.sessionId });
+    eq("a session with external results settles, net bounded by lock", BigInt(xstl.netWei) >= -(1n * 10n ** 18n));
+    let xClosed = 0; try { xb.applyExternal({ sessionId: xs.sessionId, betUnits: 1, payoutUnits: 0 }); } catch (e) { xClosed = 1; }
+    eq("external result rejected after settle (closed session)", xClosed === 1);
 
     // TOP UP: adds locked principal + tokens to an open session, keeping the settle ratio exact.
     const tu = makeTokenBridge({ signer: signer2, toWei: (u) => BigInt(Math.round(u * 1e6)) });
