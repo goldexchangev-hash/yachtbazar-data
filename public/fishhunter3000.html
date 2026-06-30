@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#020818" />
+    <title>FISH HUNTER 3000 — preview</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Press+Start+2P&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --bg: #020818;
+        --bg2: #061a3a;
+        --panel: rgba(6, 14, 32, 0.92);
+        --line: rgba(0, 245, 255, 0.22);
+        --cyan: #00f5ff;
+        --magenta: #ff3dff;
+        --purple: #7b5cff;
+        --gold: #ffd700;
+        --green: #39ff14;
+        --ink: #e8f4ff;
+        --muted: #7a9ab8;
+        --pixel: "Press Start 2P", monospace;
+        --hud: "Orbitron", sans-serif;
+        --ui: "Rajdhani", system-ui, sans-serif;
+        --dock-h: clamp(148px, 22vh, 196px);
+      }
+
+      *, *::before, *::after { box-sizing: border-box; }
+
+      html, body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: var(--ui);
+        -webkit-font-smoothing: antialiased;
+      }
+
+      body {
+        background:
+          radial-gradient(900px 520px at 50% -8%, rgba(123, 92, 255, 0.18) 0%, transparent 62%),
+          radial-gradient(640px 380px at 92% 88%, rgba(255, 61, 255, 0.1) 0%, transparent 55%),
+          linear-gradient(180deg, #020818 0%, #040c1e 45%, #0a0520 100%);
+      }
+
+      #fh3k-shell {
+        display: flex;
+        flex-direction: column;
+        height: 100dvh;
+        width: 100vw;
+        position: relative;
+        isolation: isolate;
+      }
+
+      /* ── top HUD ── */
+      #fh3k-hud {
+        flex-shrink: 0;
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
+        align-items: center;
+        gap: 8px;
+        padding: max(8px, env(safe-area-inset-top)) 12px 8px;
+        background: linear-gradient(180deg, rgba(2, 8, 24, 0.96), rgba(2, 8, 24, 0.55));
+        border-bottom: 1px solid var(--line);
+        box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+        z-index: 4;
+      }
+
+      .fh3k-brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+      }
+
+      .fh3k-logo {
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
+        background: linear-gradient(135deg, var(--cyan), var(--purple));
+        box-shadow: 0 0 18px rgba(0, 245, 255, 0.45), inset 0 0 12px rgba(255, 255, 255, 0.25);
+        display: grid;
+        place-items: center;
+        font-size: 18px;
+        flex-shrink: 0;
+      }
+
+      .fh3k-title-wrap { min-width: 0; }
+
+      .fh3k-title {
+        margin: 0;
+        font-family: var(--hud);
+        font-weight: 900;
+        font-size: clamp(11px, 3.2vw, 16px);
+        letter-spacing: 0.14em;
+        line-height: 1.15;
+        color: var(--cyan);
+        text-shadow:
+          0 0 12px rgba(0, 245, 255, 0.65),
+          2px 0 var(--magenta),
+          -1px 0 var(--purple);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .fh3k-sub {
+        margin: 2px 0 0;
+        font-size: 10px;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .fh3k-tag {
+        justify-self: center;
+        font-family: var(--pixel);
+        font-size: 8px;
+        letter-spacing: 0.08em;
+        color: var(--magenta);
+        background: rgba(255, 61, 255, 0.08);
+        border: 1px solid rgba(255, 61, 255, 0.35);
+        border-radius: 999px;
+        padding: 5px 10px;
+        white-space: nowrap;
+      }
+
+      .fh3k-stats {
+        justify-self: end;
+        display: flex;
+        gap: 10px;
+        align-items: stretch;
+        min-width: 0;
+      }
+
+      .fh3k-stat {
+        text-align: right;
+        min-width: 0;
+      }
+
+      .fh3k-stat label {
+        display: block;
+        font-size: 9px;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin-bottom: 2px;
+      }
+
+      .fh3k-stat strong {
+        font-family: var(--hud);
+        font-size: clamp(12px, 3vw, 15px);
+        font-weight: 700;
+        color: var(--gold);
+        text-shadow: 0 0 10px rgba(255, 215, 0, 0.35);
+      }
+
+      .fh3k-stat.win strong { color: var(--green); text-shadow: 0 0 10px rgba(57, 255, 20, 0.35); }
+
+      /* ── game stage ── */
+      #fh3k-stage-wrap {
+        flex: 1;
+        min-height: 0;
+        position: relative;
+        overflow: hidden;
+        border-top: 1px solid rgba(123, 92, 255, 0.15);
+        border-bottom: 1px solid rgba(0, 245, 255, 0.12);
+      }
+
+      #fh3k-stage-wrap::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 2;
+        background:
+          linear-gradient(rgba(0, 245, 255, 0.03) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(0, 245, 255, 0.03) 1px, transparent 1px);
+        background-size: 28px 28px;
+        mask-image: radial-gradient(ellipse 85% 75% at 50% 50%, #000 30%, transparent 100%);
+        opacity: 0.55;
+      }
+
+      #fh3k-stage-wrap::after {
+        content: "";
+        position: absolute;
+        inset: 10px;
+        pointer-events: none;
+        z-index: 2;
+        border: 1px solid rgba(0, 245, 255, 0.18);
+        border-radius: 14px;
+        box-shadow:
+          inset 0 0 24px rgba(0, 245, 255, 0.06),
+          0 0 32px rgba(123, 92, 255, 0.08);
+      }
+
+      #fh3k-stage {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: stretch;
+        justify-content: stretch;
+        background: radial-gradient(ellipse 120% 80% at 50% 100%, #061a3a 0%, #020818 70%);
+      }
+
+      #fh3k-stage canvas {
+        width: 100% !important;
+        height: 100% !important;
+        display: block;
+        touch-action: none;
+      }
+
+      #fh3k-loading {
+        position: absolute;
+        inset: 0;
+        z-index: 3;
+        display: grid;
+        place-items: center;
+        background: rgba(2, 8, 24, 0.82);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+        transition: opacity 0.35s ease, visibility 0.35s ease;
+      }
+
+      #fh3k-loading.hidden {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+      }
+
+      .fh3k-loader {
+        text-align: center;
+        padding: 20px;
+      }
+
+      .fh3k-loader-ring {
+        width: 52px;
+        height: 52px;
+        margin: 0 auto 14px;
+        border-radius: 50%;
+        border: 3px solid rgba(0, 245, 255, 0.15);
+        border-top-color: var(--cyan);
+        animation: spin 0.9s linear infinite;
+        box-shadow: 0 0 20px rgba(0, 245, 255, 0.35);
+      }
+
+      .fh3k-loader p {
+        margin: 0;
+        font-family: var(--pixel);
+        font-size: 9px;
+        color: var(--cyan);
+        letter-spacing: 0.08em;
+      }
+
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      /* ── control dock ── */
+      #fh3k-dock {
+        flex-shrink: 0;
+        z-index: 5;
+        background: var(--panel);
+        border-top: 1px solid var(--line);
+        box-shadow: 0 -16px 48px rgba(0, 0, 0, 0.55);
+        padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+      }
+
+      .dock-row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+
+      .dock-row + .dock-row { margin-top: 8px; }
+
+      .dock-bet {
+        flex: 1 1 180px;
+        min-width: 0;
+      }
+
+      .dock-bet label {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        font-size: 11px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin-bottom: 6px;
+      }
+
+      .dock-bet label strong {
+        font-family: var(--hud);
+        font-size: 15px;
+        color: var(--cyan);
+        text-shadow: 0 0 8px rgba(0, 245, 255, 0.4);
+      }
+
+      .dock-bet label span {
+        font-size: 10px;
+        color: var(--muted);
+      }
+
+      .fh3k-slider {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 100%;
+        height: 8px;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #0a1830, var(--purple) 45%, var(--cyan) 75%, var(--magenta));
+        cursor: pointer;
+        box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.5);
+      }
+
+      .fh3k-slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: #fff;
+        border: 3px solid var(--cyan);
+        box-shadow: 0 0 14px rgba(0, 245, 255, 0.55);
+        cursor: pointer;
+      }
+
+      .fh3k-slider::-moz-range-thumb {
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: #fff;
+        border: 3px solid var(--cyan);
+        box-shadow: 0 0 14px rgba(0, 245, 255, 0.55);
+        cursor: pointer;
+      }
+
+      .dock-cost {
+        font-family: var(--hud);
+        font-size: 12px;
+        color: var(--muted);
+        white-space: nowrap;
+      }
+
+      .dock-cost b {
+        color: var(--gold);
+      }
+
+      .dock-power {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        background: rgba(4, 12, 28, 0.85);
+        border: 1px solid rgba(123, 92, 255, 0.35);
+        border-radius: 12px;
+        padding: 4px;
+      }
+
+      .dock-power label {
+        font-size: 9px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--muted);
+        padding: 0 6px;
+        white-space: nowrap;
+      }
+
+      .dock-btn {
+        font-family: var(--hud);
+        font-weight: 700;
+        font-size: 13px;
+        color: var(--ink);
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 10px;
+        padding: 10px 12px;
+        cursor: pointer;
+        transition: border-color 0.15s, color 0.15s, box-shadow 0.15s, background 0.15s;
+        min-width: 44px;
+        min-height: 44px;
+      }
+
+      .dock-btn:hover {
+        border-color: var(--cyan);
+        color: var(--cyan);
+      }
+
+      .dock-btn.on {
+        background: rgba(0, 245, 255, 0.12);
+        border-color: var(--cyan);
+        color: var(--cyan);
+        box-shadow: 0 0 16px rgba(0, 245, 255, 0.25);
+      }
+
+      .dock-btn.power {
+        width: 42px;
+        padding: 10px 0;
+        font-size: 18px;
+        line-height: 1;
+      }
+
+      .dock-btn.mode {
+        flex: 1 1 72px;
+        font-size: 12px;
+        letter-spacing: 0.06em;
+      }
+
+      .dock-btn.fs {
+        border-color: rgba(255, 215, 0, 0.35);
+        color: var(--gold);
+      }
+
+      .dock-btn.fs.on {
+        background: rgba(255, 215, 0, 0.12);
+        border-color: var(--gold);
+        box-shadow: 0 0 16px rgba(255, 215, 0, 0.25);
+      }
+
+      #fh3k-power {
+        font-family: var(--hud);
+        font-weight: 900;
+        font-size: 18px;
+        min-width: 28px;
+        text-align: center;
+        color: var(--purple);
+        text-shadow: 0 0 10px rgba(123, 92, 255, 0.45);
+      }
+
+      /* ── help panel ── */
+      #fh3k-help {
+        flex-shrink: 0;
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.3s ease;
+        background: rgba(4, 10, 24, 0.95);
+        border-top: 1px solid rgba(123, 92, 255, 0.2);
+      }
+
+      #fh3k-help.open {
+        max-height: 220px;
+      }
+
+      .help-inner {
+        padding: 10px 14px 12px;
+        font-size: 12px;
+        line-height: 1.55;
+        color: #a8bdd6;
+      }
+
+      .help-inner b { color: var(--cyan); }
+      .help-inner kbd {
+        font-family: var(--pixel);
+        font-size: 8px;
+        background: rgba(0, 245, 255, 0.1);
+        border: 1px solid rgba(0, 245, 255, 0.25);
+        border-radius: 4px;
+        padding: 2px 5px;
+        color: var(--cyan);
+      }
+
+      .help-toggle {
+        position: absolute;
+        right: 12px;
+        bottom: calc(var(--dock-h) + 12px);
+        z-index: 6;
+        font-family: var(--pixel);
+        font-size: 8px;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+        background: rgba(6, 14, 32, 0.88);
+        border: 1px solid rgba(0, 245, 255, 0.25);
+        border-radius: 999px;
+        padding: 8px 12px;
+        cursor: pointer;
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+      }
+
+      .help-toggle:hover { color: var(--cyan); border-color: var(--cyan); }
+
+      /* ── fullscreen (rr-fs mirror) ── */
+      #fh3k-shell.rr-fs {
+        position: fixed !important;
+        inset: 0 !important;
+        width: 100vw !important;
+        height: 100dvh !important;
+        z-index: 2147483646 !important;
+        background: var(--bg);
+      }
+
+      html.rr-fs-on, body.rr-fs-on {
+        width: 100vw !important;
+        height: 100dvh !important;
+        overflow: hidden !important;
+        overscroll-behavior: none !important;
+        background: var(--bg) !important;
+      }
+
+      #fh3k-fs-exit {
+        display: none;
+        position: fixed;
+        top: max(10px, env(safe-area-inset-top));
+        right: max(12px, env(safe-area-inset-right));
+        z-index: 2147483647;
+        font-family: var(--hud);
+        font-weight: 700;
+        font-size: 12px;
+        color: #fff;
+        background: rgba(4, 12, 28, 0.85);
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        border-radius: 10px;
+        padding: 9px 14px;
+        cursor: pointer;
+      }
+
+      #fh3k-shell.rr-fs #fh3k-fs-exit { display: block; }
+
+      @media (max-width: 640px) {
+        #fh3k-hud {
+          grid-template-columns: 1fr auto;
+          grid-template-rows: auto auto;
+        }
+        .fh3k-tag { grid-column: 1 / -1; justify-self: start; }
+        .fh3k-stats { grid-column: 2; grid-row: 1; }
+        .fh3k-stat.win { display: none; }
+        .dock-row.controls { justify-content: stretch; }
+        .dock-btn.mode { flex: 1 1 calc(50% - 4px); }
+      }
+
+      @media (max-width: 420px) {
+        .fh3k-sub { display: none; }
+        .dock-cost { width: 100%; text-align: center; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="fh3k-shell">
+      <header id="fh3k-hud">
+        <div class="fh3k-brand">
+          <div class="fh3k-logo" aria-hidden="true">🐟</div>
+          <div class="fh3k-title-wrap">
+            <h1 class="fh3k-title">FISH HUNTER 3000</h1>
+            <p class="fh3k-sub">Neon deep-space arcade</p>
+          </div>
+        </div>
+        <span class="fh3k-tag">PREVIEW · PLAY MONEY</span>
+        <div class="fh3k-stats">
+          <div class="fh3k-stat">
+            <label>Balance</label>
+            <strong id="fh3k-balance">$5,000.00</strong>
+          </div>
+          <div class="fh3k-stat win">
+            <label>Session win</label>
+            <strong id="fh3k-win">$0.00</strong>
+          </div>
+        </div>
+      </header>
+
+      <div id="fh3k-stage-wrap">
+        <div id="fh3k-stage" aria-label="Fish Hunter 3000 game stage"></div>
+        <div id="fh3k-loading" aria-live="polite">
+          <div class="fh3k-loader">
+            <div class="fh3k-loader-ring"></div>
+            <p>BOOTING NEURAL NET…</p>
+          </div>
+        </div>
+      </div>
+
+      <div id="fh3k-dock">
+        <div class="dock-row">
+          <div class="dock-bet">
+            <label>
+              <span>Base bet</span>
+              <strong id="fh3k-bet-val">$1</strong>
+            </label>
+            <input id="fh3k-bet" class="fh3k-slider" type="range" min="1" max="50" step="1" value="1" aria-label="Bet amount" />
+          </div>
+          <div class="dock-cost">Cost <b id="fh3k-cost">$1.00 / shot</b></div>
+        </div>
+        <div class="dock-row controls">
+          <div class="dock-power">
+            <label>Power</label>
+            <button type="button" id="fh3k-pdn" class="dock-btn power" aria-label="Decrease power">−</button>
+            <span id="fh3k-power" aria-live="polite">1</span>
+            <button type="button" id="fh3k-pup" class="dock-btn power" aria-label="Increase power">+</button>
+          </div>
+          <button type="button" id="fh3k-auto" class="dock-btn mode">⚡ Auto</button>
+          <button type="button" id="fh3k-lock" class="dock-btn mode">🎯 Lock</button>
+          <button type="button" id="fh3k-fs" class="dock-btn mode fs">⛶ Fullscreen</button>
+        </div>
+      </div>
+
+      <div id="fh3k-help" aria-hidden="true">
+        <div class="help-inner">
+          <b>Aim</b> with mouse or finger · <b>Tap / hold</b> to fire plasma bolts ·
+          <b>Bet slider</b> sets base stake ($1–$50) · <b>Power</b> multiplies cost &amp; kill odds ·
+          <b>Auto</b> continuous fire · <b>Lock</b> tracks the nearest high-value target ·
+          <kbd>Space</kbd> toggle auto · <kbd>L</kbd> toggle lock ·
+          Catch neon fish from <b>2× Pixel Fry</b> up to <b>200× Mega Leviathan</b> ·
+          Special targets: <b>Vault Drone</b>, <b>Storm Eel</b>, <b>Frenzy Bot</b> trigger bonus waves.
+        </div>
+      </div>
+
+      <button type="button" id="fh3k-help-btn" class="help-toggle" aria-expanded="false" aria-controls="fh3k-help">? HELP</button>
+      <button type="button" id="fh3k-fs-exit" aria-label="Exit fullscreen">✕ Exit fullscreen</button>
+    </div>
+
+    <script src="vendor/pixi.min.js"></script>
+    <script src="fishhunter3000-engine.js"></script>
+    <script src="fishhunter3000-sprites.js"></script>
+    <script src="fishhunter3000.js"></script>
+    <script>
+      (function () {
+        var $ = function (id) { return document.getElementById(id); };
+        var shell = $("fh3k-shell");
+        var stage = $("fh3k-stage");
+        var loading = $("fh3k-loading");
+        var help = $("fh3k-help");
+        var helpBtn = $("fh3k-help-btn");
+
+        function fmt(n) {
+          return "$" + (Math.round(n * 100) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        if (typeof FishHunter3000 !== "function") {
+          if (loading) {
+            loading.classList.remove("hidden");
+            loading.querySelector("p").textContent = "ENGINE OFFLINE — fishhunter3000.js missing";
+          }
+          return;
+        }
+
+        var game = new FishHunter3000({
+          mount: stage,
+          initialBalance: 5000,
+          ethUsd: 3400,
+          onBalance: function (b) {
+            var el = $("fh3k-balance");
+            if (el) el.textContent = fmt(b);
+          },
+          onReady: function () {
+            if (loading) loading.classList.add("hidden");
+            try { game._resize(); } catch (e) {}
+          },
+          els: {
+            betSlider: $("fh3k-bet"),
+            betVal: $("fh3k-bet-val"),
+            cost: $("fh3k-cost"),
+            power: $("fh3k-power"),
+            powerUp: $("fh3k-pup"),
+            powerDown: $("fh3k-pdn"),
+            autoBtn: $("fh3k-auto"),
+            lockBtn: $("fh3k-lock"),
+            fsBtn: $("fh3k-fs"),
+            balance: $("fh3k-balance"),
+            win: $("fh3k-win"),
+          },
+        });
+
+        game.setFullscreenTarget(shell);
+        game.setActive(true);
+        window.__fh3k = game;
+
+        $("fh3k-fs").addEventListener("click", function () {
+          try { game.toggleFullscreen(shell); } catch (e) {}
+        });
+        $("fh3k-fs-exit").addEventListener("click", function () {
+          try { game.toggleFullscreen(shell); } catch (e) {}
+        });
+
+        helpBtn.addEventListener("click", function () {
+          var open = help.classList.toggle("open");
+          help.setAttribute("aria-hidden", open ? "false" : "true");
+          helpBtn.setAttribute("aria-expanded", open ? "true" : "false");
+        });
+      })();
+    </script>
+  </body>
+</html>
