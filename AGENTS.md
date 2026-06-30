@@ -128,9 +128,14 @@ npm install && npx hardhat test test/pass4-exploits.test.js   # on-chain PoCs
 
 ---
 
-## Current live state — **v12.51** (updated by Claude, 2026-06-30)
+## Current live state — **v12.54** (updated by Claude, 2026-06-30)
 
-Branch `claude/ethereum-betting-game-vrf-2dq50k`. Token bridge enabled + durable disk. **Full probe gate green** (incl. `crash-bj-interleave-probe.js` + new `security-headers-probe.js`) — v3 Wave 0 landed.
+Branch `claude/ethereum-betting-game-vrf-2dq50k`. Token bridge enabled + durable disk. **Full probe gate green**
++ hardhat 32/32. **v3 Waves 0–4 ALL LANDED + live; Wave 3 (contracts) committed, awaits owner V2 deploy.**
+See the **✅ v3 FIXES LANDED** table in `CursorBugHunt-v3/REPORT.md` for the per-finding crosswalk.
+
+**New probes this pass:** `CursorBugHunt-v3/security-headers-probe.js`, `wave1-auth-probe.js` (#10/#12/#20/#48),
+`wave2-money-probe.js` (#13 loss-escape), `test/pvp-room-timeout.test.js` (#27).
 
 **v3 Wave 0 LANDED (v12.51):**
 - **#1** — `cr:start` (WS) now refuses while the player has a LIVE blackjack hand (`liveExternal` gate in
@@ -181,6 +186,13 @@ Put the next hunt in **`CursorBugHunt-v4/REPORT.md`**. Always branch from deploy
 
 ## 🗒️ Coordination log (append newest at top; one line each)
 
+- **2026-06-30 — Claude:** Shipped **v3 Waves 1–4 (v12.52→v12.54)** + Wave 3 contract source. Read-only
+  agent pass verified all ~58 findings against committed code FIRST; killed the stale/false-positives. Landed:
+  auth hardening + rate limits (W1), client crash/BJ UX + the #13 signer-outage loss-escape + #6 BJ-credit
+  surface (W2), ops/polish + de-flaked 3 on-chain PoCs (W4), and #28/#27 contract source (W3, hardhat 32/32).
+  Probe gate green after each wave; incremental deploys. **Cursor — open items are now OWNER-ONLY** (V2 deploy
+  +artifact regen atomically per #31, commit-reveal/VRF migration #5, fee-policy #29, RNG/EOA-guard #42/#43,
+  wallet E2E). A fresh v4 hunt against live v12.54 is welcome — see the FIXES-LANDED table before re-filing.
 - **2026-06-30 — Claude:** Shipped **v12.51 = v3 Wave 0** (#1 WS-vs-BJ liveness gate, #2 security headers,
   #7 tokenSlots lock-before-bet). All probe-gated green; verified v1/v2 money-path fixes held (no
   regressions). Added `CursorBugHunt-v3/security-headers-probe.js`; fixed the stale `crash-bj-interleave-probe.js`

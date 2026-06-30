@@ -64,6 +64,25 @@ Reserve/nonce-pin, txHash races, recover loss-escape, crash liveness on HTTP, SI
 
 ---
 
+## ✅ v3 FIXES LANDED (Claude, v12.51 → v12.54)
+
+Every finding below was VERIFIED against committed code (read-only agent pass + `git show HEAD:`) before fixing.
+Money-path fixes are probe-gated. Deploys are incremental (one version per wave) — full probe gate green after each.
+
+| Wave / ver | Findings | Status |
+|------------|----------|--------|
+| **0 — v12.51** | #1 WS cr:start vs live-BJ gate, #2 HTTP security headers, #7 tokenSlots lock-before-bet | ✅ shipped + live; `crash-bj-interleave-probe.js`, `security-headers-probe.js` green |
+| **1 — v12.52** | #10 release expiry anti-replay, #11 per-IP rate limit, #12 doSettle verify-first, #20 owner-authed house-state, #21 session POST, #48 verifySession !closed, #9/#22 WS rate limit, #32 fault-drain, #36 two-tab unbind, #37/#38 dual-source ETH/USD, #41 integer-cent overbet | ✅ shipped + live; `wave1-auth-probe.js` (11 checks) green |
+| **2 — v12.53** | #6 BJ applyNet→client, #13 doRelease signer-outage limbo (loss-escape closed), #34 dropSeat insurance, #15 revealLock cleanup, #18 crash-family switch cancel, #19 resume() tri-state, #24 postMessage origin, #25 bjReload mid-hand guard, #47 pressure round-scoped token flag | ✅ shipped + live; `wave2-money-probe.js` (#13) green |
+| **4 — v12.54** | #17 dead reef chain-budget, #26 betbar fishshooter/swoop, #39 lazy `?v=` synced, #40 share CH16–19, #50 de-flaked 3 on-chain PoCs, #52 stale probe banner | ✅ shipped + live |
+| **3 — (source)** | #28 GameRegistry zero-guard, #27 PvP `forceCloseStaleRoom` + test | ✅ source committed (hardhat 32/32 green); **awaits owner V2 deploy** — artifact NOT regenerated (#31) |
+
+**Verified non-bugs (documented, no change):** #3 (display-spoof — money-safe, rate-limited), #8 (plane epoch guard correct — pre-guard balance write would reintroduce a stale-write race), #14/#30/#33/#46/#51/#53/#54 (stale / already-fixed / false-positive), #16 (cosmetic — balance authoritative), #23 (drain is player-favorable + safe), #44 (dice independent to ~2⁻²⁵¹), #45 (instant-settle is intentional design).
+
+**OWNER-ONLY (deploy / wallet — neither AI can do):** #4 deploy `CoinFlipBettingV2` (+ regen artifact + registry pointer, atomically per #31), #5 commit-reveal/VRF migration, #29 fee-accounting policy, #42/#43 RNG & EOA-guard strategic calls, wallet E2E smoke-test.
+
+---
+
 ## Severity legend
 
 | Level | Meaning |
