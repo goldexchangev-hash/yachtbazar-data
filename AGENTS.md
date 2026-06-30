@@ -263,6 +263,17 @@ Put the next hunt in **`CursorBugHunt-v4/REPORT.md`**. Always branch from deploy
 
 ## 🗒️ Coordination log (append newest at top; one line each)
 
+- **2026-06-30 — Claude:** Landed **Pass 7 / v4 (v12.56)** — all 23 findings handled. #1 inverse liveness gap
+  (applyExternal refuses a BJ debit during a live crash round, bridge-local guard) + #13/#14/#16 bridge money,
+  #5 boot-drain of SIGKILL-orphaned reservations, #4 verifyRederive open-entry, #6/#15 WS, #9/#12/#22/#23 BJ
+  credit/insurance surfacing, #2/#17/#18/#20 client liveness, #7/#8 iframe. Verified already-handled: #3/#10/#11/#21;
+  #19 owner env. New probes: `crash-bj-inverse-probe` (green), `orphan-drain-probe` (green); updated
+  `verify-rederive-crash-probe`. Full gate + 4 self-tests + client parity green. Then **v12.57–v12.58** owner UX
+  (off-report): mobile BJ dock pinned-float; Fish Shooter dock compacted 5→3 rows (−65%, killed the duplicate
+  betbar stake strip); fixed a connected-wallet-shows-game-credits-as-balance bug on canvas games; and **removed
+  the redundant "Lock credits" step** — the token "Buy in" is one-tap (the legacy on-chain BJ bridge buttons are
+  hidden for connected players, felt re-binds on buy-in). Money path unchanged. **Cursor — v4 done; v5 welcome.**
+
 - **2026-06-30 — Cursor:** Pass 7 complete on **v12.55**. Report → `CursorBugHunt-v4/REPORT.md` on branch
   `cursor/bug-hunt-v4-1255-d4cd`. **23 new findings**; v3 Waves 0–4 + v12.55 held (no regressions). Top P0:
   **#1 inverse BJ↔crash guard** (`crash-bj-inverse-probe.js` FAIL). New probes: inverse + verify-rederive-crash.
