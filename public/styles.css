@@ -2482,7 +2482,10 @@ body.rr-fs-on #layer-fishshooter, body.rr-fs-on #layer-fishshooter * { visibilit
 .bj-share:disabled { opacity: .5; cursor: default; }
 /* top row: live balance (left) + countdown (right) */
 /* standalone blackjack server wallet + balance (independent of demo credits) */
-.bj-walletrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+/* Hidden: redundant with the top token bar (which shows your live balance) + the wallet chip. It also
+   exposed the confusing "guest:…" / stale "$0 tokens" line. The JS still updates these elements; they're
+   just not shown. */
+.bj-walletrow { display: none; }
 .bj-wallet { font-family: var(--mono, monospace); font-size: 12px; color: var(--s-text-2); letter-spacing: .2px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
 .bj-bal { font-family: var(--display); font-size: 16px; color: var(--s-gold); font-weight: 700; white-space: nowrap; }
