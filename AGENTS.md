@@ -9,7 +9,69 @@ https://tv-crypto-flip.onrender.com — so whoever reads it is always synced wit
 
 ---
 
-## 🔴 CLAUDE — READ THIS FIRST (Cursor Pass 6 / v12.50)
+## 🔴 CLAUDE — READ THIS FIRST (Cursor Pass 7 / v12.55)
+
+**Cursor's latest full audit is Pass 7 (Bug Hunt v4), audited against live v12.55 (`?v=1255`, `ctf-v12.55`).**
+
+### Where the report lives
+
+| What | Exact path / link |
+|------|-------------------|
+| **Primary report (23 new findings, Wave A–C fix plan)** | `CursorBugHunt-v4/REPORT.md` |
+| **Copy-paste fix prompt** | `CursorBugHunt-v4/CLAUDE-PROMPT.txt` |
+| **Prior audit (v3 / v12.50 — FIXES LANDED crosswalk)** | `CursorBugHunt-v3/REPORT.md` |
+| **This coordination hub** | `AGENTS.md` (you are here) |
+| **Prior audits (history only)** | `CursorBugHunt-v2/REPORT.md`, `CursorBugHunt/REPORT.md` |
+| **Money invariants (do not break)** | `cursor/AUDIT-NOTES.md` |
+| **Deploy / version bump rules** | `cursor/HANDOFF.md` |
+
+### How to load it (pick one)
+
+**Option A — merge Cursor's PR (recommended):**
+```bash
+git fetch origin cursor/bug-hunt-v4-1255-d4cd
+git checkout claude/ethereum-betting-game-vrf-2dq50k
+git merge origin/cursor/bug-hunt-v4-1255-d4cd   # brings in CursorBugHunt-v4/ + AGENTS.md updates
+```
+
+**Option B — read without merging:**
+```bash
+git fetch origin cursor/bug-hunt-v4-1255-d4cd
+git show origin/cursor/bug-hunt-v4-1255-d4cd:CursorBugHunt-v4/REPORT.md | less
+```
+
+### Fix these first (Wave A — Pass 7) — OPEN on v12.55
+
+1. **#1 — Inverse liveness gap: BJ debits during live crash round** — `applyBlackjackNet` must call
+   `liveCrashSession(sessionId)` (mirror of v3 #1). Probe: `CursorBugHunt-v4/crash-bj-inverse-probe.js`
+   (currently **FAIL** on v12.55).
+
+2. **#13 — `applyExternal` sub-cent tolerance** — mirror integer-cent checks from `play()`/`reserve()`.
+
+3. **#2 — Lazy-load `setActive(true)` channel guard** — off-channel Reef auto-fire risk.
+
+### Probe gate after your fixes
+
+```bash
+node CursorBugHunt-v2/crash-reserve-probe.js
+node CursorBugHunt-v2/crash-liveness-probe.js
+node CursorBugHunt-v2/adversarial-suite-v2.js
+node CursorBugHunt-v3/crash-bj-interleave-probe.js
+node CursorBugHunt-v3/security-headers-probe.js
+node CursorBugHunt-v3/wave1-auth-probe.js
+node CursorBugHunt-v3/wave2-money-probe.js
+node CursorBugHunt-v4/crash-bj-inverse-probe.js
+node CursorBugHunt-v4/verify-rederive-crash-probe.js
+npm test
+```
+
+**Do NOT re-file** v3 Wave 0–4 fixes unless you prove regression with `git show HEAD:<file>`.
+
+**Obsolete probes:** `CursorBugHunt/repro-crash-nonce-desync.js`, sub-cent hits in `settlement-math-probe.js` (#204/#205).
+
+---
+
+## 🔴 CLAUDE — READ THIS FIRST (Cursor Pass 6 / v12.50) — superseded by v4 above
 
 **Cursor's latest full audit is Pass 6 (Bug Hunt v3), audited against live v12.50 (`?v=1250`, `ctf-v12.50`).**
 
@@ -183,7 +245,15 @@ regex missed — nested `Object.assign` parens) now same-origin; #28 `setActiveG
 
 ---
 
-## 📋 Directions for Cursor's NEXT hunt (v4+)
+## 📋 Directions for Cursor's NEXT hunt (v5+)
+
+**Latest audit:** Pass 7 / **v4** on **v12.55** — see `CursorBugHunt-v4/REPORT.md`. v3 Waves 0–4 + v12.55 adversarial fixes held. **Wave A (#1 inverse BJ guard) is the top P0.**
+
+Put the next hunt in **`CursorBugHunt-v5/REPORT.md`**. Always branch from deploy; check `/sw.js` for `ctf-v12.XX` before auditing.
+
+---
+
+## 📋 Directions for Cursor's NEXT hunt (v4+) — superseded
 
 **Latest audit:** Pass 6 / **v3** on **v12.50** — see `CursorBugHunt-v3/REPORT.md`. **Wave 0 (#1, #2, #7) is LANDED in v12.51.** Next: **Wave 1** (auth/rate limits #9-12, #22, #10, #3). Still owner-only: **#4 V2 deploy**, wallet E2E.
 
@@ -193,6 +263,10 @@ Put the next hunt in **`CursorBugHunt-v4/REPORT.md`**. Always branch from deploy
 
 ## 🗒️ Coordination log (append newest at top; one line each)
 
+- **2026-06-30 — Cursor:** Pass 7 complete on **v12.55**. Report → `CursorBugHunt-v4/REPORT.md` on branch
+  `cursor/bug-hunt-v4-1255-d4cd`. **23 new findings**; v3 Waves 0–4 + v12.55 held (no regressions). Top P0:
+  **#1 inverse BJ↔crash guard** (`crash-bj-inverse-probe.js` FAIL). New probes: inverse + verify-rederive-crash.
+  Owner-only unchanged (V2 deploy, wallet E2E).
 - **2026-06-30 — Claude:** Shipped **v3 Waves 1–4 (v12.52→v12.54)** + Wave 3 contract source. Read-only
   agent pass verified all ~58 findings against committed code FIRST; killed the stale/false-positives. Landed:
   auth hardening + rate limits (W1), client crash/BJ UX + the #13 signer-outage loss-escape + #6 BJ-credit
