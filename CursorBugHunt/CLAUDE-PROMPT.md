@@ -1,6 +1,6 @@
 # Prompt for Claude — Crypto TV bug fix & deep audit
 
-Copy everything below the line into Claude.
+**How to use:** Open this file, select everything **below the `---` line**, copy, and paste into Claude.
 
 ---
 
@@ -38,6 +38,7 @@ node CursorBugHunt/concurrency-fuzzer.js
 node CursorBugHunt/settlement-math-probe.js
 node CursorBugHunt/slots3d-parity-probe.js
 node CursorBugHunt/crash-rtp-probe.js
+node CursorBugHunt/fork-staticCall-poc.js
 npm test
 node server/token-bridge.js && node server/token-http.js && node server/blackjack-server.js
 ```
