@@ -91,6 +91,9 @@
     this.net.on("bj:event", function (m) {
       if (m.kind === "roomClosing" && self.room && m.id === self.room.roomId) { self.toast("Table closed (" + (m.reason || "idle") + ")"); self.showLobby(); }
       if (m.kind === "bust" && self.room) self._flashSeat(m.seat);
+      // v5 #21: the server bounced us off a table we don't match (e.g. a guest opening a real-money table
+      // link) — it silently sent us to the lobby with no explanation. Surface it so the redirect makes sense.
+      if (m.kind === "kindMismatch") { self.toast("That table is for " + (m.tableKind === "token" ? "token" : (m.tableKind || "different")) + " players — showing tables you can join"); self.showLobby(); }
     });
     this.net.on("bj:error", function (m) {
       self._clearActWatch();
@@ -340,11 +343,15 @@
       host.appendChild(seat);
     }
   };
+  // v5 #1 (defense-in-depth): _name() output is concatenated into seat-nameplate HTML (innerHTML via el()).
+  // The server now pins guest ids to /^guest:[a-z0-9]{1,32}$/, but we ALSO HTML-escape every user-controlled
+  // branch here so a malformed wallet/guest string can never inject markup even if it slips past the server.
+  function escHtml(s) { return String(s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   BlackjackClient.prototype._name = function (w) {
     if (!w) return "Player";
-    if (/^0x[0-9a-fA-F]{6,}/.test(w)) return w.slice(0, 6) + "…" + w.slice(-4);
-    if (w.indexOf("guest:") === 0) return "Guest " + w.slice(6);
-    return w.length > 12 ? w.slice(0, 12) + "…" : w;
+    if (/^0x[0-9a-fA-F]{6,}$/.test(w)) return w.slice(0, 6) + "…" + w.slice(-4); // hex only — inherently safe
+    if (w.indexOf("guest:") === 0) return "Guest " + escHtml(w.slice(6));
+    return escHtml(w.length > 12 ? w.slice(0, 12) + "…" : w);
   };
 
   /* ---------------- banner + countdown ---------------- */
@@ -451,7 +458,12 @@
     else if (isMyTurn) mode = "turn";
     else if (m.phase === "dealing" || m.phase === "dealer") mode = "dealing";
     else if (m.phase === "settle") mode = "settle";
-    var rawBalance = (this.balance != null && isFinite(this.balance)) ? this.balance : 1000;
+    // v5 #20: until the real balance arrives (first bj:wallet after seating), DON'T render a betting slider
+    // built off a fabricated $1,000 — a $50 buy-in could then pick $200 and the server would reject the bet.
+    // Hold in "waiting" (no bet UI) for that brief window; the slider appears once we know the true balance.
+    var balReady = (this.balance != null && isFinite(this.balance));
+    if (!balReady && mode === "betting") mode = "waiting";
+    var rawBalance = balReady ? this.balance : 0;
     var maxBet = Math.max(0, Math.floor(rawBalance / 5) * 5); // floor to the $5 step so both ends agree
     this.bet = maxBet >= 10 ? Math.min(Math.max(10, Math.round(this.bet / 5) * 5), maxBet) : 10; // mirror _betUI normalization
     var legal = []; ["hit", "stand", "double", "split", "surrender"].forEach(function (a) { if (self.legal.indexOf(a) >= 0) legal.push(a); });

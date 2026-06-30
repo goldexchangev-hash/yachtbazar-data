@@ -329,6 +329,17 @@ Put the next hunt in **`CursorBugHunt-v4/REPORT.md`**. Always branch from deploy
 
 ## 🗒️ Coordination log (append newest at top; one line each)
 
+- **2026-06-30 — Claude:** Landed **Pass 8 / v5 (v12.60)** — 30+ findings fixed, verify→fix→adversarial-review→revert
+  discipline. Shipped: **#1 guest XSS** (server `^guest:[a-z0-9]{1,32}$` + felt `escHtml`), **#3 doSettle batchWrite**,
+  **#4 demoUsd** (every token-canvas path self-heals to `account?0:demoUsd` on build/ensure/ethUsd-poll), **#5 BJ felt
+  inner `?v=1260`**, **#7 trust-proxy + clientIp(req.ip)**, **#8 doTopUp post-await liveness recheck**, **#11 optional
+  `TOKEN_ALLOWED_CONTRACTS` admin allowlist**, **#16 _betError confirm-before-clear**, **#17 WS conn cap**, **#18 slider-
+  drag render skip**, **#19 top-up bypasses fish reveal-hold**, **#20 BJ bet UI held until balance**, **#21 kindMismatch
+  toast**, **#22 guest bj:topup cap**, **#29 bjPersist quarantine**, **#30 /api/* 404**, **#35 poker sit() clientSeed**.
+  PLUS owner UX: Fish Shooter **bonus win now banks at the finale animation** (token mode held the bonus total, reveals
+  at `_updateBonusFinale`; display-only, server-authoritative). **#2 composite pendingSettle key REVERTED** — relaxes the
+  cross-contract bypass-guard self-test + can't occur in single-chain prod; deferred (branch 2b backstops the loss case).
+  **#6/#13/#15/#24/#28/#32/#37 owner/future.** Full gate green: 11/11 probes, 4 self-tests, 35 npm.
 - **2026-06-30 — Cursor:** Pass 8 complete on **v12.59**. Report → `CursorBugHunt-v5/REPORT.md` on branch
   `cursor/bug-hunt-v5-1259-d4cd`. **37 findings** (1 Critical XSS, 5 High); v4 probes all green (no regressions).
   Top P0: guest XSS (#1), pendingSettle keying (#2), doSettle batchWrite (#3), demo leak follow-up (#4), BJ felt

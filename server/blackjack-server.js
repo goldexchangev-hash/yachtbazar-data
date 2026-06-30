@@ -374,8 +374,18 @@
     function topUp(sock, amount) {
       const w = sock.wallet || "";
       if (!/^guest:/.test(w)) return; // guests only (play money)
-      const amt = r2(Math.max(0, Math.min(100000, +amount || 0)));
+      // v5 #22: bound the play-money mint. A guest could call this with $100k, any phase, no cooldown and
+      // balloon the demo bank file (.bj-bank.json). Keep legit reloads working (a broke guest tops up to
+      // play) but cap each call, cap the standing balance, and rate-limit so it can't be spammed.
+      const GUEST_TOPUP_MAX = 5000, GUEST_BAL_CAP = 25000, GUEST_TOPUP_COOLDOWN = 3000;
+      const nowMs = now();
+      if (sock._lastGuestTopUp && nowMs - sock._lastGuestTopUp < GUEST_TOPUP_COOLDOWN) return;
+      let amt = r2(Math.max(0, Math.min(GUEST_TOPUP_MAX, +amount || 0)));
       if (amt <= 0) return;
+      let cur = 0; try { cur = bank.get(w) || 0; } catch (e) {}
+      amt = r2(Math.min(amt, Math.max(0, GUEST_BAL_CAP - cur))); // never let top-ups push past the standing cap
+      if (amt <= 0) return;
+      sock._lastGuestTopUp = nowMs;
       bank.credit(w, amt); pushWallet(sock, w);
       for (const r of rooms.values()) {
         const i = seatOf(r, sock); if (i < 0) continue;

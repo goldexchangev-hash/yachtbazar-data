@@ -428,17 +428,26 @@
       var self = this, shot = { unitBet: b.unitBet, power: b.power, cost: b.cost, free: false };
       this._net(b.s.x, b.s.y, fish.def.color); // immediate net FX (latency-friendly)
       root.TokenMode.bet("fishshooter", b.cost, { targetKey: fish.def.key, power: b.power }).then(function (r) {
-        self.balance = root.TokenMode.tokens(); // authoritative (stake debited + any payout/disbursement)
-        self._tokenRevealUntil = Date.now() + 520; // hold the HUD balance briefly so the win reveals AFTER the burst (syncTokenGameBalances skips only during this window — a buy-in/top-up still updates immediately)
+        var bonus = r && r.win && r.outcome && r.outcome.bonus && r.outcome.bonus.total > 0 ? r.outcome.bonus : null;
+        var inBonus = self._bonus || self._bonusFinale; // a bonus round is already animating → HOLD the HUD; it reveals at the finale
+        if (!inBonus) {
+          // OWNER: a bonus win must land when the FINALE animation ends, not the instant the trigger fish dies.
+          // The server already folded the whole bonus total into r.tokens — so when a bonus triggers, show only
+          // the stake + the direct catch now (full total MINUS the bonus), and bank the bonus at _updateBonusFinale.
+          self.balance = bonus
+            ? Math.round((root.TokenMode.tokens() - bonus.total) * 100) / 100
+            : root.TokenMode.tokens(); // authoritative (stake debited + any payout/disbursement)
+          self._tokenRevealUntil = Date.now() + 520; // brief hold so a normal win reveals AFTER the burst (a buy-in/top-up still forces through)
+        }
         if (r && r.win) {
           if (fish.alive) self._catch(fish, shot); // direct-catch FX (local credit + local triggers gated in _catch)
-          if (r.outcome && r.outcome.bonus && r.outcome.bonus.total > 0) self._startTokenBonus(r.outcome.bonus, shot); // server-driven wave
-        } else if (fish.alive) { fish.flinch = 0.16; fish.spr.tint = 0xff8888; }
-        // Hold the balance HUD until the catch/blow-up has played out — otherwise the new total
-        // reveals the win/loss before the fish bursts and spoils it. Sync the TOP token bar at the SAME
-        // beat (light paint, no heavy refresh) so it tracks the in-game balance live, not just at cash-out.
-        setTimeout(function () { self._renderHud(); if (root.TokenMode && root.TokenMode.paintTokens) root.TokenMode.paintTokens(); }, 480);
-      }).catch(function (e) { self.balance = root.TokenMode.tokens(); self._renderHud(); if (root.TokenMode && root.TokenMode.paintTokens) root.TokenMode.paintTokens(); }); // transactional bridge: a rejected bet cost nothing
+          if (bonus) self._startTokenBonus(bonus, shot); // server-driven wave (its total reveals at the finale, not here)
+        } else if (fish.alive && !inBonus) { fish.flinch = 0.16; fish.spr.tint = 0xff8888; }
+        // Hold the balance HUD until the catch/blow-up has played out — otherwise the new total reveals the
+        // win/loss before the fish bursts and spoils it. Skip the repaint entirely while a bonus is running so
+        // the held balance can't flash the bonus total early. Sync the TOP token bar at the same beat.
+        setTimeout(function () { if (!(self._bonus || self._bonusFinale)) { self._renderHud(); if (root.TokenMode && root.TokenMode.paintTokens) root.TokenMode.paintTokens(); } }, 480);
+      }).catch(function (e) { if (!(self._bonus || self._bonusFinale)) { self.balance = root.TokenMode.tokens(); self._renderHud(); if (root.TokenMode && root.TokenMode.paintTokens) root.TokenMode.paintTokens(); } }); // transactional bridge: a rejected bet cost nothing
       return;
     }
     if (b.free) { // accumulate the EXPECTED value this connecting free shot delivers; the wave ends when it reaches the budget (variable realized payout)
@@ -602,7 +611,9 @@
     var bz = this._bonus; if (!bz) return; var kind = bz.kind; this._bonus = null;
     this._clearRoundBullets(); // wave over → no free bullet may linger into the finale / normal play
     var th = BONUS_THEME[kind] || BONUS_THEME.frenzy;
-    var won = Math.round((this._frenzyWon || 0) * 100) / 100;
+    // TOKEN: free wave catches aren't accumulated locally (the server disbursed the whole wave into r.tokens),
+    // so the finale "YOU WON" + deposit uses the server bonus total; DEMO uses the locally-accrued _frenzyWon.
+    var won = Math.round((this._tokenActive() ? (this._tokenWaveTotal || 0) : (this._frenzyWon || 0)) * 100) / 100;
     // Enter the FINALE: a few-second held reveal of the total, THEN the deposit-to-bank (the wave
     // winnings were accumulated but not yet banked — see _catch). _updateBonusFinale drives it.
     this._bonusFinale = { kind: kind, th: th, won: won, t: 0, dur: 4.4, paid: false, shot: bz.shot };
@@ -623,7 +634,12 @@
     if (!fz.paid && fz.t >= 1.9) {
       fz.paid = true;
       if (fz.won > 0) {
-        if (!this._tokenActive()) this.balance = Math.round((this.balance + fz.won) * 100) / 100; // TOKEN: the wave total is already in r.tokens — this is reveal-only, no second deposit
+        // THE DEPOSIT MOMENT (owner's "drop the win when the animation ends"): bank the win NOW.
+        // TOKEN: the held HUD (stake+direct-catch only) jumps to the authoritative server total — which already
+        // includes this bonus AND any paid shots that connected mid-round — so the bonus lands here, on screen.
+        // DEMO: add the locally-accrued wave winnings.
+        if (this._tokenActive()) { this.balance = root.TokenMode.tokens(); this._tokenRevealUntil = 0; if (root.TokenMode && root.TokenMode.paintTokens) try { root.TokenMode.paintTokens(); } catch (e) {} }
+        else this.balance = Math.round((this.balance + fz.won) * 100) / 100;
         this._sesWon = Math.round((this._sesWon + fz.won) * 100) / 100; this._won = fz.won; this._save();
         if (fz.kind === "vault") this._openChest({ cont: { x: this.W / 2, y: this.H * 0.40 }, r: this.W * 0.12 }, fz.shot); // vault pops its chest on the deposit
         this._flashBanner("YOU WON  $" + fz.won.toFixed(2), "DEPOSITED →", 0xffd23f);

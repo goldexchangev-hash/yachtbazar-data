@@ -252,6 +252,11 @@ function makeTokenService(opts) {
     } catch (e) {}
   }
   // Record the signed settlement the server just committed to for this player's current lock.
+  // NOTE (v5 #2 deferred): keyed by player ALONE. A composite (player|chainId|contract) key was prototyped to
+  // stop a multi-chain config's chain-B settlement from overwriting a withheld chain-A loss, but production is
+  // single-chain/single-contract (so the overwrite can't occur) and the composite key relaxes the cross-contract
+  // bypass guard's behavior — the loss-escape guard must not be touched without a dedicated, exhaustively-proven
+  // change. Branch (2b) findSettledSessionForPlayer already backstops the cross-chain loss case here.
   function recordObligation(player, contract, chainId, settlement) {
     if (!settlement || settlement.netWei == null || settlement.nonce == null || !settlement.signature) return;
     pendingSettle.set(String(player).toLowerCase(), {
@@ -448,6 +453,12 @@ function makeTokenService(opts) {
       throw new Error("an unexpected on-chain lock was found — top-up blocked for safety");
     const addUnits = weiToUsd(addLockedWei, ethUsdFn());
     if (!(addUnits > 0)) throw new Error("top-up USD value is invalid");
+    // v5 #8: RE-CHECK liveness AFTER the RPC. The pre-await guard (above) can't see a crash round that a WS
+    // cr:start reserved (or a BJ hand that started) during the ~verifyBuyIn window — applying the top-up then
+    // would change the funding pool mid-round. Throwing here just defers the credit: the txHash isn't marked
+    // used (we're before usedBuyIns.add), so the player re-tops-up once the round ends. (recover still covers it.)
+    if (liveExternal(player)) throw new Error("finish your blackjack hand before topping up");
+    if (liveCrashSession(sessionId)) throw new Error("finish your live round before topping up");
     return batchWrite(() => { // bridge.topUp save + saveHttp commit atomically (one write, no crash split)
     const r = bridge.topUp({ sessionId, addUnits, addLockedWei: addLockedWei.toString() });
     usedBuyIns.add(txKey);
@@ -475,15 +486,22 @@ function makeTokenService(opts) {
     return withPlayerLock(player, async () => {
       if (liveExternal(player)) throw new Error("finish your blackjack hand before cashing out");
       if (liveCrashSession(s.id)) throw new Error("finish your live round before cashing out"); // #3: don't close the session under a live crash round
-      const settlement = await bridge.settle({ sessionId: s.id });
-      openByPlayer.delete(player);
-      tokenForSession.delete(s.id);
-      playBuckets.delete(s.id);
-      // Record the obligation BEFORE freeing the slot: until the chain consumes this lock, a later
-      // recover must re-issue THIS settlement (same nonce/net), never a fresh net=0 (loss-escape guard).
-      recordObligation(player, s.contract, s.chainId, settlement);
-      saveHttp(); // the session is no longer open — persist the freed slot + dropped bearer (txHash stays spent)
-      return settlement; // includes netWei, signature, serverSeedReveal (now safe), commit
+      const settlement = await bridge.settle({ sessionId: s.id }); // persists the closed+settled session FIRST (durable obligation record)
+      // v5 #3: commit the http-layer state change ATOMICALLY (one coalesced write) so the freed slot and the
+      // recorded obligation can NEVER persist apart — openByPlayer.delete without recordObligation would be the
+      // loss-escape window. (The async settle above is already durable on its own: if the process dies before
+      // THIS commit, persisted openByPlayer still points at the now-closed+settled session → recover branch (1)
+      // re-issues the exact settlement, and gcClosed prunes net=0 limbo only, so a loss is never forgiven.)
+      return batchWrite(() => {
+        openByPlayer.delete(player);
+        tokenForSession.delete(s.id);
+        playBuckets.delete(s.id);
+        // Record the obligation BEFORE freeing the slot: until the chain consumes this lock, a later
+        // recover must re-issue THIS settlement (same nonce/net), never a fresh net=0 (loss-escape guard).
+        recordObligation(player, s.contract, s.chainId, settlement);
+        saveHttp(); // the session is no longer open — persist the freed slot + dropped bearer (txHash stays spent)
+        return settlement; // includes netWei, signature, serverSeedReveal (now safe), commit
+      });
     });
   }
 
@@ -628,6 +646,14 @@ function makeTokenService(opts) {
 
   // OWNER-AUTHENTICATED owner check: the signer must be the contract's on-chain owner OR treasury.
   async function requireOwner(owner, contract, chainId) {
+    // v5 #11 (defense-in-depth): the `contract` is caller-supplied, so a clone-contract whose owner is the
+    // attacker would pass the on-chain owner check below. That's already incidentally safe — every settlement
+    // the house signs binds (chainId, contract), so a clone-owner can only ever obtain a net=0 signature valid
+    // on their worthless clone. If the operator pins TOKEN_ALLOWED_CONTRACTS, we reject unknown contracts
+    // outright and close even that. OFF by default (empty list) → behavior unchanged.
+    if (Array.isArray(opts.allowedContracts) && opts.allowedContracts.length &&
+        opts.allowedContracts.indexOf(String(contract).toLowerCase()) < 0)
+      throw new Error("unknown house contract");
     const who = await readOwner(contract, chainId);
     const o = String(owner).toLowerCase();
     const isOwner = (who.owner && String(who.owner).toLowerCase() === o) || (who.treasury && String(who.treasury).toLowerCase() === o);
@@ -876,9 +902,13 @@ function attachTokenBridge(app, opts) {
   const IP_BURST = Number(opts.ipBurst) || 15;        // bucket capacity (brief bursts ok)
   const ipBuckets = new Map();
   function clientIp(req) {
+    // v5 #7: prefer Express's req.ip — with app.set("trust proxy", 1) it resolves to the entry the trusted
+    // Render proxy appended (the REAL client), NOT the spoofable leading X-Forwarded-For token. Fall back to
+    // the LAST XFF hop (closest to us = least attacker-influenced), then the raw socket.
+    if (req && req.ip) return String(req.ip);
     const xff = req && req.headers && req.headers["x-forwarded-for"];
-    if (xff) return String(xff).split(",")[0].trim();   // Render/proxy sets this to the real client IP
-    return (req && (req.ip || (req.socket && req.socket.remoteAddress))) || "unknown";
+    if (xff) { const parts = String(xff).split(","); return parts[parts.length - 1].trim(); }
+    return (req && req.socket && req.socket.remoteAddress) || "unknown";
   }
   function ipRateOk(req) {
     const ip = clientIp(req);

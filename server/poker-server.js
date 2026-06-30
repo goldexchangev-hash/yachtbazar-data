@@ -647,6 +647,7 @@ function sit(table, player) {
     isBot: !!player.isBot,
     stack: player.stack != null ? player.stack : 1000,
     aggression: player.aggression != null ? player.aggression : 0.5,
+    clientSeed: player.clientSeed == null ? "" : String(player.clientSeed), // v5 #35: carry the player's PF seed (sit() dropped it → startHand always got "")
   };
   table.seats.push(seat);
   return seat;

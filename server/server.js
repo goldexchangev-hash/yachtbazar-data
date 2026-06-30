@@ -27,6 +27,11 @@ const HOST = process.env.HOST || "0.0.0.0";
 const PUBLIC_HOST = process.env.PUBLIC_HOST || ""; // e.g. your public IP for internet play
 
 const app = express();
+// v5 #7: trust exactly ONE proxy hop (Render's router). Without this, Express leaves req.ip as the socket
+// peer and the per-IP rate limiter fell back to the leading X-Forwarded-For token — which a client can spoof
+// (Render APPENDS the real IP, so the first token is attacker-controlled) to cycle fresh buckets. With one
+// trusted hop, req.ip resolves to the entry Render appended (the real client), defeating the spoof.
+app.set("trust proxy", 1);
 const publicDir = path.join(__dirname, "..", "public");
 
 // ── HTTP security headers (v3 #2) ──────────────────────────────────────────────
@@ -106,7 +111,15 @@ function loadJsonStoreOrThrow(file, label) {
 }
 const BJ_BANK_FILE = String(process.env.BJ_BANK_FILE || path.join(__dirname, ".bj-bank.json"));
 const bjPersist = {
-  load() { try { return JSON.parse(fs.readFileSync(BJ_BANK_FILE, "utf8")); } catch (e) { return {}; } },
+  // v5 #29: harden the guest play-money bank load. The old version swallowed EVERY error → a corrupt
+  // .bj-bank.json silently became {} and the next save() overwrote the bytes, wiping all guest balances
+  // with no forensic trace. loadJsonStoreOrThrow QUARANTINES the corrupt file (.corrupt.*) + logs loudly;
+  // we then continue with a fresh bank — unlike the real-money token store we do NOT hard-fail boot here
+  // (it's only play money, and taking the whole site down over a corrupt demo bank isn't worth it).
+  load() {
+    try { return loadJsonStoreOrThrow(BJ_BANK_FILE, "blackjack guest bank"); }
+    catch (e) { return {}; } // corrupt bytes already backed up + logged inside loadJsonStoreOrThrow
+  },
   save(obj) { try { writeJsonAtomic(BJ_BANK_FILE, obj); } catch (e) {} },
 };
 const blackjack = attachBlackjack({
@@ -220,6 +233,9 @@ function tokenEthUsd() {
 }
 const tokenSvc = attachTokenBridge(app, {
   enabled: () => process.env.ENABLE_TOKEN_BRIDGE === "1" && realmoney.enabled(),
+  // v5 #11 (optional, off by default): pin the admin endpoints to known house contract(s). When set, a
+  // caller can't pass a clone contract they "own" to clear requireOwner. e.g. TOKEN_ALLOWED_CONTRACTS=0xabc,0xdef
+  allowedContracts: String(process.env.TOKEN_ALLOWED_CONTRACTS || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean),
   signer: { sign: (p, net, nonce, cid, c) => realmoney.signSettlement(p, net, nonce, cid, c) },
   signerAddress: () => { try { return realmoney.signerAddress(); } catch (e) { return null; } }, // public address (for /status diagnostics) — never the key
   flag: () => process.env.ENABLE_TOKEN_BRIDGE === "1",
@@ -296,6 +312,9 @@ function gracefulShutdown() {
 }
 ["SIGTERM", "SIGINT"].forEach((sig) => process.on(sig, gracefulShutdown));
 
+// v5 #30: an unknown /api/* path must 404 as JSON, not fall through to the SPA HTML below (a 200 + index.html
+// for a mistyped endpoint makes token-client.status() and any fetch() parse garbage / mask a real outage).
+app.all("/api/*", (req, res) => { res.status(404).json({ ok: false, error: "not found" }); });
 // SPA-ish fallback so deep links like /?room=12 still serve index.html.
 app.get("*", (req, res) => {
   res.sendFile(path.join(publicDir, "index.html"));
@@ -357,7 +376,11 @@ function wsRateOk(ws) {
   return true;
 }
 
+const MAX_WS_CONNECTIONS = Number(process.env.MAX_WS_CONNECTIONS) || 600;
 wss.on("connection", (ws) => {
+  // v5 #17: cap total live sockets. Each connect triggers a broadcastPlayers() over ALL clients, so an
+  // unbounded connection flood is O(N^2) work on the single event loop. Refuse past the cap instead.
+  if (clients.size >= MAX_WS_CONNECTIONS) { try { ws.close(1013, "server at capacity"); } catch (e) {} return; }
   clients.set(ws, { address: null });
   ws.on("error", () => {}); // ignore abrupt drops instead of crashing
   broadcastPlayers();
@@ -417,7 +440,10 @@ wss.on("connection", (ws) => {
         } catch (e) {}
       }
       if (!tokenOk) {
-        if (/^guest:/.test(addr) || (blackjack.bridge && blackjack.bridge.isAuthorized(addr, data.bjToken))) {
+        // v5 #1: a guest id is a client-minted `guest:` + base36 slug (Math.random().toString(36)). Pin the
+        // charset/length so a crafted `guest:<img onerror=…>` can never be accepted and later rendered into a
+        // seat nameplate (stored-XSS sink in blackjack-ui _name). Defense-in-depth: the felt also escapes it.
+        if (/^guest:[a-z0-9]{1,32}$/.test(addr) || (blackjack.bridge && blackjack.bridge.isAuthorized(addr, data.bjToken))) {
           ws.wallet = addr;
           ws.bjToken = data.bjToken || "";
         }

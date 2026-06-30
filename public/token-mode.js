@@ -28,7 +28,9 @@
 
   function $(id) { return document.getElementById(id); }
   function note(msg, kind) { try { deps && deps.toast ? deps.toast(msg, kind || "ok") : console.log(msg); } catch (e) {} }
-  function changed() { try { deps && deps.onChange && deps.onChange(); } catch (e) {} render(); }
+  // force=true marks a USER money event (buy-in / top-up / cash-out) that must update the canvas HUD
+  // immediately — even inside the fish reveal-window hold (#19). A bare changed() (poll / resume) respects it.
+  function changed(force) { try { deps && deps.onChange && deps.onChange(!!force); } catch (e) {} render(); }
 
   // Remember the open session across a page REFRESH so we can reconnect to it (the server still has
   // it) instead of orphaning a funded session. Scoped to account + chainId + contract so we never
@@ -101,7 +103,7 @@
         note("Confirm the buy-in in your wallet (one time)…", "ok");
         var r = await client.buyIn(amountWei);
         note("Bought in — " + fmt(r.tokens) + " tokens. Play any game, no more popups 🪙", "ok");
-        changed();
+        changed(true); // #19: force HUD update now (bypass any fish reveal-window hold)
         _saveSession(); // survive a page refresh
       } catch (e) {
         note(friendly(e), "err");
@@ -198,7 +200,7 @@
         note("Confirm the top-up in your wallet (one time)…", "ok");
         var r = await client.topUp(amountWei);
         note("Topped up — now " + fmt(r.tokens) + " tokens. Keep playing 🪙", "ok");
-        changed();
+        changed(true); // #19: force HUD update now even if a fish reveal-window is holding
       } catch (e) {
         note(friendly(e), "err");
         // If the pre-flight found the session dead, clear it (resets to Buy in). Either way re-check
@@ -219,7 +221,7 @@
         var s = await client.cashOut();
         var netEth = Number(s.netWei) / 1e18;
         note("Cashed out. Net " + (netEth >= 0 ? "+" : "") + netEth.toFixed(4) + " ETH claimed ✅", "ok");
-        changed();
+        changed(true); // #19: force HUD update now (cash-out zeroes the in-game balance)
         _clearSession();
       } catch (e) {
         note(friendly(e), "err");
@@ -263,23 +265,33 @@
 
   // Throttled bet-error surfacing: a fast-fire burst (fish shooter) can fail many bets at once;
   // show at most one toast every few seconds so the user is told WHY without 30 stacked toasts.
-  var _lastBetErrAt = 0;
+  var _lastBetErrAt = 0, _lastSessCheckAt = 0;
   function _betError(e) {
     var msg = (e && (e.shortMessage || e.message)) || "";
     var lost = /invalid session token|no such session|session is closed/i.test(msg);
-    if (lost) {
-      // The server lost this session (e.g. a restart on non-durable storage). Immediately clear the
-      // dead client session so the UI resets to "Buy in" instead of showing a STALE balance and
-      // erroring on every bet (the "$1,051 ghost tokens" problem). No reload needed.
-      try { if (client) { client.session = null; client.tokens = 0; } } catch (e2) {}
-      _clearSession();
-      changed();
+    if (lost && client && client.session && client.resume) {
+      // v5 #16: DON'T wipe the session on the bare error text. A transient failure — a redeploy window while
+      // the durable bearer rehydrates, or one bad response mid fish-burst — can carry these phrases while the
+      // session is still valid on the server; clearing it then strands a live session. CONFIRM via resume and
+      // clear ONLY on a confirmed "gone" (mirrors refreshTokens). Throttle so a burst can't herd resume checks.
+      var nowc = (typeof Date !== "undefined" && Date.now) ? Date.now() : 0;
+      if (nowc - _lastSessCheckAt < 3000) return; // already verifying — let the in-flight check decide
+      _lastSessCheckAt = nowc;
+      client.resume(client.session).then(function (okk) {
+        if (okk === "gone") {
+          try { client.session = null; client.tokens = 0; } catch (e2) {}
+          _clearSession(); changed();
+          var n2 = (typeof Date !== "undefined" && Date.now) ? Date.now() : 0;
+          if (n2 - _lastBetErrAt > 2500) { _lastBetErrAt = n2; note("Your token session ended — buy in again to keep playing. Any locked funds stay on-chain.", "err"); }
+        } else if (okk === true) { changed(); } // still alive → resync; that failed bet was transient
+      }).catch(function () {});
+      try { console.warn("[TokenMode] bet failed (verifying session):", msg); } catch (_) {}
+      return; // the resume callback owns the messaging for this class of error
     }
     var now = (typeof Date !== "undefined" && Date.now) ? Date.now() : 0;
     if (now - _lastBetErrAt > 2500) {
       _lastBetErrAt = now;
-      if (lost) note("Your token session ended (the server restarted) — buy in again to keep playing. Any locked funds stay on-chain.", "err");
-      else if (/timed out|timeout|aborted|failed to fetch|network/i.test(msg)) note("Connection hiccup — that bet didn't go through. Try again.", "err");
+      if (/timed out|timeout|aborted|failed to fetch|network/i.test(msg)) note("Connection hiccup — that bet didn't go through. Try again.", "err");
       else note("Bet didn't settle: " + msg, "err");
     }
     try { console.warn("[TokenMode] bet failed:", msg); } catch (_) {}
@@ -295,12 +307,26 @@
     return m;
   }
 
+  // v5 #18: a balance poll calls render() which rebuilds #token-mount wholesale (innerHTML) — doing that
+  // mid-drag on the buy-in / top-up slider yanks the element out from under the user's finger and aborts the
+  // drag (the v12.58 one-tap mobile UX). Track an active drag and SKIP the rebuild until the pointer releases,
+  // then render once to pick up the latest balance. Capture-phase window listeners catch a release anywhere.
+  var _sliderDragging = false;
+  if (typeof window !== "undefined" && window.addEventListener) {
+    var _endDrag = function () { if (_sliderDragging) { _sliderDragging = false; try { render(); } catch (e) {} } };
+    window.addEventListener("pointerup", _endDrag, true);
+    window.addEventListener("touchend", _endDrag, true);
+    window.addEventListener("pointercancel", _endDrag, true);
+    window.addEventListener("touchcancel", _endDrag, true);
+  }
+
   // ── UI: a compact panel that lives in #token-mount (added to index.html). ──
   function render() {
     var mount = $("token-mount"); if (!mount) return;
     if (!client) { mount.hidden = true; mount.innerHTML = ""; return; }
     if (enabled === false) { mount.hidden = true; return; } // server flag off → hide entirely
     mount.hidden = false;
+    if (_sliderDragging) return; // a slider is being dragged — don't rebuild the bar under the user's finger (#18)
     if (TokenMode.active()) {
       // Top-up is a SLIDER capped to remaining in-game credits (no typing). Hidden if no credits left.
       var maxTop = Math.floor(_gameBal());
@@ -315,7 +341,7 @@
         '<button id="token-cashout" class="btn btn-ghost token-btn"' + (busy ? " disabled" : "") + '>Cash out</button>' +
         '</div>';
       var tsl = $("token-topup-slider"), tlbl = $("token-topup-val");
-      if (tsl && tlbl) tsl.oninput = function () { amt.topup = parseFloat(tsl.value) || 1; tlbl.textContent = fmt(tsl.value); };
+      if (tsl && tlbl) tsl.oninput = function () { _sliderDragging = true; amt.topup = parseFloat(tsl.value) || 1; tlbl.textContent = fmt(tsl.value); }; // #18: mark drag so a balance poll won't rebuild the bar mid-slide
       var tu = $("token-topup-btn"); if (tu) tu.onclick = function () { TokenMode.topUp(parseFloat((tsl && tsl.value) || topDflt)); };
       var co = $("token-cashout"); if (co) co.onclick = function () { TokenMode.cashOut(); };
     } else if (deps && deps.isHouseWallet && deps.isHouseWallet()) {
@@ -355,7 +381,7 @@
           '<button id="token-buyin-btn" class="btn btn-primary token-btn"' + (busy ? " disabled" : "") + '>' + (busy ? "…" : "Buy in") + '</button>' +
           '</div>';
         var sl = $("token-buyin-slider"), lbl = $("token-buyin-val");
-        if (sl && lbl) sl.oninput = function () { amt.buyin = parseFloat(sl.value) || 1; lbl.textContent = fmt(sl.value); };
+        if (sl && lbl) sl.oninput = function () { _sliderDragging = true; amt.buyin = parseFloat(sl.value) || 1; lbl.textContent = fmt(sl.value); }; // #18: mark drag (see render guard)
         var mx = $("token-buyin-max"); if (mx) mx.onclick = function () { if (sl) { sl.value = maxBal; amt.buyin = maxBal; if (lbl) lbl.textContent = fmt(maxBal); } };
         var b = $("token-buyin-btn"); if (b) b.onclick = function () { TokenMode.buyIn(parseFloat((sl && sl.value) || dflt)); };
       }
