@@ -303,7 +303,58 @@ function makeTokenBridge(opts) {
   // Back-compat alias (crash family only) — older callers used crashPointPeek.
   function crashPointPeek(o) { return pointPeek(Object.assign({ game: "crash" }, o || {})); }
 
-  return { start, play, applyExternal, topUp, settle, rederive, verifyRederive, session, games, hasGame, pointPeek, crashPointPeek, gcClosed, _sessions: sessions };
+  // ── server-paced rounds (crash family): RESERVE then RESOLVE at a PINNED nonce ──
+  // A live round (crash-rounds.js) must (a) reserve the stake up front so a concurrent drain can't
+  // dodge a loss (#2), and (b) PIN+BURN the nonce so an interleaved play() can't move the round's
+  // crash point out from under the animation (#1). reserve() does both atomically:
+  //   • balance-check (integer-cent) + DEBIT the full stake now,
+  //   • PIN the current betNonce, derive THIS round's point at it, then BURN it (betNonce++),
+  //   • record a provisional bet entry (kind:"crashRound", open:true) holding the stake.
+  // The point is computed at the pinned nonce, so resolveReserved() — which runs the real engine
+  // play() at the SAME nonce+clientSeed — always agrees with the paced curve.
+  function reserve(o) {
+    const s = sessions.get(o && o.sessionId);
+    if (!s) throw new Error("no such session");
+    if (s.closed) throw new Error("session is closed");
+    const game = String((o && o.game) || "crash");
+    if (!hasGame(game)) throw new Error("game not token-enabled: " + game);
+    const bet = round2(o.betUnits);
+    if (!(bet > 0)) throw new Error("bet must be positive");
+    if (Math.round(bet * 100) > Math.round(s.tokens * 100)) throw new Error("insufficient tokens"); // integer-cent (no float-epsilon overbet)
+    const clientSeed = String(o.clientSeed == null ? "" : o.clientSeed);
+    const nonce = s.betNonce;                 // PIN this nonce for the whole round
+    const point = (game === "pressure")
+      ? ENGINES.pressure.deriveBurst(s.serverSeed, clientSeed, nonce)
+      : ENGINES.crash.crashPointOf(s.serverSeed, clientSeed, nonce);
+    s.betNonce = nonce + 1;                    // BURN the nonce — an interleaved play() now gets nonce+1
+    s.tokens = round2(s.tokens - bet);         // DEBIT the stake up front
+    const rec = { nonce: nonce, kind: "crashRound", game: game, betUnits: bet, params: {}, clientSeed: clientSeed, payoutUnits: 0, win: false, multiplier: 0, open: true };
+    s.bets.push(rec);
+    save();
+    return { sessionId: s.id, nonce: nonce, point: point, crashPoint: point, betUnits: bet, tokens: s.tokens };
+  }
+  // Finalize a reserved round at its PINNED nonce: run the real engine play() at that nonce+clientSeed
+  // with the round's actual cashOutAt, CREDIT the gross payout (the stake was already debited at
+  // reserve), and rewrite the provisional entry to its final, re-derivable form. Idempotent per nonce.
+  function resolveReserved(o) {
+    const s = sessions.get(o && o.sessionId);
+    if (!s) throw new Error("no such session");
+    const nonce = Number(o && o.nonce);
+    const rec = s.bets.find((b) => b && b.kind === "crashRound" && Number(b.nonce) === nonce);
+    if (!rec) throw new Error("no reserved round at nonce " + nonce);
+    if (!rec.open) return { sessionId: s.id, nonce: nonce, win: rec.win, payoutUnits: rec.payoutUnits, multiplier: rec.multiplier, tokens: s.tokens }; // already resolved
+    const cashOutAt = Number(o && o.cashOutAt);
+    const params = { cashOutAt: cashOutAt };
+    const res = ENGINES[rec.game].play({ serverSeed: s.serverSeed, clientSeed: rec.clientSeed, nonce: nonce, betUnits: rec.betUnits, params: params });
+    const payout = round2(Math.max(0, Number(res && res.payoutUnits)));
+    if (!Number.isFinite(payout)) throw new Error("resolve rejected: non-finite payout");
+    s.tokens = round2(s.tokens + payout);     // stake already debited at reserve → only credit the gross
+    rec.open = false; rec.params = params; rec.payoutUnits = payout; rec.win = !!res.win; rec.multiplier = res.multiplier;
+    save();
+    return { sessionId: s.id, nonce: nonce, game: rec.game, win: rec.win, multiplier: rec.multiplier, payoutUnits: payout, outcome: res.outcome, tokens: s.tokens };
+  }
+
+  return { start, play, applyExternal, topUp, settle, rederive, verifyRederive, session, games, hasGame, pointPeek, crashPointPeek, reserve, resolveReserved, gcClosed, _sessions: sessions };
 }
 
 module.exports = { makeTokenBridge, games, hasGame, ENGINES };

@@ -173,7 +173,24 @@ function makeTokenService(opts) {
     _blob = (st && typeof st === "object") ? st : {};
     return _blob;
   }
-  function _write() { if (rawPersist && rawPersist.save) { try { rawPersist.save(_read()); } catch (e) {} } }
+  // BATCHED WRITE: doStart/doTopUp mutate TWO slices (bridge sessions + http txHash/bearer/openByPlayer)
+  // that must hit disk together. Persisting them in two separate writeJsonAtomic calls leaves a crash window
+  // (kill -9 between them) where a session is durable but its txHash guard is NOT → restart lets the same
+  // chain tx fund a SECOND session (#139). _batchDepth>0 defers the physical write; the op flushes ONCE at
+  // the end so the bridge + http slices commit atomically (one rename).
+  let _batchDepth = 0, _batchDirty = false;
+  function _write() {
+    if (_batchDepth > 0) { _batchDirty = true; return; }
+    if (rawPersist && rawPersist.save) { try { rawPersist.save(_read()); } catch (e) {} }
+  }
+  function batchWrite(fn) {
+    _batchDepth++;
+    try { return fn(); }
+    finally {
+      _batchDepth--;
+      if (_batchDepth === 0 && _batchDirty) { _batchDirty = false; if (rawPersist && rawPersist.save) { try { rawPersist.save(_read()); } catch (e) {} } }
+    }
+  }
   // Namespaced sub-store handed to a consumer: load()/save() see only their slice.
   function nsPersist(key) {
     if (!rawPersist) return null;
@@ -186,6 +203,12 @@ function makeTokenService(opts) {
   // Rehydrate the HTTP-layer guard state from the durable store.
   const httpPersist = nsPersist("http");
   const usedBuyIns = new Set();
+  // IN-FLIGHT txHash RESERVATION (process-local; not persisted). doStart/doTopUp reserve the txHash here
+  // SYNCHRONOUSLY before the `await verifyBuyIn` RPC and release it in a finally. Without it two concurrent
+  // requests with the SAME txHash both pass `usedBuyIns.has` before either reaches `usedBuyIns.add` (TOCTOU)
+  // → one chain tx funds two sessions / double-credits a top-up (adversarial-suite #4/#5). The reservation
+  // makes the check-then-add atomic across the await.
+  const pendingBuyIns = new Set();
   const tokenForSession = new Map(); // sessionId -> bearer token
   const openByPlayer = new Map();    // player -> sessionId (one open session per player)
   // OUTSTANDING SETTLEMENT OBLIGATION — player(lowercased) -> { netWei, nonce, signature, chainId, contract }.
@@ -253,6 +276,27 @@ function makeTokenService(opts) {
     catch (e) { return false; }
   }
 
+  // Find a CLOSED + SETTLED bridge session for this player against this contract whose settlement we
+  // must re-issue rather than minting a net=0 orphan. Used as a defense-in-depth net for the crash
+  // window where bridge.settle() persisted the closed session but the HTTP-layer obligation record
+  // (pendingSettle + openByPlayer) was lost before saveHttp ran (#140/#145). Picks the most recently
+  // created match so a stale gc-survivor never shadows the live one. Contract-scoped so a request for a
+  // different contract can't surface (and clear) an unrelated lock's settlement.
+  function findSettledSessionForPlayer(player, contract) {
+    const p = String(player).toLowerCase();
+    const c = String(contract || "").toLowerCase();
+    let best = null;
+    try {
+      for (const s of bridge._sessions.values()) {
+        if (!s || !s.closed || !s.settlement) continue;
+        if (String(s.player || "").toLowerCase() !== p) continue;
+        if (c && s.contract && String(s.contract).toLowerCase() !== c) continue;
+        if (!best || (Number(s.createdAt) || 0) > (Number(best.createdAt) || 0)) best = s;
+      }
+    } catch (e) {}
+    return best;
+  }
+
   const bridge = makeTokenBridge({ signer: opts.signer || null, persist: nsPersist("bridge") });
 
   // Per-session rate limit on /play so a malicious flood can't pin the single-instance event loop.
@@ -274,6 +318,11 @@ function makeTokenService(opts) {
 
   async function doStart(body) {
     const player = address(body && body.player, "player");
+    // SERIALIZE per-player so the openByPlayer single-session check + the txHash reservation are atomic
+    // against the `await verifyBuyIn` RPC below. Two concurrent doStart for one wallet (same OR different
+    // txHash) can no longer both pass their checks and mint two sessions (#4 / #16 DUAL-SESSION). Shares
+    // the settle/release per-player chain, so a buy-in can't race a settlement for the same wallet either.
+    return withPlayerLock(player, async () => {
     if (openByPlayer.has(player)) throw new Error("finish your open token session before buying in again");
     const contract = address(body && body.contract, "contract");
     const chainId = Number(body && body.chainId);
@@ -281,7 +330,11 @@ function makeTokenService(opts) {
     const txHash = String((body && body.txHash) || "");
     if (!/^0x[0-9a-fA-F]{64}$/.test(txHash)) throw new Error("buy-in transaction hash is invalid");
     const txKey = txHash.toLowerCase();
-    if (usedBuyIns.has(txKey)) throw new Error("buy-in transaction was already used");
+    if (usedBuyIns.has(txKey) || pendingBuyIns.has(txKey)) throw new Error("buy-in transaction was already used");
+    // RESERVE the txHash NOW, before the await — a second concurrent request (even a different player)
+    // sees it pending and is rejected. Released in finally if we never commit it.
+    pendingBuyIns.add(txKey);
+    try {
     const buyInWei = positiveWei(body && body.buyInWei, "buy-in");
     // Don't grant tokens at a guessed price: if the live ETH/USD hasn't synced yet (cold start),
     // the wei→token valuation would use the stale fallback and inflate the grant (~2x). Make the
@@ -300,6 +353,9 @@ function makeTokenService(opts) {
     const buyInUnits = weiToUsd(lockedWei, ethUsdFn());
     if (!(buyInUnits > 0)) throw new Error("buy-in USD value is invalid");
 
+    // ATOMIC COMMIT: bridge.start persists the session AND saveHttp persists the txHash/bearer/open-slot
+    // in ONE physical write (batchWrite) — no kill-9 window where a durable session lacks its replay guard (#139).
+    return batchWrite(() => {
     const started = bridge.start({ player, chainId, contract, buyInUnits, lockedWei: lockedWei.toString(), now: (opts.now && opts.now()) || 0 });
     usedBuyIns.add(txKey);
     openByPlayer.set(player, started.sessionId);
@@ -311,12 +367,22 @@ function makeTokenService(opts) {
     tokenForSession.set(started.sessionId, sessionToken);
     saveHttp(); // durably record the spent txHash + open session + bearer BEFORE handing it back
     return { ok: true, sessionId: started.sessionId, sessionToken, commit: started.commit, tokens: started.tokens, buyInUnits, games: started.games };
+    });
+    } finally { pendingBuyIns.delete(txKey); } // committed → already in usedBuyIns; failed → freed for retry
+    });
   }
 
   function doPlay(body) {
     const sessionId = String((body && body.sessionId) || "");
     const token = String((body && body.sessionToken) || "");
     if (!token || tokenForSession.get(sessionId) !== token) throw new Error("invalid session token");
+    // A server-paced crash round on THIS session has reserved/pinned its nonce; an instant HTTP /play here
+    // would burn a fresh nonce + spend an unreserved stake mid-round → refuse until the round resolves (#15).
+    if (liveCrashSession(sessionId)) throw new Error("finish your live round before placing another bet");
+    // #10: refuse a token bet while this player has a LIVE blackjack hand funded by this same session —
+    // the hand's frozen funding pool needs those tokens; a concurrent bet would drain them and desync
+    // the hand's debit/credit. (Mirrors the cash-out/recover liveExternal guard.)
+    { const _s = bridge.session(sessionId); if (_s && liveExternal(_s.player)) throw new Error("finish your blackjack hand before placing another bet"); }
     if (!rateOk(sessionId)) throw new Error("too many bets too fast — slow down a moment");
     const r = bridge.play({ sessionId, game: body.game, betUnits: body.betUnits, params: body.params, clientSeed: body.clientSeed });
     return { ok: true, ...r }; // NOTE: never includes serverSeed — only the commit is exposed pre-settle
@@ -338,19 +404,24 @@ function makeTokenService(opts) {
   // blackjackBuyIn, which ACCUMULATES bjLocked) → verify that new lock tx + add its value to the
   // session's principal + tokens. Reuses the SAME on-chain verifier + replay guard as start.
   async function doTopUp(body) {
+    const player = address(body && body.player, "player");
+    // SERIALIZE per-player so the txHash reservation + the await are atomic — two concurrent top-ups with
+    // one chain tx can no longer both credit (#5 TXHASH-TOPUP-RACE, 1000→3000).
+    return withPlayerLock(player, async () => {
     const sessionId = String((body && body.sessionId) || "");
     const token = String((body && body.sessionToken) || "");
     if (!token || tokenForSession.get(sessionId) !== token) throw new Error("invalid session token");
     const s = bridge.session(sessionId);
     if (!s || s.closed) throw new Error("no open session to top up");
-    const player = address(body && body.player, "player");
     if (s.player.toLowerCase() !== player.toLowerCase()) throw new Error("session does not belong to player");
     const contract = address(s.contract, "contract");
     const chainId = Number(s.chainId);
     const txHash = String((body && body.txHash) || "");
     if (!/^0x[0-9a-fA-F]{64}$/.test(txHash)) throw new Error("top-up transaction hash is invalid");
     const txKey = txHash.toLowerCase();
-    if (usedBuyIns.has(txKey)) throw new Error("top-up transaction was already used");
+    if (usedBuyIns.has(txKey) || pendingBuyIns.has(txKey)) throw new Error("top-up transaction was already used");
+    pendingBuyIns.add(txKey); // reserve before the await (same TOCTOU guard as doStart)
+    try {
     const addWei = positiveWei(body && body.buyInWei, "top-up");
     if (opts.ethUsdReady && !opts.ethUsdReady()) throw new Error("price is still syncing — try the top-up again in a few seconds");
     verifyWalletSignature("topup", body, { player, contract, chainId, sessionId, buyInWei: addWei.toString() });
@@ -362,10 +433,14 @@ function makeTokenService(opts) {
       throw new Error("an unexpected on-chain lock was found — top-up blocked for safety");
     const addUnits = weiToUsd(addLockedWei, ethUsdFn());
     if (!(addUnits > 0)) throw new Error("top-up USD value is invalid");
+    return batchWrite(() => { // bridge.topUp save + saveHttp commit atomically (one write, no crash split)
     const r = bridge.topUp({ sessionId, addUnits, addLockedWei: addLockedWei.toString() });
     usedBuyIns.add(txKey);
     saveHttp(); // durably record the spent top-up txHash
     return { ok: true, ...r };
+    });
+    } finally { pendingBuyIns.delete(txKey); }
+    });
   }
 
   function doSettle(body) {
@@ -377,6 +452,7 @@ function makeTokenService(opts) {
     // Serialize per player so a concurrent recover can't interleave with this cash-out (race-minted net=0).
     return withPlayerLock(player, async () => {
       if (liveExternal(player)) throw new Error("finish your blackjack hand before cashing out");
+      if (liveCrashSession(s.id)) throw new Error("finish your live round before cashing out"); // #3: don't close the session under a live crash round
       const settlement = await bridge.settle({ sessionId: s.id });
       openByPlayer.delete(player);
       tokenForSession.delete(s.id);
@@ -421,6 +497,7 @@ function makeTokenService(opts) {
     // Serialize per player so the branch decision + obligation record can't interleave (no race-minted net=0).
     return withPlayerLock(player, async () => {
       if (liveExternal(player)) throw new Error("finish your blackjack hand before recovering");
+      if (liveCrashPlayer(player)) throw new Error("finish your live round before recovering"); // #3
       // (1) Open session → cash it out (returns full bjLocked + its real net).
       const sid = openByPlayer.get(player);
       if (sid) {
@@ -436,7 +513,22 @@ function makeTokenService(opts) {
           // mode:"session" tells the client this cashed out a live session (clear local session too).
           return { ok: true, mode: "session", ...settlement };
         }
-        // The map pointed at a vanished/closed session — clear the stale slot, then fall through.
+        // The slot pointed at an ALREADY-CLOSED session. This is the crash-window case (#209/#215,
+        // #140/#145): bridge.settle() ran + persisted the closed session, but the process died before
+        // recordObligation()+saveHttp() recorded the obligation — so on restart openByPlayer is still
+        // set, the session is closed WITH a real (possibly losing) settlement, and pendingSettle is
+        // empty. We must RE-ISSUE that exact bridge settlement, NEVER fall through to a net=0 orphan
+        // (which would forgive a withheld loss). bridge.settle is idempotent, so this just re-reads it.
+        if (s && s.closed && s.settlement) {
+          const settlement = await bridge.settle({ sessionId: sid }); // idempotent → returns the stored settlement
+          openByPlayer.delete(player);
+          tokenForSession.delete(sid);
+          playBuckets.delete(sid);
+          recordObligation(player, s.contract || contract, s.chainId || chainId, settlement); // pin the recorded loss/net
+          saveHttp();
+          return { ok: true, mode: "session", ...settlement };
+        }
+        // The map pointed at a TRULY vanished session (gc'd, never settled) — clear the stale slot, fall through.
         openByPlayer.delete(player);
         saveHttp();
       }
@@ -451,6 +543,25 @@ function makeTokenService(opts) {
           return { ok: true, mode: "obligation", netWei: String(ob.netWei), nonce: String(ob.nonce), signature: ob.signature, lockedWei: lw };
         }
         pendingSettle.delete(key); saveHttp(); // consumed on-chain → safe to clear, then treat as a fresh lock
+      }
+
+      // (2b) DEFENSE IN DEPTH — no pendingSettle obligation on record, but the bridge still holds a
+      //      closed+SETTLED session for this player+contract. That is a real recorded settlement (the
+      //      crash window where bridge.settle() persisted but pendingSettle+openByPlayer were lost before
+      //      saveHttp — #140/#145). Re-issue THAT settlement (recording the obligation), never a net=0
+      //      orphan that would forgive a withheld loss — UNLESS its nonce is already consumed on-chain
+      //      (then it's truly done → fall through to a fresh net=0 on whatever remains locked).
+      {
+        const settled = findSettledSessionForPlayer(player, contract);
+        if (settled && settled.settlement && settled.settlement.nonce != null) {
+          const stOb = { netWei: settled.settlement.netWei, nonce: settled.settlement.nonce, signature: settled.settlement.signature, chainId: settled.chainId || chainId, contract: settled.contract || contract };
+          if (!(await obligationConsumed(stOb))) {
+            recordObligation(player, stOb.contract, stOb.chainId, stOb);
+            saveHttp();
+            let lw = "0"; try { lw = (await readBjLocked(stOb.contract, stOb.chainId, player)).toString(); } catch (e) {}
+            return { ok: true, mode: "obligation", netWei: String(stOb.netWei), nonce: String(stOb.nonce), signature: stOb.signature, lockedWei: lw };
+          }
+        }
       }
 
       // (3) No live obligation → net=0 release of whatever is locked on the REQUEST's contract.
@@ -489,7 +600,29 @@ function makeTokenService(opts) {
     const key = player.toLowerCase();
     return withPlayerLock(player, async () => {
       await requireOwner(owner, contract, chainId);
-      if (openByPlayer.has(player)) throw new Error("that player has an active session — they cash out themselves");
+      // (#210/#216) NEVER force-release while a blackjack hand is in flight against this player's token
+      // session — settling mid-hand would lock in a debited stake before the hand resolves. Same guard
+      // doSettle/doRelease enforce; admin-release was missing it.
+      if (liveExternal(player)) throw new Error("that player has a live blackjack hand — wait for it to finish");
+      if (liveCrashPlayer(player)) throw new Error("that player has a live round in progress — wait for it to finish"); // #3
+      // (#217) An open-slot pointing at a GENUINELY open session is theirs to cash out — refuse. But a
+      // STALE slot (the session is closed/gone) must NOT block recovery: clear it (re-issuing its
+      // settlement, never a net=0 orphan) exactly like doRelease branch (1), then proceed.
+      const sid = openByPlayer.get(player);
+      if (sid) {
+        const s = bridge.session(sid);
+        if (s && !s.closed) throw new Error("that player has an active session — they cash out themselves");
+        if (s && s.closed && s.settlement) {
+          const settlement = await bridge.settle({ sessionId: sid }); // idempotent → the recorded loss/net
+          openByPlayer.delete(player);
+          tokenForSession.delete(sid);
+          playBuckets.delete(sid);
+          recordObligation(player, s.contract || contract, s.chainId || chainId, settlement);
+          saveHttp();
+          return { ok: true, player, ...settlement };
+        }
+        openByPlayer.delete(player); saveHttp(); // truly vanished slot — clear and continue
+      }
       // Respect any LIVE obligation first (same loss-escape guard as doRelease): if this player settled a
       // session (e.g. at a loss) and never broadcast it, re-issue THAT settlement — never a net=0 that
       // would forgive their loss. Gated by the obligation's OWN nonce, not request params.
@@ -500,6 +633,21 @@ function makeTokenService(opts) {
           return { ok: true, player, netWei: String(ob.netWei), nonce: String(ob.nonce), signature: ob.signature, lockedWei: lw };
         }
         pendingSettle.delete(key); saveHttp();
+      }
+      // Defense in depth (mirrors doRelease 2b): a closed+settled bridge session whose obligation was
+      // lost in the crash window is still a recorded settlement — re-issue it (recording the obligation),
+      // never a net=0 orphan, UNLESS its nonce is already consumed on-chain (then fall through to net=0).
+      {
+        const settled = findSettledSessionForPlayer(player, contract);
+        if (settled && settled.settlement && settled.settlement.nonce != null) {
+          const stOb = { netWei: settled.settlement.netWei, nonce: settled.settlement.nonce, signature: settled.settlement.signature, chainId: settled.chainId || chainId, contract: settled.contract || contract };
+          if (!(await obligationConsumed(stOb))) {
+            recordObligation(player, stOb.contract, stOb.chainId, stOb);
+            saveHttp();
+            let lw = "0"; try { lw = (await readBjLocked(stOb.contract, stOb.chainId, player)).toString(); } catch (e) {}
+            return { ok: true, player, netWei: String(stOb.netWei), nonce: String(stOb.nonce), signature: stOb.signature, lockedWei: lw };
+          }
+        }
       }
       const lockedWei = await readBjLocked(contract, chainId, player);
       if (!(lockedWei > 0n)) throw new Error("no locked funds found for that player");
@@ -606,7 +754,26 @@ function makeTokenService(opts) {
   // cash-out / recover mid-hand (else the settle would lock in a debited stake before the hand resolves).
   function liveExternal(player) { try { return !!(opts.hasLiveExternal && opts.hasLiveExternal(player)); } catch (e) { return false; } }
 
-  return { doStart, doPlay, doTopUp, doSettle, doSession, doRelease, doAdminRelease, doAdminPlayer, status, houseState, verifySession, tokensOf, applyBlackjackNet, liveExternal, _bridge: bridge };
+  // CRASH-ROUND LIVENESS — late-bound predicate(sessionId)->bool injected by the ws crash round-runner
+  // (server.js wires it after both are built). A server-paced crash/plane/swoop/pressure round has PINNED
+  // (reserve) its bet nonce + debited its stake; while it is live we must REFUSE settle/recover/release
+  // (a settle would close the session out from under the pending resolveReserved → "session is closed"
+  // throw in the timer) AND refuse a fresh HTTP /play on the SAME session (would burn a fresh nonce while
+  // the round is mid-flight). No-op when no checker is injected (tests / bridge disabled) → behaviour is
+  // byte-identical to today, so this can never weaken the loss-escape machinery below.
+  let _hasActiveCrashRound = null;
+  function setActiveCrashCheck(fn) { _hasActiveCrashRound = (typeof fn === "function") ? fn : null; }
+  function liveCrashSession(sessionId) { try { return !!(_hasActiveCrashRound && _hasActiveCrashRound(String(sessionId || ""))); } catch (e) { return false; } }
+  function liveCrashPlayer(player) { const sid = openByPlayer.get(String(player)); return sid ? liveCrashSession(sid) : false; }
+
+  // SHUTDOWN/CRASH FLUSH (audit #143/#144): force the current HTTP-guard state (usedBuyIns,
+  // openByPlayer, bearers, pendingSettle) to disk. Every mutating op already saveHttp()'s synchronously,
+  // and the bridge save()'s on every ledger change — so this is a belt-and-suspenders final write the
+  // SIGTERM/SIGINT/unhandledRejection handlers call so the very last state survives a deploy/spin-down.
+  // Synchronous + swallow-on-fail (we're on the way down; never throw out of a signal handler).
+  function flushPersist() { try { saveHttp(); } catch (e) {} }
+
+  return { doStart, doPlay, doTopUp, doSettle, doSession, doRelease, doAdminRelease, doAdminPlayer, status, houseState, verifySession, tokensOf, applyBlackjackNet, liveExternal, setActiveCrashCheck, liveCrashSession, liveCrashPlayer, flushPersist, _bridge: bridge };
 }
 
 // Wire the service onto an Express app, behind a flag. Live demo is untouched.
@@ -761,6 +928,48 @@ if (require.main === module) {
     eq("loss-escape guard: a withheld losing settlement re-issues (never a fresh net=0)",
        lostTokens < 1000 && BigInt(lRel1.netWei) < 0n && lRel2.mode === "obligation" && lRel2.netWei === lRel1.netWei && lRel2.nonce === lRel1.nonce);
 
+    // ── CRASH-WINDOW LOSS-ESCAPE (#209/#215 + #140/#145) ──────────────────────────────────────────
+    // The exact reproduction: bridge.settle() ran + persisted the CLOSED, LOSING session, but the
+    // process died BEFORE recordObligation()+saveHttp() — so on the next process there's a closed+settled
+    // bridge session, openByPlayer STILL points at it (stale, from the last good saveHttp), and
+    // pendingSettle is EMPTY. doRelease must re-issue THAT recorded loss (mode:"session"), NEVER fall
+    // through to a net=0 orphan that would forgive the loss.
+    const cwSvc = makeTokenService({ signer, ethUsd: () => 4000, verifyBuyIn: async (o) => ({ lockedWei: o.buyInWei }), readBjLocked: async () => lockedWei, readNonceUsed: async () => false });
+    const cww = ethers.Wallet.createRandom(); const cwp = cww.address;
+    const cwStart = { player: cwp, contract, chainId, txHash: "0x" + "cd".repeat(32), buyInWei: lockedWei.toString() };
+    cwStart.signature = await cww.signMessage(tokenAuthMessage("start", { player: cwp, contract, chainId, buyInWei: lockedWei.toString() }));
+    const cwStarted = await cwSvc.doStart(cwStart);
+    cwSvc._bridge.session(cwStarted.sessionId).tokens = 700; // a $300 loss
+    // Settle DIRECTLY on the bridge (simulating the crash: bridge persisted the loss, HTTP layer didn't).
+    const cwBridgeStl = await cwSvc._bridge.settle({ sessionId: cwStarted.sessionId });
+    const cwRel = await cwSvc.doRelease({ player: cwp, contract, chainId, signature: await cww.signMessage(tokenAuthMessage("release", { player: cwp, contract, chainId })) });
+    eq("crash-window: closed+settled session re-issues the recorded LOSS (never net=0 orphan)",
+       BigInt(cwBridgeStl.netWei) < 0n && cwRel.mode === "session" && cwRel.netWei === cwBridgeStl.netWei && cwRel.nonce === cwBridgeStl.nonce);
+    // and a repeat call still re-issues the SAME losing settlement (now via the recorded obligation), no net=0
+    const cwRel2 = await cwSvc.doRelease({ player: cwp, contract, chainId, signature: await cww.signMessage(tokenAuthMessage("release", { player: cwp, contract, chainId })) });
+    eq("crash-window: a repeat recover still re-issues the SAME loss (no fresh net=0)",
+       cwRel2.netWei === cwRel.netWei && cwRel2.nonce === cwRel.nonce && BigInt(cwRel2.netWei) < 0n);
+
+    // CRASH-WINDOW where the http open-slot was ALSO lost (only the bridge settlement survives) — exercises
+    // branch (2b): with NO openByPlayer and NO pendingSettle, doRelease must SCAN the bridge, find the
+    // closed+settled losing session, and re-issue THAT settlement (mode:"obligation"), never a net=0 orphan.
+    // We model "only the bridge survived a redeploy" by sharing ONE persist store: settle on a first
+    // service (whose bridge sessions persist) then construct a SECOND service from the same store but
+    // strip the http blob (openByPlayer/pendingSettle) the crash never wrote.
+    const cwStore = { _state: null, load() { return this._state; }, save(s) { this._state = JSON.parse(JSON.stringify(s)); } };
+    const cwA = makeTokenService({ signer, ethUsd: () => 4000, verifyBuyIn: async (o) => ({ lockedWei: o.buyInWei }), readBjLocked: async () => lockedWei, readNonceUsed: async () => false, persist: cwStore });
+    const cw2w = ethers.Wallet.createRandom(); const cw2p = cw2w.address;
+    const cw2Start = { player: cw2p, contract, chainId, txHash: "0x" + "ce".repeat(32), buyInWei: lockedWei.toString() };
+    cw2Start.signature = await cw2w.signMessage(tokenAuthMessage("start", { player: cw2p, contract, chainId, buyInWei: lockedWei.toString() }));
+    const cw2Started = await cwA.doStart(cw2Start);
+    cwA._bridge.session(cw2Started.sessionId).tokens = 650; // a $350 loss
+    const cw2BridgeStl = await cwA._bridge.settle({ sessionId: cw2Started.sessionId }); // bridge persists the closed loss
+    if (cwStore._state) cwStore._state.http = null; // simulate the crash: the http blob (open-slot + obligation) was never written
+    const cwB = makeTokenService({ signer, ethUsd: () => 4000, verifyBuyIn: async (o) => ({ lockedWei: o.buyInWei }), readBjLocked: async () => lockedWei, readNonceUsed: async () => false, persist: cwStore });
+    const cw2Rel = await cwB.doRelease({ player: cw2p, contract, chainId, signature: await cw2w.signMessage(tokenAuthMessage("release", { player: cw2p, contract, chainId })) });
+    eq("crash-window (open-slot+obligation lost): bridge-scan re-issues the recorded loss, never net=0",
+       BigInt(cw2BridgeStl.netWei) < 0n && cw2Rel.mode === "obligation" && cw2Rel.netWei === cw2BridgeStl.netWei && cw2Rel.nonce === cw2BridgeStl.nonce);
+
     // A TRULY orphaned lock (no session, no obligation) still gets a clean net=0 — and re-issues the SAME
     // net=0 (same nonce) on a repeat call, so it can't mint a second distinct claimable settlement.
     const orphSvc = makeTokenService({ signer, ethUsd: () => 4000, verifyBuyIn: async (o) => ({ lockedWei: o.buyInWei }), readBjLocked: async () => lockedWei });
@@ -832,6 +1041,32 @@ if (require.main === module) {
     await admSvc2.doStart(aBody);
     let admActive = 0; try { const s = await ownerW.signMessage(tokenAuthMessage("admin-release", { player: ownerW.address, contract, chainId, target: activeP })); await admSvc2.doAdminRelease({ owner: ownerW.address, contract, chainId, player: activeP, signature: s }); } catch (e) { admActive = 1; }
     eq("admin-release: refuses a player with an ACTIVE session", admActive === 1);
+
+    // (#210/#216) admin-release must REFUSE while the target has a LIVE blackjack hand (else it force-settles
+    // a debited stake mid-hand). Target has no open token session (openByPlayer empty) but hasLiveExternal=true.
+    let _admLive = true;
+    const admLiveSvc = makeTokenService({ signer, ethUsd: () => 4000, verifyBuyIn: async (o) => ({ lockedWei: o.buyInWei }), readBjLocked: async () => lockedWei, readOwner: async () => ({ owner: ownerW.address, treasury: ownerW.address }), hasLiveExternal: () => _admLive });
+    const admLiveTgt = ethers.Wallet.createRandom().address;
+    let admLiveBlocked = 0;
+    try { await admLiveSvc.doAdminRelease({ owner: ownerW.address, contract, chainId, player: admLiveTgt, signature: await ownerW.signMessage(tokenAuthMessage("admin-release", { player: ownerW.address, contract, chainId, target: admLiveTgt })) }); }
+    catch (e) { if (/live blackjack hand/.test(e.message)) admLiveBlocked = 1; }
+    eq("admin-release: refuses a player with a LIVE blackjack hand", admLiveBlocked === 1);
+
+    // (#217) a STALE open-slot (closed+settled session) must NOT permanently block admin-release: it re-issues
+    // the recorded settlement (here a LOSS) rather than throwing "active session" or minting a net=0 orphan.
+    const admStaleStore = { _state: null, load() { return this._state; }, save(s) { this._state = JSON.parse(JSON.stringify(s)); } };
+    const admStaleA = makeTokenService({ signer, ethUsd: () => 4000, verifyBuyIn: async (o) => ({ lockedWei: o.buyInWei }), readBjLocked: async () => lockedWei, readNonceUsed: async () => false, readOwner: async () => ({ owner: ownerW.address, treasury: ownerW.address }), persist: admStaleStore });
+    const asw = ethers.Wallet.createRandom(); const asp = asw.address;
+    const asStart = { player: asp, contract, chainId, txHash: "0x" + "ef".repeat(32), buyInWei: lockedWei.toString() };
+    asStart.signature = await asw.signMessage(tokenAuthMessage("start", { player: asp, contract, chainId, buyInWei: lockedWei.toString() }));
+    const asStarted = await admStaleA.doStart(asStart);
+    admStaleA._bridge.session(asStarted.sessionId).tokens = 700; // a $300 loss
+    const asBridgeStl = await admStaleA._bridge.settle({ sessionId: asStarted.sessionId }); // crash: bridge persisted, http didn't update
+    const admStaleB = makeTokenService({ signer, ethUsd: () => 4000, verifyBuyIn: async (o) => ({ lockedWei: o.buyInWei }), readBjLocked: async () => lockedWei, readNonceUsed: async () => false, readOwner: async () => ({ owner: ownerW.address, treasury: ownerW.address }), persist: admStaleStore });
+    const admStaleRel = await admStaleB.doAdminRelease({ owner: ownerW.address, contract, chainId, player: asp, signature: await ownerW.signMessage(tokenAuthMessage("admin-release", { player: ownerW.address, contract, chainId, target: asp })) });
+    eq("admin-release: stale closed-session re-issues the recorded LOSS (no orphan net=0)",
+       BigInt(asBridgeStl.netWei) < 0n && admStaleRel.netWei === asBridgeStl.netWei && admStaleRel.nonce === asBridgeStl.nonce);
+
     // admin-player diagnostics: sees the live session + its net
     const apSig = await ownerW.signMessage(tokenAuthMessage("admin-player", { player: ownerW.address, contract, chainId, target: activeP }));
     const ap = await admSvc2.doAdminPlayer({ owner: ownerW.address, contract, chainId, player: activeP, signature: apSig });

@@ -62,6 +62,28 @@ function writeJsonAtomic(file, obj) {
   JSON.parse(fs.readFileSync(tmp, "utf8")); // readback: refuse to promote a corrupt temp
   fs.renameSync(tmp, file);
 }
+// Durable-store loader that DISTINGUISHES "file absent" (fresh install → {}) from "file present but
+// CORRUPT" (truncated/garbled JSON). The old `catch { return {} }` silently emptied a corrupt store,
+// which is catastrophic for the money stores: an empty state replays already-spent buy-in txHashes
+// (re-fund) and orphans every open session's recover. So on a parse failure of EXISTING bytes we
+// quarantine the bad file and THROW (label it) — the caller decides whether that's fatal. A missing
+// file (ENOENT) or an empty file is the only "return {}" case.  (audit #142)
+function loadJsonStoreOrThrow(file, label) {
+  let raw;
+  try { raw = fs.readFileSync(file, "utf8"); }
+  catch (e) { if (e && e.code === "ENOENT") return {}; throw e; } // unreadable for any OTHER reason is a real error
+  if (!raw || !raw.trim()) return {}; // empty file == fresh
+  try { return JSON.parse(raw); }
+  catch (e) {
+    // Preserve the corrupt bytes for forensics instead of letting the next save() overwrite them.
+    let saved = "";
+    try { const bak = file + ".corrupt." + Date.now(); fs.copyFileSync(file, bak); saved = " (backed up to " + bak + ")"; } catch (_) {}
+    try { console.error("STATE_FILE_CORRUPT — refusing to boot " + (label || file) + " from unparseable JSON" + saved + ":", (e && e.message) || e); } catch (_) {}
+    const err = new Error("corrupt state file: " + (label || file) + " — " + ((e && e.message) || e));
+    err.code = "STATE_FILE_CORRUPT";
+    throw err;
+  }
+}
 const BJ_BANK_FILE = String(process.env.BJ_BANK_FILE || path.join(__dirname, ".bj-bank.json"));
 const bjPersist = {
   load() { try { return JSON.parse(fs.readFileSync(BJ_BANK_FILE, "utf8")); } catch (e) { return {}; } },
@@ -84,7 +106,12 @@ const { attachTokenBridge } = require("./token-http.js");
 const TOKEN_STATE_FILE = String(process.env.TOKEN_BRIDGE_FILE || path.join(__dirname, ".token-bridge.json"));
 let _tokenPersistWarnedAt = 0;
 const tokenPersist = {
-  load() { try { return JSON.parse(fs.readFileSync(TOKEN_STATE_FILE, "utf8")); } catch (e) { return {}; } },
+  // CORRUPT-STORE SAFETY (audit #142): a parse failure of an EXISTING token-state file must NOT
+  // silently return {} — that would re-fund every already-spent buy-in txHash and orphan every open
+  // session's recover. loadJsonStoreOrThrow returns {} only for a truly absent/empty file and THROWS
+  // on corrupt bytes (after backing them up). We surface that as a hard boot failure below so the
+  // operator fixes the disk instead of the server quietly minting free tokens.
+  load() { return loadJsonStoreOrThrow(TOKEN_STATE_FILE, "token bridge state"); },
   save(obj) {
     try { writeJsonAtomic(TOKEN_STATE_FILE, obj); }
     catch (e) {
@@ -107,6 +134,23 @@ let _tokenStoreWritable = false;
     _tokenStoreWritable = true;
   } catch (e) {
     try { console.error("TOKEN_BRIDGE_STORE_NOT_WRITABLE — point TOKEN_BRIDGE_FILE at a writable (ideally mounted-disk) path or token sessions won't survive a restart:", (e && e.message) || e); } catch (_) {}
+  }
+})();
+// Boot preflight (audit #142): if the token-state file exists but is CORRUPT, REFUSE to start. The
+// bridge's internal load() swallows load errors (try/catch → {}), which on a corrupt store would boot
+// with empty money state — re-funding every spent buy-in txHash and orphaning every open session's
+// recover. We catch that here, FIRST, and crash loudly so the operator restores/clears the disk
+// deliberately instead of the server silently minting free tokens. (Set TOKEN_ALLOW_CORRUPT_RESET=1
+// only to intentionally start fresh from a known-bad file — it's quarantined as .corrupt.* either way.)
+(function preflightTokenStoreParse() {
+  try { loadJsonStoreOrThrow(TOKEN_STATE_FILE, "token bridge state"); }
+  catch (e) {
+    if (e && e.code === "STATE_FILE_CORRUPT" && process.env.TOKEN_ALLOW_CORRUPT_RESET !== "1") {
+      try { console.error("FATAL: token bridge state is corrupt — refusing to boot (would re-fund spent buy-ins). Fix/restore the disk, or set TOKEN_ALLOW_CORRUPT_RESET=1 to start fresh.", (e && e.message) || e); } catch (_) {}
+      process.exit(1);
+    }
+    // Any OTHER read error (e.g. permissions) we let the normal swallowing path handle — it isn't a
+    // silent-empty-of-corrupt-money-state hazard, and the writable preflight above already warns.
   }
 })();
 // Durability diagnostic (exposed on /api/token/status): durable = the state file is on a CONFIGURED
@@ -176,15 +220,46 @@ try { blackjack.setTokenLedger({ tokensOf: tokenSvc.tokensOf, applyNet: tokenSvc
 // (tokenSvc.verifySession). Dormant until ENABLE_TOKEN_BRIDGE=1 — with no open session,
 // verifySession returns null and every cr:start is rejected, so the live demo is untouched.
 const crashWs = makeCrashWs({ bridge: tokenSvc._bridge, verifySession: tokenSvc.verifySession });
+// Wire the crash-round liveness guard into the token service (late-bound: crashWs is built after tokenSvc).
+// doSettle/doRelease/doAdminRelease/doPlay now refuse while a server-paced crash/plane/swoop/pressure round
+// is live on that session — a mid-round cash-out can't close the session out from under the pending
+// resolveReserved, and an instant HTTP bet can't burn a fresh nonce while the round is in flight (#3/#15).
+try { tokenSvc.setActiveCrashCheck((sessionId) => crashWs.hasActiveRound(sessionId)); } catch (e) {}
 
 // LAST-RESORT process guards: even with every engine timer wrapped (blackjack-server.js setT), a
 // stray throw/rejection anywhere must NOT silently exit and wipe the in-memory bank. Log it, flush
 // balances to disk, and keep serving. Also flush on a graceful shutdown (Render sends SIGTERM on
 // deploy/spin-down) so the last balances are persisted.
 function flushBjBank() { try { blackjack.bank && blackjack.bank.flush && blackjack.bank.flush(); } catch (e) {} }
-process.on("uncaughtException", (e) => { try { console.error("uncaughtException:", (e && e.stack) || e); } catch (_) {} flushBjBank(); });
-process.on("unhandledRejection", (e) => { try { console.error("unhandledRejection:", (e && e.stack) || e); } catch (_) {} });
-["SIGTERM", "SIGINT"].forEach((sig) => process.on(sig, () => { flushBjBank(); process.exit(0); }));
+// Flush BOTH money stores on the way down/sideways (audit #143/#144): the GUEST blackjack bank AND the
+// token bridge's HTTP-guard state (spent buy-ins, open sessions, bearers, pendingSettle obligations).
+// The token bridge already persists synchronously on every op, but a final flush guarantees the very
+// last state survives a deploy/spin-down and is cheap + swallow-on-fail.
+function flushTokenStore() { try { tokenSvc && tokenSvc.flushPersist && tokenSvc.flushPersist(); } catch (e) {} }
+function flushAllStores() { flushBjBank(); flushTokenStore(); }
+process.on("uncaughtException", (e) => { try { console.error("uncaughtException:", (e && e.stack) || e); } catch (_) {} flushAllStores(); });
+process.on("unhandledRejection", (e) => { try { console.error("unhandledRejection:", (e && e.stack) || e); } catch (_) {} flushAllStores(); }); // #144: now flushes (was log-only)
+// Graceful shutdown: flush both stores, then stop accepting new connections and drain in-flight
+// requests (server.close), exiting once drained or after a hard 4s cap so Render's SIGKILL never
+// interrupts a half-written response. Guarded so a double signal can't double-exit.
+let _shuttingDown = false;
+// Drain in-flight crash rounds (settle each at its current multiplier into the ledger) BEFORE the flush, so a
+// redeploy never destroys a live round's in-memory timer with the stake reserved but the win/loss un-booked
+// (the house would otherwise eat every in-flight losing bet). Best-effort — never let it block shutdown (#141).
+function drainCrashRounds() { try { crashWs && crashWs.drain && crashWs.drain(); } catch (e) { try { console.error("crash drain failed:", (e && e.stack) || e); } catch (_) {} } }
+function gracefulShutdown() {
+  if (_shuttingDown) return; _shuttingDown = true;
+  drainCrashRounds();   // settle live rounds into the ledger first…
+  flushAllStores();     // …then persist (so the drained settlements are on disk)
+  const done = () => { flushAllStores(); process.exit(0); }; // re-flush after drain in case an in-flight op completed
+  try {
+    let closed = false;
+    server.close(() => { if (!closed) { closed = true; done(); } });
+    const t = setTimeout(() => { if (!closed) { closed = true; done(); } }, 4000); // hard cap so we never hang the deploy
+    if (t && t.unref) t.unref();
+  } catch (e) { done(); }
+}
+["SIGTERM", "SIGINT"].forEach((sig) => process.on(sig, gracefulShutdown));
 
 // SPA-ish fallback so deep links like /?room=12 still serve index.html.
 app.get("*", (req, res) => {
