@@ -27,10 +27,12 @@
   function changed() { try { deps && deps.onChange && deps.onChange(); } catch (e) {} render(); }
 
   // Remember the open session across a page REFRESH so we can reconnect to it (the server still has
-  // it) instead of orphaning a funded session. Scoped to the account so we never restore a session
-  // for a different wallet. (Testnet-acceptable: the bearer in localStorage is bounded by the lock.)
+  // it) instead of orphaning a funded session. Scoped to account + chainId + contract so we never
+  // restore a session for a different wallet OR a different chain/contract (a session is chain-bound;
+  // resuming a Sepolia session on another chain would be wrong). (Testnet-acceptable: the bearer in
+  // localStorage is bounded by the lock.)
   var SKEY = "ctf_token_session";
-  function _saveSession() { try { if (client && client.session) localStorage.setItem(SKEY, JSON.stringify({ sessionId: client.session.sessionId, sessionToken: client.session.sessionToken, account: (deps && deps.account) || "" })); } catch (e) {} }
+  function _saveSession() { try { if (client && client.session) localStorage.setItem(SKEY, JSON.stringify({ sessionId: client.session.sessionId, sessionToken: client.session.sessionToken, account: (deps && deps.account) || "", chainId: (deps && deps.chainId) || null, contract: (deps && deps.contractAddr) || "" })); } catch (e) {} }
   function _clearSession() { try { localStorage.removeItem(SKEY); } catch (e) {} }
   function _loadSession() { try { return JSON.parse(localStorage.getItem(SKEY) || "null"); } catch (e) { return null; } }
 
@@ -47,7 +49,11 @@
       // cleanly if the server lost it (so we never show ghost tokens after a refresh).
       try {
         var saved = _loadSession();
-        if (client && saved && saved.account && d.account && String(saved.account).toLowerCase() === String(d.account).toLowerCase()) {
+        var sameCtx = saved && saved.account && d.account
+          && String(saved.account).toLowerCase() === String(d.account).toLowerCase()
+          && Number(saved.chainId) === Number(d.chainId)
+          && String(saved.contract || "").toLowerCase() === String(d.contractAddr || "").toLowerCase();
+        if (client && sameCtx) {
           client.resume(saved).then(function (okk) { if (okk) changed(); else _clearSession(); }).catch(function () {});
         } else if (saved) { _clearSession(); }
       } catch (e) {}

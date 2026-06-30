@@ -234,11 +234,14 @@
     }
     function takeInsurance(r, seatIdx, take) {
       const s = r.seats[seatIdx]; if (!s || r.phase !== "insurance" || !inRound(s) || s.insuranceDecided) return;
-      s.insuranceDecided = true;
       if (take) {
         const amt = r2(s.baseBet * 0.5);
-        if (bank.get(s.wallet) >= amt) { bank.debit(s.wallet, amt); s.insurance = amt; pushWallet(s.sock, s.wallet); }
+        // check the debit's RETURN: if it fails (can't afford the 0.5x), tell the player instead of
+        // silently skipping insurance — but still mark decided so the phase proceeds (don't strand it).
+        if (bank.debit(s.wallet, amt)) { s.insurance = amt; pushWallet(s.sock, s.wallet); }
+        else err(s.sock, "insufficient", "Not enough balance for insurance", "insurance");
       }
+      s.insuranceDecided = true;
       touch(r);
       if (r.seats.filter(inRound).every((x) => x.insuranceDecided)) closeInsurance(r);
       else broadcastState(r);
