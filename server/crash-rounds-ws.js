@@ -89,6 +89,10 @@ function makeCrashWs(opts) {
     // v3 #1: refuse a crash round while this player has a LIVE blackjack hand on the same token session —
     // reserving the crash stake would drain the hand's frozen funding pool (mirrors the HTTP doPlay guard).
     if (liveExternal(sess.player)) { send(ws, { type: "cr:error", code: "live", message: "finish your blackjack hand before starting a round" }); return; }
+    // v4 #6: cap the clientSeed BEFORE startRound — an unbounded seed is HMAC'd synchronously (provablyfair),
+    // so a multi-MB seed is a CPU-DoS per message (the WS rate limit slows the flood but doesn't bound payload
+    // size). A real seed is well under 256 chars.
+    if (data && data.clientSeed != null && String(data.clientSeed).length > 256) { send(ws, { type: "cr:error", code: "seed", message: "client seed is too long" }); return; }
     const gameKey = (data && CRASH_GAMES[data.gameKey]) ? data.gameKey : "crash";
     try {
       const r = rounds.startRound({
@@ -111,6 +115,9 @@ function makeCrashWs(opts) {
 
   function cashout(ws, data) {
     const roundId = data && data.roundId;
+    // v4 #15: a missing roundId is a malformed message, not a crashed round — give a clear validation error
+    // instead of the misleading "already crashed" (which the undefined-lookup below would otherwise produce).
+    if (!roundId) { send(ws, { type: "cr:error", code: "validation", message: "roundId is required", roundId: roundId }); return; }
     const owner = wsByRound.get(roundId);
     // gone from the map (undefined) ⇒ already settled — busted or cashed out a moment ago.
     if (owner === undefined) { send(ws, { type: "cr:error", code: "cashout", message: "already crashed", roundId: roundId }); return; }

@@ -79,7 +79,15 @@ function makeTokenBridge(opts) {
     const cutoff = nowMs() - SETTLED_TTL_MS;
     let dropped = 0;
     for (const s of sessions.values()) {
-      if (s && s.settlement && (Number(s.createdAt) || 0) > 0 && Number(s.createdAt) < cutoff) { sessions.delete(s.id); dropped++; }
+      if (!s || !((Number(s.createdAt) || 0) > 0) || !(Number(s.createdAt) < cutoff)) continue;
+      // (a) normal: a settled session past its TTL — safe to prune (on-chain bjNonceUsed + txHash guard a re-claim).
+      if (s.settlement) { sessions.delete(s.id); dropped++; continue; }
+      // (b) v4 #16: a LIMBO session (closed, no settlement — the #13 signer-outage path) past its TTL. ONLY prune
+      // it when it's net=ZERO (tokens == buyInUnits): pruning a LOSING limbo would let a later recover() fall
+      // through to the net=0 orphan branch and FORGIVE the loss (reopening the loss-escape #13 closed); pruning a
+      // WINNING limbo would silently forfeit the player's unclaimed winnings. A net=0 limbo is equivalent to the
+      // orphan path either way, so dropping it is harmless and bounds memory for the benign case.
+      if (s.closed && !s.settlement && Math.round((Number(s.tokens) || 0) * 100) === Math.round((Number(s.buyInUnits) || 0) * 100)) { sessions.delete(s.id); dropped++; }
     }
     if (dropped) save();
     return dropped;
@@ -173,11 +181,20 @@ function makeTokenBridge(opts) {
     if (!s) throw new Error("no such session");
     if (s.closed) throw new Error("session is closed");
     if (s.settlement) throw new Error("session already settled");
+    // v4 #1 (inverse of v3 #1): refuse a blackjack debit/credit while a server-paced crash round is LIVE on
+    // this session. The round RESERVED + debited its stake (an open `crashRound` ledger entry) and a pending
+    // resolveReserved will credit it; interleaving a blackjack bet breaks the one-money-activity-at-a-time
+    // invariant. This is a bridge-LOCAL check (the open marker lives in s.bets) so it holds for every caller —
+    // including applyBlackjackNet — and even survives a restart (an orphaned open round still blocks until
+    // it's drained). Mirror of: cr:start refuses during a live BJ hand.
+    if (s.bets.some(function (b) { return b && b.kind === "crashRound" && b.open; })) throw new Error("finish your live crash round before settling blackjack");
     const bet = round2(o.betUnits || 0);
     const payout = round2(Math.max(0, o.payoutUnits || 0));
     if (!(bet >= 0) || !Number.isFinite(bet)) throw new Error("invalid external bet");
     if (!Number.isFinite(payout)) throw new Error("invalid external payout");
-    if (bet > s.tokens + 1e-9) throw new Error("insufficient tokens");
+    // v4 #13: integer-cent overbet check (no float-epsilon) — mirrors play()/reserve(); both bet and tokens
+    // are round2'd to cents so this is exact and never false-rejects a legitimate all-in.
+    if (Math.round(bet * 100) > Math.round(s.tokens * 100)) throw new Error("insufficient tokens");
     const nonce = s.betNonce;
     s.betNonce = nonce + 1;                              // external entries advance the nonce (contiguous ledger)
     s.tokens = round2(s.tokens - bet + payout);
@@ -264,6 +281,15 @@ function makeTokenBridge(opts) {
         // bridge's seed — its fairness is proven by the game's own shoe commit-reveal (b.shoeCommit/ref).
         // We trust the recorded bet/payout for the ledger sum; the signed net is still bounded by lockedWei
         // at settle, so this can never sign a loss past the lock or a win the contract can't pay.
+        ledger = round2(ledger - round2(b.betUnits) + round2(Math.max(0, b.payoutUnits)));
+        continue;
+      }
+      if (b.kind === "crashRound" && b.open) {
+        // v4 #4: a RESERVED-but-unresolved crash round — its cashOutAt isn't known yet (the stake was debited at
+        // reserve; resolveReserved later rewrites this entry with the final params.cashOutAt + payout). Re-deriving
+        // it NOW (empty params) would false-fail mid-round. Trust the recorded provisional bet/payout (payout=0
+        // pre-resolve) like an external entry until it's finalized. A RESOLVED crashRound (open:false, has
+        // params.cashOutAt) falls through and re-derives exactly below.
         ledger = round2(ledger - round2(b.betUnits) + round2(Math.max(0, b.payoutUnits)));
         continue;
       }
@@ -356,7 +382,12 @@ function makeTokenBridge(opts) {
     const nonce = Number(o && o.nonce);
     const rec = s.bets.find((b) => b && b.kind === "crashRound" && Number(b.nonce) === nonce);
     if (!rec) throw new Error("no reserved round at nonce " + nonce);
-    if (!rec.open) return { sessionId: s.id, nonce: nonce, win: rec.win, payoutUnits: rec.payoutUnits, multiplier: rec.multiplier, tokens: s.tokens }; // already resolved
+    if (!rec.open) return { sessionId: s.id, nonce: nonce, win: rec.win, payoutUnits: rec.payoutUnits, multiplier: rec.multiplier, tokens: s.tokens }; // already resolved (idempotent — safe even if the session later closed)
+    // v4 #14: defense-in-depth — refuse to mutate a CLOSED session (a late timer firing after an improper
+    // close shouldn't credit tokens into a settled/closed session). Placed AFTER the idempotent return so a
+    // duplicate resolve of an already-finalized round still returns cleanly. (The live-round guards on
+    // settle/recover normally prevent a session closing under an open round; this is the backstop.)
+    if (s.closed) throw new Error("session is closed");
     const cashOutAt = Number(o && o.cashOutAt);
     const params = { cashOutAt: cashOutAt };
     const res = ENGINES[rec.game].play({ serverSeed: s.serverSeed, clientSeed: rec.clientSeed, nonce: nonce, betUnits: rec.betUnits, params: params });
@@ -369,7 +400,26 @@ function makeTokenBridge(opts) {
     return { sessionId: s.id, nonce: nonce, game: rec.game, win: rec.win, multiplier: rec.multiplier, payoutUnits: payout, outcome: res.outcome, tokens: s.tokens };
   }
 
-  return { start, play, applyExternal, topUp, settle, rederive, verifyRederive, session, games, hasGame, pointPeek, crashPointPeek, reserve, resolveReserved, gcClosed, _sessions: sessions };
+  // v4 #5: a SIGKILL (not the graceful SIGTERM crash-rounds drain) can leave a crashRound RESERVED on disk
+  // (open:true) with NO live timer to resolve it. On the next boot those orphans would (a) block blackjack on
+  // that session forever (the #1 applyExternal guard) and (b) let a NEW cr:start stack a 2nd reservation. Call
+  // this once at startup: resolve each orphan as a BUST (cashOutAt huge → crashPoint < it → payout 0). The stake
+  // was already debited at reserve, so a bust just FINALIZES the interrupted round — deterministic + re-derivable
+  // (the recorded cashOutAt replays to payout 0). Best-effort; never throws.
+  function drainOrphanReservations() {
+    let drained = 0;
+    for (const s of sessions.values()) {
+      if (!s || s.closed) continue;
+      for (const rec of (s.bets || [])) {
+        if (rec && rec.kind === "crashRound" && rec.open) {
+          try { resolveReserved({ sessionId: s.id, nonce: rec.nonce, cashOutAt: 1e9 }); drained++; } catch (e) {}
+        }
+      }
+    }
+    return drained;
+  }
+
+  return { start, play, applyExternal, topUp, settle, rederive, verifyRederive, session, games, hasGame, pointPeek, crashPointPeek, reserve, resolveReserved, drainOrphanReservations, gcClosed, _sessions: sessions };
 }
 
 module.exports = { makeTokenBridge, games, hasGame, ENGINES };

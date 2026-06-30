@@ -30,7 +30,9 @@ const midVerify = tb.verifyRederive({
   buyInUnits: sMid.buyInUnits,
   claimedFinalTokens: sMid.tokens,
 });
-ok("verifyRederive FAILS on open crashRound (needs cashOutAt params)", midVerify.ok === false);
+// v4 #4 FIXED: an OPEN (reserved-but-unresolved) crashRound is now trusted like an external entry until it
+// resolves, so a mid-round verifyRederive PASSES instead of false-failing (ledger: buyIn − stake == tokens).
+ok("verifyRederive PASSES on an open crashRound (v4 #4 — trusted until resolved)", midVerify.ok === true);
 
 const round = cr.active(sid);
 cr.cashOut({ roundId: round.id });

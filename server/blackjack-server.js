@@ -123,7 +123,7 @@
       bank.debit = (w, a) => {
         if (isTokenWallet(w)) {
           if (bank.get(w) < r2(a) - 1e-9) return false;
-          try { TL.applyNet(w, tokenSid(w), r2(a), 0); } catch (e) { return false; }
+          try { TL.applyNet(w, tokenSid(w), r2(a), 0); } catch (e) { try { console.error("[bj] TOKEN DEBIT FAILED — bet NOT placed:", JSON.stringify({ wallet: w, amount: r2(a), session: tokenSid(w), err: (e && e.message) || String(e) })); } catch (e2) {} return false; } // #22: loud log (was silent — the credit path already logs)
           notifyBalance(w); return true;
         }
         return _debit(w, a);
@@ -302,7 +302,10 @@
     /* ---------------- insurance ---------------- */
     function offerInsurance(r) {
       r.phase = "insurance"; r.deadline = now() + T.insurance;
-      for (const s of r.seats) if (inRound(s)) s.insuranceDecided = false;
+      // #12: a seat that ABANDONED before insurance (left during betting/dealing — s.left, still inRound via
+      // baseBet>0) can never tap a decision, so pre-mark it DECIDED here. Otherwise the closeInsurance quorum
+      // (`every(inRound seat decided)`) waits out the full 12s timer. (v3 #34 already handles leaving DURING insurance.)
+      for (const s of r.seats) if (inRound(s)) s.insuranceDecided = !!s.left;
       r.timers.insurance = setT(() => closeInsurance(r), T.insurance);
       broadcast(r, { type: "bj:insurance:offer", roomId: r.id, deadline: r.deadline, maxFactor: 0.5 });
       broadcastState(r);
@@ -326,7 +329,7 @@
       const dealerBJ = Rules.handValue(r.dealer).blackjack;
       for (const s of r.seats) if (inRound(s) && s.insurance > 0) {
         const amount = s.insurance;
-        if (dealerBJ) { const win = r2(amount * 3); bank.credit(s.wallet, win); s.insuranceResult = { taken: true, amount, won: true, payout: win }; pushWallet(s.sock, s.wallet); }
+        if (dealerBJ) { const win = r2(amount * 3); const ok = bank.credit(s.wallet, win); if (ok === false) { try { err(s.sock, "credit_failed", "Your insurance payout couldn't be credited — please contact support (your funds are safe).", "insurance"); } catch (e) {} } s.insuranceResult = { taken: true, amount, won: true, payout: win }; pushWallet(s.sock, s.wallet); } // #9: surface a failed token credit (was silent on the insurance path)
         else s.insuranceResult = { taken: true, amount, won: false, payout: 0 };
         s.insurance = 0; // resolved → no longer an in-flight escrow (closeRoom must not refund a lost insurance)
       }
@@ -614,7 +617,9 @@
         if (!(amt >= config.minBet)) return err(sock, "min_bet", "Minimum bet is $" + config.minBet, "bet");
         if (bank.get(s.wallet) + (s.baseBet || 0) < amt) return err(sock, "insufficient", "Not enough balance", "bet");
         const had = s.baseBet || 0;
-        if (had > 0) bank.credit(s.wallet, had); // refund the old escrow first (re-bet replaces)
+        // #9: if the re-bet refund of the old escrow can't book (e.g. a token applyNet throw), DON'T proceed to
+        // re-debit — that would lose the old escrow. Abort cleanly; the old bet stays intact.
+        if (had > 0 && bank.credit(s.wallet, had) === false) return err(sock, "credit_failed", "Couldn't change your bet right now — try again in a moment.", "bet");
         if (!bank.debit(s.wallet, amt)) { if (had > 0) bank.debit(s.wallet, had); return err(sock, "insufficient", "Not enough balance", "bet"); } // re-debit; never escrow an unfunded bet
         s.baseBet = amt; s.clientSeed = clientSeed || Shuffle.randomSeed(8);
         notifyBalance(s.wallet);
@@ -636,7 +641,9 @@
         if (r.phase !== "betting") return err(sock, "not_betting", "Too late to remove the bet", "bet");
         const s = r.seats[i];
         if (s.baseBet > 0) {
-          bank.credit(s.wallet, s.baseBet); s.baseBet = 0;
+          const ok = bank.credit(s.wallet, s.baseBet); // #9: surface a failed refund instead of silently zeroing the bet
+          if (ok === false) { try { err(sock, "credit_failed", "Couldn't refund your bet right now — try again in a moment.", "bet"); } catch (e) {} return; }
+          s.baseBet = 0;
           notifyBalance(s.wallet);
           r.deadline = now() + T.betting; armBetting(r, T.betting); // fresh window (epoch-guarded)
           touch(r); pushWallet(s.sock, s.wallet); broadcastState(r);
@@ -719,6 +726,7 @@
         if (r.phase !== "insurance") return err(sock, "no_insurance", "Insurance is closed", "insurance");
         return takeInsurance(r, i, !!take);
       }
+      err(sock, "no_seat", "You are not seated", "insurance"); // #23: was a silent drop — mirror action()
     }
 
     /* ---------------- router ---------------- */

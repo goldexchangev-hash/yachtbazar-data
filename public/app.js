@@ -349,10 +349,10 @@
   // mirrors/drives the current game's REAL stake slider so you can change the
   // bet without scrolling. No game logic is duplicated — every change funnels
   // through the same <input> + "input" event the panel already listens to.
-  const BETBAR_GAMES = new Set(["flip", "dice", "twodice", "crash", "pressure", "plane", "slots3d", "fish", "swoop", "fishshooter"]);
+  const BETBAR_GAMES = new Set(["flip", "dice", "twodice", "crash", "pressure", "plane", "slots3d", "fish", "fishshooter"]); // #20: swoop removed — it's hidden/unreachable, so a stale localStorage restore must not show its betbar
   // #26: fishshooter + swoop were in BETBAR_GAMES but missing here → curStakeSlider() returned null → blank
   // mobile stake strip on those channels. Map them to their real sliders (fsh-bet / swoop-bet).
-  const BETBAR_SL = { flip: "house-bet", dice: "dice-stake", twodice: "td-stake", crash: "crash-stake", pressure: "pr-bet-slider", slots3d: "s3d-bet-slider", plane: "plane-a-bet", fish: "fish-bet", fishshooter: "fsh-bet", swoop: "swoop-bet" };
+  const BETBAR_SL = { flip: "house-bet", dice: "dice-stake", twodice: "td-stake", crash: "crash-stake", pressure: "pr-bet-slider", slots3d: "s3d-bet-slider", plane: "plane-a-bet", fish: "fish-bet", fishshooter: "fsh-bet" }; // #20: swoop removed (hidden channel)
   function curStakeSlider() { return $(BETBAR_SL[currentGame]); }
   // Measure the active game's pinned action dock and lift the stake strip above it.
   // Docks vary in height — Plane has TWO buttons, others one — so a fixed offset
@@ -2273,21 +2273,21 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1255").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1256").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   // PlayCanvas engine (~2.2MB) — only loaded when the Sky Swoop channel is first opened.
   function loadPlayCanvasOnce() {
     if (window.pc) return Promise.resolve();
     if (playcanvasLoadPromise) return playcanvasLoadPromise;
-    playcanvasLoadPromise = loadScriptOnce("vendor/playcanvas.min.js?v=1255").catch((e) => { playcanvasLoadPromise = null; throw e; });
+    playcanvasLoadPromise = loadScriptOnce("vendor/playcanvas.min.js?v=1256").catch((e) => { playcanvasLoadPromise = null; throw e; });
     return playcanvasLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=1255"))
+      .then(() => loadScriptOnce("slots.js?v=1256"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -2297,11 +2297,11 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=1255"))
-      .then(() => loadScriptOnce("pressure-render.js?v=1255"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=1255"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=1256"))
+      .then(() => loadScriptOnce("pressure-render.js?v=1256"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=1256"))
       // optional 3D red balloon (Three.js) — falls back to the 2D balloon if it can't load
-      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1255")).catch(() => {}))
+      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1256")).catch(() => {}))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -2353,7 +2353,7 @@
   // play-money balance and enabling/disabling for demo vs real-money mode.
   function ensurePressureReady() {
     ensurePressureLoaded().then(() => {
-      const g = buildPressureGame(); if (!g) return;
+      const g = buildPressureGame(); if (!g || currentGame !== "pressure") return; // #2: user switched away during the async load → don't activate an off-screen canvas
       g.setActive(true);
       g.setEthUsd(ethUsd);
       if (window.TokenMode && TokenMode.active()) {
@@ -2373,10 +2373,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=1255"))
-      .then(() => loadScriptOnce("plane-render.js?v=1255"))
-      .then(() => loadScriptOnce("plane-feed.js?v=1255"))
-      .then(() => loadScriptOnce("plane-ui.js?v=1255"))
+      .then(() => loadScriptOnce("plane-engine.js?v=1256"))
+      .then(() => loadScriptOnce("plane-render.js?v=1256"))
+      .then(() => loadScriptOnce("plane-feed.js?v=1256"))
+      .then(() => loadScriptOnce("plane-ui.js?v=1256"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2426,7 +2426,7 @@
   function ensurePlaneReady() {
     document.body.classList.toggle("plane-real", !demoOn); // hides demo-only UI (2nd bet, feed, autobet)
     ensurePlaneLoaded().then(() => {
-      const g = buildPlaneGame(); if (!g) return;
+      const g = buildPlaneGame(); if (!g || currentGame !== "plane") return; // #2
       g.setActive(true);
       g.setEthUsd(ethUsd);
       if (window.TokenMode && TokenMode.active()) {
@@ -2480,15 +2480,15 @@
   function loadThreeOnce() {
     if (window.THREE) return Promise.resolve();
     if (threeLoadPromise) return threeLoadPromise;
-    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1255").catch((e) => { threeLoadPromise = null; throw e; });
+    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1256").catch((e) => { threeLoadPromise = null; throw e; });
     return threeLoadPromise;
   }
   function ensureSlots3dLoaded() {
     if (window.Slots3D) return Promise.resolve(true);
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("slots3d-engine.js?v=1255"))
-      .then(() => loadScriptOnce("slots3d.js?v=1255"))
+      .then(() => loadScriptOnce("slots3d-engine.js?v=1256"))
+      .then(() => loadScriptOnce("slots3d.js?v=1256"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2515,7 +2515,7 @@
   }
   function ensureSlots3dReady() {
     ensureSlots3dLoaded().then(() => {
-      const g = buildSlots3d(); if (!g) return;
+      const g = buildSlots3d(); if (!g || currentGame !== "slots3d") return; // #2
       g.setActive(true); g.setEthUsd(ethUsd);
       g.setBalance((window.TokenMode && TokenMode.active()) ? TokenMode.tokens() : demoUsd); g.setEnabled(true);
       if (window.TV && currentGame === "slots3d" && !TV._promoPlaying) try { TV.idle(); } catch (e) {}
@@ -2530,8 +2530,8 @@
     if (window.FishTable) return Promise.resolve(true);
     if (fishLoadPromise) return fishLoadPromise;
     fishLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishtable-engine.js?v=1255"))
-      .then(() => loadScriptOnce("fishtable.js?v=1255"))
+      .then(() => loadScriptOnce("fishtable-engine.js?v=1256"))
+      .then(() => loadScriptOnce("fishtable.js?v=1256"))
       .then(() => true)
       .catch((e) => { fishLoadPromise = null; throw e; });
     return fishLoadPromise;
@@ -2576,7 +2576,7 @@
   function ensureFishReady() {
     let kicked = 0;
     const boot = () => ensureFishLoaded().then(() => {
-      const g = buildFish(); if (!g) return;
+      const g = buildFish(); if (!g || currentGame !== "fish") return; // #2: prevent off-screen Reef auto-fire token bets
       g.setActive(true); g.setEthUsd(ethUsd);
       if (window.TokenMode && TokenMode.active()) g.setBalance(TokenMode.tokens()); else if (demoOn) g.setBalance(demoUsd);
       g.setEnabled(true); // play-money: always enabled (kept on wallet connect)
@@ -2614,7 +2614,7 @@
     if (window.SwoopGame) return Promise.resolve(true);
     if (swoopLoadPromise) return swoopLoadPromise;
     swoopLoadPromise = loadPlayCanvasOnce()
-      .then(() => loadScriptOnce("swoop3d.js?v=1255"))
+      .then(() => loadScriptOnce("swoop3d.js?v=1256"))
       .then(() => true)
       .catch((e) => { swoopLoadPromise = null; throw e; });
     return swoopLoadPromise;
@@ -2665,7 +2665,7 @@
   function ensureSwoopReady() {
     let kicked = 0;
     const boot = () => ensureSwoopLoaded().then(() => {
-      const g = buildSwoop(); if (!g) return;
+      const g = buildSwoop(); if (!g || currentGame !== "swoop") return; // #2
       g.setActive(true); g.setEthUsd(ethUsd);
       if (demoOn) g.setBalance(demoUsd); g.setEnabled(true); // play-money: always enabled
       setupSwoopTiltFullscreen();
@@ -2695,8 +2695,8 @@
     if (window.FishShooter) return Promise.resolve(true);
     if (fishshooterLoadPromise) return fishshooterLoadPromise;
     fishshooterLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishshooter-engine.js?v=1255")) // OWN engine (decoupled from Reef's fishtable-engine.js)
-      .then(() => loadScriptOnce("fishshooter.js?v=1255"))
+      .then(() => loadScriptOnce("fishshooter-engine.js?v=1256")) // OWN engine (decoupled from Reef's fishtable-engine.js)
+      .then(() => loadScriptOnce("fishshooter.js?v=1256"))
       .then(() => true)
       .catch((e) => { fishshooterLoadPromise = null; throw e; });
     return fishshooterLoadPromise;
@@ -2746,7 +2746,7 @@
     try { if (window.TV && TV._loadingScreen && !document.querySelector("#fishshooter-stage canvas")) TV._loadingScreen(); } catch (e) {}
     let kicked = 0;
     const boot = () => ensureFishShooterLoaded().then(() => {
-      const g = buildFishShooter(); if (!g) return;
+      const g = buildFishShooter(); if (!g || currentGame !== "fishshooter") return; // #2
       g.setActive(true); g.setEthUsd(ethUsd);
       if (window.TokenMode && TokenMode.active()) g.setBalance(TokenMode.tokens()); else if (demoOn) g.setBalance(demoUsd);
       g.setEnabled(true);
@@ -2781,7 +2781,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1255"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1256"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -2797,7 +2797,7 @@
   }
   function ensureCoinFlip3dReady() {
     loadCoinFlip3dOnce().then(() => {
-      const g = buildCoinFlip3d(); if (!g) return;
+      const g = buildCoinFlip3d(); if (!g || currentGame !== "flip") return; // #2
       g.setActive(true);
       if (window.TV && currentGame === "flip" && !TV._promoPlaying && TV._flipPreview) { try { TV._flipPreview(); } catch (e) {} }
     }).catch(() => {}); // silent — the CSS coin stays as the fallback
@@ -2808,7 +2808,7 @@
   function loadRail3dOnce() {
     if (window.Rail3D) return Promise.resolve(true);
     if (rail3dLoadPromise) return rail3dLoadPromise;
-    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1255")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
+    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1256")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
     return rail3dLoadPromise;
   }
   function buildRail3d() {
@@ -2829,7 +2829,7 @@
   function loadDice2_3dOnce() {
     if (window.TwoDice3D) return Promise.resolve(true);
     if (d2_3dLoadPromise) return d2_3dLoadPromise;
-    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1255")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
+    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1256")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
     return d2_3dLoadPromise;
   }
   function buildDice2_3d() {
@@ -3040,7 +3040,13 @@
       } catch (e) {}
     }
     [slots3dGame, fishGame, fishshooterGame].forEach(function (g) {
-      if (g) try { g.setEthUsd(ethUsd); g.setBalance(bal); } catch (e) {}
+      if (!g) return;
+      try { g.setEthUsd(ethUsd); } catch (e) {}
+      // #17: the ON-SCREEN fish game self-manages its balance with a ~480ms win-reveal hold (it pushes the new
+      // balance after each shot resolves). A forced sync here would clobber that reveal mid-animation. Skip the
+      // balance push only for the ACTIVE fish channel; slots3d (no hold) and off-channel games re-sync normally.
+      var fishHold = (g === fishGame && currentGame === "fish") || (g === fishshooterGame && currentGame === "fishshooter");
+      if (!fishHold) { try { g.setBalance(bal); } catch (e) {} }
     });
     if (swoopGame && demoOn) try { swoopGame.setBalance(demoUsd); } catch (e) {} // swoop is demo-only
   }
@@ -3471,7 +3477,7 @@
       const tableWallet = account || bjGuestId();
       // &r=<nonce> in the QUERY forces a real iframe reload (so the felt re-reads the #bjsession from the
       // hash and re-sends its hello → the server re-binds the table to the token session).
-      let src = "blackjack.html?tv=1&v=1238&r=" + (++bjFeltNonce) + "&guest=" + encodeURIComponent(tableWallet);
+      let src = "blackjack.html?tv=1&v=1256&r=" + (++bjFeltNonce) + "&guest=" + encodeURIComponent(tableWallet);
       let tokenHash = "";
       // PREFERRED real-money path: fund the table with the player's TOKEN session (chips = tokens, no lock step).
       if (account && window.TokenMode && TokenMode.active && TokenMode.active() && TokenMode.session) {
@@ -3788,7 +3794,7 @@
     wrap.append(lbl, rm); ctr.appendChild(wrap);
   }
   window.addEventListener("message", (e) => {
-    const f = $("bj-frame"); if (!f || e.source !== f.contentWindow) return; // only accept dock-state from our felt iframe
+    const f = $("bj-frame"); if (!f || e.source !== f.contentWindow || e.origin !== location.origin) return; // #8: same-origin + exact source only (was source-only)
     const d = e.data; if (!d) return;
     if (d.type === "bj:ready") { return; } // felt booted — it uses its own standalone $1,000 balance, nothing to seed
     if (d.type !== "bj:dock") return;

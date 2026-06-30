@@ -855,7 +855,12 @@
     // _holding stuck true → the cannon fires forever and the Auto button can't stop it.
     window.addEventListener("touchcancel", onUp); window.addEventListener("pointercancel", onUp);
     window.addEventListener("blur", onUp);
-    document.addEventListener("visibilitychange", () => { if (document.hidden) this._holding = false; });
+    // #18: pause the PixiJS ticker (and auto-fire) while the tab is hidden — mirror Fish Shooter. Resume only
+    // if the channel is still active. Otherwise the Reef keeps animating + auto-firing in a backgrounded tab.
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) { this._holding = false; try { this.app.ticker.stop(); } catch (e) {} }
+      else if (this._active) { try { this.app.ticker.start(); } catch (e) {} }
+    });
     const e = this.els;
     if (e.betSlider) e.betSlider.addEventListener("input", () => this.setBet(parseFloat(e.betSlider.value) || MIN_BET));
     if (e.powerUp) e.powerUp.addEventListener("click", () => this.setPower(this.power + 1));
@@ -913,7 +918,9 @@
   /* ---------- host bridge ---------- */
   FishTable.prototype.setActive = function (on) {
     on = !!on; if (on === this._active) return; this._active = on;
-    if (on) { this.app.ticker.start(); } else { this.app.ticker.stop(); this._forceEndBonuses(); try { this._fsExit(this._fsTarget); } catch (e) {} }
+    // #2: when leaving the channel, also clear AUTO + any held fire so the Reef can't keep auto-firing token
+    // bets off-screen (parity with Fish Shooter's teardown). The ticker stop alone doesn't reset those flags.
+    if (on) { this.app.ticker.start(); } else { this.auto = false; this._holding = false; this.app.ticker.stop(); this._forceEndBonuses(); try { this._fsExit(this._fsTarget); } catch (e) {} }
   };
   FishTable.prototype.setEnabled = function (on) { this._enabled = !!on; this._renderHud(); };
   FishTable.prototype.setBalance = function (usd) { this.balance = Math.max(0, Math.round((+usd || 0) * 100) / 100); this._renderHud(); };

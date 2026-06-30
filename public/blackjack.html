@@ -13,7 +13,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Space+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
     <noscript><link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Space+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet" /></noscript>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🃏</text></svg>" />
-    <link rel="stylesheet" href="blackjack.css?v=1197" />
+    <link rel="stylesheet" href="blackjack.css?v=1256" />
     <style>
       /* TV-embed mode (?tv=1): just the felt, scaled to fill the 4:3 screen. The
          betting/action controls render in the PARENT page's dock under the TV, so the
@@ -93,14 +93,14 @@
 
     <div class="toast" id="toast"></div>
 
-    <script src="blackjack-shuffle.js?v=1197"></script>
-    <script src="blackjack-rules.js?v=1197"></script>
-    <script src="blackjack-net.js?v=1197"></script>
-    <script src="blackjack-fx.js?v=1197"></script>
-    <script src="blackjack-sfx.js?v=1197"></script>
-    <script src="vendor/three.min.js?v=1197"></script>
-    <script src="blackjack-gl.js?v=1197"></script>
-    <script src="blackjack-ui.js?v=1198"></script>
+    <script src="blackjack-shuffle.js?v=1256"></script>
+    <script src="blackjack-rules.js?v=1256"></script>
+    <script src="blackjack-net.js?v=1256"></script>
+    <script src="blackjack-fx.js?v=1256"></script>
+    <script src="blackjack-sfx.js?v=1256"></script>
+    <script src="vendor/three.min.js?v=1256"></script>
+    <script src="blackjack-gl.js?v=1256"></script>
+    <script src="blackjack-ui.js?v=1256"></script>
     <script>
       window.addEventListener("DOMContentLoaded", function () {
         var id = function (x) { return document.getElementById(x); };
@@ -133,7 +133,7 @@
           window.addEventListener("resize", fit); fit(); setTimeout(fit, 100);
           // messages from the TV page: mute toggle + control intents from the dock under the TV
           window.addEventListener("message", function (e) {
-            if (e.source && e.source !== window.parent) return; // only honor commands from the host TV page
+            if (!e.source || e.source !== window.parent || e.origin !== window.location.origin) return; // #8: same-origin + exact-parent only (was: a null source slipped through)
             var d = e.data; if (!d) return;
             if (d.type === "bj:active") {
               if (window.BlackjackSFX) window.BlackjackSFX.muted = !d.active;

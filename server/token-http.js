@@ -306,6 +306,9 @@ function makeTokenService(opts) {
   }
 
   const bridge = makeTokenBridge({ signer: opts.signer || null, persist: nsPersist("bridge") });
+  // v4 #5: finalize any crash reservation orphaned by an unclean (SIGKILL) restart — see drainOrphanReservations.
+  // Runs once at service init, after the bridge rehydrates from disk. Best-effort; a no-op when there are none.
+  try { const n = bridge.drainOrphanReservations(); if (n) { try { console.warn("[token] drained " + n + " orphaned crash reservation(s) on boot"); } catch (e) {} } } catch (e) {}
 
   // Per-session rate limit on /play so a malicious flood can't pin the single-instance event loop.
   // Generous token bucket — fish-shooter bills only CONNECTING shots (a few/sec), so legit fast
