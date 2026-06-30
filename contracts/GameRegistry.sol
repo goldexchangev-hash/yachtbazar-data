@@ -25,6 +25,7 @@ contract GameRegistry {
 
     function setActiveGame(address game) external {
         if (msg.sender != owner) revert NotOwner();
+        if (game == address(0)) revert InvalidAddress(); // #28: don't point the site at address(0) (every game lookup would resolve to a dead contract)
         activeGame = game;
         emit ActiveGameSet(game, msg.sender);
     }
