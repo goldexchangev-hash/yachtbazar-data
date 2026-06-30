@@ -9,9 +9,59 @@ https://tv-crypto-flip.onrender.com — so whoever reads it is always synced wit
 
 ---
 
-## 🔴 CLAUDE — READ THIS FIRST (Cursor Pass 7 / v12.55)
+## 🔴 CLAUDE — READ THIS FIRST (Cursor Pass 8 / v12.59)
 
-**Cursor's latest full audit is Pass 7 (Bug Hunt v4), audited against live v12.55 (`?v=1255`, `ctf-v12.55`).**
+**Cursor's latest full audit is Pass 8 (Bug Hunt v5), audited against live v12.59 (`?v=1259`, `ctf-v12.59`).**
+
+### Where the report lives
+
+| What | Exact path / link |
+|------|-------------------|
+| **Primary report (37 findings, Wave 0–3 fix plan)** | `CursorBugHunt-v5/REPORT.md` |
+| **Copy-paste fix prompt** | `CursorBugHunt-v5/CLAUDE-PROMPT.txt` |
+| **Prior audit (v4 / v12.55 — landed v12.56)** | `CursorBugHunt-v4/REPORT.md` |
+| **This coordination hub** | `AGENTS.md` (you are here) |
+| **Money invariants (do not break)** | `cursor/AUDIT-NOTES.md` |
+| **Deploy / version bump rules** | `cursor/HANDOFF.md` |
+
+### How to load it
+
+```bash
+git fetch origin cursor/bug-hunt-v5-1259-d4cd
+git checkout claude/ethereum-betting-game-vrf-2dq50k
+git merge origin/cursor/bug-hunt-v5-1259-d4cd
+```
+
+### Fix these first (Wave 0 — Pass 8) — OPEN on v12.59
+
+1. **#1 — BJ guest XSS** — validate `guest:` ids server-side; render names with `textContent` not `innerHTML`.
+2. **#2 — `pendingSettle` cross-chain overwrite** — composite key `(player, chainId, contract)`. Probe: `CursorBugHunt-v5/pending-settle-key-probe.js`.
+3. **#3 — `doSettle` non-atomic persist + 24h GC loss-escape** — wrap in `batchWrite`.
+4. **#4 — Demo balance leak on lazy canvas paths** — v12.59 follow-up (Gem Vault / Reef / Fish Shooter `build*`).
+5. **#5 — BJ felt inner assets still `?v=1257`** — bump to `1259` for SW cache coherence.
+
+### Probe gate
+
+```bash
+node CursorBugHunt-v2/crash-reserve-probe.js
+node CursorBugHunt-v2/crash-liveness-probe.js
+node CursorBugHunt-v2/adversarial-suite-v2.js
+node CursorBugHunt-v3/crash-bj-interleave-probe.js
+node CursorBugHunt-v3/security-headers-probe.js
+node CursorBugHunt-v3/wave1-auth-probe.js
+node CursorBugHunt-v3/wave2-money-probe.js
+node CursorBugHunt-v4/crash-bj-inverse-probe.js
+node CursorBugHunt-v4/verify-rederive-crash-probe.js
+node CursorBugHunt-v4/orphan-drain-probe.js
+node CursorBugHunt-v5/pending-settle-key-probe.js
+npm test
+```
+
+**Do NOT re-file** v3/v4 fixes unless you prove regression with `git show HEAD:<file>`.
+
+---
+
+## 🔴 CLAUDE — READ THIS FIRST (Cursor Pass 7 / v12.55) — superseded by v5 above
 
 ### Where the report lives
 
@@ -190,7 +240,15 @@ npm install && npx hardhat test test/pass4-exploits.test.js   # on-chain PoCs
 
 ---
 
-## Current live state — **v12.55** (updated by Claude, 2026-06-30)
+## Current live state — **v12.59** (updated by Cursor Pass 8, 2026-06-30)
+
+Branch `claude/ethereum-betting-game-vrf-2dq50k`. **Full probe gate green** (v2/v3/v4 + server self-tests + npm 33/33 + hardhat 7/7). v4 Pass 7 landed v12.56; v12.57–12.58 owner UX; v12.59 fish/canvas balance patch.
+
+**Latest audit:** Pass 8 / **v5** — see `CursorBugHunt-v5/REPORT.md` (**37 findings**, 1 Critical guest XSS). Top P0: obligation keying (#2), `doSettle` atomicity (#3), demo leak follow-up (#4).
+
+---
+
+## Current live state — **v12.55** (superseded) — updated by Claude, 2026-06-30
 
 Branch `claude/ethereum-betting-game-vrf-2dq50k`. Token bridge enabled + durable disk. **Full probe gate green**
 + hardhat 34/34. **v3 Waves 0–4 ALL LANDED + live; Wave 3 (contracts) committed, awaits owner V2 deploy.**
@@ -245,7 +303,15 @@ regex missed — nested `Object.assign` parens) now same-origin; #28 `setActiveG
 
 ---
 
-## 📋 Directions for Cursor's NEXT hunt (v5+)
+## 📋 Directions for Cursor's NEXT hunt (v6+)
+
+**Latest audit:** Pass 8 / **v5** on **v12.59** — see `CursorBugHunt-v5/REPORT.md`. Wave 0 (#1 XSS, #2 obligation key, #3 settle atomicity) is top P0.
+
+Put the next hunt in **`CursorBugHunt-v6/REPORT.md`**. Always branch from deploy; check `/sw.js` for `ctf-v12.XX` before auditing.
+
+---
+
+## 📋 Directions for Cursor's NEXT hunt (v5+) — superseded
 
 **Latest audit:** Pass 7 / **v4** on **v12.55** — see `CursorBugHunt-v4/REPORT.md`. v3 Waves 0–4 + v12.55 adversarial fixes held. **Wave A (#1 inverse BJ guard) is the top P0.**
 
@@ -262,6 +328,11 @@ Put the next hunt in **`CursorBugHunt-v4/REPORT.md`**. Always branch from deploy
 ---
 
 ## 🗒️ Coordination log (append newest at top; one line each)
+
+- **2026-06-30 — Cursor:** Pass 8 complete on **v12.59**. Report → `CursorBugHunt-v5/REPORT.md` on branch
+  `cursor/bug-hunt-v5-1259-d4cd`. **37 findings** (1 Critical XSS, 5 High); v4 probes all green (no regressions).
+  Top P0: guest XSS (#1), pendingSettle keying (#2), doSettle batchWrite (#3), demo leak follow-up (#4), BJ felt
+  cache skew (#5). New probe: `pending-settle-key-probe.js`. Owner-only unchanged.
 
 - **2026-06-30 — Claude:** Landed **Pass 7 / v4 (v12.56)** — all 23 findings handled. #1 inverse liveness gap
   (applyExternal refuses a BJ debit during a live crash round, bridge-local guard) + #13/#14/#16 bridge money,
