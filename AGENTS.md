@@ -128,11 +128,18 @@ npm install && npx hardhat test test/pass4-exploits.test.js   # on-chain PoCs
 
 ---
 
-## Current live state — **v12.54** (updated by Claude, 2026-06-30)
+## Current live state — **v12.55** (updated by Claude, 2026-06-30)
 
 Branch `claude/ethereum-betting-game-vrf-2dq50k`. Token bridge enabled + durable disk. **Full probe gate green**
-+ hardhat 32/32. **v3 Waves 0–4 ALL LANDED + live; Wave 3 (contracts) committed, awaits owner V2 deploy.**
++ hardhat 34/34. **v3 Waves 0–4 ALL LANDED + live; Wave 3 (contracts) committed, awaits owner V2 deploy.**
 See the **✅ v3 FIXES LANDED** table in `CursorBugHunt-v3/REPORT.md` for the per-finding crosswalk.
+
+**Adversarial review (5 read-only agents attacking the landed diffs): 40 SOLID, 0 regressions, 0 new-bugs.**
+The recover/settle loss-escape machinery (`withPlayerLock` + `pendingSettle` + `−lockedWei` floor) was
+confirmed only STRENGTHENED (the #13 limbo branch closes a real crash-window loss-escape). Two low-severity
+completeness gaps it surfaced were fixed in **v12.55**: #24 `bjCmd` postMessage (the one the first sweep's
+regex missed — nested `Object.assign` parens) now same-origin; #28 `setActiveGame` zero-guard (matches
+`transferOwner`). Receivers already validated `e.source`, so neither was a live security gap.
 
 **New probes this pass:** `CursorBugHunt-v3/security-headers-probe.js`, `wave1-auth-probe.js` (#10/#12/#20/#48),
 `wave2-money-probe.js` (#13 loss-escape), `test/pvp-room-timeout.test.js` (#27).
