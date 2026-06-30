@@ -21,6 +21,7 @@
   var client = null;   // TokenBridgeClient
   var enabled = null;  // cached /api/token/status.enabled (null = unknown)
   var busy = false;
+  var stranded = 0;    // USD locked on-chain (bjLocked) with NO active session — set by app.js
 
   function $(id) { return document.getElementById(id); }
   function note(msg, kind) { try { deps && deps.toast ? deps.toast(msg, kind || "ok") : console.log(msg); } catch (e) {} }
@@ -122,6 +123,10 @@
     // Let games push a one-off message through the same toast pipe.
     notify: function (msg, kind) { note(msg, kind); },
 
+    // app.js calls this after reading the connected wallet's on-chain bjLocked: the USD amount that
+    // is locked with no active session (0 = nothing stranded). Drives the "Recover" token-bar state.
+    setStranded: function (usd) { var v = Math.max(0, Math.round((+usd || 0) * 100) / 100); if (v !== stranded) { stranded = v; render(); } },
+
     // Recover a stranded on-chain lock (a session the server forgot) back to your game credits.
     releaseStuck: async function () {
       if (busy) return;
@@ -132,6 +137,7 @@
         var r = await client.releaseStuck();
         var eth = Number(r.lockedWei) / 1e18;
         note("Released " + eth.toFixed(4) + " ETH back to your game credits ✅", "ok");
+        stranded = 0; // recovered — clear the prompt (app.js re-checks bjLocked via onChange too)
         _clearSession();
         changed();
       } catch (e) {
@@ -240,6 +246,17 @@
         '<span class="token-bal">🏠 You\'re the house wallet</span>' +
         '<span class="token-hint">switch to a player account in MetaMask to play with tokens</span>' +
         '</div>';
+    } else if (stranded > 0) {
+      // Stranded-lock recovery for ANY player: bjLocked>0 on-chain with no session. The cross-session
+      // guard blocks a new buy-in until this is cleared, so without this a stranded player could not
+      // play at all — surface a one-tap recover back to their game credits.
+      mount.innerHTML =
+        '<div class="token-bar">' +
+        '<span class="token-bal">🔓 <strong>' + fmt(stranded) + '</strong> locked in a past session</span>' +
+        '<span class="token-hint">recover it back to your game credits</span>' +
+        '<button id="token-recover-btn" class="btn btn-primary token-btn"' + (busy ? " disabled" : "") + '>' + (busy ? "…" : "Recover") + '</button>' +
+        '</div>';
+      var rcb = $("token-recover-btn"); if (rcb) rcb.onclick = function () { TokenMode.releaseStuck(); };
     } else {
       mount.innerHTML =
         '<div class="token-bar">' +
