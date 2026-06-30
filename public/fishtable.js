@@ -549,6 +549,15 @@
     const n = 4 + (this.engine.next() * 3 | 0); const prizes = [];
     for (let i = 0; i < n; i++) prizes.push(pool[(this.engine.next() * pool.length) | 0]);
     this._chest = { cont, chest, lid, glow, title, totalText, prizes, idx: 0, total: 0, phase: "intro", t: 0, popT: 0, unitBet: shot.unitBet, cost: shot.cost };
+    // TOKEN: the server already disbursed the whole chest total into r.tokens, so this.balance is ALREADY the
+    // full amount. HOLD it at the pre-chest value so the win banks one prize at a time as the chest pops
+    // (owner: "add each amount won one at a time so it's fun"). _updateChest's pop loop climbs it; the finale
+    // snaps to the authoritative server total (correcting any drift between the cosmetic prizes and the disbursement).
+    if (this._tokenActive()) {
+      this._chestRevealTarget = root.TokenMode.tokens();
+      this.balance = Math.max(0, Math.round((this._chestRevealTarget - (this._tokenWaveTotal || 0)) * 100) / 100);
+      this._renderHud();
+    }
     const C = root.Chiptune; if (C && C.swoosh) try { C.swoosh(900); } catch (e) {}
   };
   FishTable.prototype._updateChest = function (dt) {
@@ -569,8 +578,10 @@
         w.popT = 0.34;
         const mult = w.prizes[w.idx++]; const amt = Math.round(mult * w.unitBet * 100) / 100;
         w.total = Math.round((w.total + amt) * 100) / 100;
-        // TOKEN: the chest total was already disbursed by the server (in r.tokens); prizes are cosmetic — no local credit.
-        if (!this._tokenActive()) this.balance = Math.round((this.balance + amt) * 100) / 100;
+        // Bank each prize as it pops — DEMO adds real play-money; TOKEN climbs the HELD display balance (set
+        // pre-chest in _treasureChest), and the finale snaps to the authoritative server total. Either way the
+        // coins land one at a time so the win feels earned rather than appearing all at once.
+        this.balance = Math.round((this.balance + amt) * 100) / 100;
         this._won = w.total; this._sesWon = Math.round((this._sesWon + amt) * 100) / 100; this._save(); this._renderHud();
         w.totalText.text = "+$" + w.total.toFixed(2);
         // a coin/gem leaps out of the chest with a floating value
@@ -581,6 +592,9 @@
         const C = root.Chiptune; if (C && C.coin) try { C.coin(); } catch (e) {}
       }
       if (w.idx >= w.prizes.length) { w.phase = "hold"; w.t = 0; w.title.text = "💰 TREASURE  +$" + w.total.toFixed(2);
+        // TOKEN: snap the climbed display to the AUTHORITATIVE server-disbursed total (the cosmetic prizes may
+        // not sum exactly to it). After this the HUD == TokenMode.tokens() and the reveal hold can release.
+        if (this._tokenActive()) { this.balance = (this._chestRevealTarget != null) ? this._chestRevealTarget : root.TokenMode.tokens(); this._chestRevealTarget = null; this._renderHud(); }
         this._shake = Math.max(this._shake, 18);
         const C = root.Chiptune; if (C && C.jackpot) try { C.jackpot(); } catch (e) {}
         if (this.onWin && w.total > Math.max(0.01, w.cost) * 4) try { this.onWin({ profitUsd: w.total, mult: w.total / Math.max(0.01, w.unitBet), bonus: true }); } catch (e) {}
