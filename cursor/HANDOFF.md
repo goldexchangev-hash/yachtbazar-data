@@ -1,7 +1,7 @@
 # Crypto TV — Project Handoff for Cursor (new AI)
 
 > Written 2026-06-30 by the previous AI assistant (Claude). Read this top-to-bottom before touching anything.
-> **Live version: v12.39.** This is a real crypto-betting dApp on **Sepolia testnet** with real (testnet) ETH
+> **Live version: v12.43.** This is a real crypto-betting dApp on **Sepolia testnet** with real (testnet) ETH
 > flowing through it — treat every change to the money path as production code.
 
 ---
@@ -90,6 +90,8 @@ to the server). `public/app.js` is the giant (~5000-line) main controller that w
 
 | Ver | What |
 |---|---|
+| **v12.43** | **Blackjack table segregation** — real-money (token/bridge) players never share a table/shoe with demo/guest players (they share one provably-fair shoe, so others' hit/stand changes your cards). Rooms tagged `kind` real/demo; `openRoom(kind)` + share-link redirect. Adversarially reviewed. |
+| **v12.40–12.42** | Blackjack felt self-heal (it loaded as a guest before the wallet connected → re-inits to the token session); "Lock credits" no longer hits the dead bridge for token players; top token bar live-syncs from the server while at a token table; hid the redundant `guest:… / $X tokens` row under the TV. |
 | **v12.39** | Fixed the CH16 bug below — the felt now reliably binds to the token session (the token session was in the iframe's #hash, which doesn't reload an iframe; added a `&r=<nonce>` query to force a real reload). Token-funded dock now reads "🪙 $X tokens". |
 | **v12.38** | Token bar live-syncs during Fish Shooter/Reef (`TokenMode.paintTokens()`); fixed the buy-in/top-up slider snapping back to default on a background re-render; "Lock $X" → "Buy in $X" wording. |
 | **v12.37** | Plane auto-cash-out moved into the action dock (next to BET A/BET B). |
