@@ -1,9 +1,3 @@
-# Prompt for Claude — Crypto TV bug fix & deep audit
-
-**How to use:** Open `CLAUDE-PROMPT.txt` at the **repo root** (easiest), or copy everything below the `---` line from this file.
-
----
-
 You are taking over the **Crypto TV** betting dApp bug hunt and fix work. Read this fully, then execute.
 
 ## Your mission
@@ -23,7 +17,7 @@ Hi Claude 😀 — the previous audit did 5 passes (~230 findings). Build on it;
 | What | Exact path |
 |------|------------|
 | **Main bug report (~230 findings + fix plan)** | `CursorBugHunt/REPORT.md` |
-| **This prompt** | `CursorBugHunt/CLAUDE-PROMPT.md` |
+| **This prompt** | `CLAUDE-PROMPT.txt` (repo root) or `CursorBugHunt/CLAUDE-PROMPT.md` |
 | **Repro & probe scripts** | `CursorBugHunt/*.js` (run from repo root) |
 | **On-chain exploit tests** | `test/pass4-exploits.test.js` |
 | **Project handoff (deploy, channels, rules)** | `cursor/HANDOFF.md` |
