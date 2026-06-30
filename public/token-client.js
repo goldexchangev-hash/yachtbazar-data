@@ -58,6 +58,30 @@
     return (await f((this.d.apiBase || "") + "/api/token/status", opts)).json();
   };
 
+  // PRE-FLIGHT before ANY on-chain lock (buy-in / top-up). The stranding bug: the lock fires before
+  // the server credits, so if the server then rejects the credit the funds are locked with nothing
+  // backing them. This checks the rejection conditions BEFORE locking: price must be synced, and (for
+  // a top-up) the session must still be alive on the server. If the check can't be confirmed, we
+  // ABORT rather than risk a lock the server would refuse.
+  TokenBridgeClient.prototype._preflight = async function (needSession) {
+    let st = null;
+    try { st = await this.status(); } catch (e) { return { ok: false, error: "Can't reach the server right now — try again in a moment." }; }
+    if (st && st.enabled && st.priceReady === false) return { ok: false, error: "Price is still syncing — try again in a few seconds." };
+    if (needSession && !(await this._sessionAlive())) return { ok: false, error: "invalid session token" };
+    return { ok: true };
+  };
+  TokenBridgeClient.prototype._sessionAlive = async function () {
+    if (!this.session) return false;
+    const f = this.d.fetch || root.fetch.bind(root);
+    const opts = {};
+    try { if (typeof AbortSignal !== "undefined" && AbortSignal.timeout) opts.signal = AbortSignal.timeout(10000); } catch (e) {}
+    try {
+      const res = await f((this.d.apiBase || "") + "/api/token/session?sessionId=" + encodeURIComponent(this.session.sessionId) + "&sessionToken=" + encodeURIComponent(this.session.sessionToken), opts);
+      const j = await res.json().catch(() => null);
+      return !!(j && j.ok);
+    } catch (e) { return false; }
+  };
+
   // RESUME: after a page refresh the in-memory session is gone, but the SERVER may still have it.
   // Verify a saved (sessionId, bearer) and reconnect to it (returns true) instead of orphaning the
   // funded session. Returns false if the server no longer has it (caller clears the stale local copy).
@@ -84,6 +108,12 @@
     const d = this.d;
     const player = d.account, contract = d.contractAddr, chainId = Number(d.chainId);
     const buyInWei = (typeof amountWei === "bigint" ? amountWei : BigInt(amountWei)).toString();
+    // PRE-FLIGHT (prevents fund-stranding): price ready, and NO prior on-chain lock — a buy-in on top
+    // of a stranded/other lock is rejected by the server AFTER the lock, stranding the funds.
+    const pre = await this._preflight(false);
+    if (!pre.ok) throw new Error(pre.error);
+    try { const prior = await d.contract.bjLocked(player); if (prior != null && BigInt(prior) > 0n) throw new Error("You have funds locked on-chain from a past session — tap Recover first, then buy in."); }
+    catch (e) { if (/locked on-chain from a past/.test((e && e.message) || "")) throw e; /* read failed: the lock tx would fail too, so proceed */ }
     // 1) player authorizes the buy-in (off-chain signature — no gas)
     const signature = await d.signer.signMessage(tokenAuthMessage("start", { player, contract, chainId, buyInWei }, d.ethers.getAddress));
     // 2) lock the funds on-chain (the ONE popup) and wait for it to confirm
@@ -110,6 +140,10 @@
   // ACCUMULATES bjLocked, so the server just adds the new value to the live session's tokens.
   TokenBridgeClient.prototype.topUp = async function (amountWei) {
     if (!this.session) throw new Error("no open session");
+    // PRE-FLIGHT (prevents fund-stranding): confirm the session is ALIVE on the server + price ready
+    // BEFORE locking on-chain — a top-up into a dead session locks funds the server then refuses.
+    const pre = await this._preflight(true);
+    if (!pre.ok) throw new Error(pre.error);
     const d = this.d, player = d.account, contract = d.contractAddr, chainId = Number(d.chainId);
     const sessionId = this.session.sessionId;
     const addWei = (typeof amountWei === "bigint" ? amountWei : BigInt(amountWei)).toString();

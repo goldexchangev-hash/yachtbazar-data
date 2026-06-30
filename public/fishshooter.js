@@ -433,7 +433,9 @@
           if (fish.alive) self._catch(fish, shot); // direct-catch FX (local credit + local triggers gated in _catch)
           if (r.outcome && r.outcome.bonus && r.outcome.bonus.total > 0) self._startTokenBonus(r.outcome.bonus, shot); // server-driven wave
         } else if (fish.alive) { fish.flinch = 0.16; fish.spr.tint = 0xff8888; }
-        self._renderHud();
+        // Hold the balance HUD until the catch/blow-up has played out — otherwise the new total
+        // reveals the win/loss before the fish bursts and spoils it.
+        setTimeout(function () { self._renderHud(); }, 480);
       }).catch(function (e) { self.balance = root.TokenMode.tokens(); self._renderHud(); }); // transactional bridge: a rejected bet cost nothing
       return;
     }

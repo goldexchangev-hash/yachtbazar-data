@@ -97,11 +97,12 @@
         var amountWei = deps.usdToWei(usd);
         note("Confirm the buy-in in your wallet (one time)…", "ok");
         var r = await client.buyIn(amountWei);
-        note("Bought in — " + fmt(r.tokens) + " tokens. Play any game, no more popups 🎟️", "ok");
+        note("Bought in — " + fmt(r.tokens) + " tokens. Play any game, no more popups 🪙", "ok");
         changed();
         _saveSession(); // survive a page refresh
       } catch (e) {
         note(friendly(e), "err");
+        try { changed(); } catch (e2) {} // re-check on-chain bjLocked → if a lock stranded, the "Recover" button appears immediately
       } finally { busy = false; render(); }
     },
 
@@ -112,13 +113,19 @@
       if (!this.active()) throw new Error("buy in with tokens first");
       try {
         var r = await client.play(game, stakeUnits, params || {}, clientSeed || randSeed());
-        changed();
+        // Money is settled server-side, but DON'T refresh the balance display yet — that would
+        // reveal the win/loss BEFORE the coin lands / fish bursts and spoil the animation. The game
+        // calls TokenMode.syncBalance() AFTER its reveal so the number lands WITH the visual.
         return r;
       } catch (e) {
         _betError(e);
         throw e; // callers still handle their own UI (re-sync balance, unlock reveal, etc.)
       }
     },
+
+    // Games call this AFTER their reveal/blow-up animation completes to update the balance display
+    // (token bar + game HUDs) — so the number syncs with the visual instead of spoiling it.
+    syncBalance: function () { changed(); },
 
     // Let games push a one-off message through the same toast pipe.
     notify: function (msg, kind) { note(msg, kind); },
@@ -162,10 +169,15 @@
         var amountWei = deps.usdToWei(usd);
         note("Confirm the top-up in your wallet (one time)…", "ok");
         var r = await client.topUp(amountWei);
-        note("Topped up — now " + fmt(r.tokens) + " tokens. Keep playing 🎟️", "ok");
+        note("Topped up — now " + fmt(r.tokens) + " tokens. Keep playing 🪙", "ok");
         changed();
       } catch (e) {
         note(friendly(e), "err");
+        // If the pre-flight found the session dead, clear it (resets to Buy in). Either way re-check
+        // bjLocked so any stranded lock surfaces the "Recover" button immediately.
+        var m = (e && (e.shortMessage || e.message)) || "";
+        if (/invalid session token|no open session|no such session|session is closed/i.test(m)) { try { if (client) { client.session = null; client.tokens = 0; } } catch (e2) {} _clearSession(); }
+        try { changed(); } catch (e2) {}
       } finally { busy = false; render(); }
     },
 
@@ -235,7 +247,7 @@
       var topDflt = Math.min(50, Math.max(1, maxTop));
       mount.innerHTML =
         '<div class="token-bar">' +
-        '<span class="token-bal">🎟️ <strong>' + fmt(TokenMode.tokens()) + '</strong> tokens</span>' +
+        '<span class="token-bal">🪙 <strong>' + fmt(TokenMode.tokens()) + '</strong> tokens</span>' +
         (maxTop >= 1
           ? '<input id="token-topup-slider" class="token-slider" type="range" min="1" max="' + maxTop + '" step="1" value="' + topDflt + '" aria-label="Top-up amount in dollars" />' +
             '<button id="token-topup-btn" class="btn btn-primary token-btn"' + (busy ? " disabled" : "") + '>' + (busy ? "…" : '+ Add <span id="token-topup-val">' + fmt(topDflt) + '</span>') + '</button>'
@@ -270,14 +282,14 @@
       if (maxBal < 1) {
         mount.innerHTML =
           '<div class="token-bar">' +
-          '<span class="token-bal">🎟️ Play with tokens</span>' +
+          '<span class="token-bal">🪙 Play with tokens</span>' +
           '<span class="token-hint">deposit game credits first (the Deposit box), then buy in</span>' +
           '</div>';
       } else {
         var dflt = Math.min(50, maxBal);
         mount.innerHTML =
           '<div class="token-bar">' +
-          '<span class="token-bal">🎟️ Lock <strong id="token-buyin-val">' + fmt(dflt) + '</strong></span>' +
+          '<span class="token-bal">🪙 Lock <strong id="token-buyin-val">' + fmt(dflt) + '</strong></span>' +
           '<input id="token-buyin-slider" class="token-slider" type="range" min="1" max="' + maxBal + '" step="1" value="' + dflt + '" aria-label="Buy-in amount in dollars" />' +
           '<button id="token-buyin-max" class="btn btn-ghost token-btn" type="button">Max</button>' +
           '<button id="token-buyin-btn" class="btn btn-primary token-btn"' + (busy ? " disabled" : "") + '>' + (busy ? "…" : "Buy in") + '</button>' +

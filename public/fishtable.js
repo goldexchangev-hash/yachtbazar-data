@@ -378,7 +378,8 @@
           if (fish.alive) self._catchFish(fish, shot); // catch FX (local credit + triggers gated in _catchFish)
           if (r.outcome && r.outcome.bonus && r.outcome.bonus.total > 0) self._startTokenBonus(r.outcome.bonus, shot); // server-driven bonus
         } else if (fish.alive) { fish.flinch = 0.18; fish.sp.tint = 0xff8888; }
-        self._renderHud();
+        // Hold the balance HUD until the catch/blow-up plays out so it doesn't spoil the result.
+        setTimeout(function () { self._renderHud(); }, 480);
       }).catch(function (e) { self.balance = root.TokenMode.tokens(); self._renderHud(); });
       return;
     }
