@@ -163,6 +163,9 @@
     // player's locked funds back to them. Delegated to the bridge client; the server enforces that
     // the caller is the on-chain owner/treasury, so a non-owner call just fails server-side.
     adminPlayerInfo: function (addr) { if (!client) return Promise.reject(new Error("connect your wallet first")); return client.adminPlayerInfo(addr); },
+    // Owner-authed aggregate house exposure (#20). Returns null (not a throw) when no wallet client is
+    // available so the panel just hides the token row instead of erroring.
+    houseState: function () { if (!client) return Promise.resolve(null); return client.houseState().catch(function () { return null; }); },
     adminRelease: async function (addr) {
       if (busy) throw new Error("busy");
       if (!client) throw new Error("connect your wallet first");

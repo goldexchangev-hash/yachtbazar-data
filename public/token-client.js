@@ -26,7 +26,9 @@
     if (intent === "start") lines.push("Buy-in wei: " + String(o.buyInWei || "0"));
     else if (intent === "settle") lines.push("Session: " + String(o.sessionId || ""));
     else if (intent === "topup") { lines.push("Session: " + String(o.sessionId || "")); lines.push("Buy-in wei: " + String(o.buyInWei || "0")); }
+    else if (intent === "release") { if (o.expiry != null && o.expiry !== "") lines.push("Expiry: " + String(o.expiry)); } // #10 anti-replay
     else if (intent === "admin-release" || intent === "admin-player") lines.push("Target: " + getAddress(o.target));
+    else if (intent === "house-state") lines.push("Expiry: " + String(o.expiry || "0")); // #20 owner-authed house-state
     return lines.join("\n");
   }
 
@@ -77,7 +79,8 @@
     const opts = {};
     try { if (typeof AbortSignal !== "undefined" && AbortSignal.timeout) opts.signal = AbortSignal.timeout(10000); } catch (e) {}
     try {
-      const res = await f((this.d.apiBase || "") + "/api/token/session?sessionId=" + encodeURIComponent(this.session.sessionId) + "&sessionToken=" + encodeURIComponent(this.session.sessionToken), opts);
+      // #21: POST the bearer in the body (never a query string proxies log / browsers cache).
+      const res = await f((this.d.apiBase || "") + "/api/token/session", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sessionId: this.session.sessionId, sessionToken: this.session.sessionToken }), signal: opts.signal });
       const j = await res.json().catch(() => null);
       return !!(j && j.ok);
     } catch (e) { return false; }
@@ -93,7 +96,8 @@
     try { if (typeof AbortSignal !== "undefined" && AbortSignal.timeout) opts.signal = AbortSignal.timeout(10000); } catch (e) {}
     let j = null;
     try {
-      const res = await f((this.d.apiBase || "") + "/api/token/session?sessionId=" + encodeURIComponent(saved.sessionId) + "&sessionToken=" + encodeURIComponent(saved.sessionToken), opts);
+      // #21: POST the bearer in the body, not a query string.
+      const res = await f((this.d.apiBase || "") + "/api/token/session", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sessionId: saved.sessionId, sessionToken: saved.sessionToken }), signal: opts.signal });
       j = await res.json().catch(() => null);
     } catch (e) { return false; }
     if (j && j.ok) {
@@ -183,8 +187,10 @@
   // session view has desynced from the server's. Clears any local session afterward.
   TokenBridgeClient.prototype.releaseStuck = async function () {
     const d = this.d, player = d.account, contract = d.contractAddr, chainId = Number(d.chainId);
-    const signature = await d.signer.signMessage(tokenAuthMessage("release", { player, contract, chainId }, d.ethers.getAddress));
-    const r = await this._post("/api/token/release", { player, contract, chainId, signature });
+    // #10: bind the release to a short Expiry so a captured signature can't be replayed indefinitely.
+    const expiry = Math.floor(Date.now() / 1000) + 300; // 5-min window; the server enforces freshness
+    const signature = await d.signer.signMessage(tokenAuthMessage("release", { player, contract, chainId, expiry }, d.ethers.getAddress));
+    const r = await this._post("/api/token/release", { player, contract, chainId, expiry, signature });
     const tx = await d.contract.settleBlackjack(player, BigInt(r.netWei), BigInt(r.nonce), r.signature, { gasLimit: 200000n });
     const receipt = await tx.wait();
     this.session = null; this.tokens = 0; // the server settled/freed it — drop any stale local session
@@ -202,6 +208,20 @@
     const tx = await d.contract.settleBlackjack(player, BigInt(r.netWei), BigInt(r.nonce), r.signature, { gasLimit: 200000n });
     const receipt = await tx.wait();
     return { ...r, claimTx: receipt.hash };
+  };
+
+  // HOUSE TOOL — owner-authed aggregate exposure (#20). Signs ONCE (bound by an Expiry) and reuses that
+  // payload across panel polls so the owner isn't prompted on every auto-refresh. No tx.
+  TokenBridgeClient.prototype.houseState = async function () {
+    const d = this.d, owner = d.account, contract = d.contractAddr, chainId = Number(d.chainId);
+    const nowSec = Math.floor(Date.now() / 1000);
+    let c = this._houseAuth;
+    if (!c || c.owner !== owner || c.contract !== contract || c.chainId !== chainId || c.expiry <= nowSec + 30) {
+      const expiry = nowSec + 1800; // 30-min window (server caps at 1h) → ~one prompt per half hour
+      const signature = await d.signer.signMessage(tokenAuthMessage("house-state", { player: owner, contract, chainId, expiry }, d.ethers.getAddress));
+      c = this._houseAuth = { owner, contract, chainId, expiry, signature };
+    }
+    return await this._post("/api/token/house-state", { owner, contract, chainId, expiry: c.expiry, signature: c.signature });
   };
 
   // HOUSE TOOL — owner-authed per-player diagnostics (locked principal + open-session state). No tx.
@@ -235,6 +255,11 @@ if (typeof require !== "undefined" && require.main === module) {
   eq("topup message matches server byte-for-byte", client.tokenAuthMessage("topup", topupO, ethers.getAddress) === server.tokenAuthMessage("topup", topupO));
   const admO = { player, contract, chainId: 11155111, target: player };
   eq("admin-release message matches server byte-for-byte", client.tokenAuthMessage("admin-release", admO, ethers.getAddress) === server.tokenAuthMessage("admin-release", admO));
+  const relO = { player, contract, chainId: 11155111, expiry: 1782000000 };
+  eq("release message (with expiry) matches server byte-for-byte", client.tokenAuthMessage("release", relO, ethers.getAddress) === server.tokenAuthMessage("release", relO));
+  eq("release message (no expiry, legacy) matches server byte-for-byte", client.tokenAuthMessage("release", { player, contract, chainId: 11155111 }, ethers.getAddress) === server.tokenAuthMessage("release", { player, contract, chainId: 11155111 }));
+  const hsO = { player, contract, chainId: 11155111, expiry: 1782000000 };
+  eq("house-state message matches server byte-for-byte", client.tokenAuthMessage("house-state", hsO, ethers.getAddress) === server.tokenAuthMessage("house-state", hsO));
   // a signature made client-side recovers to the player on the server's message (round-trip)
   (async () => {
     const w = ethers.Wallet.createRandom();

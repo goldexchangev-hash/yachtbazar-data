@@ -191,13 +191,24 @@ function tokenRpcUrl(chainId) {
 // env still wins (manual override); otherwise we use the live feed, falling back to 3400 only before
 // the first fetch.
 let _ethUsdLive = 0;
+// #37/#38: poll TWO sources so a single-provider outage can't block buy-ins (the cold-start window where
+// ethUsdReady() is false), and so the server's primary source MATCHES the client's (Coinbase spot first,
+// then CoinGecko) — no grant discrepancy under provider divergence. We deliberately do NOT pin a fixed
+// BRIDGE_ETH_USD env on Render (that would break the 1:1 live valuation); this keeps the feed live + resilient.
+async function fetchCoinbaseEthUsd() {
+  const r = await fetch("https://api.coinbase.com/v2/prices/ETH-USD/spot", { signal: AbortSignal.timeout(8000) });
+  const j = await r.json();
+  return Number(j && j.data && j.data.amount);
+}
+async function fetchCoinGeckoEthUsd() {
+  const r = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd", { signal: AbortSignal.timeout(8000) });
+  const j = await r.json();
+  return Number(j && j.ethereum && j.ethereum.usd);
+}
 async function refreshTokenEthUsd() {
-  try {
-    const r = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd", { signal: AbortSignal.timeout(8000) });
-    const j = await r.json();
-    const u = Number(j && j.ethereum && j.ethereum.usd);
-    if (u > 0) _ethUsdLive = u;
-  } catch (e) {}
+  // Coinbase first (matches the client's primary), CoinGecko as fallback. Either landing keeps buy-ins open.
+  try { const u = await fetchCoinbaseEthUsd(); if (u > 0) { _ethUsdLive = u; return; } } catch (e) {}
+  try { const u = await fetchCoinGeckoEthUsd(); if (u > 0) { _ethUsdLive = u; return; } } catch (e) {}
 }
 refreshTokenEthUsd();
 { const t = setInterval(refreshTokenEthUsd, 60000); if (t && t.unref) t.unref(); }
@@ -257,8 +268,12 @@ function flushBjBank() { try { blackjack.bank && blackjack.bank.flush && blackja
 // last state survives a deploy/spin-down and is cheap + swallow-on-fail.
 function flushTokenStore() { try { tokenSvc && tokenSvc.flushPersist && tokenSvc.flushPersist(); } catch (e) {} }
 function flushAllStores() { flushBjBank(); flushTokenStore(); }
-process.on("uncaughtException", (e) => { try { console.error("uncaughtException:", (e && e.stack) || e); } catch (_) {} flushAllStores(); });
-process.on("unhandledRejection", (e) => { try { console.error("unhandledRejection:", (e && e.stack) || e); } catch (_) {} flushAllStores(); }); // #144: now flushes (was log-only)
+// #32: drain in-flight crash rounds into the ledger BEFORE flushing on a fault too (mirrors the SIGTERM
+// path) — an uncaughtException often precedes the process dying, so booking the reserved stakes now keeps
+// the ledger consistent even if Render SIGKILLs us next. drainCrashRounds() is idempotent + best-effort
+// (defined just below), so re-settlement is a no-op if we keep serving. NOTE: drainCrashRounds is hoisted.
+process.on("uncaughtException", (e) => { try { console.error("uncaughtException:", (e && e.stack) || e); } catch (_) {} try { drainCrashRounds(); } catch (_) {} flushAllStores(); });
+process.on("unhandledRejection", (e) => { try { console.error("unhandledRejection:", (e && e.stack) || e); } catch (_) {} try { drainCrashRounds(); } catch (_) {} flushAllStores(); }); // #144/#32: drain + flush (was log-only)
 // Graceful shutdown: flush both stores, then stop accepting new connections and drain in-flight
 // requests (server.close), exiting once drained or after a hard 4s cap so Render's SIGKILL never
 // interrupts a half-written response. Guarded so a double signal can't double-exit.
@@ -325,12 +340,30 @@ function broadcastPlayers() {
   broadcast({ type: "players", players, count: players.length });
 }
 
+// #9/#22: per-connection token-bucket. One socket flooding hello/chat/rooms-updated/bet-proposal makes
+// each broadcast() O(clients) → O(clients²) amplification; it could also storm the crash/bj handlers.
+// Legitimate play is a few msgs/sec (a manual crash tap, a blackjack action), so a generous limit never
+// bites real users and silently drops a flood. In-memory per-socket (no shared map to grow).
+const WS_MSG_RATE = 40;   // sustained messages/sec/connection
+const WS_MSG_BURST = 80;  // bucket capacity (brief bursts ok)
+function wsRateOk(ws) {
+  const now = Date.now();
+  let b = ws._msgBucket;
+  if (!b) { b = ws._msgBucket = { tokens: WS_MSG_BURST, ts: now }; }
+  b.tokens = Math.min(WS_MSG_BURST, b.tokens + ((now - b.ts) / 1000) * WS_MSG_RATE);
+  b.ts = now;
+  if (b.tokens < 1) return false;
+  b.tokens -= 1;
+  return true;
+}
+
 wss.on("connection", (ws) => {
   clients.set(ws, { address: null });
   ws.on("error", () => {}); // ignore abrupt drops instead of crashing
   broadcastPlayers();
 
   ws.on("message", (raw) => {
+    if (!wsRateOk(ws)) return; // #9/#22: drop a per-connection message flood before it can amplify
     let data;
     try {
       data = JSON.parse(raw.toString());
@@ -433,8 +466,19 @@ wss.on("connection", (ws) => {
   ws.on("close", () => {
     blackjack.onClose(ws); // free the player's seat / spectator slot
     crashWs.onClose(ws);   // detach any live crash round (it still settles via the server timer)
-    // Drop any token-session binding so a settled/replaced session can't keep routing this wallet's chips.
-    if (ws.wallet && ws.tokenSession) { try { blackjack.unbindToken(ws.wallet); } catch (e) {} }
+    // Drop any token-session binding so a settled/replaced session can't keep routing this wallet's chips —
+    // BUT only if no OTHER open socket still holds the same wallet's token session (#36 two-tab safety):
+    // closing one tab must not delink token blackjack for another tab sharing the same wallet. (ws is still
+    // in `clients` here; deleted just below — so skip self in the scan.)
+    if (ws.wallet && ws.tokenSession) {
+      let othersHold = false;
+      const w = ws.wallet.toLowerCase();
+      for (const [other, info] of clients) {
+        if (other === ws) continue;
+        if (other.readyState === other.OPEN && other.wallet && other.tokenSession && other.wallet.toLowerCase() === w) { othersHold = true; break; }
+      }
+      if (!othersHold) { try { blackjack.unbindToken(ws.wallet); } catch (e) {} }
+    }
     clients.delete(ws);
     broadcastPlayers();
   });

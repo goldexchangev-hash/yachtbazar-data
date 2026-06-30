@@ -809,7 +809,10 @@
       // which is why "house funds" don't climb while a player is losing tokens mid-session).
       try {
         const tr = $("hs-token-row");
-        const hs = await fetch("/api/token/house-state").then((r) => (r.ok ? r.json() : null)).catch(() => null);
+        // #20: house-state is owner-authenticated now. TokenMode.houseState() signs once (bound by an
+        // expiry) and reuses it across polls, so the owner isn't prompted every refresh; returns null if
+        // there's no wallet/signer (→ hide the row). This panel only renders for the house wallet anyway.
+        const hs = (window.TokenMode && TokenMode.houseState) ? await TokenMode.houseState() : null;
         if (hs && hs.ok && tr) {
           tr.hidden = false;
           $("hs-tok-open").textContent = String(hs.openSessions || 0);

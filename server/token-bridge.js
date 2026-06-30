@@ -115,7 +115,10 @@ function makeTokenBridge(opts) {
     if (!hasGame(o.game)) throw new Error("game not token-enabled: " + o.game);
     const bet = round2(o.betUnits);
     if (!(bet > 0)) throw new Error("bet must be positive");
-    if (bet > s.tokens + 1e-9) throw new Error("insufficient tokens");
+    // #41: integer-cent overbet check (no float-epsilon tolerance) — mirrors reserve()'s hardened test so
+    // a bet can never slip a sub-cent over the balance. Both bet and tokens are already round2'd to cents,
+    // so this is exact and never false-rejects a legitimate all-in.
+    if (Math.round(bet * 100) > Math.round(s.tokens * 100)) throw new Error("insufficient tokens");
 
     const nonce = s.betNonce;                          // PEEK — don't burn the nonce until the bet commits
     const clientSeed = String(o.clientSeed == null ? "" : o.clientSeed);

@@ -55,9 +55,17 @@ function tokenAuthMessage(intent, o) {
   if (intent === "start") lines.push("Buy-in wei: " + String(o.buyInWei || "0"));
   else if (intent === "settle") lines.push("Session: " + String(o.sessionId || ""));
   else if (intent === "topup") { lines.push("Session: " + String(o.sessionId || "")); lines.push("Buy-in wei: " + String(o.buyInWei || "0")); }
+  // release: bind an Expiry (unix seconds) so a CAPTURED release signature can't be replayed
+  // indefinitely (#10). Backward-compatible: the line is only added when an expiry is supplied, so an
+  // old client that omits it still produces the legacy message — and a captured *expiry-bearing*
+  // signature can't be downgraded to the no-expiry message (the signature wouldn't verify).
+  else if (intent === "release") { if (o.expiry != null && o.expiry !== "") lines.push("Expiry: " + String(o.expiry)); }
   // admin-release / admin-player: the OWNER signs (Player: = the owner's own address) and names a
   // TARGET player whose stranded lock to release / inspect. The server re-checks Player == on-chain owner.
   else if (intent === "admin-release" || intent === "admin-player") lines.push("Target: " + address(o.target, "target"));
+  // house-state: the OWNER signs to read the aggregate house exposure. Bound by an Expiry so the client
+  // can sign ONCE and reuse the payload across polls (no per-poll wallet prompt) without it being valid forever (#20).
+  else if (intent === "house-state") lines.push("Expiry: " + String(o.expiry || "0"));
   return lines.join("\n");
 }
 function verifyWalletSignature(intent, body, o) {
@@ -450,9 +458,16 @@ function makeTokenService(opts) {
   function doSettle(body) {
     const player = address(body && body.player, "player");
     const s = bridge.session(body && body.sessionId);
-    if (!s) throw new Error("no such session");
-    if (s.player.toLowerCase() !== player.toLowerCase()) throw new Error("session does not belong to player");
-    verifyWalletSignature("settle", body, { player, contract: s.contract, chainId: s.chainId, sessionId: s.id });
+    // #12: verify the wallet signature BEFORE branching on session existence/ownership, and return a
+    // UNIFORM error for "no session", "bad signature", and "not your session" — so an attacker can't
+    // enumerate sessionIds (which are unguessable random tokens anyway) by error differentiation. The
+    // settle message binds to the session's own contract/chainId/id, so we must look the session up to
+    // rebuild it, but we never reveal which check failed.
+    const bad = () => new Error("settle request could not be verified");
+    if (!s) throw bad();
+    try { verifyWalletSignature("settle", body, { player, contract: s.contract, chainId: s.chainId, sessionId: s.id }); }
+    catch (e) { throw bad(); }
+    if (s.player.toLowerCase() !== player.toLowerCase()) throw bad();
     // Serialize per player so a concurrent recover can't interleave with this cash-out (race-minted net=0).
     return withPlayerLock(player, async () => {
       if (liveExternal(player)) throw new Error("finish your blackjack hand before cashing out");
@@ -495,7 +510,21 @@ function makeTokenService(opts) {
     const contract = address(body && body.contract, "contract");
     const chainId = Number(body && body.chainId);
     if (!Number.isSafeInteger(chainId) || chainId <= 0) throw new Error("chain id is invalid");
-    verifyWalletSignature("release", body, { player, contract, chainId });
+    // #10: anti-replay. When the client supplies an Expiry (current clients always do), the signature is
+    // bound to it and must be fresh (signed within a short window) — a captured release signature can't be
+    // replayed indefinitely. Backward-compatible: a request with no expiry verifies the legacy message
+    // (a captured expiry-bearing signature still can't be downgraded — it wouldn't verify without the line).
+    const expiry = body && body.expiry;
+    if (expiry != null && expiry !== "") {
+      const e = Number(expiry);
+      const nowSec = Math.floor(Date.now() / 1000);
+      if (!Number.isFinite(e) || e <= 0) throw new Error("release authorization is invalid");
+      if (e < nowSec - 60) throw new Error("release authorization expired — tap Recover again");
+      if (e > nowSec + 900) throw new Error("release authorization is not valid yet");
+      verifyWalletSignature("release", body, { player, contract, chainId, expiry: String(e) });
+    } else {
+      verifyWalletSignature("release", body, { player, contract, chainId });
+    }
     if (!opts.signer || !opts.signer.sign) throw new Error("signer not configured");
     const key = player.toLowerCase();
     // Serialize per player so the branch decision + obligation record can't interleave (no race-minted net=0).
@@ -728,6 +757,26 @@ function makeTokenService(opts) {
     };
   }
 
+  // OWNER-AUTHENTICATED house-state read (#20). The aggregate exposure is competitively sensitive, so the
+  // raw houseState() is no longer exposed unauthenticated. The owner signs ONCE (bound by an Expiry up to an
+  // hour out) and the client reuses that payload across panel polls — so this re-verifies the owner
+  // signature + on-chain ownership + a fresh expiry window each call, then returns the same aggregate (still
+  // NO player PII). Stateless: no server-side view-token store to leak or expire.
+  async function doHouseState(body) {
+    const owner = address(body && body.owner, "owner");
+    const contract = address(body && body.contract, "contract");
+    const chainId = Number(body && body.chainId);
+    if (!Number.isSafeInteger(chainId) || chainId <= 0) throw new Error("chain id is invalid");
+    const expiry = Number(body && body.expiry);
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (!Number.isFinite(expiry) || expiry <= 0) throw new Error("house-state authorization is invalid");
+    if (expiry < nowSec - 60) throw new Error("house-state authorization expired");
+    if (expiry > nowSec + 3600) throw new Error("house-state authorization is not valid yet");
+    verifyWalletSignature("house-state", body, { player: owner, contract, chainId, expiry: String(expiry) });
+    await requireOwner(owner, contract, chainId);
+    return houseState();
+  }
+
   // Validate a (sessionId, bearer-token) pair WITHOUT mutating anything — the ws crash
   // round-runner uses this to authorize cr:start over the socket, reusing the exact same
   // per-session bearer the HTTP /play path checks (no second auth scheme). Returns the
@@ -735,7 +784,10 @@ function makeTokenService(opts) {
   function verifySession(sessionId, token) {
     const sid = String(sessionId || "");
     if (!sid || tokenForSession.get(sid) !== String(token || "")) return null;
-    return bridge.session(sid) || null;
+    // #48: a CLOSED session (settled / recovered) must not authorize a fresh cr:start — mirror tokensOf's
+    // !closed filter so the WS crash round-runner can't open a round on a dead session (opaque cr:error).
+    const s = bridge.session(sid);
+    return (s && !s.closed) ? s : null;
   }
 
   // ── TOKEN-FUNDED BLACKJACK bridge (multiplayer blackjack chips = this player's token session) ──
@@ -777,7 +829,7 @@ function makeTokenService(opts) {
   // Synchronous + swallow-on-fail (we're on the way down; never throw out of a signal handler).
   function flushPersist() { try { saveHttp(); } catch (e) {} }
 
-  return { doStart, doPlay, doTopUp, doSettle, doSession, doRelease, doAdminRelease, doAdminPlayer, status, houseState, verifySession, tokensOf, applyBlackjackNet, liveExternal, setActiveCrashCheck, liveCrashSession, liveCrashPlayer, flushPersist, _bridge: bridge };
+  return { doStart, doPlay, doTopUp, doSettle, doSession, doRelease, doAdminRelease, doAdminPlayer, doHouseState, status, houseState, verifySession, tokensOf, applyBlackjackNet, liveExternal, setActiveCrashCheck, liveCrashSession, liveCrashPlayer, flushPersist, _bridge: bridge };
 }
 
 // Wire the service onto an Express app, behind a flag. Live demo is untouched.
@@ -788,21 +840,49 @@ function attachTokenBridge(app, opts) {
   const guard = (res) => { if (!enabled()) { res.status(503).json({ ok: false, error: "token bridge is not enabled" }); return false; } return true; };
   const fail = (res, e) => res.status(400).json({ ok: false, error: (e && e.message) || "request failed" });
 
+  // #11: per-IP token-bucket on the RPC-heavy endpoints (each awaits a chain call) so a single source
+  // can't pin the single-instance event loop with a flood of valid-looking buy-ins/releases. Per-session
+  // /play already has its own limiter; this guards the un-sessioned, chain-touching routes. In-memory.
+  const IP_RATE = Number(opts.ipRatePerSec) || 5;     // sustained req/sec/IP on RPC-heavy routes
+  const IP_BURST = Number(opts.ipBurst) || 15;        // bucket capacity (brief bursts ok)
+  const ipBuckets = new Map();
+  function clientIp(req) {
+    const xff = req && req.headers && req.headers["x-forwarded-for"];
+    if (xff) return String(xff).split(",")[0].trim();   // Render/proxy sets this to the real client IP
+    return (req && (req.ip || (req.socket && req.socket.remoteAddress))) || "unknown";
+  }
+  function ipRateOk(req) {
+    const ip = clientIp(req);
+    const now = Date.now();
+    let b = ipBuckets.get(ip);
+    if (!b) { b = { tokens: IP_BURST, ts: now }; ipBuckets.set(ip, b); }
+    b.tokens = Math.min(IP_BURST, b.tokens + ((now - b.ts) / 1000) * IP_RATE);
+    b.ts = now;
+    if (b.tokens < 1) return false;
+    b.tokens -= 1;
+    return true;
+  }
+  // occasionally evict idle buckets so the Map can't grow unbounded across many client IPs
+  function sweepIpBuckets() { if (ipBuckets.size < 5000) return; const cutoff = Date.now() - 60000; for (const [ip, b] of ipBuckets) if (b.ts < cutoff) ipBuckets.delete(ip); }
+  const ipGuard = (req, res) => { sweepIpBuckets(); if (!ipRateOk(req)) { res.status(429).json({ ok: false, error: "too many requests — slow down a moment" }); return false; } return true; };
+
   app.get("/api/token/status", (req, res) => res.json(enabled() ? svc.status() : {
     ok: true, enabled: false,
     // diagnostics so a stuck setup is self-explaining: which half is missing?
     flagSet: (opts.flag ? !!opts.flag() : (process.env.ENABLE_TOKEN_BRIDGE === "1")),
     signerAddress: (function () { try { return opts.signerAddress ? opts.signerAddress() : null; } catch (e) { return null; } })(),
   }));
-  app.get("/api/token/house-state", (req, res) => { if (!guard(res)) return; try { res.json(svc.houseState()); } catch (e) { fail(res, e); } });
-  app.get("/api/token/session", (req, res) => { if (!guard(res)) return; try { res.json(svc.doSession(req.query || {})); } catch (e) { fail(res, e); } });
-  app.post("/api/token/start", async (req, res) => { if (!guard(res)) return; try { res.json(await svc.doStart(req.body || {})); } catch (e) { fail(res, e); } });
+  // #20: house-state is now OWNER-AUTHENTICATED (POST, signed) — aggregate exposure is no longer open.
+  app.post("/api/token/house-state", async (req, res) => { if (!guard(res) || !ipGuard(req, res)) return; try { res.json(await svc.doHouseState(req.body || {})); } catch (e) { fail(res, e); } });
+  // #21: session resume is POST (bearer in the body, never a query string that proxies log / browsers cache).
+  app.post("/api/token/session", (req, res) => { if (!guard(res)) return; try { res.json(svc.doSession(req.body || {})); } catch (e) { fail(res, e); } });
+  app.post("/api/token/start", async (req, res) => { if (!guard(res) || !ipGuard(req, res)) return; try { res.json(await svc.doStart(req.body || {})); } catch (e) { fail(res, e); } });
   app.post("/api/token/play", (req, res) => { if (!guard(res)) return; try { res.json(svc.doPlay(req.body || {})); } catch (e) { fail(res, e); } });
-  app.post("/api/token/topup", async (req, res) => { if (!guard(res)) return; try { res.json(await svc.doTopUp(req.body || {})); } catch (e) { fail(res, e); } });
-  app.post("/api/token/settle", async (req, res) => { if (!guard(res)) return; try { res.json(await svc.doSettle(req.body || {})); } catch (e) { fail(res, e); } });
-  app.post("/api/token/release", async (req, res) => { if (!guard(res)) return; try { res.json(await svc.doRelease(req.body || {})); } catch (e) { fail(res, e); } });
-  app.post("/api/token/admin-release", async (req, res) => { if (!guard(res)) return; try { res.json(await svc.doAdminRelease(req.body || {})); } catch (e) { fail(res, e); } });
-  app.post("/api/token/admin-player", async (req, res) => { if (!guard(res)) return; try { res.json(await svc.doAdminPlayer(req.body || {})); } catch (e) { fail(res, e); } });
+  app.post("/api/token/topup", async (req, res) => { if (!guard(res) || !ipGuard(req, res)) return; try { res.json(await svc.doTopUp(req.body || {})); } catch (e) { fail(res, e); } });
+  app.post("/api/token/settle", async (req, res) => { if (!guard(res) || !ipGuard(req, res)) return; try { res.json(await svc.doSettle(req.body || {})); } catch (e) { fail(res, e); } });
+  app.post("/api/token/release", async (req, res) => { if (!guard(res) || !ipGuard(req, res)) return; try { res.json(await svc.doRelease(req.body || {})); } catch (e) { fail(res, e); } });
+  app.post("/api/token/admin-release", async (req, res) => { if (!guard(res) || !ipGuard(req, res)) return; try { res.json(await svc.doAdminRelease(req.body || {})); } catch (e) { fail(res, e); } });
+  app.post("/api/token/admin-player", async (req, res) => { if (!guard(res) || !ipGuard(req, res)) return; try { res.json(await svc.doAdminPlayer(req.body || {})); } catch (e) { fail(res, e); } });
   return svc;
 }
 
