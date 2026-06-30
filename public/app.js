@@ -2268,21 +2268,21 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1238").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1239").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   // PlayCanvas engine (~2.2MB) — only loaded when the Sky Swoop channel is first opened.
   function loadPlayCanvasOnce() {
     if (window.pc) return Promise.resolve();
     if (playcanvasLoadPromise) return playcanvasLoadPromise;
-    playcanvasLoadPromise = loadScriptOnce("vendor/playcanvas.min.js?v=1238").catch((e) => { playcanvasLoadPromise = null; throw e; });
+    playcanvasLoadPromise = loadScriptOnce("vendor/playcanvas.min.js?v=1239").catch((e) => { playcanvasLoadPromise = null; throw e; });
     return playcanvasLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=1238"))
+      .then(() => loadScriptOnce("slots.js?v=1239"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -2292,11 +2292,11 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=1238"))
-      .then(() => loadScriptOnce("pressure-render.js?v=1238"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=1238"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=1239"))
+      .then(() => loadScriptOnce("pressure-render.js?v=1239"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=1239"))
       // optional 3D red balloon (Three.js) — falls back to the 2D balloon if it can't load
-      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1238")).catch(() => {}))
+      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1239")).catch(() => {}))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -2367,10 +2367,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=1238"))
-      .then(() => loadScriptOnce("plane-render.js?v=1238"))
-      .then(() => loadScriptOnce("plane-feed.js?v=1238"))
-      .then(() => loadScriptOnce("plane-ui.js?v=1238"))
+      .then(() => loadScriptOnce("plane-engine.js?v=1239"))
+      .then(() => loadScriptOnce("plane-render.js?v=1239"))
+      .then(() => loadScriptOnce("plane-feed.js?v=1239"))
+      .then(() => loadScriptOnce("plane-ui.js?v=1239"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2471,15 +2471,15 @@
   function loadThreeOnce() {
     if (window.THREE) return Promise.resolve();
     if (threeLoadPromise) return threeLoadPromise;
-    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1238").catch((e) => { threeLoadPromise = null; throw e; });
+    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1239").catch((e) => { threeLoadPromise = null; throw e; });
     return threeLoadPromise;
   }
   function ensureSlots3dLoaded() {
     if (window.Slots3D) return Promise.resolve(true);
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("slots3d-engine.js?v=1238"))
-      .then(() => loadScriptOnce("slots3d.js?v=1238"))
+      .then(() => loadScriptOnce("slots3d-engine.js?v=1239"))
+      .then(() => loadScriptOnce("slots3d.js?v=1239"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2521,8 +2521,8 @@
     if (window.FishTable) return Promise.resolve(true);
     if (fishLoadPromise) return fishLoadPromise;
     fishLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishtable-engine.js?v=1238"))
-      .then(() => loadScriptOnce("fishtable.js?v=1238"))
+      .then(() => loadScriptOnce("fishtable-engine.js?v=1239"))
+      .then(() => loadScriptOnce("fishtable.js?v=1239"))
       .then(() => true)
       .catch((e) => { fishLoadPromise = null; throw e; });
     return fishLoadPromise;
@@ -2605,7 +2605,7 @@
     if (window.SwoopGame) return Promise.resolve(true);
     if (swoopLoadPromise) return swoopLoadPromise;
     swoopLoadPromise = loadPlayCanvasOnce()
-      .then(() => loadScriptOnce("swoop3d.js?v=1238"))
+      .then(() => loadScriptOnce("swoop3d.js?v=1239"))
       .then(() => true)
       .catch((e) => { swoopLoadPromise = null; throw e; });
     return swoopLoadPromise;
@@ -2686,8 +2686,8 @@
     if (window.FishShooter) return Promise.resolve(true);
     if (fishshooterLoadPromise) return fishshooterLoadPromise;
     fishshooterLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishshooter-engine.js?v=1238")) // OWN engine (decoupled from Reef's fishtable-engine.js)
-      .then(() => loadScriptOnce("fishshooter.js?v=1238"))
+      .then(() => loadScriptOnce("fishshooter-engine.js?v=1239")) // OWN engine (decoupled from Reef's fishtable-engine.js)
+      .then(() => loadScriptOnce("fishshooter.js?v=1239"))
       .then(() => true)
       .catch((e) => { fishshooterLoadPromise = null; throw e; });
     return fishshooterLoadPromise;
@@ -2772,7 +2772,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1238"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1239"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -2799,7 +2799,7 @@
   function loadRail3dOnce() {
     if (window.Rail3D) return Promise.resolve(true);
     if (rail3dLoadPromise) return rail3dLoadPromise;
-    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1238")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
+    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1239")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
     return rail3dLoadPromise;
   }
   function buildRail3d() {
@@ -2820,7 +2820,7 @@
   function loadDice2_3dOnce() {
     if (window.TwoDice3D) return Promise.resolve(true);
     if (d2_3dLoadPromise) return d2_3dLoadPromise;
-    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1238")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
+    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1239")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
     return d2_3dLoadPromise;
   }
   function buildDice2_3d() {
@@ -3390,6 +3390,9 @@
       return String(u.searchParams.get("guest") || "").toLowerCase() === String(wallet).toLowerCase();
     } catch (e) { return false; }
   }
+  let bjFeltNonce = 0; // bumps each felt (re)load so the iframe TRULY reloads — changing only the #hash
+                       // (where the token session lives) does NOT reload an iframe, so the felt would keep
+                       // its old hash-less connection and never bind to the token session (the CH16 bug).
   function ensureBlackjackReady() {
     const f = $("bj-frame");
     if (f && f.getAttribute("src") && account && !bjFrameMatchesWallet(f, account)) f.removeAttribute("src");
@@ -3406,7 +3409,9 @@
     if (f && !f.getAttribute("src")) {
       // No &bal= seed — the table starts from its own server default ($1,000), NOT the demo balance.
       const tableWallet = account || bjGuestId();
-      let src = "blackjack.html?tv=1&v=1236&guest=" + encodeURIComponent(tableWallet);
+      // &r=<nonce> in the QUERY forces a real iframe reload (so the felt re-reads the #bjsession from the
+      // hash and re-sends its hello → the server re-binds the table to the token session).
+      let src = "blackjack.html?tv=1&v=1238&r=" + (++bjFeltNonce) + "&guest=" + encodeURIComponent(tableWallet);
       let tokenHash = "";
       // PREFERRED real-money path: fund the table with the player's TOKEN session (chips = tokens, no lock step).
       if (account && window.TokenMode && TokenMode.active && TokenMode.active() && TokenMode.session) {
@@ -3538,7 +3543,11 @@
     const balEl = $("bj-bal");
     if (!balEl) return;
     const tableUsd = state && state.balance != null ? Number(state.balance) : 0;
-    if (tableUsd > 0) balEl.textContent = "💰 Table $" + tableUsd.toLocaleString();
+    const tokenFunded = !!(window.TokenMode && TokenMode.active && TokenMode.active());
+    if (tokenFunded) {
+      // Token-funded table: the chips ARE your tokens — say so plainly (no "Table"/"Credits" confusion).
+      balEl.textContent = "🪙 $" + tableUsd.toLocaleString() + " tokens";
+    } else if (tableUsd > 0) balEl.textContent = "💰 Table $" + tableUsd.toLocaleString();
     else balEl.textContent = "💳 Credits " + usd(weiToUsd(gameWei));
     const reload = $("bj-reload");
     if (reload) reload.textContent = tableUsd > 0 ? "Lock more" : "Lock credits";
