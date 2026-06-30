@@ -15,6 +15,7 @@ contract GameRegistry {
     event OwnerTransferred(address indexed newOwner);
 
     error NotOwner();
+    error InvalidAddress(); // #28: guard against bricking the registry by transferring to address(0)
 
     constructor(address _owner, address _initialGame) {
         owner = _owner == address(0) ? msg.sender : _owner;
@@ -30,6 +31,7 @@ contract GameRegistry {
 
     function transferOwner(address newOwner) external {
         if (msg.sender != owner) revert NotOwner();
+        if (newOwner == address(0)) revert InvalidAddress(); // #28: a typo to the zero address would permanently brick the registry (no recovery)
         owner = newOwner;
         emit OwnerTransferred(newOwner);
     }

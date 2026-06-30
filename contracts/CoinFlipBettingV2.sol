@@ -238,6 +238,11 @@ contract CoinFlipBettingV2 {
     /// @notice Idle window before a host table can be closed + refunded by anyone.
     uint256 public constant HOST_TIMEOUT = 5 minutes;
 
+    /// @notice #27: idle window before an OPEN PvP room that nobody joined can be force-closed (escrow
+    ///         refunded to the creator) by ANYONE — so an abandoned room can't lock the creator's stake
+    ///         forever if they go offline. cancelRoom (creator-only) still works at any time.
+    uint256 public constant PVP_ROOM_TIMEOUT = 24 hours;
+
     uint256 public nextHostRoomId = 1;
     mapping(uint256 => HostRoom) public hostRooms;
     uint256[] private _hostRoomIds;
@@ -308,6 +313,7 @@ contract CoinFlipBettingV2 {
     error BetIsZero();
     error InsufficientBalance();
     error RoomNotOpen();
+    error RoomNotStale(); // #27: force-close attempted before PVP_ROOM_TIMEOUT elapsed
     error CannotJoinOwnRoom();
     error NotRoomCreator();
     error NothingToWithdraw();
@@ -437,6 +443,23 @@ contract CoinFlipBettingV2 {
         _removeOpenRoom(roomId);
         openRoomsOf[room.creator]--;
         balances[room.player1] += room.betAmount; // refund
+        emit RoomCancelled(roomId);
+    }
+
+    /// @notice #27: close an OPEN room that nobody joined for PVP_ROOM_TIMEOUT and refund the creator's
+    ///         escrow. Callable by ANYONE (creator-independent), mirroring closeHostRoom's anti-stranding
+    ///         pattern — an abandoned room can no longer lock the creator's stake forever. The refund logic
+    ///         is identical to cancelRoom; only the gate differs (elapsed timeout instead of a creator check).
+    function forceCloseStaleRoom(uint256 roomId) external {
+        Room storage room = rooms[roomId];
+        if (room.id == 0) revert UnknownRoom();
+        if (room.status != Status.Open) revert RoomNotOpen();
+        if (block.timestamp < room.createdAt + PVP_ROOM_TIMEOUT) revert RoomNotStale();
+
+        room.status = Status.Cancelled;
+        _removeOpenRoom(roomId);
+        openRoomsOf[room.creator]--;
+        balances[room.player1] += room.betAmount; // refund the creator's escrow (room.player1 == creator)
         emit RoomCancelled(roomId);
     }
 
