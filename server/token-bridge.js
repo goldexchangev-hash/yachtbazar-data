@@ -350,6 +350,7 @@ function makeTokenBridge(opts) {
     if (!Number.isFinite(payout)) throw new Error("resolve rejected: non-finite payout");
     s.tokens = round2(s.tokens + payout);     // stake already debited at reserve → only credit the gross
     rec.open = false; rec.params = params; rec.payoutUnits = payout; rec.win = !!res.win; rec.multiplier = res.multiplier;
+    rec.outcome = res.outcome;                // persist {crashPoint,...} so the ledger entry exposes the settled point (audit + paced==ledger check)
     save();
     return { sessionId: s.id, nonce: nonce, game: rec.game, win: rec.win, multiplier: rec.multiplier, payoutUnits: payout, outcome: res.outcome, tokens: s.tokens };
   }

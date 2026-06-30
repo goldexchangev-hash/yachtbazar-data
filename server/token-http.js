@@ -414,6 +414,10 @@ function makeTokenService(opts) {
     const s = bridge.session(sessionId);
     if (!s || s.closed) throw new Error("no open session to top up");
     if (s.player.toLowerCase() !== player.toLowerCase()) throw new Error("session does not belong to player");
+    // #10: don't change the funding pool mid-blackjack-hand — topping up would alter the affordance of a
+    // double/split already in progress. Mirror the cash-out/recover liveExternal guard. (Crash too, for symmetry.)
+    if (liveExternal(player)) throw new Error("finish your blackjack hand before topping up");
+    if (liveCrashSession(sessionId)) throw new Error("finish your live round before topping up");
     const contract = address(s.contract, "contract");
     const chainId = Number(s.chainId);
     const txHash = String((body && body.txHash) || "");
