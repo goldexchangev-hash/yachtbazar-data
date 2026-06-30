@@ -376,6 +376,7 @@ function makeTokenService(opts) {
     verifyWalletSignature("settle", body, { player, contract: s.contract, chainId: s.chainId, sessionId: s.id });
     // Serialize per player so a concurrent recover can't interleave with this cash-out (race-minted net=0).
     return withPlayerLock(player, async () => {
+      if (liveExternal(player)) throw new Error("finish your blackjack hand before cashing out");
       const settlement = await bridge.settle({ sessionId: s.id });
       openByPlayer.delete(player);
       tokenForSession.delete(s.id);
@@ -419,6 +420,7 @@ function makeTokenService(opts) {
     const key = player.toLowerCase();
     // Serialize per player so the branch decision + obligation record can't interleave (no race-minted net=0).
     return withPlayerLock(player, async () => {
+      if (liveExternal(player)) throw new Error("finish your blackjack hand before recovering");
       // (1) Open session → cash it out (returns full bjLocked + its real net).
       const sid = openByPlayer.get(player);
       if (sid) {
@@ -584,7 +586,27 @@ function makeTokenService(opts) {
     return bridge.session(sid) || null;
   }
 
-  return { doStart, doPlay, doTopUp, doSettle, doSession, doRelease, doAdminRelease, doAdminPlayer, status, houseState, verifySession, _bridge: bridge };
+  // ── TOKEN-FUNDED BLACKJACK bridge (multiplayer blackjack chips = this player's token session) ──
+  // The blackjack server (server/blackjack-server.js) calls these in-process to read + move a player's
+  // token balance as hands settle. tokensOf is a pure read; applyBlackjackNet debits the bet / credits
+  // the payout via the bridge's bounded, ledgered applyExternal. SYNCHRONOUS (no chain call) so the
+  // blackjack bank's get/credit/debit stay synchronous.
+  function tokensOf(sessionId) {
+    const s = bridge.session(String(sessionId || ""));
+    return (s && !s.closed && !s.settlement) ? s.tokens : null; // null ⇒ no open session (settled / unknown)
+  }
+  function applyBlackjackNet(player, sessionId, betUnits, payoutUnits, ref) {
+    const s = bridge.session(String(sessionId || ""));
+    if (!s || s.closed || s.settlement) throw new Error("no open token session");
+    if (String(s.player).toLowerCase() !== String(player || "").toLowerCase()) throw new Error("session does not belong to player");
+    const r = bridge.applyExternal({ sessionId: s.id, game: "blackjack", betUnits: betUnits, payoutUnits: payoutUnits, ref: ref });
+    return r.tokens;
+  }
+  // True if the player has a blackjack hand/bet in flight against their token session — used to REFUSE a
+  // cash-out / recover mid-hand (else the settle would lock in a debited stake before the hand resolves).
+  function liveExternal(player) { try { return !!(opts.hasLiveExternal && opts.hasLiveExternal(player)); } catch (e) { return false; } }
+
+  return { doStart, doPlay, doTopUp, doSettle, doSession, doRelease, doAdminRelease, doAdminPlayer, status, houseState, verifySession, tokensOf, applyBlackjackNet, liveExternal, _bridge: bridge };
 }
 
 // Wire the service onto an Express app, behind a flag. Live demo is untouched.
@@ -814,6 +836,35 @@ if (require.main === module) {
     const apSig = await ownerW.signMessage(tokenAuthMessage("admin-player", { player: ownerW.address, contract, chainId, target: activeP }));
     const ap = await admSvc2.doAdminPlayer({ owner: ownerW.address, contract, chainId, player: activeP, signature: apSig });
     eq("admin-player: reports the player's open session + locked funds", ap.hasOpenSession === true && ap.session && ap.session.buyInUnits === 1000 && BigInt(ap.lockedWei) === lockedWei);
+
+    // ── TOKEN-FUNDED BLACKJACK: hand bets/wins move the SAME token session; cash-out refused mid-hand ──
+    let _liveHand = false;
+    const bjSvc = makeTokenService({ signer, ethUsd: () => 4000, verifyBuyIn: async (o) => ({ lockedWei: o.buyInWei }), hasLiveExternal: () => _liveHand });
+    const bjw = ethers.Wallet.createRandom(); const bjp = bjw.address;
+    const bjSign = (intent, o) => bjw.signMessage(tokenAuthMessage(intent, o));
+    const bjStart = { player: bjp, contract, chainId, txHash: "0x" + "bb".repeat(32), buyInWei: lockedWei.toString() };
+    bjStart.signature = await bjSign("start", { player: bjp, contract, chainId, buyInWei: lockedWei.toString() });
+    const bjStarted = await bjSvc.doStart(bjStart);
+    const bjTok0 = bjStarted.tokens; // $1000
+    eq("token-funded bj: tokensOf reads the live balance", bjSvc.tokensOf(bjStarted.sessionId) === bjTok0);
+    // a blackjack hand: bet 100 (debit), then win pays 200 (credit) → net +100
+    const afterBet = bjSvc.applyBlackjackNet(bjp, bjStarted.sessionId, 100, 0, "hand1:bet");
+    eq("token-funded bj: a bet debits tokens", afterBet === Math.round((bjTok0 - 100) * 100) / 100);
+    const afterWin = bjSvc.applyBlackjackNet(bjp, bjStarted.sessionId, 0, 200, "hand1:win");
+    eq("token-funded bj: a win credits tokens", afterWin === Math.round((bjTok0 - 100 + 200) * 100) / 100);
+    let bjWrong = 0; try { bjSvc.applyBlackjackNet("0x000000000000000000000000000000000000dEaD", bjStarted.sessionId, 10, 0); } catch (e) { bjWrong = 1; }
+    eq("token-funded bj: rejects a net for the wrong player", bjWrong === 1);
+    let bjOver = 0; try { bjSvc.applyBlackjackNet(bjp, bjStarted.sessionId, 1e9, 0); } catch (e) { bjOver = 1; }
+    eq("token-funded bj: rejects a bet over the token balance", bjOver === 1);
+    // cash-out / recover are REFUSED while a hand is live (else the settle locks in a debited stake)
+    _liveHand = true;
+    let bjSettleBlocked = 0; try { await bjSvc.doSettle({ player: bjp, sessionId: bjStarted.sessionId, signature: await bjSign("settle", { player: bjp, contract, chainId, sessionId: bjStarted.sessionId }) }); } catch (e) { if (/finish your blackjack hand/.test(e.message)) bjSettleBlocked = 1; }
+    eq("token-funded bj: cash-out refused while a hand is live", bjSettleBlocked === 1);
+    let bjRelBlocked = 0; try { await bjSvc.doRelease({ player: bjp, contract, chainId, signature: await bjSign("release", { player: bjp, contract, chainId }) }); } catch (e) { if (/finish your blackjack hand/.test(e.message)) bjRelBlocked = 1; }
+    eq("token-funded bj: recover refused while a hand is live", bjRelBlocked === 1);
+    _liveHand = false; // hand finished → cash-out now works, net reflects the blackjack P&L
+    const bjStl = await bjSvc.doSettle({ player: bjp, sessionId: bjStarted.sessionId, signature: await bjSign("settle", { player: bjp, contract, chainId, sessionId: bjStarted.sessionId }) });
+    eq("token-funded bj: settles after the hand, net = blackjack P&L (+$100)", Math.round(bjStl.netUnits) === 100);
 
     // settle: wallet sig required, net pinned to lockedWei, signature recovers to house
     const settleSig = await sign("settle", { player, contract, chainId, sessionId: started.sessionId });

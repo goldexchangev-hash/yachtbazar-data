@@ -159,7 +159,15 @@ const tokenSvc = attachTokenBridge(app, {
   ethUsdReady: () => (Number(process.env.BRIDGE_ETH_USD || process.env.ETH_USD || 0) > 0) || _ethUsdLive > 0,
   persist: tokenPersist,
   minConfirmations: Number(process.env.TOKEN_MIN_CONFIRMATIONS || 1),
+  // Token-funded blackjack: refuse a token cash-out / recover while the player has a live blackjack hand
+  // (else the settle would lock in a debited stake before the hand resolves). blackjack exists already.
+  hasLiveExternal: (player) => { try { return blackjack.hasLiveHand(player); } catch (e) { return false; } },
 });
+
+// TOKEN-FUNDED BLACKJACK wiring: a real wallet's blackjack chips ARE their token session. Hand bets/wins
+// route through the hardened token ledger; cash-out is the normal token settle. (Late-bound here because
+// tokenSvc is created after blackjack.) The OLD experimental on-chain blackjack bridge stays optional.
+try { blackjack.setTokenLedger({ tokensOf: tokenSvc.tokensOf, applyNet: tokenSvc.applyBlackjackNet }); } catch (e) {}
 
 // ── Live crash rounds over the ws (cr:* sub-protocol) ───────────────────────────
 // The server-paced round-runner that makes MANUAL tap-to-cash-out provably fair for the
@@ -264,13 +272,29 @@ wss.on("connection", (ws) => {
       ws.bjHelloSeen = true;
       clients.get(ws).address = addr;
       // Presence/chat can use the displayed address, but Blackjack spending needs
-      // a trusted identity. Guests are play-money; real wallets must present the
-      // bridge session token issued after an on-chain buy-in.
-      if (/^guest:/.test(addr) || (blackjack.bridge && blackjack.bridge.isAuthorized(addr, data.bjToken))) {
-        ws.wallet = addr;
-        ws.bjToken = data.bjToken || "";
+      // a trusted identity. Guests are play-money; real wallets must present a trusted token.
+      // PREFERRED real-money path: a TOKEN-bridge session (bjSession=sessionId, bjToken=its bearer) —
+      // the player's blackjack chips ARE their token balance. Falls back to the old experimental
+      // on-chain blackjack bridge if present, else guests.
+      ws.tokenSession = "";
+      let tokenOk = false;
+      if (realWallet && data.bjSession && tokenSvc && tokenSvc.verifySession) {
+        try {
+          const ts = tokenSvc.verifySession(String(data.bjSession), String(data.bjToken || ""));
+          if (ts && String(ts.player || "").toLowerCase() === addr.toLowerCase()) {
+            ws.wallet = addr; ws.tokenSession = String(data.bjSession); ws.bjToken = String(data.bjToken || "");
+            blackjack.bindToken(addr, data.bjSession);
+            tokenOk = true;
+          }
+        } catch (e) {}
       }
-      else ws.wallet = "";
+      if (!tokenOk) {
+        if (/^guest:/.test(addr) || (blackjack.bridge && blackjack.bridge.isAuthorized(addr, data.bjToken))) {
+          ws.wallet = addr;
+          ws.bjToken = data.bjToken || "";
+        }
+        else ws.wallet = "";
+      }
       ws.bjAuthDenied = realWallet && !ws.wallet;
       broadcastPlayers();
       // Replay recent chat so the conversation is already there when they arrive
@@ -314,6 +338,8 @@ wss.on("connection", (ws) => {
   ws.on("close", () => {
     blackjack.onClose(ws); // free the player's seat / spectator slot
     crashWs.onClose(ws);   // detach any live crash round (it still settles via the server timer)
+    // Drop any token-session binding so a settled/replaced session can't keep routing this wallet's chips.
+    if (ws.wallet && ws.tokenSession) { try { blackjack.unbindToken(ws.wallet); } catch (e) {} }
     clients.delete(ws);
     broadcastPlayers();
   });

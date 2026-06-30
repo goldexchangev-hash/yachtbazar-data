@@ -92,6 +92,59 @@
 
     const inRound = (s) => !!(s && s.baseBet > 0);
     const seatStake = (s) => !s ? 0 : (s.hands && s.hands.length ? s.hands.reduce((a, h) => a + h.bet, 0) : (s.baseBet || 0)) + (s.insurance || 0);
+
+    // ── TOKEN-FUNDED tables: a real wallet's chips ARE their token-bridge session ──────────────────
+    // When a player sits at a real-money table, their wallet is bound to their token session; the bank's
+    // get/credit/debit for that wallet then route to the token ledger (so a bet debits / a win credits the
+    // SAME tokens they bought in with — no separate "lock credits" step, cash-out via the hardened token
+    // settle). All money flows (placeBet, double/split, insurance, settle, room-close refunds) go through
+    // bank.get/credit/debit, so wrapping just those three covers every path. TL is late-bound from server.js.
+    let TL = opts.tokenLedger || null;          // { tokensOf(sid), applyNet(player, sid, bet, payout) }
+    const tokenBind = new Map();                // wallet(lc) → token sessionId
+    const tokenSid = (w) => tokenBind.get(norm(w));
+    const isTokenWallet = (w) => !!(TL && tokenBind.has(norm(w)));
+    {
+      const _get = bank.get, _credit = bank.credit, _debit = bank.debit;
+      bank.get = (w) => { if (isTokenWallet(w)) { const t = TL.tokensOf(tokenSid(w)); return t == null ? 0 : r2(t); } return _get(w); };
+      bank.credit = (w, a) => {
+        if (isTokenWallet(w)) {
+          // A token credit (a payout / refund) should NEVER silently vanish on a real-money table. If applyNet
+          // throws (session closed/settled) log loudly so a lost credit is diagnosable. By construction this is
+          // unreachable for a settled session (hasLiveHand blocks the token settle while any seat is live).
+          try { TL.applyNet(w, tokenSid(w), 0, r2(a)); }
+          catch (e) { try { console.error("[bj] TOKEN CREDIT FAILED — payout NOT booked:", JSON.stringify({ wallet: w, amount: r2(a), session: tokenSid(w), err: (e && e.message) || String(e) })); } catch (e2) {} }
+          notifyBalance(w); return;
+        }
+        return _credit(w, a);
+      };
+      bank.debit = (w, a) => {
+        if (isTokenWallet(w)) {
+          if (bank.get(w) < r2(a) - 1e-9) return false;
+          try { TL.applyNet(w, tokenSid(w), r2(a), 0); } catch (e) { return false; }
+          notifyBalance(w); return true;
+        }
+        return _debit(w, a);
+      };
+    }
+    // IMMUTABILITY: the funding pool must not change during a live hand, or a bet's debit and the hand's
+    // credit could route to different sessions (over-credit the on-chain session, or lose a win to a dropped
+    // binding). So bind/unbind are REFUSED while the wallet has a live hand — the binding is frozen from the
+    // moment a bet is placed until the hand settles. Returns true on success.
+    const bindToken = (wallet, sessionId) => {
+      if (!realWallet(wallet) || !sessionId) return false;
+      if (tokenBind.get(norm(wallet)) === String(sessionId)) return true; // already bound to this session (idempotent reconnect)
+      if (hasLiveHand(wallet)) return false; // never swap the funding pool mid-hand
+      tokenBind.set(norm(wallet), String(sessionId));
+      return true;
+    };
+    const unbindToken = (wallet) => { if (hasLiveHand(wallet)) return false; return tokenBind.delete(norm(wallet)); };
+    // A player has a live hand/bet (cash-out must be refused) iff any of their seats has chips committed
+    // to an unsettled round — used by the token bridge's settle/recover guard.
+    const hasLiveHand = (wallet) => {
+      const w = norm(wallet);
+      for (const r of rooms.values()) for (const s of r.seats) if (s && norm(s.wallet) === w && !s.settled && seatStake(s) > 0) return true;
+      return false;
+    };
     const draw = (r) => {
       // Shoe exhausted mid-hand (rare: many splits + a long dealer draw) → reshuffle a fresh shoe so
       // draw() NEVER returns undefined (an undefined card → Rules.handValue crash → process crash).
@@ -500,6 +553,9 @@
       if (r.phase === "betting" || r.phase === "idle") {
         if (s.baseBet > 0) bank.credit(s.wallet, s.baseBet); // refund the un-dealt bet
         r.seats[i] = null; r.full = false;
+        // Hardening: the seat is gone and no hand is live → drop any lingering token binding so a later
+        // out-of-band token settle can't leave a stale wallet→session entry (inert today; defense-in-depth).
+        try { if (s.wallet && !hasLiveHand(s.wallet)) unbindToken(s.wallet); } catch (e) {}
         broadcast(r, { type: "bj:event", kind: "seatOpen", seat: i });
         broadcastState(r); reapEmptyExtras();
       } else {
@@ -633,6 +689,11 @@
     function authStillValid(sock) {
       const w = sock && sock.wallet;
       if (!realWallet(w)) return true;
+      // TOKEN-FUNDED: a wallet bound to a token session (set ONLY by server.js after tokenSvc.verifySession
+      // confirmed the bearer + that the session belongs to this wallet) is authorized. The binding is frozen
+      // for the life of a hand (bindToken/unbindToken refuse while hasLiveHand), so it can't be swapped to a
+      // different session between a bet's debit and the hand's credit.
+      if (isTokenWallet(w)) return true;
       if (bridgeAuth.get(norm(w)) === String(sock.bjToken || "")) return true;
       sock.wallet = "";
       sock.bjAuthDenied = true;
@@ -670,6 +731,10 @@
 
     createRoom();
     return { handle, onClose, bank, config,
+      // Token-funded tables (the new real-money path): bind a wallet to its token session, route its chips
+      // to the token ledger, and report a live hand so the token bridge can refuse a mid-hand cash-out.
+      setTokenLedger: (tl) => { TL = tl || null; },
+      bindToken, unbindToken, hasLiveHand, isTokenWallet,
       bridge: {
         fund: bridgeFund, setBalance: bridgeSetBalance, balance: bridgeBalance, clear: bridgeClear, hasOpenExposure, openExposure,
         authorize: (wallet, token) => { if (realWallet(wallet) && token) bridgeAuth.set(norm(wallet), String(token)); },
@@ -684,4 +749,48 @@
   const API = { attachBlackjack, makeBank };
   if (typeof module !== "undefined" && module.exports) module.exports = API;
   root.BlackjackServer = API;
+
+  /* ---- TOKEN-FUNDED self-test: node server/blackjack-server.js ----
+     Drives the REAL handle() path (the audit found the unit test bypassed it) to prove: a token-bound wallet
+     is authorized, its bet debits the TOKEN session, the binding is FROZEN mid-hand (no over-credit), a win
+     credits the SAME session, and an UNBOUND real wallet is denied (can't bet unbound → can't over-credit). */
+  if (typeof require !== "undefined" && require.main === module) {
+    let ok = true;
+    const eq = (label, cond) => { console.log((cond ? "  ok  " : "  FAIL") + "  " + label); if (!cond) ok = false; };
+    const player = "0x2F4BEF94550C29c497b999B86b758F9771F7aB39";
+    const sess = { S1: { player: player, tokens: 1000 } };
+    const TL = {
+      tokensOf: (sid) => (sess[sid] ? sess[sid].tokens : null),
+      applyNet: (p, sid, bet, payout) => {
+        const s = sess[sid]; if (!s) throw new Error("no open token session");
+        if (s.player.toLowerCase() !== String(p).toLowerCase()) throw new Error("wrong player");
+        if (bet > s.tokens) throw new Error("insufficient");
+        s.tokens = Math.round((s.tokens - bet + payout) * 100) / 100; return s.tokens;
+      },
+    };
+    const bj = attachBlackjack({ tokenLedger: TL, setTimeout: () => 0 }); // no-op timers: no auto-deal during the test
+    const mkWs = (w) => ({ wallet: w, bjToken: "bearer", send: () => {} });
+    eq("bind a token wallet succeeds", bj.bindToken(player, "S1") === true);
+    const ws = mkWs(player);
+    bj.handle(ws, { type: "bj:lobby:subscribe" }); // ensure a room exists
+    bj.handle(ws, { type: "bj:room:join" });
+    eq("token-bound wallet stays seated (authStillValid allows a bound wallet)", ws.wallet === player && !ws.bjAuthDenied);
+    bj.handle(ws, { type: "bj:bet:place", amountUsd: 100, clientSeed: "c" });
+    eq("a bet debits the TOKEN session (1000 → 900)", TL.tokensOf("S1") === 900);
+    eq("hasLiveHand is true once a bet is placed", bj.hasLiveHand(player) === true);
+    eq("bindToken is FROZEN mid-hand (can't swap funding pool → no over-credit)", bj.bindToken(player, "S2") === false);
+    eq("unbindToken is FROZEN mid-hand (win can't be diverted to play-money)", bj.unbindToken(player) === false);
+    bj.bank.credit(player, 250); // simulate the hand's payout
+    eq("a win credits the SAME frozen token session (900 → 1150)", TL.tokensOf("S1") === 1150);
+    // an UNBOUND real wallet can't sit/bet → the 'bet while unbound then bind' over-credit is impossible
+    const uws = mkWs("0x1111111111111111111111111111111111111111");
+    bj.handle(uws, { type: "bj:room:join" });
+    eq("an UNBOUND real wallet is denied (can't bet unbound)", uws.wallet === "" && uws.bjAuthDenied === true);
+    // a guest (play-money) is unaffected — uses the in-memory bank, never the token ledger
+    const gws = mkWs("guest:test1234");
+    bj.handle(gws, { type: "bj:room:join" });
+    eq("a guest plays on the play-money bank (token ledger untouched)", !bj.isTokenWallet("guest:test1234"));
+    console.log(ok ? "\nSELF-TEST OK — token-funded blackjack: bound-auth, frozen funding pool, consistent debit/credit." : "\nSELF-TEST FAILED");
+    process.exit(ok ? 0 : 1);
+  }
 })(typeof globalThis !== "undefined" ? globalThis : this);

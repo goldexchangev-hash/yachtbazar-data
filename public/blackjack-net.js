@@ -14,6 +14,7 @@
     opts = opts || {};
     this.wallet = opts.wallet || null;
     this.bjToken = opts.bjToken || "";
+    this.bjSession = opts.bjSession || ""; // token-bridge session id (real-money table funded by tokens)
     this.url = opts.url || ((location.protocol === "https:" ? "wss://" : "ws://") + location.host);
     this.handlers = {};      // type -> [fn]
     this.anyHandlers = [];    // fn(msg) for every message
@@ -31,7 +32,7 @@
     this.ws.onopen = function () {
       self._open = true; self._backoff = 600; self._lastRx = Date.now(); self._startHeartbeat();
       // identify to the hub so the live "players" count includes us (best-effort).
-      if (self.wallet) { try { self.ws.send(JSON.stringify({ type: "hello", address: self.wallet, bjToken: self.bjToken || undefined })); } catch (e) {} }
+      if (self.wallet) { try { self.ws.send(JSON.stringify({ type: "hello", address: self.wallet, bjToken: self.bjToken || undefined, bjSession: self.bjSession || undefined })); } catch (e) {} }
       var q = self.queue; self.queue = [];
       for (var i = 0; i < q.length; i++) self._raw(q[i]);
       self._emit({ type: "bj:net", state: "open" });

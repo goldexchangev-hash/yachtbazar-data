@@ -31,8 +31,9 @@
     this._seedBalance = (opts.seedBalance != null && isFinite(opts.seedBalance)) ? opts.seedBalance : null; // demo balance to sync the table to
     this.wallet = opts.wallet || null;
     this.bjToken = opts.bjToken || "";
+    this.bjSession = opts.bjSession || ""; // token-bridge session id ⇒ chips ARE the player's tokens
     this.showEth = isWallet(this.wallet); // ETH amounts only matter once a real wallet is connected
-    this.net = opts.net || new root.BJNet({ wallet: this.wallet, bjToken: this.bjToken });
+    this.net = opts.net || new root.BJNet({ wallet: this.wallet, bjToken: this.bjToken, bjSession: this.bjSession });
     this.view = this.embed ? "table" : "lobby";
     this.you = null; this.spectating = null;
     this.room = null; this.legal = []; this.activeHand = -1;

@@ -119,10 +119,11 @@
         var tv = params.get("tv") === "1"; // embedded inside the Crypto TV channel
         var guest = params.get("guest") || null; // temp identity handed in by the host page
         var bjToken = hashParams.get("bjtoken") || "";
+        var bjSession = hashParams.get("bjsession") || ""; // token-bridge session id ⇒ real-money table funded by tokens
         var table = params.get("table") || null; // a specific shared table to sit at
         var bal = params.get("bal"); // demo balance to seed the table with
         if (tv) document.body.classList.add("tv-embed");
-        window.BJ = new BlackjackClient({ els: els, embed: tv, wallet: guest, bjToken: bjToken, joinTable: table, seedBalance: bal != null ? +bal : null });
+        window.BJ = new BlackjackClient({ els: els, embed: tv, wallet: guest, bjToken: bjToken, bjSession: bjSession, joinTable: table, seedBalance: bal != null ? +bal : null });
         if (tv) {
           // tell the host page we're alive so it can seed our demo balance
           try { window.parent.postMessage({ type: "bj:ready" }, "*"); } catch (e) {}
