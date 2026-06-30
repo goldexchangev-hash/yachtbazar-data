@@ -1,8 +1,8 @@
 # Crypto TV — Project Handoff for Cursor (new AI)
 
 > Written 2026-06-30 by the previous AI assistant (Claude). Read this top-to-bottom before touching anything.
-> **Live version when this was written: v12.37.** This is a real crypto-betting dApp on **Sepolia testnet** with
-> real (testnet) ETH flowing through it — treat every change to the money path as production code.
+> **Live version: v12.39.** This is a real crypto-betting dApp on **Sepolia testnet** with real (testnet) ETH
+> flowing through it — treat every change to the money path as production code.
 
 ---
 
@@ -90,6 +90,8 @@ to the server). `public/app.js` is the giant (~5000-line) main controller that w
 
 | Ver | What |
 |---|---|
+| **v12.39** | Fixed the CH16 bug below — the felt now reliably binds to the token session (the token session was in the iframe's #hash, which doesn't reload an iframe; added a `&r=<nonce>` query to force a real reload). Token-funded dock now reads "🪙 $X tokens". |
+| **v12.38** | Token bar live-syncs during Fish Shooter/Reef (`TokenMode.paintTokens()`); fixed the buy-in/top-up slider snapping back to default on a background re-render; "Lock $X" → "Buy in $X" wording. |
 | **v12.37** | Plane auto-cash-out moved into the action dock (next to BET A/BET B). |
 | **v12.36** | **Blackjack unified onto the token bridge** — real-money blackjack funded by your token session (no "lock credits" step). 2 adversarial review rounds. ⚠️ **HAS A LIVE BUG — see §6.** |
 | **v12.35** | Win amounts show **profit, not stake+profit** (Balloon Pop / slots / slots3d / swoop); killed Balloon Pop's stray beep; redesigned the Fish Shooter control dock (compact); moved Balloon Pop auto-cash-out under the HOLD button. |
@@ -161,9 +163,16 @@ a new self-test for any new money invariant** before deploying.
 
 ---
 
-## 6. ⚠️ TOP OPEN BUG — token-funded blackjack not engaging (FIX THIS FIRST)
+## 6. ✅ (FIXED in v12.39) — token-funded blackjack not engaging — VERIFY IT HOLDS
 
-**Symptom (reported live on v12.37):** a connected wallet WITH an active token session ($285 tokens in the top
+> **Status: believed fixed in v12.39** (root cause was the iframe-hash-doesn't-reload issue; fixed with a `&r=`
+> query nonce in `ensureBlackjackReady`). The previous AI could NOT live-test it (no wallet locally + the token
+> bridge is off in the local env), so **the next person with a wallet should confirm**: connect → buy in tokens →
+> CH16 → the dock should read "🪙 $X tokens" (not "Table"/"Credits"/"LOCK CREDITS"), and a bet should debit the
+> token balance. If it's still flaky, see the diagnosis below and consider a postMessage-based re-bind (push the
+> session to the felt without a reload) as the more robust fix.
+
+**Original symptom (v12.36/12.37):** a connected wallet WITH an active token session ($285 tokens in the top
 token bar) opens CH 16 and the blackjack felt **hangs (blank TV)** and shows the **OLD guest / "LOCK CREDITS"
 flow** (`guest:…k8pj`, `CREDITS $375.07`, "Reload chips before placing a bet"). The token-funded path from v12.36
 is NOT activating, and the in-game "credits" balance (the on-chain `balances`, separate from tokens) is what the UI
