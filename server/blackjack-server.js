@@ -159,6 +159,7 @@
     function roomPublic(r) {
       return { id: r.id, name: r.name, seated: r.seats.filter(Boolean).length, openSeats: r.seats.filter((s) => !s).length,
         phase: r.phase, inProgress: r.phase !== "idle" && r.phase !== "betting", minBet: config.minBet,
+        kind: r.kind || null, // "real" | "demo" — so the lobby can label/segregate (an empty room = either)
         tableBet: r.seats.reduce((a, s) => a + seatStake(s), 0), spectators: r.spectators.size, commit: r.commit };
     }
     // Show ALL active tables so visitors can find in-progress/full ones to WATCH —
@@ -173,10 +174,28 @@
       seq++; const id = "TABLE-" + String(seq).padStart(2, "0");
       const r = { id, name: id + " · " + NAMES[(seq - 1) % NAMES.length], seats: [null, null, null, null], spectators: new Set(),
         phase: "idle", shoe: [], pos: 0, dealer: [], commit: "", serverSeed: "", shoeId: "", turnIdx: -1, deadline: 0,
-        lastActivity: now(), handNumber: 0, version: 0, full: false, timers: {} };
+        lastActivity: now(), handNumber: 0, version: 0, full: false, timers: {},
+        kind: null }; // "real" (token-funded) | "demo" (play-money) — established by the first player; real and
+                      // demo players must NEVER share a shoe (other players' hit/stand changes your cards).
       rooms.set(id, r); scheduleIdle(r); pushLobby(); return r;
     }
-    function openRoom() { for (const r of rooms.values()) if (!r.full && r.seats.some((s) => !s)) return r; return createRoom(); }
+    // A wallet's table KIND: a token-bound wallet plays REAL money; everyone else (guests) plays DEMO money.
+    // Real and demo players are NEVER seated together (shared shoe → others' decisions move your cards).
+    const seatedCount = (r) => r.seats.filter(Boolean).length;
+    // REAL money = ANY real-money funding path (the token bridge OR the legacy on-chain bridge's authorize),
+    // mirroring authStillValid so the two can never diverge. Everyone else (guests/anon) is DEMO. A future
+    // re-enable of the legacy bridge therefore can't accidentally seat its real players with play-money guests.
+    const isRealMoney = (wallet) => isTokenWallet(wallet) || bridgeAuth.has(norm(wallet));
+    const playerKind = (wallet) => (isRealMoney(wallet) ? "real" : "demo");
+    // An OPEN seat in a room of the right kind (an EMPTY room takes either kind; its kind is set on the first sit).
+    function openRoom(kind) {
+      for (const r of rooms.values()) {
+        if (r.full || !r.seats.some((s) => !s)) continue;
+        const established = seatedCount(r) > 0 ? (r.kind || null) : null; // empty room ⇒ kind-agnostic
+        if (established === null || established === kind) return r;
+      }
+      return createRoom();
+    }
     function reapEmptyExtras() {
       const empties = Array.from(rooms.values()).filter((r) => r.seats.every((s) => !s) && r.phase === "idle");
       for (let i = 1; i < empties.length; i++) closeRoom(empties[i], "reaped");
@@ -488,11 +507,22 @@
       // second connection (two tabs / stale socket) and sit at another table at once.
       // (Runs after the reconnect-reclaim block above, so genuine reconnects still work.)
       for (const rr of rooms.values()) for (const st of rr.seats) if (st && st.wallet === wallet) return err(sock, "already_seated", "You're already at a table", "join");
-      let r = roomId ? rooms.get(roomId) : openRoom(); if (!r) r = openRoom(); if (!r) return err(sock, "lobby_full", "No tables available");
+      // KIND SEGREGATION: real-money (token/bridge) players and demo (play-money) players never share a table
+      // (one shared shoe → another player's hit/stand changes the cards you + the dealer draw).
+      const kind = playerKind(wallet);
+      let r = roomId ? rooms.get(roomId) : null;
+      // A specific table (e.g. a shared link) of a DIFFERENT kind can't be joined — fall through to a
+      // correct-kind table instead of seating a real player at a demo shoe (or vice-versa).
+      if (r && seatedCount(r) > 0 && r.kind && r.kind !== kind) {
+        send(sock, { type: "bj:event", kind: "kindMismatch", wanted: kind, tableKind: r.kind });
+        r = null;
+      }
+      if (!r) r = openRoom(kind); if (!r) return err(sock, "lobby_full", "No tables available");
       if (r.seats.some((s) => s && s.wallet === wallet)) return err(sock, "already_seated", "One seat per table", "join");
       let idx = -1;
       if (seatPref != null && !r.seats[seatPref]) idx = seatPref; else idx = r.seats.findIndex((s) => !s);
       if (idx < 0) return err(sock, "table_full", "Table is full", "join");
+      r.kind = kind; // first player establishes (or re-affirms) the table kind; an empty room takes either
       r.seats[idx] = { sock, wallet, baseBet: 0, clientSeed: "", hands: [], active: -1, insurance: 0, settled: false };
       r.spectators.delete(sock);
       if (r.seats.filter(Boolean).length === 4) { r.full = true; createRoom(); }
@@ -790,7 +820,31 @@
     const gws = mkWs("guest:test1234");
     bj.handle(gws, { type: "bj:room:join" });
     eq("a guest plays on the play-money bank (token ledger untouched)", !bj.isTokenWallet("guest:test1234"));
-    console.log(ok ? "\nSELF-TEST OK — token-funded blackjack: bound-auth, frozen funding pool, consistent debit/credit." : "\nSELF-TEST FAILED");
+
+    // ── KIND SEGREGATION: real (token) + demo (guest) players NEVER share a table (shared shoe → others'
+    //    hit/stand decisions change the cards you and the dealer draw) ──
+    const roomOf = (w) => { for (const r of bj._mgr.rooms.values()) if (r.seats.some((s) => s && s.wallet === w)) return r; return null; };
+    const realRoom2 = roomOf(player), guestRoom2 = roomOf("guest:test1234");
+    eq("real + demo players are seated at DIFFERENT tables", !!realRoom2 && !!guestRoom2 && realRoom2 !== guestRoom2);
+    eq("real table kind=real, guest table kind=demo", !!realRoom2 && realRoom2.kind === "real" && !!guestRoom2 && guestRoom2.kind === "demo");
+    // a 2nd real player shares the REAL table (reals CAN sit with reals); never the demo one
+    const player2 = "0x3333333333333333333333333333333333333333"; sess.S3 = { player: player2, tokens: 500 }; bj.bindToken(player2, "S3");
+    bj.handle(mkWs(player2), { type: "bj:room:join" });
+    eq("a 2nd real player joins a real-kind table", (roomOf(player2) || {}).kind === "real");
+    // a guest who opens a real-money table's share link is NEVER seated there — redirected to a demo table
+    const gws2 = mkWs("guest:zzz999");
+    bj.handle(gws2, { type: "bj:room:join", roomId: realRoom2.id });
+    const gAfter = roomOf("guest:zzz999");
+    eq("a guest opening a real-money table link is redirected to a demo table (never the real one)", !!gAfter && gAfter.id !== realRoom2.id && gAfter.kind === "demo");
+    // a legacy-bridge real wallet (authorized via bridgeAuth, NOT token-bound) must classify as REAL so it
+    // can never share a demo shoe with guests (defense-in-depth for if the experimental bridge is re-enabled)
+    const legacy = "0x4444444444444444444444444444444444444444"; bj.bridge.authorize(legacy, "btok");
+    const lws = mkWs(legacy); lws.bjToken = "btok";
+    bj.handle(lws, { type: "bj:room:join" });
+    const lRoom = roomOf(legacy);
+    eq("a legacy-bridge real wallet joins a REAL table (never a demo shoe)", bj.isTokenWallet(legacy) === false && !!lRoom && lRoom.kind === "real");
+
+    console.log(ok ? "\nSELF-TEST OK — token-funded blackjack: bound-auth, frozen funding pool, consistent debit/credit, REAL/DEMO segregation." : "\nSELF-TEST FAILED");
     process.exit(ok ? 0 : 1);
   }
 })(typeof globalThis !== "undefined" ? globalThis : this);
