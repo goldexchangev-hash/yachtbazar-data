@@ -122,10 +122,7 @@ function makeCrashWs(opts) {
     if (ws && ws._crRounds) for (const id of ws._crRounds) { if (wsByRound.get(id) === ws) wsByRound.set(id, null); }
   }
 
-  // Passthroughs for the token-http liveness guard (hasActiveRound) and graceful-shutdown drain (#3/#141).
-  function hasActiveRound(sessionId) { return rounds.hasActive ? rounds.hasActive(sessionId) : false; }
-  function drain() { return rounds.drain ? rounds.drain() : []; }
-  return { handle: handle, onClose: onClose, hasActiveRound: hasActiveRound, drain: drain, _rounds: rounds, _wsByRound: wsByRound };
+  return { handle: handle, onClose: onClose, _rounds: rounds, _wsByRound: wsByRound };
 }
 
 module.exports = { makeCrashWs: makeCrashWs, CRASH_GAMES: CRASH_GAMES };
@@ -143,13 +140,11 @@ if (require.main === module) {
   const clearTimer = (t) => { if (t) t.dead = true; };
   const advance = (ms) => { clock += ms; for (const t of timers.slice()) { if (!t.dead && t.at <= clock) { t.dead = true; t.fn(); } } };
 
-  // stub bridge with a FIXED crash point so pacing + settlement agree.
-  // Mirrors the real reserve/resolveReserved contract: reserve DEBITS the stake + pins a
-  // nonce; resolveReserved CREDITS the gross payout for that nonce (idempotent).
-  let CRASH = 4.0, tokens = 1000, nextNonce = 0; const reserved = new Map();
+  // stub bridge with a FIXED crash point so pacing + settlement agree
+  let CRASH = 4.0, tokens = 1000;
   const bridge = {
-    reserve: (p) => { if (p.betUnits > tokens + 1e-9) throw new Error("insufficient tokens"); const nonce = nextNonce++; tokens = Math.round((tokens - p.betUnits) * 100) / 100; reserved.set(nonce, { bet: p.betUnits, open: true }); return { nonce, point: CRASH, crashPoint: CRASH, betUnits: p.betUnits, tokens }; },
-    resolveReserved: (p) => { const rec = reserved.get(p.nonce); if (!rec) throw new Error("no reserved round"); if (!rec.open) return { win: rec.win, payoutUnits: rec.pay, multiplier: rec.win ? rec.c : 0, outcome: { crashPoint: CRASH }, tokens }; const c = p.cashOutAt; const win = CRASH >= c; const pay = win ? Math.round(rec.bet * c * 100) / 100 : 0; tokens = Math.round((tokens + pay) * 100) / 100; rec.open = false; rec.win = win; rec.pay = pay; rec.c = c; return { win, payoutUnits: pay, multiplier: win ? c : 0, outcome: { crashPoint: CRASH }, tokens }; },
+    pointPeek: () => ({ nonce: 0, point: CRASH, crashPoint: CRASH }),
+    play: (p) => { const c = p.params.cashOutAt; const win = CRASH >= c; const pay = win ? p.betUnits * c : 0; tokens = Math.round((tokens - p.betUnits + pay) * 100) / 100; return { win, payoutUnits: pay, multiplier: win ? c : 0, outcome: { crashPoint: CRASH }, tokens }; },
   };
   // stub socket: captures every message it's sent
   const mkWs = () => ({ readyState: 1, sent: [], send(s) { this.sent.push(JSON.parse(s)); }, last() { return this.sent[this.sent.length - 1]; } });
