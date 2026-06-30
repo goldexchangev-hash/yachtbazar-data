@@ -283,7 +283,18 @@
       self._resolveToken(res, stake);
     }).catch(function (e) {
       if (epoch !== self._tokenEpoch) return;
-      self.pressing = false; self.balance = TM.tokens(); self._msg("Round failed — try again"); self._toArmed();
+      self.pressing = false;
+      var msg = (e && e.message) || "Round failed — try again";
+      if (msg === "CR_ROUND_TIMEOUT") {
+        // Round started (stake reserved server-side) but the result timed out. Don't show TM.tokens()
+        // (the PRE-reserve cache — would un-do the debit, v2 OPEN#2/#3). Reconcile from the authoritative
+        // server session instead. Keep the locally-debited balance until it lands.
+        self._msg("Lost the connection mid-round — reconciling your balance…"); self._toArmed();
+        try { if (TM && TM.active && TM.active() && TM.refreshTokens) Promise.resolve(TM.refreshTokens()).then(function () { if (epoch === self._tokenEpoch && TM.active()) { self.balance = TM.tokens(); self._renderHud(); } }).catch(function () {}); } catch (x) {}
+        return;
+      }
+      // A genuine failed START (cr:error, stake NOT taken) → safe to re-anchor to the untouched ledger.
+      self.balance = TM.tokens(); self._msg("Round failed — try again"); self._toArmed();
     });
   };
 

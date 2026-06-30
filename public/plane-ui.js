@@ -386,10 +386,20 @@
       this._realBusy = false;
       var msg = (e && e.message) || "Round failed — try again";
       if (msg === "CR_ROUND_TIMEOUT") {
-        // The round DID start (stake taken) and may have settled on the server — NEVER optimistically
-        // refund. Reconcile the displayed balance from the authoritative token ledger instead (#108/#21).
-        this.balance = (root.TokenMode && root.TokenMode.active()) ? root.TokenMode.tokens() : this.balance;
-        this._startTokenIdle(); this._msg("Lost the connection mid-round — your balance will reconcile to the server.", "lose"); this._renderHud();
+        // The round DID start (stake taken) and may have settled on the server. NEVER optimistically
+        // refund. Do NOT show TokenMode.tokens() either — client.tokens is the PRE-reserve cache (it
+        // only updates on a cr:result), so it would un-do the local debit and show an inflated balance
+        // (v2 double-check OPEN#2/#3). Keep the locally-debited balance (conservative) + fetch the
+        // AUTHORITATIVE server session and reconcile the HUD when it lands.
+        this._startTokenIdle(); this._msg("Lost the connection mid-round — reconciling your balance…", "lose"); this._renderHud();
+        try {
+          if (root.TokenMode && root.TokenMode.active() && root.TokenMode.refreshTokens) {
+            var ep = this._realEpoch;
+            Promise.resolve(root.TokenMode.refreshTokens()).then(() => {
+              if (this._active && ep === this._realEpoch && root.TokenMode && root.TokenMode.active()) { this.balance = root.TokenMode.tokens(); this._renderHud(); }
+            }).catch(() => {});
+          }
+        } catch (x) {}
         return;
       }
       // Start/connection failure: the stake was provably NOT taken → restore it.
