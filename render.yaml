@@ -1,0 +1,27 @@
+# Optional: deploy the FULL version (with live chat + active-players) to Render,
+# the same way as your other projects. Render → New → Blueprint → pick this repo.
+# (For just the game, GitHub Pages works with zero setup — see README.)
+services:
+  - type: web
+    name: tv-crypto-flip
+    runtime: node
+    plan: starter            # Starter (or higher) is required for a persistent disk
+    branch: claude/ethereum-betting-game-vrf-2dq50k
+    buildCommand: npm install --omit=dev
+    startCommand: node server/server.js
+    # Persistent disk: token sessions + the blackjack bank live here so a restart / deploy /
+    # idle-sleep can't wipe them (the cause of the "invalid session token" / stranded-lock issue).
+    disk:
+      name: data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: ENABLE_EXPERIMENTAL_BRIDGE
+        value: "0"
+      # Point the durable state files at the mounted disk above.
+      - key: TOKEN_BRIDGE_FILE
+        value: /var/data/.token-bridge.json
+      - key: BJ_BANK_FILE
+        value: /var/data/.bj-bank.json

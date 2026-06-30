@@ -1,0 +1,850 @@
+/* ============================================================
+   blackjack-server.js — server-authoritative multiplayer blackjack room engine.
+   The server owns the shoe, deals, validates every intent, runs the timers, and
+   is the only writer of balances. Clients send intents and render snapshots.
+
+   Full player action set: hit, stand, DOUBLE down, SPLIT (to 4 hands; split aces
+   get one card; double-after-split), late SURRENDER, and INSURANCE (when the
+   dealer shows an Ace). A seat therefore holds 1..4 hands.
+
+   Plug into the existing ws server:
+     const bj = attachBlackjack({ startBalance: 5000 });
+     wss.on('connection', (sock) => sock.on('message', (raw) => {
+       let m; try { m = JSON.parse(raw); } catch { return; }
+       if (typeof m.type === 'string' && m.type.startsWith('bj:')) bj.handle(sock, m);
+     }));
+   ============================================================ */
+(function (root) {
+  "use strict";
+  const Rules = (typeof require !== "undefined") ? require("../public/blackjack-rules.js") : root.BlackjackRules;
+  const Shuffle = (typeof require !== "undefined") ? require("../public/blackjack-shuffle.js") : root.BlackjackShuffle;
+
+  function makeBank(start, persist) {
+    const realWallet = (w) => /^0x[0-9a-fA-F]{40}$/.test(String(w || ""));
+    const m = new Map();
+    // DURABILITY: persist GUEST (play-money) balances out of process so a crash / deploy / idle
+    // spin-down can't wipe a player's grown balance. Real (0x) wallets are bridged on-chain — never
+    // persisted here. Write-through is debounced; every balance mutation routes through m.set.
+    let saveT = null;
+    const doSave = () => { saveT = null; if (!persist || !persist.save) return; try { const o = {}; for (const [k, v] of m) if (/^guest:/.test(k)) o[k] = v; persist.save(o); } catch (e) {} };
+    const scheduleSave = () => { if (!persist || !persist.save || saveT) return; saveT = setTimeout(doSave, 800); };
+    const rawSet = m.set.bind(m);
+    m.set = (k, v) => { const out = rawSet(k, v); if (/^guest:/.test(String(k))) scheduleSave(); return out; };
+    if (persist && persist.load) { try { const data = persist.load() || {}; for (const k in data) { const v = data[k]; if (/^guest:/.test(k) && typeof v === "number" && isFinite(v) && v >= 0) rawSet(k, Math.round(v * 100) / 100); } } catch (e) {} }
+    const get = (w) => { if (!m.has(w)) m.set(w, realWallet(w) ? 0 : (start == null ? 5000 : start)); return m.get(w); };
+    return { get, all: m, flush: doSave, credit: (w, a) => m.set(w, Math.round((get(w) + a) * 100) / 100), debit: (w, a) => { if (get(w) < a) return false; m.set(w, Math.round((get(w) - a) * 100) / 100); return true; } };
+  }
+  const r2 = (n) => Math.round(n * 100) / 100;
+  function newHand(bet, opts) { return Object.assign({ cards: [], bet: bet, done: false, doubled: false, fromSplit: false, isAceSplit: false, surrendered: false, result: null }, opts || {}); }
+
+  function attachBlackjack(opts) {
+    opts = opts || {};
+    const config = Object.assign({}, Rules.DEFAULT_CONFIG, opts.config || {});
+    const T = Object.assign({ betting: 15000, turn: 20000, insurance: 12000, idle: 300000, between: 3500, dealReveal: 0, dealPace: 0, dealerReveal: 0, dealerPace: 0 }, opts.timers || {});
+    const bank = opts.bank || makeBank(opts.startBalance, opts.persist);
+    const balanceWatchers = new Set();
+    function openExposure(wallet) {
+      let out = 0;
+      for (const r of rooms.values()) {
+        for (const s of r.seats) {
+          if (!s || s.wallet !== wallet || s.settled) continue;
+          out = r2(out + seatStake(s));
+        }
+      }
+      return out;
+    }
+    const notifyBalance = (wallet) => {
+      if (!/^0x[0-9a-fA-F]{40}$/.test(String(wallet || ""))) return;
+      const balance = r2(bank.get(wallet));
+      const exposure = r2(openExposure(wallet));
+      for (const fn of balanceWatchers) {
+        try { fn(wallet, balance, r2(balance + exposure), exposure); } catch (e) {}
+      }
+    };
+    if (!bank._bjWatched) {
+      const rawCredit = bank.credit.bind(bank);
+      const rawDebit = bank.debit.bind(bank);
+      bank.credit = (w, a) => { const out = rawCredit(w, a); notifyBalance(w); return out; };
+      bank.debit = (w, a) => { const out = rawDebit(w, a); if (out) notifyBalance(w); return out; };
+      bank._bjWatched = true;
+    }
+    const MAX_ROOMS = opts.maxRooms || 50;
+    const _setT = opts.setTimeout || ((f, ms) => setTimeout(f, ms));
+    // CRASH SAFETY: every engine timer runs through this guard. server.js only try/catches the
+    // SYNCHRONOUS handle(); a throw inside a setTimeout callback (dealStep/dealerStep/settle/turn
+    // auto-stand/between-hands) was an UNCAUGHT exception → Node process exit → the in-memory bank
+    // was wiped → "reset everything". This contains any such throw to a logged, non-fatal error.
+    const setT = (f, ms) => _setT(() => { try { f(); } catch (e) { try { console.error("bj timer error:", (e && e.stack) || e); } catch (_) {} } }, ms);
+    const clrT = opts.clearTimeout || clearTimeout;
+    const now = opts.now || (() => Date.now());
+    const makeShoe = opts.makeShoe || Shuffle.shuffle; // injectable for deterministic tests / VRF-derived shoe
+    // Randomness provider seam (see VRF-READINESS.md). DEFAULT = local commit-reveal:
+    // publish commit = SHA256(serverSeed) before bets, reveal serverSeed after. To go
+    // on-chain, pass a Chainlink-VRF-backed provider whose begin() returns the VRF word
+    // as serverSeed plus its on-chain proof — nothing else in the engine changes.
+    const randomness = opts.randomness || { name: "commit-reveal", begin: function () { const ss = Shuffle.randomSeed(32); return { serverSeed: ss, commit: Shuffle.commitHash(ss), proof: null }; } };
+    const send = (sock, obj) => { if (sock && sock.send) try { sock.send(JSON.stringify(obj)); } catch (e) {} };
+
+    const rooms = new Map(); let seq = 0; const lobbySubs = new Set();
+    const bridgeAuth = new Map();
+    const norm = (w) => String(w || "").toLowerCase();
+    const realWallet = (w) => /^0x[0-9a-fA-F]{40}$/.test(String(w || ""));
+
+    const inRound = (s) => !!(s && s.baseBet > 0);
+    const seatStake = (s) => !s ? 0 : (s.hands && s.hands.length ? s.hands.reduce((a, h) => a + h.bet, 0) : (s.baseBet || 0)) + (s.insurance || 0);
+
+    // ── TOKEN-FUNDED tables: a real wallet's chips ARE their token-bridge session ──────────────────
+    // When a player sits at a real-money table, their wallet is bound to their token session; the bank's
+    // get/credit/debit for that wallet then route to the token ledger (so a bet debits / a win credits the
+    // SAME tokens they bought in with — no separate "lock credits" step, cash-out via the hardened token
+    // settle). All money flows (placeBet, double/split, insurance, settle, room-close refunds) go through
+    // bank.get/credit/debit, so wrapping just those three covers every path. TL is late-bound from server.js.
+    let TL = opts.tokenLedger || null;          // { tokensOf(sid), applyNet(player, sid, bet, payout) }
+    const tokenBind = new Map();                // wallet(lc) → token sessionId
+    const tokenSid = (w) => tokenBind.get(norm(w));
+    const isTokenWallet = (w) => !!(TL && tokenBind.has(norm(w)));
+    {
+      const _get = bank.get, _credit = bank.credit, _debit = bank.debit;
+      bank.get = (w) => { if (isTokenWallet(w)) { const t = TL.tokensOf(tokenSid(w)); return t == null ? 0 : r2(t); } return _get(w); };
+      bank.credit = (w, a) => {
+        if (isTokenWallet(w)) {
+          // A token credit (a payout / refund) should NEVER silently vanish on a real-money table. If applyNet
+          // throws (session closed/settled) log loudly so a lost credit is diagnosable. By construction this is
+          // unreachable for a settled session (hasLiveHand blocks the token settle while any seat is live).
+          try { TL.applyNet(w, tokenSid(w), 0, r2(a)); }
+          catch (e) { try { console.error("[bj] TOKEN CREDIT FAILED — payout NOT booked:", JSON.stringify({ wallet: w, amount: r2(a), session: tokenSid(w), err: (e && e.message) || String(e) })); } catch (e2) {} }
+          notifyBalance(w); return;
+        }
+        return _credit(w, a);
+      };
+      bank.debit = (w, a) => {
+        if (isTokenWallet(w)) {
+          if (bank.get(w) < r2(a) - 1e-9) return false;
+          try { TL.applyNet(w, tokenSid(w), r2(a), 0); } catch (e) { return false; }
+          notifyBalance(w); return true;
+        }
+        return _debit(w, a);
+      };
+    }
+    // IMMUTABILITY: the funding pool must not change during a live hand, or a bet's debit and the hand's
+    // credit could route to different sessions (over-credit the on-chain session, or lose a win to a dropped
+    // binding). So bind/unbind are REFUSED while the wallet has a live hand — the binding is frozen from the
+    // moment a bet is placed until the hand settles. Returns true on success.
+    const bindToken = (wallet, sessionId) => {
+      if (!realWallet(wallet) || !sessionId) return false;
+      if (tokenBind.get(norm(wallet)) === String(sessionId)) return true; // already bound to this session (idempotent reconnect)
+      if (hasLiveHand(wallet)) return false; // never swap the funding pool mid-hand
+      tokenBind.set(norm(wallet), String(sessionId));
+      return true;
+    };
+    const unbindToken = (wallet) => { if (hasLiveHand(wallet)) return false; return tokenBind.delete(norm(wallet)); };
+    // A player has a live hand/bet (cash-out must be refused) iff any of their seats has chips committed
+    // to an unsettled round — used by the token bridge's settle/recover guard.
+    const hasLiveHand = (wallet) => {
+      const w = norm(wallet);
+      for (const r of rooms.values()) for (const s of r.seats) if (s && norm(s.wallet) === w && !s.settled && seatStake(s) > 0) return true;
+      return false;
+    };
+    const draw = (r) => {
+      // Shoe exhausted mid-hand (rare: many splits + a long dealer draw) → reshuffle a fresh shoe so
+      // draw() NEVER returns undefined (an undefined card → Rules.handValue crash → process crash).
+      if (!r.shoe || r.pos >= r.shoe.length) {
+        const seeds = r.seats.map((s) => inRound(s) ? (s.clientSeed || "") : "");
+        r.shoe = makeShoe(r.serverSeed, Shuffle.joinClientSeeds(seeds), String(r.shoeId) + ":x" + r.pos, config.decks); r.pos = 0;
+      }
+      return r.shoe[r.pos++];
+    };
+
+    /* ---------------- lobby ---------------- */
+    function roomPublic(r) {
+      return { id: r.id, name: r.name, seated: r.seats.filter(Boolean).length, openSeats: r.seats.filter((s) => !s).length,
+        phase: r.phase, inProgress: r.phase !== "idle" && r.phase !== "betting", minBet: config.minBet,
+        kind: r.kind || null, // "real" | "demo" — so the lobby can label/segregate (an empty room = either)
+        tableBet: r.seats.reduce((a, s) => a + seatStake(s), 0), spectators: r.spectators.size, commit: r.commit };
+    }
+    // Show ALL active tables so visitors can find in-progress/full ones to WATCH —
+    // not just joinable ones. The lobby card disables JOIN when full; WATCH is always on.
+    function lobbyList() { return Array.from(rooms.values()).map(roomPublic); }
+    function pushLobby() { const list = lobbyList(); for (const s of lobbySubs) send(s, { type: "bj:lobby:list", rooms: list }); }
+
+    /* ---------------- room mgmt ---------------- */
+    const NAMES = ["MIAMI", "VEGAS", "MONACO", "TOKYO", "RENO", "MACAU", "ASPEN", "IBIZA"];
+    function createRoom() {
+      if (rooms.size >= MAX_ROOMS) return null;
+      seq++; const id = "TABLE-" + String(seq).padStart(2, "0");
+      const r = { id, name: id + " · " + NAMES[(seq - 1) % NAMES.length], seats: [null, null, null, null], spectators: new Set(),
+        phase: "idle", shoe: [], pos: 0, dealer: [], commit: "", serverSeed: "", shoeId: "", turnIdx: -1, deadline: 0,
+        lastActivity: now(), handNumber: 0, version: 0, full: false, timers: {},
+        kind: null }; // "real" (token-funded) | "demo" (play-money) — established by the first player; real and
+                      // demo players must NEVER share a shoe (other players' hit/stand changes your cards).
+      rooms.set(id, r); scheduleIdle(r); pushLobby(); return r;
+    }
+    // A wallet's table KIND: a token-bound wallet plays REAL money; everyone else (guests) plays DEMO money.
+    // Real and demo players are NEVER seated together (shared shoe → others' decisions move your cards).
+    const seatedCount = (r) => r.seats.filter(Boolean).length;
+    // REAL money = ANY real-money funding path (the token bridge OR the legacy on-chain bridge's authorize),
+    // mirroring authStillValid so the two can never diverge. Everyone else (guests/anon) is DEMO. A future
+    // re-enable of the legacy bridge therefore can't accidentally seat its real players with play-money guests.
+    const isRealMoney = (wallet) => isTokenWallet(wallet) || bridgeAuth.has(norm(wallet));
+    const playerKind = (wallet) => (isRealMoney(wallet) ? "real" : "demo");
+    // An OPEN seat in a room of the right kind (an EMPTY room takes either kind; its kind is set on the first sit).
+    function openRoom(kind) {
+      for (const r of rooms.values()) {
+        if (r.full || !r.seats.some((s) => !s)) continue;
+        const established = seatedCount(r) > 0 ? (r.kind || null) : null; // empty room ⇒ kind-agnostic
+        if (established === null || established === kind) return r;
+      }
+      return createRoom();
+    }
+    function reapEmptyExtras() {
+      const empties = Array.from(rooms.values()).filter((r) => r.seats.every((s) => !s) && r.phase === "idle");
+      for (let i = 1; i < empties.length; i++) closeRoom(empties[i], "reaped");
+    }
+    function touch(r) { r.lastActivity = now(); scheduleIdle(r); }
+    function scheduleIdle(r) { if (r.timers.idle) clrT(r.timers.idle); r.timers.idle = setT(() => {
+      const inHand = r.phase !== "idle" && r.phase !== "betting";
+      if (!inHand && now() - r.lastActivity >= T.idle) closeRoom(r, "idle"); else scheduleIdle(r);
+    }, T.idle); }
+    function closeRoom(r, reason) {
+      for (const s of r.seats) if (s) { if (s._dcTimer) { clrT(s._dcTimer); s._dcTimer = null; } const refund = seatStake(s); if (refund > 0 && !s.settled) { bank.credit(s.wallet, refund); s.baseBet = 0; s.hands = []; s.insurance = 0; pushWallet(s.sock, s.wallet); } }
+      for (const k in r.timers) clrT(r.timers[k]);
+      broadcast(r, { type: "bj:event", kind: "roomClosing", id: r.id, reason });
+      if (r.serverSeed) broadcast(r, { type: "bj:reveal", roomId: r.id, serverSeed: r.serverSeed, commit: r.commit });
+      rooms.delete(r.id); pushLobby();
+      if (rooms.size === 0) createRoom(); // never leave the lobby empty — always keep one warm table
+    }
+
+    /* ---------------- broadcast / snapshot ---------------- */
+    function broadcast(r, obj) { for (const s of r.seats) if (s) send(s.sock, obj); for (const sp of r.spectators) send(sp, obj); }
+    function pushWallet(sock, wallet) { send(sock, { type: "bj:wallet", balance: bank.get(wallet) }); }
+    function handView(h) { const hv = Rules.handValue(h.cards);
+      return { cards: h.cards, total: hv.total, soft: hv.soft, bust: hv.bust, blackjack: hv.blackjack && !h.fromSplit,
+        done: !!h.done, doubled: !!h.doubled, fromSplit: !!h.fromSplit, surrendered: !!h.surrendered, bet: h.bet, result: h.result || null }; }
+    function seatView(s) { if (!s) return null;
+      const ins = s.insurance || (s.insuranceResult && s.insuranceResult.taken ? s.insuranceResult.amount : 0);
+      return { wallet: s.wallet, baseBet: s.baseBet || 0, active: s.active == null ? -1 : s.active, insurance: ins, left: !!s.left, away: !!s.disconnected,
+        hands: (s.hands || []).map(handView), bet: seatStake(s) }; }
+    function snapshot(r) {
+      const showHole = r.phase === "dealer" || r.phase === "settle";
+      const dealer = { cards: showHole ? r.dealer : r.dealer.slice(0, 1), total: showHole && r.dealer.length ? Rules.handValue(r.dealer).total : null,
+        holeHidden: !showHole && r.dealer.length > 1, upAce: r.dealer.length ? r.dealer[0].rank === "A" : false };
+      return { type: "bj:room:snapshot", roomId: r.id, phase: r.phase, deadline: r.deadline, serverNow: now(), version: ++r.version,
+        seats: r.seats.map(seatView), dealer, turnIdx: r.turnIdx, commit: r.commit, handNumber: r.handNumber };
+    }
+    function broadcastState(r) { broadcast(r, snapshot(r)); pushLobby(); }
+
+    /* ---------------- round loop ---------------- */
+    function startBetting(r) {
+      // drop anyone who abandoned the prior hand (their hands already settled on merits)
+      for (let i = 0; i < 4; i++) { const s = r.seats[i]; if (s && s.left) { r.seats[i] = null; r.full = false; broadcast(r, { type: "bj:event", kind: "seatOpen", seat: i }); } }
+      if (!r.seats.some(Boolean)) { r.phase = "idle"; broadcastState(r); reapEmptyExtras(); return; }
+      r.phase = "betting"; r.handNumber++; r.dealer = []; r.turnIdx = -1;
+      r.shoeId = r.id + ":" + r.handNumber;
+      const rnd = randomness.begin(r.shoeId);
+      r.serverSeed = rnd.serverSeed; r.commit = rnd.commit; r.proof = rnd.proof || null;
+      for (const s of r.seats) if (s) { s.baseBet = 0; s.hands = []; s.active = -1; s.insurance = 0; s.insuranceResult = null; s.insuranceDecided = false; s.left = false; s.settled = false; s.clientSeed = ""; notifyBalance(s.wallet); }
+      r.deadline = now() + T.betting;
+      // no touch() here — opening a window isn't player activity; abandoned tables still idle-close.
+      armBetting(r, T.betting);
+      broadcastState(r);
+    }
+    // Arm the betting/deal timer with a generation token so a stale timer that was
+    // re-armed or cancelled (e.g. the grace vs a cancelBet) can never fire endBetting twice.
+    function armBetting(r, ms) {
+      clrT(r.timers.betting);
+      const ep = (r.bettingEpoch = (r.bettingEpoch || 0) + 1);
+      r.timers.betting = setT(() => { if (r.bettingEpoch === ep) endBetting(r); }, ms);
+    }
+    function endBetting(r) {
+      clrT(r.timers.betting); r.bettingEpoch = (r.bettingEpoch || 0) + 1; // invalidate any queued betting timer
+      const active = r.seats.filter(inRound);
+      if (active.length === 0) { if (r.seats.some(Boolean)) return startBetting(r); r.phase = "idle"; broadcastState(r); reapEmptyExtras(); return; }
+      deal(r);
+    }
+    function deal(r) {
+      r.phase = "dealing";
+      const seatSeeds = r.seats.map((s) => inRound(s) ? (s.clientSeed || "") : "");
+      r.shoe = makeShoe(r.serverSeed, Shuffle.joinClientSeeds(seatSeeds), r.shoeId, config.decks); r.pos = 0;
+      const act = []; for (let i = 0; i < 4; i++) if (inRound(r.seats[i])) act.push(i);
+      for (const i of act) { r.seats[i].hands = [newHand(r.seats[i].baseBet)]; r.seats[i].active = 0; }
+      r.dealer = [];
+      // classic deal order, one card at a time: each seat 1st card, dealer up, each seat 2nd, dealer hole
+      const queue = [];
+      for (const i of act) queue.push({ seat: i });
+      queue.push({ dealer: 1 });
+      for (const i of act) queue.push({ seat: i });
+      queue.push({ dealer: 1 });
+      r._dealQ = queue;
+      if (T.dealPace > 0) { r.timers.deal = setT(() => dealStep(r), T.dealReveal || T.dealPace); } // suspenseful, card by card
+      else { while (r._dealQ.length) dealOne(r); finishDeal(r); }                                   // synchronous (tests / off)
+    }
+    function dealOne(r) { const t = r._dealQ.shift(); if (t.dealer) r.dealer.push(draw(r)); else r.seats[t.seat].hands[0].cards.push(draw(r)); }
+    function dealStep(r) {
+      if (r.phase !== "dealing") return;
+      dealOne(r); broadcastState(r);
+      if (r._dealQ.length) r.timers.deal = setT(() => dealStep(r), T.dealPace);
+      else finishDeal(r);
+    }
+    function finishDeal(r) {
+      const act = []; for (let i = 0; i < 4; i++) if (inRound(r.seats[i])) act.push(i);
+      for (const i of act) { if (Rules.handValue(r.seats[i].hands[0].cards).blackjack) r.seats[i].hands[0].done = true; } // naturals stand
+      broadcast(r, { type: "bj:event", kind: "deal", roomId: r.id });
+      // insurance first (dealer Ace, peek on), then dealer-BJ resolution, then play
+      if (config.peek && r.dealer[0].rank === "A") return offerInsurance(r);
+      const dealerBJ = Rules.dealerPeeks(r.dealer, config) && Rules.handValue(r.dealer).blackjack;
+      if (dealerBJ) { r.phase = "dealer"; return settle(r); }
+      beginPlay(r);
+    }
+
+    /* ---------------- insurance ---------------- */
+    function offerInsurance(r) {
+      r.phase = "insurance"; r.deadline = now() + T.insurance;
+      for (const s of r.seats) if (inRound(s)) s.insuranceDecided = false;
+      r.timers.insurance = setT(() => closeInsurance(r), T.insurance);
+      broadcast(r, { type: "bj:insurance:offer", roomId: r.id, deadline: r.deadline, maxFactor: 0.5 });
+      broadcastState(r);
+    }
+    function takeInsurance(r, seatIdx, take) {
+      const s = r.seats[seatIdx]; if (!s || r.phase !== "insurance" || !inRound(s) || s.insuranceDecided) return;
+      if (take) {
+        const amt = r2(s.baseBet * 0.5);
+        // check the debit's RETURN: if it fails (can't afford the 0.5x), tell the player instead of
+        // silently skipping insurance — but still mark decided so the phase proceeds (don't strand it).
+        if (bank.debit(s.wallet, amt)) { s.insurance = amt; pushWallet(s.sock, s.wallet); }
+        else err(s.sock, "insufficient", "Not enough balance for insurance", "insurance");
+      }
+      s.insuranceDecided = true;
+      touch(r);
+      if (r.seats.filter(inRound).every((x) => x.insuranceDecided)) closeInsurance(r);
+      else broadcastState(r);
+    }
+    function closeInsurance(r) {
+      clrT(r.timers.insurance);
+      const dealerBJ = Rules.handValue(r.dealer).blackjack;
+      for (const s of r.seats) if (inRound(s) && s.insurance > 0) {
+        const amount = s.insurance;
+        if (dealerBJ) { const win = r2(amount * 3); bank.credit(s.wallet, win); s.insuranceResult = { taken: true, amount, won: true, payout: win }; pushWallet(s.sock, s.wallet); }
+        else s.insuranceResult = { taken: true, amount, won: false, payout: 0 };
+        s.insurance = 0; // resolved → no longer an in-flight escrow (closeRoom must not refund a lost insurance)
+      }
+      broadcast(r, { type: "bj:insurance:result", roomId: r.id, dealerBlackjack: dealerBJ });
+      if (dealerBJ) { r.phase = "dealer"; return settle(r); }
+      beginPlay(r);
+    }
+
+    /* ---------------- player turns ---------------- */
+    function beginPlay(r) {
+      // if every active hand is already resolved (all naturals), go straight to the dealer
+      const anyToPlay = r.seats.some((s) => inRound(s) && s.hands.some((h) => !h.done));
+      if (!anyToPlay) { dealerPlay(r); return; }
+      r.phase = "turns"; r.turnIdx = -1; nextSeat(r);
+    }
+    function nextSeat(r) {
+      let idx = r.turnIdx;
+      for (let k = 0; k < 4; k++) { idx++; if (idx > 3) break; const s = r.seats[idx];
+        if (inRound(s) && s.hands.some((h) => !h.done)) { r.turnIdx = idx; s.active = s.hands.findIndex((h) => !h.done); return startTurn(r); } }
+      r.turnIdx = -1; dealerPlay(r);
+    }
+    function advanceHand(r) {
+      const s = r.seats[r.turnIdx];
+      for (let i = s.active + 1; i < s.hands.length; i++) if (!s.hands[i].done) { s.active = i; return startTurn(r); }
+      nextSeat(r); // seat fully done
+    }
+    function handRules(h) {
+      return { cards: h.cards, bet: h.bet, firstAction: h.cards.length === 2 && !h.doubled, fromSplit: h.fromSplit, isAceSplit: h.isAceSplit, doubled: h.doubled, done: h.done };
+    }
+    // Broadcast the current turn, including which actions are blocked ONLY by balance
+    // (so the client can offer a "TOP UP to double/split" button) and the bet to cover.
+    function emitTurn(r) {
+      const s = r.seats[r.turnIdx]; if (!s) return; const h = s.hands[s.active];
+      const bal = bank.get(s.wallet);
+      const legal = Rules.legalActions(handRules(h), { balance: bal, config, numHands: s.hands.length });
+      const funded = Rules.legalActions(handRules(h), { balance: Infinity, config, numHands: s.hands.length });
+      const needFunds = funded.filter((a) => (a === "double" || a === "split") && legal.indexOf(a) < 0);
+      broadcast(r, { type: "bj:turn", roomId: r.id, seat: r.turnIdx, hand: s.active, legalActions: legal, needFunds, bet: h.bet, balance: bal, deadline: r.deadline });
+    }
+    // Mid-hand top-up so a player can afford a double/split after seeing their cards.
+    // DEMO/guest play-money only — real-money buy-ins lock funds on-chain elsewhere.
+    function topUp(sock, amount) {
+      const w = sock.wallet || "";
+      if (!/^guest:/.test(w)) return; // guests only (play money)
+      const amt = r2(Math.max(0, Math.min(100000, +amount || 0)));
+      if (amt <= 0) return;
+      bank.credit(w, amt); pushWallet(sock, w);
+      for (const r of rooms.values()) {
+        const i = seatOf(r, sock); if (i < 0) continue;
+        if (r.phase === "turns" && r.turnIdx === i) {
+          // Re-arm the turn clock so a top-up tapped near the buzzer doesn't get
+          // auto-stood before you can use the now-affordable double/split.
+          clrT(r.timers.turn); r.deadline = now() + T.turn;
+          r.timers.turn = setT(() => applyAction(r, r.turnIdx, "stand", true), T.turn);
+          emitTurn(r);
+        } else broadcastState(r);
+        break;
+      }
+    }
+    function startTurn(r) {
+      const s = r.seats[r.turnIdx], h = s.hands[s.active];
+      if (h.cards.length === 1) {                    // a freshly-split hand: deal its second card now
+        h.cards.push(draw(r));
+        if (h.isAceSplit) { h.done = true; return advanceHand(r); }          // split aces: one card, done
+        if (Rules.handValue(h.cards).total === 21) { h.done = true; return advanceHand(r); } // 21 (not a natural) auto-stands
+      }
+      const hv = Rules.handValue(h.cards);
+      if (hv.bust || hv.total === 21) { h.done = true; return advanceHand(r); }
+      r.deadline = now() + T.turn; touch(r);
+      r.timers.turn = setT(() => applyAction(r, r.turnIdx, "stand", true), T.turn);
+      emitTurn(r);
+      broadcastState(r);
+    }
+    function applyAction(r, seatIdx, action, auto) {
+      const s = r.seats[seatIdx];
+      if (!s) { if (auto && r.phase === "turns" && r.turnIdx === seatIdx) { clrT(r.timers.turn); nextSeat(r); } return; } // vacated mid-turn → advance, don't strand
+      if (r.phase !== "turns" || r.turnIdx !== seatIdx) return;
+      const h = s.hands[s.active]; if (!h || h.done) return;
+      const legal = Rules.legalActions(
+        { cards: h.cards, bet: h.bet, firstAction: h.cards.length === 2 && !h.doubled, fromSplit: h.fromSplit, isAceSplit: h.isAceSplit, doubled: h.doubled, done: h.done },
+        { balance: bank.get(s.wallet), config, numHands: s.hands.length });
+      if (!auto && legal.indexOf(action) < 0) return err(s.sock, "illegal_action", "That move isn't allowed here", "action");
+      clrT(r.timers.turn); touch(r);
+
+      if (action === "hit") {
+        h.cards.push(draw(r)); const hv = Rules.handValue(h.cards);
+        if (hv.bust) { h.done = true; broadcast(r, { type: "bj:event", kind: "bust", seat: seatIdx, hand: s.active }); advanceHand(r); }
+        else if (hv.total === 21) { h.done = true; advanceHand(r); }
+        else startTurn(r);
+      } else if (action === "stand") {
+        h.done = true; advanceHand(r);
+      } else if (action === "double") {
+        // legalActions already requires the balance, but check the debit anyway — a failed debit
+        // must never leave a free doubled bet. Re-arm the turn so the player can pick again.
+        if (!bank.debit(s.wallet, h.bet)) { startTurn(r); return err(s.sock, "insufficient", "Not enough balance to double", "action"); }
+        h.bet = r2(h.bet * 2); h.doubled = true; pushWallet(s.sock, s.wallet);
+        notifyBalance(s.wallet);
+        h.cards.push(draw(r)); h.done = true;
+        broadcast(r, { type: "bj:event", kind: "double", seat: seatIdx, hand: s.active }); advanceHand(r);
+      } else if (action === "surrender") {
+        h.surrendered = true; h.done = true; advanceHand(r);
+      } else if (action === "split") {
+        if (!bank.debit(s.wallet, h.bet)) { startTurn(r); return err(s.sock, "insufficient", "Not enough balance to split", "action"); }
+        pushWallet(s.sock, s.wallet);
+        const isAce = h.cards[0].rank === "A";
+        const moved = h.cards.pop();                       // second pair card seeds the new hand
+        h.fromSplit = true; h.isAceSplit = isAce;          // the original hand is now a split hand
+        const fresh = newHand(h.bet, { fromSplit: true, isAceSplit: isAce, cards: [moved] });
+        s.hands.splice(s.active + 1, 0, fresh);
+        notifyBalance(s.wallet);
+        broadcast(r, { type: "bj:event", kind: "split", seat: seatIdx });
+        startTurn(r); // re-enters with the (now 1-card) original hand → deals its 2nd card
+      }
+    }
+    function dealerPlay(r) {
+      r.phase = "dealer"; broadcastState(r); // reveal hole
+      // dealer only draws if at least one non-surrendered, non-busted hand is live
+      const live = r.seats.some((s) => inRound(s) && s.hands.some((h) => !h.surrendered && !Rules.handValue(h.cards).bust));
+      if (!live) return settle(r);
+      if (T.dealerPace > 0) { r.timers.dealer = setT(() => dealerStep(r), T.dealerReveal || T.dealerPace); return; } // paced: one card at a time, with suspense
+      while (Rules.dealerShouldHit(r.dealer, config)) r.dealer.push(draw(r)); // synchronous (pacing off / tests)
+      settle(r);
+    }
+    // one paced dealer draw, then schedule the next — gives the table its suspense
+    function dealerStep(r) {
+      if (r.phase !== "dealer") return;
+      if (Rules.dealerShouldHit(r.dealer, config)) { r.dealer.push(draw(r)); broadcastState(r); r.timers.dealer = setT(() => dealerStep(r), T.dealerPace); }
+      else settle(r);
+    }
+    function settle(r) {
+      r.phase = "settle"; const perSeat = [];
+      for (let i = 0; i < 4; i++) { const s = r.seats[i]; if (!inRound(s)) continue;
+        let net = 0; const handsOut = [];
+        for (const h of s.hands) {
+          const res = Rules.settleHand({ cards: h.cards, surrendered: h.surrendered, fromSplit: h.fromSplit }, { cards: r.dealer }, config);
+          const payout = r2(h.bet * res.returnMult);
+          if (payout > 0) bank.credit(s.wallet, payout);
+          h.result = { outcome: res.outcome, payout, delta: r2(payout - h.bet) };
+          net = r2(net + h.result.delta);
+          handsOut.push({ cards: h.cards, total: Rules.handValue(h.cards).total, outcome: res.outcome, payout, delta: h.result.delta, doubled: h.doubled, fromSplit: h.fromSplit, surrendered: h.surrendered });
+        }
+        const ir = s.insuranceResult;
+        if (ir && ir.taken) net = r2(net + (ir.payout || 0) - (ir.amount || 0));
+        s.settled = true; notifyBalance(s.wallet); pushWallet(s.sock, s.wallet);
+        perSeat.push({ seat: i, wallet: s.wallet, hands: handsOut, insurance: (ir && ir.taken) ? { amount: ir.amount, won: !!ir.won, payout: ir.payout || 0 } : null, net });
+      }
+      broadcastState(r);
+      broadcast(r, { type: "bj:settle", roomId: r.id, perSeat, dealerTotal: Rules.handValue(r.dealer).total, dealerBlackjack: Rules.handValue(r.dealer).blackjack });
+      broadcast(r, { type: "bj:reveal", roomId: r.id, serverSeed: r.serverSeed, commit: r.commit, shoeId: r.shoeId,
+        clientSeeds: r.seats.map((s) => inRound(s) ? (s.clientSeed || "") : ""), decks: config.decks,
+        source: randomness.name || "commit-reveal", proof: r.proof || null });
+      touch(r);
+      r.timers.between = setT(() => { if (r.seats.some(Boolean)) startBetting(r); else { r.phase = "idle"; broadcastState(r); } }, T.between);
+    }
+
+    /* ---------------- intents ---------------- */
+    function seatOf(r, sock) { for (let i = 0; i < 4; i++) if (r.seats[i] && r.seats[i].sock === sock) return i; return -1; }
+    function err(sock, code, msg, intent) { send(sock, { type: "bj:error", code, msg, intent }); }
+
+    function join(sock, wallet, roomId, seatPref) {
+      // Reconnect grace: if this wallet has a seat that's only temporarily disconnected
+      // (the player backgrounded the app / lost signal), reclaim that EXACT seat + hand
+      // instead of taking a new one. Keeps you at the table across an app switch.
+      for (const room of rooms.values()) {
+        for (let i = 0; i < 4; i++) {
+          const s = room.seats[i];
+          if (s && s.disconnected && s.wallet === wallet) {
+            if (s._dcTimer) { clrT(s._dcTimer); s._dcTimer = null; }
+            s.sock = sock; s.disconnected = 0; s.left = false;
+            room.spectators.delete(sock);
+            send(sock, Object.assign(snapshot(room), { you: { roomId: room.id, seat: i, balance: bank.get(wallet) } }));
+            pushWallet(sock, wallet);
+            broadcast(room, { type: "bj:event", kind: "seatReconnected", seat: i, wallet });
+            broadcastState(room); pushLobby();
+            return room;
+          }
+        }
+      }
+      for (const rr of rooms.values()) if (seatOf(rr, sock) >= 0) return err(sock, "already_seated", "Leave your current table first", "join"); // one seat per connection, across all tables
+      // One seat per WALLET across all tables too — without this a guest could open a
+      // second connection (two tabs / stale socket) and sit at another table at once.
+      // (Runs after the reconnect-reclaim block above, so genuine reconnects still work.)
+      for (const rr of rooms.values()) for (const st of rr.seats) if (st && st.wallet === wallet) return err(sock, "already_seated", "You're already at a table", "join");
+      // KIND SEGREGATION: real-money (token/bridge) players and demo (play-money) players never share a table
+      // (one shared shoe → another player's hit/stand changes the cards you + the dealer draw).
+      const kind = playerKind(wallet);
+      let r = roomId ? rooms.get(roomId) : null;
+      // A specific table (e.g. a shared link) of a DIFFERENT kind can't be joined — fall through to a
+      // correct-kind table instead of seating a real player at a demo shoe (or vice-versa).
+      if (r && seatedCount(r) > 0 && r.kind && r.kind !== kind) {
+        send(sock, { type: "bj:event", kind: "kindMismatch", wanted: kind, tableKind: r.kind });
+        r = null;
+      }
+      if (!r) r = openRoom(kind); if (!r) return err(sock, "lobby_full", "No tables available");
+      if (r.seats.some((s) => s && s.wallet === wallet)) return err(sock, "already_seated", "One seat per table", "join");
+      let idx = -1;
+      if (seatPref != null && !r.seats[seatPref]) idx = seatPref; else idx = r.seats.findIndex((s) => !s);
+      if (idx < 0) return err(sock, "table_full", "Table is full", "join");
+      r.kind = kind; // first player establishes (or re-affirms) the table kind; an empty room takes either
+      r.seats[idx] = { sock, wallet, baseBet: 0, clientSeed: "", hands: [], active: -1, insurance: 0, settled: false };
+      r.spectators.delete(sock);
+      if (r.seats.filter(Boolean).length === 4) { r.full = true; createRoom(); }
+      touch(r);
+      send(sock, Object.assign(snapshot(r), { you: { roomId: r.id, seat: idx, balance: bank.get(wallet) } }));
+      pushWallet(sock, wallet);
+      broadcast(r, { type: "bj:event", kind: "seatTaken", seat: idx, wallet });
+      if (r.phase === "idle") startBetting(r); else broadcastState(r);
+      pushLobby(); return r;
+    }
+    function watch(sock, roomId) { const r = rooms.get(roomId); if (!r) return err(sock, "no_room", "Room not found", "watch"); r.spectators.add(sock); send(sock, snapshot(r)); pushLobby(); }
+    function leave(sock) {
+      // clear the socket from EVERY room it occupies (seat or spectator), not just the first
+      for (const r of rooms.values()) {
+        r.spectators.delete(sock);
+        const i = seatOf(r, sock); if (i < 0) continue;
+        const s = r.seats[i];
+        if (r.phase === "betting" || r.phase === "idle") {
+          if (s.baseBet > 0) { bank.credit(s.wallet, s.baseBet); pushWallet(s.sock, s.wallet); } // refund the un-dealt bet
+          r.seats[i] = null; r.full = false;
+          broadcast(r, { type: "bj:event", kind: "seatOpen", seat: i });
+          broadcastState(r); reapEmptyExtras();
+        } else {
+          // abandoning a LIVE hand: stop acting; the dealt hands settle on their merits
+          // (a winning hand still pays), then the seat is dropped at the next startBetting.
+          // This fixes both the turn-deadlock and the silent escrow forfeiture.
+          s.left = true;
+          if (s.hands) for (const h of s.hands) h.done = true;
+          broadcast(r, { type: "bj:event", kind: "seatLeaving", seat: i, wallet: s.wallet });
+          if (r.phase === "turns" && r.turnIdx === i) { clrT(r.timers.turn); nextSeat(r); }
+          else if (r.phase === "insurance") { s.insuranceDecided = true; if (r.seats.filter(inRound).every((x) => x.insuranceDecided)) closeInsurance(r); else broadcastState(r); }
+          else broadcastState(r);
+        }
+        pushLobby();
+      }
+    }
+    // A socket dropped (often a mobile app-switch). DON'T free the seat right away —
+    // reserve it for a grace window so the player reclaims it on reconnect. If it's
+    // their turn meanwhile, the normal turn timer auto-stands them so the table never
+    // deadlocks; if the grace expires, the seat is dropped for real.
+    const RECONNECT_GRACE = 90000;
+    function markDisconnected(sock) {
+      lobbySubs.delete(sock);
+      for (const r of rooms.values()) {
+        r.spectators.delete(sock);
+        const i = seatOf(r, sock); if (i < 0) continue;
+        const s = r.seats[i];
+        s.disconnected = now();
+        if (s._dcTimer) clrT(s._dcTimer);
+        s._dcTimer = setT(() => dropSeat(r, i, s), RECONNECT_GRACE);
+        broadcast(r, { type: "bj:event", kind: "seatAway", seat: i, wallet: s.wallet });
+        broadcastState(r); pushLobby();
+      }
+    }
+    function dropSeat(r, i, s) {
+      if (r.seats[i] !== s) return; // already reclaimed or replaced
+      s._dcTimer = null;
+      if (r.phase === "betting" || r.phase === "idle") {
+        if (s.baseBet > 0) bank.credit(s.wallet, s.baseBet); // refund the un-dealt bet
+        r.seats[i] = null; r.full = false;
+        // Hardening: the seat is gone and no hand is live → drop any lingering token binding so a later
+        // out-of-band token settle can't leave a stale wallet→session entry (inert today; defense-in-depth).
+        try { if (s.wallet && !hasLiveHand(s.wallet)) unbindToken(s.wallet); } catch (e) {}
+        broadcast(r, { type: "bj:event", kind: "seatOpen", seat: i });
+        broadcastState(r); reapEmptyExtras();
+      } else {
+        s.left = true; if (s.hands) for (const h of s.hands) h.done = true;
+        broadcast(r, { type: "bj:event", kind: "seatLeaving", seat: i, wallet: s.wallet });
+        if (r.phase === "turns" && r.turnIdx === i) { clrT(r.timers.turn); nextSeat(r); }
+        else broadcastState(r);
+      }
+      pushLobby();
+    }
+    function placeBet(sock, amountUsd, clientSeed) {
+      for (const r of rooms.values()) { const i = seatOf(r, sock); if (i < 0) continue;
+        if (r.phase !== "betting") return err(sock, "not_betting", "Betting is closed", "bet");
+        const amt = r2(+amountUsd); const s = r.seats[i];
+        if (!(amt >= config.minBet)) return err(sock, "min_bet", "Minimum bet is $" + config.minBet, "bet");
+        if (bank.get(s.wallet) + (s.baseBet || 0) < amt) return err(sock, "insufficient", "Not enough balance", "bet");
+        const had = s.baseBet || 0;
+        if (had > 0) bank.credit(s.wallet, had); // refund the old escrow first (re-bet replaces)
+        if (!bank.debit(s.wallet, amt)) { if (had > 0) bank.debit(s.wallet, had); return err(sock, "insufficient", "Not enough balance", "bet"); } // re-debit; never escrow an unfunded bet
+        s.baseBet = amt; s.clientSeed = clientSeed || Shuffle.randomSeed(8);
+        notifyBalance(s.wallet);
+        touch(r);
+        const seated = r.seats.filter(Boolean);
+        if (seated.length && seated.every((x) => x.baseBet > 0)) {
+          // everyone's in — hold a short "no more bets" grace so a misclick can be
+          // removed before the deal, then deal automatically.
+          r.deadline = now() + 3000;
+          armBetting(r, 3000);
+        }
+        pushWallet(sock, s.wallet); broadcastState(r);
+        return;
+      }
+      err(sock, "no_seat", "Take a seat first", "bet");
+    }
+    function cancelBet(sock) {
+      for (const r of rooms.values()) { const i = seatOf(r, sock); if (i < 0) continue;
+        if (r.phase !== "betting") return err(sock, "not_betting", "Too late to remove the bet", "bet");
+        const s = r.seats[i];
+        if (s.baseBet > 0) {
+          bank.credit(s.wallet, s.baseBet); s.baseBet = 0;
+          notifyBalance(s.wallet);
+          r.deadline = now() + T.betting; armBetting(r, T.betting); // fresh window (epoch-guarded)
+          touch(r); pushWallet(s.sock, s.wallet); broadcastState(r);
+        }
+        return;
+      }
+    }
+    // DEMO ONLY: keep a guest's table balance in sync with the site's play-money demo
+    // balance (the single balance the player sees). Never applies to real (0x) wallets
+    // — their funds live on-chain — and never mid-hand (only when idle or pre-bet).
+    function seedGuest(sock, amount) {
+      const w = sock.wallet || "";
+      if (!/^guest:/.test(w) || typeof amount !== "number" || !isFinite(amount) || amount < 0) return;
+      for (const r of rooms.values()) {
+        const i = seatOf(r, sock);
+        if (i >= 0) { const s = r.seats[i]; if (s && (s.baseBet > 0 || r.phase !== "betting")) return; } // not mid-hand
+      }
+      // Top-up only: a re-seed (e.g. the ⟳ Reload button) may RAISE an idle guest to the
+      // floor but must never DESTROY winnings by lowering them. Otherwise a guest who ground
+      // up to $16k and clicked Reload would be wiped back to $1,000.
+      bank.all.set(w, r2(Math.max(amount, bank.get(w))));
+      pushWallet(sock, w);
+      for (const r of rooms.values()) { if (seatOf(r, sock) >= 0) { broadcastState(r); break; } } // refresh betMax
+    }
+    function hasOpenExposure(wallet) {
+      for (const r of rooms.values()) {
+        for (const s of r.seats) {
+          if (!s || s.wallet !== wallet) continue;
+          if (seatStake(s) > 0) return true;
+          if (r.phase !== "idle" && r.phase !== "betting") return true;
+        }
+      }
+      return false;
+    }
+    function bridgeFund(wallet, amountUsd, add) {
+      if (!/^0x[0-9a-fA-F]{40}$/.test(String(wallet || ""))) throw new Error("real wallet required");
+      if (hasOpenExposure(wallet)) throw new Error("finish the current hand before changing bridge funds");
+      const amt = r2(Math.max(0, Math.min(1000000, +amountUsd || 0)));
+      bank.all.set(wallet, add ? r2(bank.get(wallet) + amt) : amt);
+      notifyBalance(wallet);
+      for (const r of rooms.values()) {
+        for (const s of r.seats) if (s && s.wallet === wallet) {
+          pushWallet(s.sock, wallet); broadcastState(r);
+        }
+      }
+      return r2(bank.get(wallet));
+    }
+    function bridgeSetBalance(wallet, amountUsd) {
+      if (!/^0x[0-9a-fA-F]{40}$/.test(String(wallet || ""))) throw new Error("real wallet required");
+      const amt = r2(Math.max(0, Math.min(1000000, +amountUsd || 0)));
+      bank.all.set(wallet, amt);
+      notifyBalance(wallet);
+      return amt;
+    }
+    function bridgeBalance(wallet) {
+      if (hasOpenExposure(wallet)) throw new Error("finish the current hand before cashing out");
+      return r2(bank.get(wallet));
+    }
+    function bridgeClear(wallet) {
+      if (hasOpenExposure(wallet)) throw new Error("finish the current hand before cashing out");
+      bank.all.set(wallet, 0);
+      notifyBalance(wallet);
+      bridgeAuth.delete(norm(wallet));
+      for (const r of rooms.values()) {
+        for (const s of r.seats) if (s && s.wallet === wallet) {
+          pushWallet(s.sock, wallet); broadcastState(r);
+        }
+      }
+    }
+    function action(sock, act) {
+      for (const r of rooms.values()) { const i = seatOf(r, sock); if (i < 0) continue;
+        if (r.turnIdx !== i || r.phase !== "turns") return err(sock, "not_your_turn", "Not your turn", "action");
+        if (["hit", "stand", "double", "split", "surrender"].indexOf(act) < 0) return err(sock, "bad_action", "Unknown action", "action");
+        return applyAction(r, i, act, false);
+      }
+      err(sock, "no_seat", "You are not seated", "action");
+    }
+    function insurance(sock, take) {
+      for (const r of rooms.values()) { const i = seatOf(r, sock); if (i < 0) continue;
+        if (r.phase !== "insurance") return err(sock, "no_insurance", "Insurance is closed", "insurance");
+        return takeInsurance(r, i, !!take);
+      }
+    }
+
+    /* ---------------- router ---------------- */
+    function messageWallet(sock, m) {
+      if (sock.wallet) return sock.wallet;
+      const hinted = String((m && m.wallet) || "");
+      return /^guest:/.test(hinted) ? hinted : "";
+    }
+    function authStillValid(sock) {
+      const w = sock && sock.wallet;
+      if (!realWallet(w)) return true;
+      // TOKEN-FUNDED: a wallet bound to a token session (set ONLY by server.js after tokenSvc.verifySession
+      // confirmed the bearer + that the session belongs to this wallet) is authorized. The binding is frozen
+      // for the life of a hand (bindToken/unbindToken refuse while hasLiveHand), so it can't be swapped to a
+      // different session between a bet's debit and the hand's credit.
+      if (isTokenWallet(w)) return true;
+      if (bridgeAuth.get(norm(w)) === String(sock.bjToken || "")) return true;
+      sock.wallet = "";
+      sock.bjAuthDenied = true;
+      return false;
+    }
+    function authBypassType(type) {
+      return type === "bj:lobby:subscribe" || type === "bj:lobby:unsubscribe" || type === "bj:room:watch" || type === "bj:room:leave";
+    }
+    function handle(sock, m) {
+      if (!authStillValid(sock) && !authBypassType(m.type)) {
+        return err(sock, "auth_required", "Lock blackjack credits before joining with this wallet", "join");
+      }
+      if (sock.bjAuthDenied && !authBypassType(m.type)) {
+        return err(sock, "auth_required", "Lock blackjack credits before joining with this wallet", "join");
+      }
+      const wallet = messageWallet(sock, m);
+      switch (m.type) {
+        // Identity is the CONNECTION's trusted wallet (stamped by the transport), never
+        // the client-supplied m.wallet — so the engine is self-enforcing if reused.
+        case "bj:lobby:subscribe": { lobbySubs.add(sock); if (rooms.size === 0) createRoom(); send(sock, { type: "bj:lobby:list", rooms: lobbyList() }); if (wallet) pushWallet(sock, wallet); break; }
+        case "bj:lobby:unsubscribe": lobbySubs.delete(sock); break;
+        case "bj:room:join": join(sock, wallet || "anon", m.roomId, m.seatPref); break;
+        case "bj:room:watch": watch(sock, m.roomId); break;
+        case "bj:room:leave": leave(sock); break;
+        case "bj:bet:place": placeBet(sock, m.amountUsd, m.clientSeed); break;
+        case "bj:bet:cancel": cancelBet(sock); break;
+        case "bj:seed": seedGuest(sock, +m.balance); break;
+        case "bj:topup": topUp(sock, +m.amount); break;
+        case "bj:action": action(sock, m.action); break;
+        case "bj:insurance": insurance(sock, m.take); break;
+        default: break;
+      }
+    }
+    function onClose(sock) { markDisconnected(sock); } // keep the seat reserved through a grace so a reconnect reclaims it
+
+    createRoom();
+    return { handle, onClose, bank, config,
+      // Token-funded tables (the new real-money path): bind a wallet to its token session, route its chips
+      // to the token ledger, and report a live hand so the token bridge can refuse a mid-hand cash-out.
+      setTokenLedger: (tl) => { TL = tl || null; },
+      bindToken, unbindToken, hasLiveHand, isTokenWallet,
+      bridge: {
+        fund: bridgeFund, setBalance: bridgeSetBalance, balance: bridgeBalance, clear: bridgeClear, hasOpenExposure, openExposure,
+        authorize: (wallet, token) => { if (realWallet(wallet) && token) bridgeAuth.set(norm(wallet), String(token)); },
+        deauthorize: (wallet) => bridgeAuth.delete(norm(wallet)),
+        isAuthorized: (wallet, token) => !realWallet(wallet) || (!!token && bridgeAuth.get(norm(wallet)) === String(token)),
+        onBalanceChange: (fn) => { if (typeof fn === "function") balanceWatchers.add(fn); return () => balanceWatchers.delete(fn); },
+      },
+      _mgr: { rooms, openRoom, createRoom, closeRoom, lobbyList },
+      _room: { startBetting, endBetting, deal, applyAction, dealerPlay, settle, snapshot, takeInsurance, closeInsurance } };
+  }
+
+  const API = { attachBlackjack, makeBank };
+  if (typeof module !== "undefined" && module.exports) module.exports = API;
+  root.BlackjackServer = API;
+
+  /* ---- TOKEN-FUNDED self-test: node server/blackjack-server.js ----
+     Drives the REAL handle() path (the audit found the unit test bypassed it) to prove: a token-bound wallet
+     is authorized, its bet debits the TOKEN session, the binding is FROZEN mid-hand (no over-credit), a win
+     credits the SAME session, and an UNBOUND real wallet is denied (can't bet unbound → can't over-credit). */
+  if (typeof require !== "undefined" && require.main === module) {
+    let ok = true;
+    const eq = (label, cond) => { console.log((cond ? "  ok  " : "  FAIL") + "  " + label); if (!cond) ok = false; };
+    const player = "0x2F4BEF94550C29c497b999B86b758F9771F7aB39";
+    const sess = { S1: { player: player, tokens: 1000 } };
+    const TL = {
+      tokensOf: (sid) => (sess[sid] ? sess[sid].tokens : null),
+      applyNet: (p, sid, bet, payout) => {
+        const s = sess[sid]; if (!s) throw new Error("no open token session");
+        if (s.player.toLowerCase() !== String(p).toLowerCase()) throw new Error("wrong player");
+        if (bet > s.tokens) throw new Error("insufficient");
+        s.tokens = Math.round((s.tokens - bet + payout) * 100) / 100; return s.tokens;
+      },
+    };
+    const bj = attachBlackjack({ tokenLedger: TL, setTimeout: () => 0 }); // no-op timers: no auto-deal during the test
+    const mkWs = (w) => ({ wallet: w, bjToken: "bearer", send: () => {} });
+    eq("bind a token wallet succeeds", bj.bindToken(player, "S1") === true);
+    const ws = mkWs(player);
+    bj.handle(ws, { type: "bj:lobby:subscribe" }); // ensure a room exists
+    bj.handle(ws, { type: "bj:room:join" });
+    eq("token-bound wallet stays seated (authStillValid allows a bound wallet)", ws.wallet === player && !ws.bjAuthDenied);
+    bj.handle(ws, { type: "bj:bet:place", amountUsd: 100, clientSeed: "c" });
+    eq("a bet debits the TOKEN session (1000 → 900)", TL.tokensOf("S1") === 900);
+    eq("hasLiveHand is true once a bet is placed", bj.hasLiveHand(player) === true);
+    eq("bindToken is FROZEN mid-hand (can't swap funding pool → no over-credit)", bj.bindToken(player, "S2") === false);
+    eq("unbindToken is FROZEN mid-hand (win can't be diverted to play-money)", bj.unbindToken(player) === false);
+    bj.bank.credit(player, 250); // simulate the hand's payout
+    eq("a win credits the SAME frozen token session (900 → 1150)", TL.tokensOf("S1") === 1150);
+    // an UNBOUND real wallet can't sit/bet → the 'bet while unbound then bind' over-credit is impossible
+    const uws = mkWs("0x1111111111111111111111111111111111111111");
+    bj.handle(uws, { type: "bj:room:join" });
+    eq("an UNBOUND real wallet is denied (can't bet unbound)", uws.wallet === "" && uws.bjAuthDenied === true);
+    // a guest (play-money) is unaffected — uses the in-memory bank, never the token ledger
+    const gws = mkWs("guest:test1234");
+    bj.handle(gws, { type: "bj:room:join" });
+    eq("a guest plays on the play-money bank (token ledger untouched)", !bj.isTokenWallet("guest:test1234"));
+
+    // ── KIND SEGREGATION: real (token) + demo (guest) players NEVER share a table (shared shoe → others'
+    //    hit/stand decisions change the cards you and the dealer draw) ──
+    const roomOf = (w) => { for (const r of bj._mgr.rooms.values()) if (r.seats.some((s) => s && s.wallet === w)) return r; return null; };
+    const realRoom2 = roomOf(player), guestRoom2 = roomOf("guest:test1234");
+    eq("real + demo players are seated at DIFFERENT tables", !!realRoom2 && !!guestRoom2 && realRoom2 !== guestRoom2);
+    eq("real table kind=real, guest table kind=demo", !!realRoom2 && realRoom2.kind === "real" && !!guestRoom2 && guestRoom2.kind === "demo");
+    // a 2nd real player shares the REAL table (reals CAN sit with reals); never the demo one
+    const player2 = "0x3333333333333333333333333333333333333333"; sess.S3 = { player: player2, tokens: 500 }; bj.bindToken(player2, "S3");
+    bj.handle(mkWs(player2), { type: "bj:room:join" });
+    eq("a 2nd real player joins a real-kind table", (roomOf(player2) || {}).kind === "real");
+    // a guest who opens a real-money table's share link is NEVER seated there — redirected to a demo table
+    const gws2 = mkWs("guest:zzz999");
+    bj.handle(gws2, { type: "bj:room:join", roomId: realRoom2.id });
+    const gAfter = roomOf("guest:zzz999");
+    eq("a guest opening a real-money table link is redirected to a demo table (never the real one)", !!gAfter && gAfter.id !== realRoom2.id && gAfter.kind === "demo");
+    // a legacy-bridge real wallet (authorized via bridgeAuth, NOT token-bound) must classify as REAL so it
+    // can never share a demo shoe with guests (defense-in-depth for if the experimental bridge is re-enabled)
+    const legacy = "0x4444444444444444444444444444444444444444"; bj.bridge.authorize(legacy, "btok");
+    const lws = mkWs(legacy); lws.bjToken = "btok";
+    bj.handle(lws, { type: "bj:room:join" });
+    const lRoom = roomOf(legacy);
+    eq("a legacy-bridge real wallet joins a REAL table (never a demo shoe)", bj.isTokenWallet(legacy) === false && !!lRoom && lRoom.kind === "real");
+
+    console.log(ok ? "\nSELF-TEST OK — token-funded blackjack: bound-auth, frozen funding pool, consistent debit/credit, REAL/DEMO segregation." : "\nSELF-TEST FAILED");
+    process.exit(ok ? 0 : 1);
+  }
+})(typeof globalThis !== "undefined" ? globalThis : this);
