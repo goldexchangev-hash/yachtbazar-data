@@ -429,6 +429,7 @@
       this._net(b.s.x, b.s.y, fish.def.color); // immediate net FX (latency-friendly)
       root.TokenMode.bet("fishshooter", b.cost, { targetKey: fish.def.key, power: b.power }).then(function (r) {
         self.balance = root.TokenMode.tokens(); // authoritative (stake debited + any payout/disbursement)
+        self._tokenRevealUntil = Date.now() + 520; // hold the HUD balance briefly so the win reveals AFTER the burst (syncTokenGameBalances skips only during this window — a buy-in/top-up still updates immediately)
         if (r && r.win) {
           if (fish.alive) self._catch(fish, shot); // direct-catch FX (local credit + local triggers gated in _catch)
           if (r.outcome && r.outcome.bonus && r.outcome.bonus.total > 0) self._startTokenBonus(r.outcome.bonus, shot); // server-driven wave

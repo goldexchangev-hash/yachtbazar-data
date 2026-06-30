@@ -374,6 +374,7 @@
       this._net(b.s.x, b.s.y, fish.def.color); // immediate net FX
       root.TokenMode.bet("reef", shot.cost, { targetKey: fish.def.key, power: shot.power }).then(function (r) {
         self.balance = root.TokenMode.tokens(); // authoritative
+        self._tokenRevealUntil = Date.now() + 520; // hold the HUD balance briefly so the win reveals AFTER the catch (syncTokenGameBalances skips only during this window — a buy-in/top-up still updates immediately)
         if (r && r.win) {
           if (fish.alive) self._catchFish(fish, shot); // catch FX (local credit + triggers gated in _catchFish)
           if (r.outcome && r.outcome.bonus && r.outcome.bonus.total > 0) self._startTokenBonus(r.outcome.bonus, shot); // server-driven bonus
