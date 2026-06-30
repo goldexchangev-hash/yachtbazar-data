@@ -1099,8 +1099,9 @@ body:not(.game-slots3d) [data-game="slots3d"] { display: none !important; }
 body:not(.game-fish) [data-game="fish"] { display: none !important; }
 body:not(.game-swoop) [data-game="swoop"] { display: none !important; }
 body:not(.game-fishshooter) [data-game="fishshooter"] { display: none !important; }
+body:not(.game-fishhunter3000) [data-game="fishhunter3000"] { display: none !important; }
 body:not(.game-blackjack) [data-game="blackjack"] { display: none !important; }
-body.game-dice [data-game="flip"], body.game-twodice [data-game="flip"], body.game-crash [data-game="flip"], body.game-slots [data-game="flip"], body.game-pressure [data-game="flip"], body.game-plane [data-game="flip"], body.game-slots3d [data-game="flip"], body.game-fish [data-game="flip"], body.game-swoop [data-game="flip"], body.game-fishshooter [data-game="flip"], body.game-blackjack [data-game="flip"] { display: none !important; }
+body.game-dice [data-game="flip"], body.game-twodice [data-game="flip"], body.game-crash [data-game="flip"], body.game-slots [data-game="flip"], body.game-pressure [data-game="flip"], body.game-plane [data-game="flip"], body.game-slots3d [data-game="flip"], body.game-fish [data-game="flip"], body.game-swoop [data-game="flip"], body.game-fishshooter [data-game="flip"], body.game-fishhunter3000 [data-game="flip"], body.game-blackjack [data-game="flip"] { display: none !important; }
 /* …but the channel selector tiles are always visible (they're how you switch) */
 #game-nav .game-card { display: flex !important; }
 #game-nav .game-card[hidden] { display: none !important; } /* hidden channels (e.g. poker) stay hidden */
@@ -2289,7 +2290,7 @@ body.demo-mode #bankroll { display: none !important; }
    landscape side menu, the ETH ticker, the Share-win button, modals, everything) in
    every layout/orientation. The game layer is the only thing left visible. */
 html.rr-fs-on, body.rr-fs-on { width: 100vw !important; height: 100dvh !important; overflow: hidden !important; overscroll-behavior: none !important; background: #041326 !important; }
-body.rr-fs-on > *:not(#layer-fish):not(#layer-swoop):not(#layer-fishshooter) { display: none !important; }
+body.rr-fs-on > *:not(#layer-fish):not(#layer-swoop):not(#layer-fishshooter):not(#layer-fishhunter3000) { display: none !important; }
 body.rr-fs-on .topbar,
 body.rr-fs-on .bottom-nav,
 body.rr-fs-on .chat-tab,
@@ -2351,6 +2352,16 @@ body.rr-fs-on #layer-swoop, body.rr-fs-on #layer-swoop * { visibility: visible !
 body.rr-fs-on #layer-fishshooter, body.rr-fs-on #layer-fishshooter * { visibility: visible !important; }
 #layer-fishshooter.rr-fs .fish-fs-exit { display: block; position: fixed; top: max(10px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); z-index: 2147483647; background: rgba(4,19,38,.82); color: #fff; border: 1px solid rgba(255,255,255,.5); border-radius: 10px; padding: 9px 14px; font-weight: 800; cursor: pointer; }
 .fishshooter-dock { display: flex; flex-direction: column; gap: 8px; }
+#layer-fishhunter3000 { position: absolute; inset: 0; }
+.fishhunter3000-stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: #020818; }
+.fishhunter3000-stage canvas { width: 100% !important; height: 100% !important; display: block; touch-action: none; }
+#layer-fishhunter3000.rr-fs .fishhunter3000-stage canvas { object-fit: contain; }
+#layer-fishhunter3000.rr-fs { display: block !important; position: fixed !important; inset: 0 !important; width: 100vw !important; height: 100dvh !important; z-index: 2147483646 !important; background: #020818; }
+body.rr-fs-on #layer-fishhunter3000, body.rr-fs-on #layer-fishhunter3000 * { visibility: visible !important; }
+#layer-fishhunter3000.rr-fs .fish-fs-exit { display: block; position: fixed; top: max(10px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); z-index: 2147483647; background: rgba(2,8,24,.88); color: #00f5ff; border: 1px solid rgba(0,245,255,.45); border-radius: 10px; padding: 9px 14px; font-weight: 800; cursor: pointer; }
+.fishhunter3000-dock { display: flex; flex-direction: column; gap: 8px; }
+.game-card.fishhunter3000 .gc-tile { background: linear-gradient(145deg, rgba(0,245,255,.18), rgba(255,61,255,.14)); border-color: rgba(0,245,255,.35); }
+.fh3k-panel { border-color: rgba(0,245,255,.22); }
 
 .swoop-dock { display: flex; flex-direction: column; gap: 8px; }
 .swoop-toprow { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; }

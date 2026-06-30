@@ -612,8 +612,10 @@
     }
     if (cost > 0) {
       this._sesSpent = Math.round((this._sesSpent + cost) * 100) / 100;
-      this.balance = Math.round((this.balance - cost) * 100) / 100;
-      this._jackpotPool = Math.round((this._jackpotPool + cost * JACKPOT_RAKE) * 100) / 100;
+      if (!this._tokenActive()) {
+        this.balance = Math.round((this.balance - cost) * 100) / 100;
+        this._jackpotPool = Math.round((this._jackpotPool + cost * JACKPOT_RAKE) * 100) / 100;
+      }
       this._save();
       this._renderHud();
     }
@@ -714,6 +716,25 @@
       this._frenzyExpected = (this._frenzyExpected || 0) +
         fish.def.mult * this.engine.killProb(fish.def, b.power) * (b.unitBet || this._frenzyUnit || 1);
     }
+    if (this._tokenActive() && !b.free) {
+      var self = this, shotTok = { unitBet: b.unitBet, power: b.power, cost: b.cost, free: false };
+      this._netFx(b.s.x, b.s.y, fish.def.color);
+      root.TokenMode.bet("fishhunter3000", b.cost, { targetKey: fish.def.key, power: b.power }).then(function (r) {
+        self.balance = root.TokenMode.tokens();
+        if (r && r.win) {
+          if (fish.alive) self._catch(fish, shotTok);
+        } else if (fish.alive) { fish.flinch = 0.14; fish.spr.tint = 0xff6688; }
+        setTimeout(function () {
+          self._renderHud();
+          if (root.TokenMode && root.TokenMode.paintTokens) root.TokenMode.paintTokens();
+        }, 480);
+      }).catch(function () {
+        self.balance = root.TokenMode.tokens();
+        self._renderHud();
+        if (root.TokenMode && root.TokenMode.paintTokens) root.TokenMode.paintTokens();
+      });
+      return;
+    }
     var shot = { unitBet: b.unitBet, power: b.power, cost: b.cost, free: !!b.free };
     var res = this.engine.resolveHit(fish.def, shot.power);
     this._netFx(b.s.x, b.s.y, fish.def.color);
@@ -732,9 +753,9 @@
     var payout = Math.round(fish.def.mult * unitBet * cm * 100) / 100;
 
     if (shot.free) {
-      this._frenzyWon = Math.round((this._frenzyWon + payout) * 100) / 100;
+      if (!this._tokenActive()) this._frenzyWon = Math.round((this._frenzyWon + payout) * 100) / 100;
     } else {
-      this.balance = Math.round((this.balance + payout) * 100) / 100;
+      if (!this._tokenActive()) this.balance = Math.round((this.balance + payout) * 100) / 100;
       this._sesWon = Math.round((this._sesWon + payout) * 100) / 100;
     }
     this._won = payout;
@@ -1557,11 +1578,15 @@
       if (el.powerDown) el.powerDown.addEventListener("click", function () { self.setPower(self.power - 1); });
       if (el.autoBtn) el.autoBtn.addEventListener("click", function () { self.toggleAuto(); });
       if (el.lockBtn) el.lockBtn.addEventListener("click", function () { self.toggleLock(); });
+      if (el.speedSlow) el.speedSlow.addEventListener("click", function () { self.setFireSpeed("slow"); });
+      if (el.speedMed) el.speedMed.addEventListener("click", function () { self.setFireSpeed("medium"); });
+      if (el.speedFast) el.speedFast.addEventListener("click", function () { self.setFireSpeed("fast"); });
     };
     setTimeout(this._bindLater, 0);
   };
 
   /* ---------- host bridge ---------- */
+  FishHunter3000.prototype._tokenActive = function () { return !!(root.TokenMode && root.TokenMode.active()); };
   FishHunter3000.prototype._teardownRounds = function () {
     if (this._boss && this._boss.spr) {
       try { this.bossLayer.removeChild(this._boss.spr); this._boss.spr.destroy(); } catch (e) {}
@@ -1671,6 +1696,27 @@
     var t = el || this._fsTarget || this.mount;
     if (!(t.classList && t.classList.contains("rr-fs"))) this.enterFullscreen(t, { auto: false });
     else this._fsExit(t);
+  };
+  FishHunter3000.prototype.autoFullscreen = function (on, el) {
+    var t = el || this._fsTarget || this.mount;
+    if (on) this.enterFullscreen(t, { auto: true, skipNative: true });
+    else if (this._fsAuto) this._fsExit(t);
+  };
+  FishHunter3000.prototype.setEthUsd = function (n) { if (n > 0) this.ethUsd = n; };
+  FishHunter3000.prototype.setFireSpeed = function (s) {
+    if (!FIRE_CD[s]) return;
+    this.fireSpeed = s;
+    var e = this.els;
+    if (e.speedSlow) e.speedSlow.classList.toggle("on", s === "slow");
+    if (e.speedMed) e.speedMed.classList.toggle("on", s === "medium");
+    if (e.speedFast) e.speedFast.classList.toggle("on", s === "fast");
+  };
+  FishHunter3000.prototype.restartDemo = function () {
+    this.auto = false;
+    this.lock = false;
+    this._holding = false;
+    try { this._teardownRounds(); } catch (e) {}
+    this._renderHud();
   };
 
   root.FishHunter3000 = FishHunter3000;

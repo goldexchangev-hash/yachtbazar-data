@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#0c0d16" />
     <meta name="referrer" content="same-origin" />
-    <link rel="manifest" href="manifest.webmanifest?v=1238" />
+    <link rel="manifest" href="manifest.webmanifest?v=1239" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -28,7 +28,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=1238" />
+    <link rel="stylesheet" href="styles.css?v=1239" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -38,13 +38,13 @@
     <!-- ───────────────────────── Header ───────────────────────── -->
     <header class="topbar">
       <button id="rail-toggle" class="rail-toggle" aria-label="Open menu" title="Menu">☰</button>
-      <span class="build-tag-m" id="build-tag-m" title="Live build version — confirms the deploy is up to date">v12.38</span>
+      <span class="build-tag-m" id="build-tag-m" title="Live build version — confirms the deploy is up to date">v12.39</span>
       <div class="brand">
         <span class="brand-tv">📺</span>
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v12.38</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v12.39</span>
       </div>
       <div class="topbar-right">
         <div class="tb-tools">
@@ -197,6 +197,17 @@
             </svg>
           </span>
           <span class="gc-name">Fish Shooter</span>
+        </button>
+
+        <button type="button" class="game-card fishhunter3000" id="ch-fishhunter3000" role="tab" aria-selected="false" data-game="fishhunter3000">
+          <span class="gc-tile">
+            <svg class="gc-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M2 12c2-5 6-8 10-8 4 0 7 3 9 8-2 5-5 8-9 8-4 0-8-3-10-8z"/>
+              <circle cx="19" cy="12" r="2.2"/>
+              <path d="M12 6v12M8 9h8M8 15h8" stroke="currentColor" stroke-width="1" opacity="0.5"/>
+            </svg>
+          </span>
+          <span class="gc-name">Fish Hunter 3000</span>
         </button>
 
         <button type="button" class="game-card blackjack" id="ch-blackjack" role="tab" aria-selected="false" data-game="blackjack">
@@ -413,6 +424,12 @@
                   <button type="button" id="fsh-fs-exit" class="fish-fs-exit">✕ Exit fullscreen</button>
                 </div>
 
+                <!-- Fish Hunter 3000 (CH 20): cyber-neon fish shooter — separate game -->
+                <div class="screen-layer hidden" id="layer-fishhunter3000">
+                  <div id="fishhunter3000-stage" class="fishhunter3000-stage"></div>
+                  <button type="button" id="fh3k-fs-exit" class="fish-fs-exit">✕ Exit fullscreen</button>
+                </div>
+
                 <!-- Blackjack (CH 16): live multiplayer felt runs in an isolated iframe
                      (its own CSS/scripts can't collide with the site). The felt fills
                      the 4:3 screen; the betting + action controls dock UNDER the TV. -->
@@ -436,7 +453,7 @@
 
                 <!-- Promo intro reel — autoplays once (muted) on first load, then fades
                      to black and hands off to the game. Replay button under the TV. -->
-                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=1238"></video>
+                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=1239"></video>
 
                 <!-- Shown while a bet tx is being signed + mined (esp. slow on mobile) -->
                 <div id="tv-pending" class="tv-pending hidden">⏳ SENDING BET…<br />confirm in your wallet, then hold tight</div>
@@ -581,6 +598,35 @@
             </div>
           </div>
           <div class="muted dice-roll-hint" id="fsh-message">Aim & tap the tank to shoot · bigger fish pay more · land the Jackpot meter for a frenzy</div>
+        </div>
+        <!-- Fish Hunter 3000 (CH 20): cyber-neon fish shooter -->
+        <div class="action-dock fishhunter3000-dock" data-game="fishhunter3000">
+          <div class="slider-wrap">
+            <input id="fh3k-bet" class="slider" type="range" min="1" max="50" step="1" value="1" />
+            <div class="slider-val"><strong id="fh3k-bet-val">$1</strong><span class="muted"> base bet</span></div>
+          </div>
+          <div class="fish-row">
+            <div class="fish-stepper" role="group" aria-label="Shot power">
+              <button type="button" class="fish-step" id="fh3k-pdn" aria-label="Lower power">–</button>
+              <span class="fish-step-val"><small>POWER</small><strong id="fh3k-power">1</strong></span>
+              <button type="button" class="fish-step" id="fh3k-pup" aria-label="Raise power">+</button>
+            </div>
+            <span class="fish-cost" id="fh3k-cost">$1.00 / shot</span>
+            <button type="button" class="fish-fs" id="fh3k-fs" title="Fullscreen" aria-label="Fullscreen">⛶</button>
+          </div>
+          <div class="fish-toggles" role="group" aria-label="Firing options">
+            <button type="button" class="fish-pill" id="fh3k-auto" title="Hold fire automatically">🔥 Auto-fire</button>
+            <button type="button" class="fish-pill" id="fh3k-lock" title="Aim at the nearest fish for you">🎯 Lock-on</button>
+          </div>
+          <div class="fish-seg" role="group" aria-label="Shooting speed">
+            <span class="fish-seg-lbl">Speed</span>
+            <div class="fish-seg-track">
+              <button type="button" class="fish-seg-btn" id="fh3k-spd-slow" title="Slow pace">🐢</button>
+              <button type="button" class="fish-seg-btn" id="fh3k-spd-med"  title="Medium pace">🐠</button>
+              <button type="button" class="fish-seg-btn on" id="fh3k-spd-fast" title="Fast pace">⚡</button>
+            </div>
+          </div>
+          <div class="muted dice-roll-hint" id="fh3k-message">Aim & tap to hunt cyber-fish · fill the Leviathan meter · catch Vault/Storm/Frenzy bots for bonus rounds</div>
         </div>
         <div class="action-dock" data-game="plane">
           <div class="plane-actions">
@@ -1069,6 +1115,30 @@
           <p class="muted" style="font-size:.82rem">Tip: ⛶ Fullscreen for the full arcade feel · 🔥 Auto-fire holds the trigger · 🎯 Lock-on tracks the best target.</p>
         </div>
 
+        <!-- Fish Hunter 3000 (CH 20): session tracker + help -->
+        <div class="card dice-panel fish-panel fh3k-panel" id="fishhunter3000-panel" data-game="fishhunter3000">
+          <div class="ph-head">
+            <h2 class="card-title">🛸 Fish Hunter 3000 <span class="ch-tag">CH 20</span></h2>
+            <span class="ph-bankroll muted">Balance: <strong id="fh3k-balance">$0</strong> · ~90% RTP</span>
+          </div>
+          <p class="muted td-intro">Cyber-neon year-3000 fish hunt. Aim the plasma cannon and <strong>shoot neon fish for coins</strong>. Each shot costs <em>power × base bet</em>. Catch <strong>Vault Drone</strong>, <strong>Storm Eel</strong>, or <strong>Frenzy Bot</strong> for bonus rounds. Fill the meter for <strong>MEGA LEVIATHAN</strong>.</p>
+          <div class="side-row"><span class="side-label">Last catch</span><strong class="fish-winval" id="fh3k-win">$0.00</strong></div>
+          <div class="fish-flow" id="fh3k-flow">
+            <span class="ff-label">This session</span>
+            <span class="ff-item">shots <strong id="fh3k-ses-spent">$0.00</strong></span>
+            <span class="ff-item">caught <strong id="fh3k-ses-won">$0.00</strong></span>
+            <span class="ff-item">net <strong id="fh3k-ses-net" class="ff-net">+$0.00</strong></span>
+          </div>
+          <details class="fish-help">
+            <summary>❔ How to play · Power · Bonus rounds</summary>
+            <div class="fish-help-body">
+              <p><strong>🎯 Goal.</strong> Hunt cyber-fish for coins. Tap the tank to aim &amp; fire, or use <strong>🔥 Auto-fire</strong> + <strong>🎯 Lock-on</strong>. Combos boost payouts up to +32%.</p>
+              <p><strong>⚡ Power (×1–×3)</strong> multiplies both cost and payout per shot.</p>
+              <p><strong>🎁 Bonus rounds:</strong> Vault (free shots + chest), Storm (chain lightning), Frenzy (auto wave). <strong>MEGA LEVIATHAN</strong> = fill the jackpot meter.</p>
+            </div>
+          </details>
+        </div>
+
         <!-- Host tools (owner only): adjust limits, fund house, redeploy -->
         <div class="card host-tools" id="host-tools" hidden>
           <details class="dropdown">
@@ -1544,21 +1614,21 @@
       </div>
     </aside>
 
-    <script defer src="vendor/ethers.umd.min.js?v=1238"></script>
-    <script defer src="config.js?v=1238"></script>
-    <script defer src="contract.js?v=1238"></script>
-    <script defer src="chiptune.js?v=1238"></script>
-    <script defer src="scenes.js?v=1238"></script>
-    <script defer src="tv.js?v=1238"></script>
-    <script defer src="poker-engine.js?v=1238"></script>
-    <script defer src="poker-bots.js?v=1238"></script>
-    <script defer src="poker-ui.js?v=1238"></script>
-    <script defer src="crash-engine.js?v=1238"></script>
-    <script defer src="crash-render.js?v=1238"></script>
-    <script defer src="profile.js?v=1238"></script>
-    <script defer src="token-client.js?v=1238"></script>
-    <script defer src="token-mode.js?v=1238"></script>
-    <script defer src="crash-rounds-client.js?v=1238"></script>
-    <script defer src="app.js?v=1238"></script>
+    <script defer src="vendor/ethers.umd.min.js?v=1239"></script>
+    <script defer src="config.js?v=1239"></script>
+    <script defer src="contract.js?v=1239"></script>
+    <script defer src="chiptune.js?v=1239"></script>
+    <script defer src="scenes.js?v=1239"></script>
+    <script defer src="tv.js?v=1239"></script>
+    <script defer src="poker-engine.js?v=1239"></script>
+    <script defer src="poker-bots.js?v=1239"></script>
+    <script defer src="poker-ui.js?v=1239"></script>
+    <script defer src="crash-engine.js?v=1239"></script>
+    <script defer src="crash-render.js?v=1239"></script>
+    <script defer src="profile.js?v=1239"></script>
+    <script defer src="token-client.js?v=1239"></script>
+    <script defer src="token-mode.js?v=1239"></script>
+    <script defer src="crash-rounds-client.js?v=1239"></script>
+    <script defer src="app.js?v=1239"></script>
   </body>
 </html>
