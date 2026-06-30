@@ -518,6 +518,210 @@ curl live pressure-ui.js                      # #204 _idlePrompt recursion confi
 
 ---
 
+# Master remediation plan
+
+*Hi Claude 😀 — this is the fix order we'd use if we were shipping it all. Grouped so each **wave** is one focused PR (or one deploy), with issues batched by **same files / same subsystem**. Run the `CursorBugHunt/*.js` probes after each wave; add self-tests before moving on.*
+
+**Rules of thumb**
+- Never weaken `doRelease` loss-escape (#97, AUDIT-NOTES invariant #2).
+- Bump `?v=`, `v12.XX`, `ctf-v12.XX` once per user-facing deploy.
+- Money-path changes → extend `token-http.js` self-test + relevant `CursorBugHunt` script.
+- Sync repo with live v12.44 **after** Phase 0 (don't reintroduce #204).
+
+---
+
+## Wave 0 — Live hotfix (deploy today)
+
+**Goal:** Stop active user pain on production without waiting for the big server refactor.
+
+| Batch | Findings | Work (together) | Files |
+|-------|----------|-----------------|-------|
+| **0A** | **#204** | Fix `_idlePrompt()` → `return "HOLD the balloon to pump"` (or equivalent). Smoke-test demo Balloon Pop channel entry. | live `pressure-ui.js` → commit to repo |
+| **0B** | **#205, #208** | Pull live `pressure-ui.js` into repo; single `BUILD_VERSION` for all lazy loads + shell + SW. | `pressure-ui.js`, `app.js`, `index.html`, `sw.js` |
+| **0C** | **#193** | `slots3d.setActive(false)`: if `_spinning`, fast-forward `_settle()` or abort + resync from `TokenMode.tokens()`. | `slots3d.js` |
+
+**Verify:** Manual — Balloon demo loads, Gem Vault channel-switch mid-spin recovers.
+
+---
+
+## Wave 1 — Crash rounds token path (highest $ risk)
+
+**Goal:** One atomic server change set; fixes the exploit chain #1 → #3 → #13 → #141.
+
+| Batch | Findings | Work (together) | Files |
+|-------|----------|-----------------|-------|
+| **1A** | **#1, #13, #14, #102** | At `cr:start`: pin nonce, **reserve/debit stake**, balance check. `_resolve()`: call `play()` first; rollback `settled` on failure; try/catch on timer. | `crash-rounds.js`, `crash-rounds-ws.js`, `token-bridge.js` |
+| **1B** | **#2, #3, #15, #141** | Extend `hasLiveExternal()` → `hasActiveCrashRound(sessionId)`. Block `doPlay`, `doSettle`, `doRelease` while round live. | `token-http.js`, `server.js` |
+| **1C** | **#21, #71, #85–#86, #108** | Client: bump epoch on channel leave; WS heartbeat on main hub (copy `BJNet` pattern); fix timeout copy. | `crash-rounds-client.js`, `app.js`, `plane-ui.js`, `pressure-ui.js` |
+
+**Tests to add:** Extend `concurrency-fuzzer.js` + `crash-rounds.js` self-test — interleaved play during round must fail or use pinned nonce.
+
+**Verify:** `node CursorBugHunt/repro-crash-nonce-desync.js` → exit 0 (no desync). `node CursorBugHunt/concurrency-fuzzer.js` → CONC-* clean.
+
+---
+
+## Wave 2 — Persist, buy-in, recover (loss-escape hardening)
+
+**Goal:** Single `token-http.js` + persist refactor PR. Restores trust in AUDIT-NOTES invariant #2.
+
+| Batch | Findings | Work (together) | Files |
+|-------|----------|-----------------|-------|
+| **2A** | **#4, #5, #16, #139** | `pendingBuyIns` set before RPC; `withPlayerLock(player)` on `doStart`/`doTopUp`. **One** `writeJsonAtomic` per op after all in-memory updates (bridge + http blob). | `token-http.js`, `token-bridge.js` |
+| **2B** | **#140, #145, #215** | `doSettle`: record obligation + `saveHttp` in same atomic write as bridge settle. `doRelease` branch (1): if `s.closed && s.settlement`, re-issue settlement — **never** fall through to orphan `net=0`. | `token-http.js` |
+| **2C** | **#142, #223** | Corrupt JSON → refuse start + alert; rehydrate `tokenForSession` with bridge on boot. Document bearer loss on redeploy in HANDOFF. | `server.js`, `token-http.js` |
+| **2D** | **#143, #144** | SIGTERM: drain in-flight token ops + flush merged persist; `unhandledRejection` → `flushBjBank()`. | `server.js` |
+| **2E** | **#220, #227** | Settle: compute `netWei` from unrounded `(tokens - buyInUnits)`; floor losses toward `-lockedWei`. Tighten `play()` bet check. | `token-bridge.js` |
+
+**Tests to add:** `settlement-math-probe.js` scenarios → formal self-tests in `token-http.js` (split-brain sim, #215 closed-session recover).
+
+**Verify:** `node CursorBugHunt/settlement-math-probe.js` → 0 findings. `node server/token-http.js` self-test OK.
+
+---
+
+## Wave 3 — Blackjack + token session integrity
+
+**Goal:** Server guards first, then client iframe/session order.
+
+| Batch | Findings | Work (together) | Files |
+|-------|----------|-----------------|-------|
+| **3A** | **#10, #34** | `doPlay` (+ policy on `doTopUp`) → `if (hasLiveHand(player)) throw`. | `token-http.js` |
+| **3B** | **#11, #12** | Propagate `applyNet` failures to client; defer `leave()` during `dealing` until deal completes or auto-finish. | `blackjack-server.js` |
+| **3C** | **#30, #31, #66, #111, #52, #53** | Reorder connect: `TokenMode.init` + await `resume()` **before** `checkStrandedLock` + `ensureBlackjackReady`. Thread `#bjsession` in all paths; unify BJ `?v=`; clear legacy `ctf_bj_token_*` on token buy-in/out. | `app.js`, `blackjack.html`, `token-mode.js` |
+| **3D** | **#35, #75, #183** | Surface `needFunds` for token + standalone; global guard on `bjReload` when `TokenMode.active()`. | `app.js`, `blackjack-ui.js` |
+| **3E** | **#37, #42, #43** | Invalid `roomId` → error not silent `openRoom()`; reject non-`guest:`/`0x` hello wallets; standalone BJ sends `hello`. | `blackjack-server.js`, `blackjack-net.js` |
+
+**Verify:** `node server/blackjack-server.js` + new interleave test (play during live hand must reject).
+
+---
+
+## Wave 4 — Client token mode UX (one `app.js` pass)
+
+**Goal:** Token players can actually bet everywhere; balances stay honest.
+
+| Batch | Findings | Work (together) | Files |
+|-------|----------|-----------------|-------|
+| **4A** | **#9, #206** | Port live fix: `syncTokenGameBalances()` → `setMode("token")` on plane/pressure; reverse on cash-out. (Repo still missing this.) | `app.js`, `plane-ui.js`, `pressure-ui.js` |
+| **4B** | **#17, #18, #209** | `spendableUsd()` + all `*Readouts()` → use `TokenMode.tokens()` when active. Guard plane poll in `refreshBalances()`. | `app.js` |
+| **4C** | **#20, #211** | Monotonic sequence on `token-client` play responses; debounce or cancel stale `refreshTokens()` during BJ. | `token-client.js`, `token-mode.js` |
+| **4D** | **#19, #195** | Fish: in-flight cap + optimistic debit; Reef: pause ticker on `document.hidden` (match fishshooter). | `fishshooter.js`, `fishtable.js` |
+| **4E** | **#24, #213** | Document or unify funding model (demo vs token per channel); align header balance with active channel. | `app.js` |
+
+**Verify:** Token buy-in → Dice/Crash/Plane buttons enabled; plane HUD stable across 12s poll.
+
+---
+
+## Wave 5 — Canvas lifecycle & channel switching
+
+**Goal:** One PR per game family; no stranded stakes.
+
+| Batch | Findings | Work (together) | Files |
+|-------|----------|-----------------|-------|
+| **5A** | **#48, #196–#197** | Plane/pressure: bump `_tokenEpoch` on `setActive(false)`; ignore off-channel `.then()`. | `plane-ui.js`, `pressure-ui.js` |
+| **5B** | **#23, #194** | Swoop: refund or force-bust on `setActive(false)`; add `restartDemo()` to `demoReset()`. | `swoop3d.js`, `app.js` |
+| **5C** | **#22** | Per-channel `CrashRounds` instance or explicit cancel on channel switch. | `crash-rounds-client.js`, `app.js` |
+| **5D** | **#49–#51, #55–#56** | TV: null-guard layers; channel restore calls `TV.changeChannel()`. | `tv.js`, `app.js` |
+
+---
+
+## Wave 6 — On-chain contracts & deploy pipeline
+
+**Goal:** Separate from token server; needs testnet deploy + registry flip.
+
+| Batch | Findings | Work (together) | Files |
+|-------|----------|-----------------|-------|
+| **6A** | **#8, #157** | `npm run compile && npm run artifact` in CI; regen `public/contract.js` with `paused` + `_betGuard`. | `contract.js`, `exportArtifact.js`, CI |
+| **6B** | **#6, #29, #174–#176, #179** | Remove client `staticCall` previews; parse `FlipSettled` from receipts on house/join paths. | `app.js` |
+| **6C** | **#7** | Deploy `CoinFlipBettingV2`; migrate token + BJ to per-session locks. | contracts, `token-http.js` |
+| **6D** | **#147, #153, #145** | PvP room idle timeout + `closeOpenRoom`; extend `paused` to room creation. | `CoinFlipBetting.sol` |
+| **6E** | **#148, #177, #150, #91** | Validate `?contract=` (code size + registry allowlist); rebind `contract`/`TokenMode` on registry change + reload. | `app.js` |
+
+**Verify:** `npm test` + `pass4-exploits.test.js`; no `staticCall` before mutate on house/dice paths.
+
+---
+
+## Wave 7 — PvP, host, lobby, WS social
+
+**Goal:** Mostly `app.js` + `server.js` + contract views — batchable.
+
+| Batch | Findings | Work (together) | Files |
+|-------|----------|-----------------|-------|
+| **7A** | **#149, #160, #176** | Parse flip receipts; pass `roomId` into reconcile; fix `activeRoomId` race. | `app.js` |
+| **7B** | **#152, #154, #151, #60** | Verify `r.betAmount` on accept; rate-limit chat + bet-proposals; cap proposal state. | `app.js`, `server.js` |
+| **7C** | **#200, #45, #155** | Signed `hello` or guest-only chat; bind display name to verified address. | `server.js`, `app.js` |
+| **7D** | **#146–#149, #154–#168** | Host table auto-close for others; empty-bank close; earnings index crash/slots/host-flip. | `app.js`, contract |
+
+---
+
+## Wave 8 — Wallet, MetaMask, stranded locks
+
+| Batch | Findings | Work (together) | Files |
+|-------|----------|-----------------|-------|
+| **8A** | **#178, #6-F02** | Buy-in: if `/api/token/start` fails after chain tx, auto-surface Recover; idempotent start by txHash. | `token-client.js`, `token-mode.js` |
+| **8B** | **#182, #31** | `checkStrandedLock` compares on-chain `bjLocked` even when `TokenMode.active()`. | `app.js` |
+| **8C** | **#179–#181, #88** | Receipt fallbacks + `tx.wait` timeout; `bridgeJson` AbortSignal. | `app.js` |
+| **8D** | **#212, #178** | Defer reload during pending tx; BJ heal waits for idle phase. | `app.js` |
+
+---
+
+## Wave 9 — Security, ops, experimental bridge
+
+| Batch | Findings | Work (together) | Files |
+|-------|----------|-----------------|-------|
+| **9A** | **#201, #203, #64, #202** | Security headers middleware; remove `X-Powered-By`; auth-gate `house-state`. | `server.js`, Render/CF |
+| **9B** | **#58–#59, #79, #102** | Rate limits on buy-in; cap `clientSeed`; WS crash rate limit. | `token-http.js`, `crash-rounds-ws.js` |
+| **9C** | **#216–#217, #221–#225, #229** | `liveExternal` on admin-release; chain-check RPC readers; contract allowlist on start. | `token-http.js` |
+| **9D** | **#207, #47** | If experimental bridge ever enabled: parity with token path (confirmations, ethUsd, persist, `pendingBuyIns`). | `bridge-server.js` |
+| **9E** | **#82–#84, #125–#126, #146** | Prune crash `rounds` map; `wsByRound` delete; `playBuckets` GC; render.yaml env docs. | `crash-rounds.js`, `render.yaml` |
+
+---
+
+## Wave 10 — Polish, demo, docs (when everything above is green)
+
+| Batch | Findings | Work |
+|-------|----------|------|
+| **10A** | #98–#99, #54, #110–#119, #132–#133 | Bet limits, BETBAR sliders, toasts, host history |
+| **10B** | #38–#41, #94–#96, #219 | Demo PF labels ("demo RNG ≠ token"); disable pressure valves in token mode |
+| **10C** | #44, #65, #101, #137 | Poker server wire-up or remove; orphan CH12 |
+| **10D** | #230, HANDOFF | Update `cursor/HANDOFF.md`, `AUDIT-NOTES.md`, trim "well-hardened" until probes pass |
+
+---
+
+## Suggested PR / deploy sequence
+
+```
+Wave 0  → hotfix deploy (pressure + slots)
+Wave 1  → server: crash-rounds (BLOCK production exploits)
+Wave 2  → server: persist + recover (BLOCK money escape)
+Wave 3  → server: blackjack guards
+Wave 4  → client: token UX (sync live v12.44 good bits)
+Wave 5  → client: canvas lifecycle
+Wave 6  → contracts (separate testnet cycle)
+Wave 7  → PvP / lobby / WS
+Wave 8  → wallet flows
+Wave 9  → ops / security
+Wave 10 → polish
+```
+
+**Do not skip Wave 1–2** before marketing token mode or adding players. Waves 4–5 can overlap Wave 3 after 1–2 land.
+
+---
+
+## After each wave — run this
+
+```bash
+npm test
+node server/token-bridge.js && node server/token-http.js && node server/blackjack-server.js
+node server/crash-rounds.js && node server/crash-rounds-ws.js
+node CursorBugHunt/adversarial-suite.js
+node CursorBugHunt/concurrency-fuzzer.js
+node CursorBugHunt/repro-crash-nonce-desync.js
+node CursorBugHunt/settlement-math-probe.js
+```
+
+Update this report: strike closed findings, note wave completed in HANDOFF.
+
+---
+
 ## Audit agents (all passes)
 
 **Pass 1–2:** Money paths, all games, server security, tests  
