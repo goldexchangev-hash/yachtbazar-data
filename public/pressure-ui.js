@@ -223,7 +223,7 @@
   // The "ready to play" prompt, worded for the active mode (token taps; demo holds).
   PressureGame.prototype._idlePrompt = function () {
     if (this._tokenActive()) return (root.TokenMode.tokens() < this.bet) ? "Tap 🪙 Buy in above to play" : "Tap to launch — then tap to bank";
-    return this._idlePrompt();
+    return this.balance < this.bet ? "Add funds to keep playing" : "HOLD the balloon to pump";
   };
 
   // ---------------- round lifecycle ----------------
