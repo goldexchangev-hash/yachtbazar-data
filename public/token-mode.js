@@ -22,6 +22,9 @@
   var enabled = null;  // cached /api/token/status.enabled (null = unknown)
   var busy = false;
   var stranded = 0;    // USD locked on-chain (bjLocked) with NO active session — set by app.js
+  // Remember the amount the player slid to, so a background re-render (a balance poll calls render())
+  // can't snap the slider + its label back to the default while they're choosing a buy-in / top-up.
+  var amt = { buyin: null, topup: null };
 
   function $(id) { return document.getElementById(id); }
   function note(msg, kind) { try { deps && deps.toast ? deps.toast(msg, kind || "ok") : console.log(msg); } catch (e) {} }
@@ -220,6 +223,11 @@
       } finally { busy = false; render(); }
     },
 
+    // LIGHT live-sync for fast games (fish shooter): update JUST the token-balance number in the bar from
+    // the authoritative client.tokens — no full re-render (won't disturb a slider) and no heavy onChange
+    // (no fetch / on-chain read per shot). Lets the top bar track the in-game balance in real time.
+    paintTokens: function () { try { var m = $("token-mount"); var el = m && m.querySelector(".token-bal strong"); if (el) el.textContent = fmt(TokenMode.tokens()); } catch (e) {} },
+
     _render: render,
   };
 
@@ -266,7 +274,7 @@
     if (TokenMode.active()) {
       // Top-up is a SLIDER capped to remaining in-game credits (no typing). Hidden if no credits left.
       var maxTop = Math.floor(_gameBal());
-      var topDflt = Math.min(50, Math.max(1, maxTop));
+      var topDflt = amt.topup != null ? Math.min(maxTop, Math.max(1, Math.round(amt.topup))) : Math.min(50, Math.max(1, maxTop));
       mount.innerHTML =
         '<div class="token-bar">' +
         '<span class="token-bal">🪙 <strong>' + fmt(TokenMode.tokens()) + '</strong> tokens</span>' +
@@ -277,7 +285,7 @@
         '<button id="token-cashout" class="btn btn-ghost token-btn"' + (busy ? " disabled" : "") + '>Cash out</button>' +
         '</div>';
       var tsl = $("token-topup-slider"), tlbl = $("token-topup-val");
-      if (tsl && tlbl) tsl.oninput = function () { tlbl.textContent = fmt(tsl.value); };
+      if (tsl && tlbl) tsl.oninput = function () { amt.topup = parseFloat(tsl.value) || 1; tlbl.textContent = fmt(tsl.value); };
       var tu = $("token-topup-btn"); if (tu) tu.onclick = function () { TokenMode.topUp(parseFloat((tsl && tsl.value) || topDflt)); };
       var co = $("token-cashout"); if (co) co.onclick = function () { TokenMode.cashOut(); };
     } else if (deps && deps.isHouseWallet && deps.isHouseWallet()) {
@@ -308,17 +316,17 @@
           '<span class="token-hint">deposit game credits first (the Deposit box), then buy in</span>' +
           '</div>';
       } else {
-        var dflt = Math.min(50, maxBal);
+        var dflt = amt.buyin != null ? Math.min(maxBal, Math.max(1, Math.round(amt.buyin))) : Math.min(50, maxBal);
         mount.innerHTML =
           '<div class="token-bar">' +
-          '<span class="token-bal">🪙 Lock <strong id="token-buyin-val">' + fmt(dflt) + '</strong></span>' +
+          '<span class="token-bal">🪙 Buy in <strong id="token-buyin-val">' + fmt(dflt) + '</strong></span>' +
           '<input id="token-buyin-slider" class="token-slider" type="range" min="1" max="' + maxBal + '" step="1" value="' + dflt + '" aria-label="Buy-in amount in dollars" />' +
           '<button id="token-buyin-max" class="btn btn-ghost token-btn" type="button">Max</button>' +
           '<button id="token-buyin-btn" class="btn btn-primary token-btn"' + (busy ? " disabled" : "") + '>' + (busy ? "…" : "Buy in") + '</button>' +
           '</div>';
         var sl = $("token-buyin-slider"), lbl = $("token-buyin-val");
-        if (sl && lbl) sl.oninput = function () { lbl.textContent = fmt(sl.value); };
-        var mx = $("token-buyin-max"); if (mx) mx.onclick = function () { if (sl) { sl.value = maxBal; if (lbl) lbl.textContent = fmt(maxBal); } };
+        if (sl && lbl) sl.oninput = function () { amt.buyin = parseFloat(sl.value) || 1; lbl.textContent = fmt(sl.value); };
+        var mx = $("token-buyin-max"); if (mx) mx.onclick = function () { if (sl) { sl.value = maxBal; amt.buyin = maxBal; if (lbl) lbl.textContent = fmt(maxBal); } };
         var b = $("token-buyin-btn"); if (b) b.onclick = function () { TokenMode.buyIn(parseFloat((sl && sl.value) || dflt)); };
       }
     }

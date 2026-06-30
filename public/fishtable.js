@@ -379,8 +379,9 @@
           if (r.outcome && r.outcome.bonus && r.outcome.bonus.total > 0) self._startTokenBonus(r.outcome.bonus, shot); // server-driven bonus
         } else if (fish.alive) { fish.flinch = 0.18; fish.sp.tint = 0xff8888; }
         // Hold the balance HUD until the catch/blow-up plays out so it doesn't spoil the result.
-        setTimeout(function () { self._renderHud(); }, 480);
-      }).catch(function (e) { self.balance = root.TokenMode.tokens(); self._renderHud(); });
+        // Sync the top token bar at the same beat (light paint) so it tracks the balance live.
+        setTimeout(function () { self._renderHud(); if (root.TokenMode && root.TokenMode.paintTokens) root.TokenMode.paintTokens(); }, 480);
+      }).catch(function (e) { self.balance = root.TokenMode.tokens(); self._renderHud(); if (root.TokenMode && root.TokenMode.paintTokens) root.TokenMode.paintTokens(); });
       return;
     }
     const shot = { unitBet: b.unitBet || this.unitBet, power: b.power || this.power, cost: b.cost || this.cost(), free: !!b.free, frenzyId: b.frenzyId || 0 };

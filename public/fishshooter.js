@@ -434,9 +434,10 @@
           if (r.outcome && r.outcome.bonus && r.outcome.bonus.total > 0) self._startTokenBonus(r.outcome.bonus, shot); // server-driven wave
         } else if (fish.alive) { fish.flinch = 0.16; fish.spr.tint = 0xff8888; }
         // Hold the balance HUD until the catch/blow-up has played out — otherwise the new total
-        // reveals the win/loss before the fish bursts and spoils it.
-        setTimeout(function () { self._renderHud(); }, 480);
-      }).catch(function (e) { self.balance = root.TokenMode.tokens(); self._renderHud(); }); // transactional bridge: a rejected bet cost nothing
+        // reveals the win/loss before the fish bursts and spoils it. Sync the TOP token bar at the SAME
+        // beat (light paint, no heavy refresh) so it tracks the in-game balance live, not just at cash-out.
+        setTimeout(function () { self._renderHud(); if (root.TokenMode && root.TokenMode.paintTokens) root.TokenMode.paintTokens(); }, 480);
+      }).catch(function (e) { self.balance = root.TokenMode.tokens(); self._renderHud(); if (root.TokenMode && root.TokenMode.paintTokens) root.TokenMode.paintTokens(); }); // transactional bridge: a rejected bet cost nothing
       return;
     }
     if (b.free) { // accumulate the EXPECTED value this connecting free shot delivers; the wave ends when it reaches the budget (variable realized payout)
