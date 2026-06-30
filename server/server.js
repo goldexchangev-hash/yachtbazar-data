@@ -28,6 +28,26 @@ const PUBLIC_HOST = process.env.PUBLIC_HOST || ""; // e.g. your public IP for in
 
 const app = express();
 const publicDir = path.join(__dirname, "..", "public");
+
+// ── HTTP security headers (v3 #2) ──────────────────────────────────────────────
+// Applied to EVERY response (static assets + API + WS upgrade page) before anything
+// else runs. These harden transport + framing WITHOUT constraining what the dApp can
+// load: the CSP sets ONLY `frame-ancestors` (anti-clickjacking) — there is deliberately
+// no `script-src`/`default-src`, so inline scripts, ethers, and the injected wallet
+// provider (MetaMask) keep working. A strict script-src CSP would break wallet injection
+// and is intentionally omitted (the report's own caveat). HSTS is ignored by browsers when
+// received over plain HTTP, so it's inert on localhost dev and only enforced on the HTTPS
+// Render origin. X-Powered-By is removed so we don't advertise the Express version.
+app.disable("x-powered-by");
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Content-Security-Policy", "frame-ancestors 'self'");
+  res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  next();
+});
+
 app.use(express.json({ limit: "64kb" }));
 // Don't expose the dev/engine test harnesses (public/_*.html, *-preview.html) publicly.
 app.use((req, res, next) => {
@@ -219,7 +239,7 @@ try { blackjack.setTokenLedger({ tokensOf: tokenSvc.tokensOf, applyNet: tokenSvc
 // HTTP /api/token/* path (tokenSvc._bridge) and reuses its per-session bearer for auth
 // (tokenSvc.verifySession). Dormant until ENABLE_TOKEN_BRIDGE=1 — with no open session,
 // verifySession returns null and every cr:start is rejected, so the live demo is untouched.
-const crashWs = makeCrashWs({ bridge: tokenSvc._bridge, verifySession: tokenSvc.verifySession });
+const crashWs = makeCrashWs({ bridge: tokenSvc._bridge, verifySession: tokenSvc.verifySession, liveExternal: (player) => tokenSvc.liveExternal(player) }); // v3 #1: WS cr:start refuses during a live BJ hand
 // Wire the crash-round liveness guard into the token service (late-bound: crashWs is built after tokenSvc).
 // doSettle/doRelease/doAdminRelease/doPlay now refuse while a server-paced crash/plane/swoop/pressure round
 // is live on that session — a mid-round cash-out can't close the session out from under the pending

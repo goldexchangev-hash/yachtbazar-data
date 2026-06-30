@@ -51,6 +51,11 @@ function defaultSend(ws, obj) {
 function makeCrashWs(opts) {
   opts = opts || {};
   const verifySession = typeof opts.verifySession === "function" ? opts.verifySession : function () { return null; };
+  // liveExternal(player) → true if the player has a LIVE blackjack hand funded by their token session.
+  // Injected by server.js (→ blackjack.hasLiveHand). cr:start must refuse while it's true: the HTTP
+  // doPlay/doTopUp guards already do, but without this the WS start would reserve+debit a crash stake
+  // mid-hand, draining the frozen funding pool the hand needs → applyExternal throws → hand stuck (v3 #1).
+  const liveExternal = typeof opts.liveExternal === "function" ? opts.liveExternal : function () { return false; };
   const send = typeof opts.send === "function" ? opts.send : defaultSend;
   const nowOf = typeof opts.now === "function" ? opts.now : function () { return Date.now(); };
   const wsByRound = new Map(); // roundId -> ws to push the result to (null once the socket drops)
@@ -81,6 +86,9 @@ function makeCrashWs(opts) {
   function start(ws, data) {
     const sess = verifySession(data && data.sessionId, data && data.sessionToken);
     if (!sess) { send(ws, { type: "cr:error", code: "auth", message: "buy in with tokens first" }); return; }
+    // v3 #1: refuse a crash round while this player has a LIVE blackjack hand on the same token session —
+    // reserving the crash stake would drain the hand's frozen funding pool (mirrors the HTTP doPlay guard).
+    if (liveExternal(sess.player)) { send(ws, { type: "cr:error", code: "live", message: "finish your blackjack hand before starting a round" }); return; }
     const gameKey = (data && CRASH_GAMES[data.gameKey]) ? data.gameKey : "crash";
     try {
       const r = rounds.startRound({

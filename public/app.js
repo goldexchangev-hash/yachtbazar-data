@@ -3301,12 +3301,15 @@
   async function tokenSlots() {
     if (revealLock) return;
     const v = tokenStake("slots-stake"); if (!v) return;
-    rememberBet(v);
-    try { await ensureSlotsLoaded(); } catch (e) { return toast("Couldn't load the slots engine — check your connection", "err"); }
+    // v3 #7: lock BEFORE the awaits so a rapid double-click can't fire two parallel slots plays
+    // (the `if (revealLock) return` guard above only bites once the lock is set). Mirrors
+    // tokenDice2/tokenCrash. Both await paths unlockReveal() on failure so a load/bet error
+    // doesn't freeze the channel; the success path is unlocked by the reveal, as elsewhere.
+    rememberBet(v); lockReveal();
+    try { await ensureSlotsLoaded(); } catch (e) { unlockReveal(); return toast("Couldn't load the slots engine — check your connection", "err"); }
     let r; try { r = await TokenMode.bet("slots", v, { bet: v }); }
-    catch (e) { return txErr ? txErr(e) : toast("Bet failed", "err"); }
+    catch (e) { unlockReveal(); return txErr ? txErr(e) : toast("Bet failed", "err"); }
     const won = !!r.win, grid = (r.outcome && r.outcome.grid) || [], winUsd = won ? (r.payoutUnits || 0) : 0;
-    lockReveal();
     TV.revealSlots({ grid, winUsd, betUsd: v, won });
     setTimeout(function () { if (window.TokenMode && TokenMode.syncBalance) TokenMode.syncBalance(); }, 2800); // update balance AFTER the slots reveal
   }
