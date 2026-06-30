@@ -251,3 +251,33 @@ Wave 2: **#4/#5/#16/#139/#140/#145/#215/#142/#143/#144/#216/#217**, **#9** plane
 ---
 
 *End of v2 report. Prior audit: `CursorBugHunt/REPORT.md`. Handoff prompt: `CursorBugHunt-v2/CLAUDE-PROMPT.md`.*
+
+---
+
+# v2 — FIXES LANDED (Claude, 2026-06-30, probe-verified)
+
+Branch `claude/ethereum-betting-game-vrf-2dq50k`. Each gated on the v2 probes.
+
+| Wave | # | Fix | Commit | Probe |
+|---|---|---|---|---|
+| **0** | **#1** | `token-bridge.js` `reserve()`/`resolveReserved()` (pin+BURN nonce, debit up front, persist `rec.outcome`) + `crash-rounds.js` wired to them | `ed9831b` + `d94a356` | `crash-reserve-probe.js` **PROBE OK — reserve model verified on real bridge** |
+| **1** | **#5** | `doPlay` refuses while `liveExternal` (live BJ hand) or `liveCrashSession` | `ed9831b` | adversarial-suite-v2 **0 findings**; crash-liveness PASS |
+| **1** | **#10** | `doTopUp` same `liveExternal`/`liveCrashSession` guard | `d94a356` | self-test |
+| **3** | **#11** | `refreshBalances()` won't overwrite plane HUD when `TokenMode.active()` | `638811f` | — |
+| **3** | **#13** | `token-client.play()` monotonic seq — only latest response updates cached balance | `638811f` | — |
+| **3** | **#14** | slots3d defers token-bar `syncBalance` off the bonus-trigger spin → `_endBonus`/`_finishBonusNow` | `638811f` | slots3d-parity 0 mismatch |
+| **3** | **#12** | `CrashRounds.cancel()` on leaving crash channels (singleton no longer wedges) | `f240e10` (v12.47) | — |
+| (1C) | #85/#86/#22/#108/#48 | WS heartbeat, fail-fast dropped send, round-cancel, timeout reconcile, epoch bump | `f240e10` | — |
+
+**Also confirmed already-present (real, v12.34), NOT weakened:** `withPlayerLock`, `pendingSettle`, obligation re-issue, `doRelease` closed-session re-issue (#209/#215 from v1), `doAdminRelease` `liveExternal`.
+
+## Deferred (need owner / toolchain / explicit review)
+- **#2/#9 regen `contract.js`** — needs `npx hardhat compile && npm run artifact` (hardhat not on PATH here).
+- **#3/#7/#8 staticCall removal** — client change to the LEGACY direct-on-chain games (being superseded by the token bridge); removing the simulate-first preview is good but lower priority than the token path.
+- **#4 deploy CoinFlipBettingV2** — on-chain deployment = **owner action** (no private key here).
+- **#6 applyNet failure → client surface** — already LOUD-logged + unreachable-by-construction (`hasLiveHand` blocks settle while a seat is live); full client-surface is a robustness follow-up.
+- **#21 sub-cent settle rounding** (≤½¢/session) — edits the SIGNED on-chain amount; **deferred for owner sign-off**.
+- Lower: #18/#19 (house-state auth, bearer query), #20, #22, #23, #32/#33, #15-#17 (PvP/registry/fees), #24/#25 (contract RNG/signer).
+
+## Probe state after fixes (v12.48)
+`crash-reserve-probe` OK · `crash-liveness-probe` PASS · `adversarial-suite-v2` 0 findings · `settlement-math-probe` 0 criticals · `slots3d-parity-probe` 0 mismatch · all server self-tests PASS.
