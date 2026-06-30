@@ -111,9 +111,12 @@
           // A token credit (a payout / refund) should NEVER silently vanish on a real-money table. If applyNet
           // throws (session closed/settled) log loudly so a lost credit is diagnosable. By construction this is
           // unreachable for a settled session (hasLiveHand blocks the token settle while any seat is live).
+          // #6: also RETURN a success flag so the settle path can surface a (theoretical) failed payout to the
+          // player instead of showing a phantom win.
+          let okCredit = true;
           try { TL.applyNet(w, tokenSid(w), 0, r2(a)); }
-          catch (e) { try { console.error("[bj] TOKEN CREDIT FAILED — payout NOT booked:", JSON.stringify({ wallet: w, amount: r2(a), session: tokenSid(w), err: (e && e.message) || String(e) })); } catch (e2) {} }
-          notifyBalance(w); return;
+          catch (e) { okCredit = false; try { console.error("[bj] TOKEN CREDIT FAILED — payout NOT booked:", JSON.stringify({ wallet: w, amount: r2(a), session: tokenSid(w), err: (e && e.message) || String(e) })); } catch (e2) {} }
+          notifyBalance(w); return okCredit;
         }
         return _credit(w, a);
       };
@@ -460,7 +463,12 @@
         for (const h of s.hands) {
           const res = Rules.settleHand({ cards: h.cards, surrendered: h.surrendered, fromSplit: h.fromSplit }, { cards: r.dealer }, config);
           const payout = r2(h.bet * res.returnMult);
-          if (payout > 0) bank.credit(s.wallet, payout);
+          if (payout > 0) {
+            const credited = bank.credit(s.wallet, payout);
+            // #6: a token payout that failed to book (closed session mid-settle — unreachable by construction,
+            // but never show a phantom win) → tell the player so they can contact support; their lock is safe.
+            if (credited === false) { try { err(s.sock, "credit_failed", "Your payout couldn't be credited — please contact support (your locked funds are safe).", "settle"); } catch (e) {} }
+          }
           h.result = { outcome: res.outcome, payout, delta: r2(payout - h.bet) };
           net = r2(net + h.result.delta);
           handsOut.push({ cards: h.cards, total: Rules.handValue(h.cards).total, outcome: res.outcome, payout, delta: h.result.delta, doubled: h.doubled, fromSplit: h.fromSplit, surrendered: h.surrendered });
@@ -592,6 +600,9 @@
         s.left = true; if (s.hands) for (const h of s.hands) h.done = true;
         broadcast(r, { type: "bj:event", kind: "seatLeaving", seat: i, wallet: s.wallet });
         if (r.phase === "turns" && r.turnIdx === i) { clrT(r.timers.turn); nextSeat(r); }
+        // #34: mirror leave()'s insurance handling — a grace-expire during the insurance phase must mark this
+        // seat decided and advance if everyone else has, else the table waits out the full 12s insurance timer.
+        else if (r.phase === "insurance") { s.insuranceDecided = true; if (r.seats.filter(inRound).every((x) => x.insuranceDecided)) closeInsurance(r); else broadcastState(r); }
         else broadcastState(r);
       }
       pushLobby();

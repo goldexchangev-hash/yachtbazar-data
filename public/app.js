@@ -1720,7 +1720,7 @@
     const side = coinHeads ? "HEADS" : "TAILS";
     const rv = flipReveal(usdToWei(v), won); // TV display amounts (1.94x identical client/server)
     setTimeout(() => {
-      if (TV._seq !== seq) { release(); return; } // tuned away mid round-trip
+      if (TV._seq !== seq) { unlockReveal(); release(); return; } // #15: tuned away mid round-trip — also clear the reveal lock so token bets aren't frozen for ~20s
       playOutcome({ won, netUsd: weiToUsd(rv.netWei), betUsd: v, side });
       TV.revealResult({
         side, youWon: won, role: "participant", picked: wantsHeads ? "HEADS" : "TAILS",
@@ -3358,10 +3358,12 @@
     if (game !== "slots" && window.CryptoReels && CryptoReels.setActive) CryptoReels.setActive(false);
     if (game !== "pressure" && pressureGame) pressureGame.setActive(false);
     if (game !== "plane" && planeGame) planeGame.setActive(false);
-    // Leaving every crash-family channel? Free the shared CrashRounds singleton so a stuck/in-flight
-    // round can't wedge the next channel for up to 120s (#22). The per-game setActive(false) above
-    // already requested the server cash-out; cancel() only tears down the local promise/timers.
-    if (game !== "plane" && game !== "pressure" && game !== "crash" && game !== "swoop" && CrashRounds && CrashRounds.cancel && CrashRounds.active && CrashRounds.active()) CrashRounds.cancel("left the crash channels");
+    // Free the shared CrashRounds singleton on ANY channel switch so a stuck/in-flight round can't wedge the
+    // next channel's launch (#18/#22). switchGame only runs on a real channel change, and the prior round
+    // still settles SERVER-side via the per-game setActive(false) cash-out above — cancel() only tears down
+    // the local promise/timers. (Was gated to "leaving the crash family entirely", which left plane↔pressure
+    // sharing a busy singleton for ~1s and failing the first bet on the new channel.)
+    if (CrashRounds && CrashRounds.cancel && CrashRounds.active && CrashRounds.active()) CrashRounds.cancel("switched channel");
     if (game !== "slots3d" && slots3dGame) slots3dGame.setActive(false);
     if (game !== "fish" && fishGame) fishGame.setActive(false);
     if (game !== "swoop" && swoopGame) swoopGame.setActive(false);
@@ -3392,7 +3394,7 @@
   // CSS/scripts can't collide with the site). Lazy-set the src on first visit. The
   // betting + action CONTROLS are native site elements in the dock under the TV,
   // bridged to the felt via postMessage. ──
-  function bjFramePost(active) { const f = $("bj-frame"); if (f && f.contentWindow) try { f.contentWindow.postMessage({ type: "bj:active", active }, "*"); } catch (e) {} }
+  function bjFramePost(active) { const f = $("bj-frame"); if (f && f.contentWindow) try { f.contentWindow.postMessage({ type: "bj:active", active }, location.origin); } catch (e) {} } // #24: same-origin iframe only
   // A persistent temp "guest" identity so every visitor is a distinct player with
   // their own demo balance and can sit at a shared table together (multiplayer demo).
   function bjGuestId() {
@@ -3487,13 +3489,17 @@
   async function bjReload() {
     const f = $("bj-frame");
     if (!account) {
-      if (f && f.contentWindow) try { f.contentWindow.postMessage({ type: "bj:seed", balance: BJ_START }, "*"); } catch (e) {}
+      if (f && f.contentWindow) try { f.contentWindow.postMessage({ type: "bj:seed", balance: BJ_START }, location.origin); } catch (e) {} // #24
       return;
     }
     // TOKEN-FUNDED: the table is funded by your token session — there is nothing to "lock" and the OLD
     // on-chain bridge is disabled (its "needs durable server state" error is what users were hitting). So
     // instead of touching the old bridge, just (re)bind the felt to your token session and bail.
     if (window.TokenMode && TokenMode.active && TokenMode.active()) {
+      // #25: refuse to reload (which tears down the iframe → disconnects) while a hand is live — the player
+      // would abandon their turn via the disconnect grace. Cash-out is already refused server-side mid-hand;
+      // this stops the CLIENT-side disconnect too. They can just keep playing; nothing to re-bind mid-hand.
+      if (bjDockLive) { toast("Finish the current hand first — your tokens already fund this table 🪙", "err"); return; }
       try { if (f) { f.removeAttribute("src"); ensureBlackjackReady(); } } catch (e) {}
       toast("Your tokens fund this table — just place a bet 🪙", "ok");
       return;
@@ -3539,7 +3545,7 @@
       } catch {}
       const tableUsd = +(started && started.balanceUsd) || buyUsd;
       if (f) { f.removeAttribute("src"); ensureBlackjackReady(); }
-      setTimeout(() => { if (f && f.contentWindow) try { f.contentWindow.postMessage({ type: "bj:seed", balance: tableUsd }, "*"); } catch (e) {} }, 250);
+      setTimeout(() => { if (f && f.contentWindow) try { f.contentWindow.postMessage({ type: "bj:seed", balance: tableUsd }, location.origin); } catch (e) {} }, 250); // #24
       refreshBalances();
       toast("Blackjack credits locked: " + usd(buyUsd), "ok");
     } catch (e) {
@@ -3602,6 +3608,7 @@
   // intents back into the iframe as "bj:cmd". ----
   let bjBet = 25, bjBetSig = "";
   let bjHealAt = 0; // throttle for the felt self-heal (re-init a guest-stuck felt after the wallet connects)
+  let bjDockLive = false; // #25: true while the player has money committed to the current/next hand (placed bet or in a turn) — used to refuse a mid-hand iframe reload
   let bjTokenSyncAt = 0; // debounce for refreshing the top token bar from the server while at a token table
   let bjCountTimer = null, bjBetEndAt = 0;
   function paintBjConnectedBalance(state) {
@@ -3698,6 +3705,9 @@
   }
   function renderBjDock(s) {
     const status = $("bj-status"), ctr = $("bj-controls"); if (!ctr) return;
+    // #25: track whether money is committed to the current/next hand (a placed bet, an active hand bet, or
+    // the player's turn) so the ⟳ Reload can refuse to tear down the iframe mid-hand (which would disconnect).
+    try { bjDockLive = !!(s && ((s.placed > 0) || (s.handBet > 0) || s.mode === "turn")); } catch (e) { bjDockLive = false; }
     // SELF-HEAL: if the wallet is connected but the felt is still on a GUEST / old connection (e.g. it
     // loaded on a page-reload BEFORE the wallet connected, the cause of the stuck "guest:…" + LOCK CREDITS
     // + dead-bridge screen), re-init it so it binds to the account + token session. Throttled so it can't loop.

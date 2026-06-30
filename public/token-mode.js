@@ -58,7 +58,7 @@
           && Number(saved.chainId) === Number(d.chainId)
           && String(saved.contract || "").toLowerCase() === String(d.contractAddr || "").toLowerCase();
         if (client && sameCtx) {
-          client.resume(saved).then(function (okk) { if (okk) changed(); else _clearSession(); }).catch(function () {});
+          client.resume(saved).then(function (okk) { if (okk === true) changed(); else if (okk === "gone") _clearSession(); /* #19: keep a saved session on a transient failure (don't wipe on a load-time blip) */ }).catch(function () {});
         } else if (saved) { _clearSession(); }
       } catch (e) {}
     },
@@ -245,7 +245,17 @@
     },
     // Authoritative refresh from the server session (used on leaving blackjack) so client.tokens can't drift.
     refreshTokens: function () {
-      try { if (client && client.session && client.resume) return client.resume(client.session).then(function () { try { TokenMode.paintTokens(); } catch (e) {} }).catch(function () {}); } catch (e) {}
+      try {
+        if (client && client.session && client.resume) {
+          return client.resume(client.session).then(function (okk) {
+            // #19: only drop the session when the server CONFIRMS it's gone ("gone") — a transient failure
+            // (network blip) keeps the session and just repaints, so a redeploy can't strand a live balance
+            // as a phantom while a blip can't wipe a real one.
+            if (okk === "gone") { try { client.session = null; client.tokens = 0; } catch (e) {} _clearSession(); changed(); }
+            else { try { TokenMode.paintTokens(); } catch (e) {} }
+          }).catch(function () {});
+        }
+      } catch (e) {}
     },
 
     _render: render,

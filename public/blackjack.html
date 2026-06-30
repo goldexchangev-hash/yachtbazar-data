@@ -126,7 +126,7 @@
         window.BJ = new BlackjackClient({ els: els, embed: tv, wallet: guest, bjToken: bjToken, bjSession: bjSession, joinTable: table, seedBalance: bal != null ? +bal : null });
         if (tv) {
           // tell the host page we're alive so it can seed our demo balance
-          try { window.parent.postMessage({ type: "bj:ready" }, "*"); } catch (e) {}
+          try { window.parent.postMessage({ type: "bj:ready" }, window.location.origin); } catch (e) {} // #24: same-origin parent only
           // scale the fixed-size felt+dock to fill the 4:3 TV screen
           var table = id("table");
           var fit = function () { var s = Math.min(window.innerWidth / 720, window.innerHeight / 540); table.style.transform = "translate(-50%,-50%) scale(" + s + ")"; };

@@ -463,13 +463,13 @@
       bet: this.bet, betMin: 10, betMax: maxBet, betStep: 5, legal: legal, countMsLeft: countMsLeft, roomId: roomId,
       needFunds: needFunds, handBet: this.handBet || 0,
       placed: (mySeat && mySeat.baseBet > 0) ? mySeat.baseBet : 0 };
-    try { if (root.parent && root.parent !== root) root.parent.postMessage(state, "*"); } catch (e) {}
+    try { if (root.parent && root.parent !== root) root.parent.postMessage(state, root.location.origin); } catch (e) {} // #24: same-origin target only
   };
   BlackjackClient.prototype._emitDockError = function (msg) {
     var state = { type: "bj:dock", mode: "waiting", msg: msg, balance: this.balance || 0, showEth: this.showEth,
       bet: this.bet || 25, betMin: 10, betMax: 0, betStep: 5, legal: [], countMsLeft: null, roomId: null,
       needFunds: [], handBet: 0, placed: 0 };
-    try { if (root.parent && root.parent !== root) root.parent.postMessage(state, "*"); } catch (e) {}
+    try { if (root.parent && root.parent !== root) root.parent.postMessage(state, root.location.origin); } catch (e) {} // #24: same-origin target only
   };
   BlackjackClient.prototype._settleMsg = function (mySeat) {
     if (!mySeat || !mySeat.hands || !mySeat.hands.length) return "Round over";

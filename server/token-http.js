@@ -561,6 +561,21 @@ function makeTokenService(opts) {
           saveHttp();
           return { ok: true, mode: "session", ...settlement };
         }
+        // (1b) #13 LIMBO: closed but NO settlement recorded — bridge.settle() set s.closed=true at the top,
+        // then `await signer.sign(...)` threw before s.settlement was written (signer outage mid-settle).
+        // tokens are frozen, so re-running bridge.settle recomputes the SAME net at the SAME pinned nonce and
+        // signs it — recovering the real (possibly LOSING) settlement. We must NOT fall through to the net=0
+        // orphan here: that would forgive a loss the signer outage merely delayed (loss-escape). If the signer
+        // is still down, bridge.settle throws and we propagate — openByPlayer stays set so the obligation persists.
+        if (s && s.closed && !s.settlement) {
+          const settlement = await bridge.settle({ sessionId: sid });
+          openByPlayer.delete(player);
+          tokenForSession.delete(sid);
+          playBuckets.delete(sid);
+          recordObligation(player, s.contract || contract, s.chainId || chainId, settlement);
+          saveHttp();
+          return { ok: true, mode: "session", ...settlement };
+        }
         // The map pointed at a TRULY vanished session (gc'd, never settled) — clear the stale slot, fall through.
         openByPlayer.delete(player);
         saveHttp();
@@ -647,6 +662,17 @@ function makeTokenService(opts) {
         if (s && !s.closed) throw new Error("that player has an active session — they cash out themselves");
         if (s && s.closed && s.settlement) {
           const settlement = await bridge.settle({ sessionId: sid }); // idempotent → the recorded loss/net
+          openByPlayer.delete(player);
+          tokenForSession.delete(sid);
+          playBuckets.delete(sid);
+          recordObligation(player, s.contract || contract, s.chainId || chainId, settlement);
+          saveHttp();
+          return { ok: true, player, ...settlement };
+        }
+        // #13 LIMBO (same as doRelease 1b): closed but settlement not recorded (signer threw mid-settle) →
+        // re-run bridge.settle to recover the real loss/net rather than falling through to a net=0 orphan.
+        if (s && s.closed && !s.settlement) {
+          const settlement = await bridge.settle({ sessionId: sid });
           openByPlayer.delete(player);
           tokenForSession.delete(sid);
           playBuckets.delete(sid);

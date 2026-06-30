@@ -99,13 +99,16 @@
       // #21: POST the bearer in the body, not a query string.
       const res = await f((this.d.apiBase || "") + "/api/token/session", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sessionId: saved.sessionId, sessionToken: saved.sessionToken }), signal: opts.signal });
       j = await res.json().catch(() => null);
-    } catch (e) { return false; }
+    } catch (e) { return false; } // #19: couldn't reach the server → TRANSIENT, keep the session (don't wipe a live one on a blip)
     if (j && j.ok) {
       this.session = { sessionId: saved.sessionId, sessionToken: saved.sessionToken, commit: j.commit, tokens: j.tokens, buyInUnits: j.buyInUnits };
       this.tokens = j.tokens;
       return true;
     }
-    return false;
+    // #19: the server RESPONDED that the session is not ok → it's genuinely gone (settled / unknown).
+    // Distinguish this from a transient failure so the caller clears only on a confirmed-gone, never on a blip.
+    if (j && j.ok === false) return "gone";
+    return false; // unparseable response → treat as transient
   };
 
   // BUY IN: lock `amountWei` on-chain (ONE popup) → open a server token session.

@@ -244,6 +244,7 @@
     this.heldSec = 0;
     this.pressing = true;
     this.state = "inflating";
+    this._roundToken = false; // #47: this round started in DEMO mode — release resolves locally
     this.r.reset();              // fresh limp balloon
     if (this._b3d) this._b3d.reset();
     this.r.setState("inflating");
@@ -262,6 +263,7 @@
     var autoTarget = this.autoOn ? this.autoMult : 0; // 0 = MANUAL release (the default in token mode)
     this.nonce += 1; this.floors = []; this.heldSec = 0; this.burst = 0;
     this.pressing = true; this.state = "inflating";
+    this._roundToken = true; // #47: this round started as a TOKEN (server-paced) round — release must cash out server-side
     this.r.reset(); if (this._b3d) this._b3d.reset();
     this.r.setState("inflating");
     if (this.r.setAutoLine) this.r.setAutoLine(autoTarget || 0);
@@ -355,7 +357,11 @@
 
   PressureGame.prototype._release = function () {
     if (this.state !== "inflating" || !this.pressing) return;
-    if (this._tokenActive()) { if (this.onTokenCashOut) this.onTokenCashOut(); return; } // server settles at its clock
+    // #47: decide token-vs-demo by how THIS round STARTED (captured at press), not the live TokenMode flag.
+    // A mid-round disconnect that flips TokenMode.active() to false must NOT make a token round resolve as a
+    // phantom demo win/loss. Fall back to the live check only if the per-round flag was never set.
+    var roundToken = (this._roundToken != null) ? this._roundToken : this._tokenActive();
+    if (roundToken) { if (this.onTokenCashOut) this.onTokenCashOut(); return; } // server settles at its clock
     const m = Math.floor(this.r.getRenderedMultiplier() * 100) / 100; // snap DOWN to last drawn frame
     if (m >= this.burst) this._resolve("pop", this.burst);
     else if (m < MIN_CASHOUT) this._resolve("void", m);   // let go too early → refund, no win/loss
