@@ -72,7 +72,10 @@
     var self = this;
     // a transient drop reconnects on a fresh socket (the server gave our seat away),
     // so on reconnect re-subscribe + try to rejoin the table instead of stranding.
-    this.net.on("bj:net", function (m) { if (m.state === "open") { if (self._connectedOnce) self._onReconnect(); else if (self.embed) self._autoJoin(); self._connectedOnce = true; } });
+    this.net.on("bj:net", function (m) {
+      if (m.state === "open") { self._setNetBanner(false); if (self._connectedOnce) self._onReconnect(); else if (self.embed) self._autoJoin(); self._connectedOnce = true; }
+      else if (m.state === "closed") { self._setNetBanner(true); } // socket down (e.g. server restart) — show a clear status instead of a silent blank felt
+    });
     this.net.on("bj:lobby:list", function (m) { self.renderLobby(m.rooms); });
     this.net.on("bj:wallet", function (m) { self.balance = m.balance; self._renderBalance(); self._renderDock(); }); // push the new balance to the dock immediately
     this.net.on("bj:room:snapshot", function (m) {
@@ -96,6 +99,23 @@
       // restore controls on rejection: force a dock rebuild from the still-intact legal set
       self.toast(m.msg || "Error", true); self._dockSig = null; self._renderDock();
     });
+  };
+
+  // Connection banner: shown while the socket is DOWN (e.g. a server restart/cold-start) so the
+  // felt never just sits blank looking broken — it clearly says it's reconnecting. Auto-hidden the
+  // moment the socket reopens (the reconnect logic above re-subscribes + rejoins the table).
+  BlackjackClient.prototype._setNetBanner = function (show) {
+    var el = document.getElementById("bj-net-banner");
+    if (show) {
+      if (!el) {
+        el = document.createElement("div");
+        el.id = "bj-net-banner";
+        el.style.cssText = "position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:2147483646;background:rgba(10,16,28,.94);color:#ffd23f;border:1px solid rgba(255,210,63,.55);border-radius:12px;padding:9px 18px;font:800 14px system-ui,-apple-system,sans-serif;box-shadow:0 8px 28px rgba(0,0,0,.55);white-space:nowrap;pointer-events:none";
+        el.textContent = "📡 Reconnecting to the table…";
+        (document.body || document.documentElement).appendChild(el);
+      }
+      el.style.display = "block";
+    } else if (el) { el.style.display = "none"; }
   };
 
   BlackjackClient.prototype._wireStatic = function () {
