@@ -1670,17 +1670,9 @@
     tvPending(true);
     toast("Sending your bet… confirm in your wallet", "ok");
     try {
-      // Learn the room id up-front so the result reveal can't race ahead of us.
-      let predicted;
-      try {
-        predicted = await contract.playHouse.staticCall(bet, wantsHeads);
-      } catch (e) {
-        tvPending(false); unlockReveal(); cancelBuildup(); TV.idle("Deposit ETH, then create or join a room");
-        return txErr(e);
-      }
-      activeRoomId = predicted.toString();
-      // Fixed gas skips the eth_estimateGas round-trip — one less slow hop to the
-      // wallet popup on mobile (700k is plenty for playHouse).
+      // No simulate-first preview (#3): a playHouse.staticCall would let an EOA see the outcome and only
+      // submit the tx on a win. Send it straight — the room id comes from the HouseGameStarted receipt
+      // event below. Fixed gas skips the eth_estimateGas round-trip (one less slow hop on mobile).
       const tx = await contract.playHouse(bet, wantsHeads, { gasLimit: 700000n });
       const rcpt = await tx.wait();
       tvPending(false);
@@ -1843,15 +1835,16 @@
     tvPending(true);
     toast("Sending your bet… confirm in your wallet", "ok");
     try {
-      let predicted;
-      try { predicted = await contract.playHostRoom.staticCall(id, bet, wantsHeads); }
-      catch (e) { tvPending(false); unlockReveal(); cancelBuildup(); TV.idle("Deposit ETH, then create or join a room"); return txErr(e); }
+      // No simulate-first preview (#3/#7): a playHostRoom.staticCall returns playerWon, which an EOA
+      // could read to cherry-pick wins. Submit the tx straight; the outcome comes ONLY from the on-chain
+      // HostFlip receipt event — never a client-side simulation.
       const tx = await contract.playHostRoom(id, bet, wantsHeads, { gasLimit: 500000n });
       const rcpt = await tx.wait();
       tvPending(false);
       const ev = rcpt.logs.map((l) => safeParse(l)).find((p) => p && p.name === "HostFlip");
-      const playerWon = ev ? ev.args.playerWon : predicted;
-      const betAmt = ev ? ev.args.betAmount : bet;
+      if (!ev) { unlockReveal(); cancelBuildup(); TV.idle(); refreshBalances(); return txErr(new Error("Flip settled on-chain — check your balance.")); }
+      const playerWon = ev.args.playerWon;
+      const betAmt = ev.args.betAmount;
       const rv = flipReveal(betAmt, playerWon);
       const coinHeads = playerWon ? wantsHeads : !wantsHeads; // the coin's actual face
       setLastResult({ won: playerWon, side: coinHeads ? "HEADS" : "TAILS", amountUsd: rv.amountUsd, amountWei: rv.amountWei, betWei: betAmt, label: "Host table" });

@@ -190,19 +190,30 @@ function makeTokenBridge(opts) {
     const s = sessions.get(o.sessionId);
     if (!s) throw new Error("no such session");
     if (s.settlement) return s.settlement;            // idempotent
+    // Cents-rounded figure for DISPLAY/ledger only. The SIGNED wei is derived from the un-rounded net
+    // below so a sub-cent loss can't vanish (#21/#204).
     let netUnits = round2(s.tokens - s.buyInUnits);
     if (netUnits < -s.buyInUnits) netUnits = -s.buyInUnits; // never lose more than locked
     s.closed = true;
     // Net→wei PINNED to the exact on-chain locked wei (audit Critical-3): integer math
-    //   netWei = lockedWei * netCents / buyInCents,  floored at -lockedWei
-    // so a rounding/rate drift can't sign a loss bigger than the player actually locked,
-    // and the win is bounded by the same ratio. Falls back to the injectable toWei (tests).
+    //   netWei = lockedWei * netMicro / buyInMicro,  floored at -lockedWei
+    // Computed from the UN-rounded net at MICRO (1e6) precision so a sub-cent LOSS does NOT round to 0
+    // and hand back the full lock (#21/#204/#205). The division is floored TOWARD THE HOUSE (toward −∞
+    // on a loss) so rounding can never favor the player; the loss is still bounded at −lockedWei.
+    // Falls back to the injectable toWei (tests with no lockedWei).
     let netWei;
     if (s.lockedWei != null) {
       const lockedWei = BigInt(s.lockedWei);
-      const netCents = BigInt(Math.round(netUnits * 100));
-      const buyInCents = BigInt(Math.round(s.buyInUnits * 100));
-      netWei = buyInCents > 0n ? (lockedWei * netCents) / buyInCents : 0n;
+      let rawNet = s.tokens - s.buyInUnits;
+      if (!Number.isFinite(rawNet)) rawNet = 0;
+      if (rawNet < -s.buyInUnits) rawNet = -s.buyInUnits; // never lose more than locked
+      const netMicro = BigInt(Math.round(rawNet * 1e6));
+      const buyInMicro = BigInt(Math.round(s.buyInUnits * 1e6));
+      if (buyInMicro > 0n) {
+        const num = lockedWei * netMicro;
+        netWei = num / buyInMicro;                                  // BigInt division truncates toward zero
+        if (num < 0n && (num % buyInMicro) !== 0n) netWei -= 1n;    // floor toward −∞ on a loss → favor the house, never the player
+      } else netWei = 0n;
       if (netWei < -lockedWei) netWei = -lockedWei;
     } else {
       netWei = toWei(netUnits);
