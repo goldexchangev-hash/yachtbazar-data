@@ -3,6 +3,14 @@
 /**
  * Pass 5 — token settlement math edge-case probe.
  * Run: node CursorBugHunt/settlement-math-probe.js
+ *
+ * ⚠️ STALE — DO NOT USE FOR A SETTLEMENT VERDICT (v3 #52).
+ * The sub-cent scenarios (#204/#205) replicate an OLD net→wei rounding inline that the real bridge no
+ * longer uses. The committed settle() (server/token-bridge.js:196-223) computes netWei at MICRO (1e6)
+ * precision, floored toward the house, so a sub-cent LOSS can never round to 0 and hand back the full lock.
+ * That is verified by the token-http self-test + CursorBugHunt-v3/wave1-auth-probe.js / wave2-money-probe.js.
+ * Any sub-cent "finding" this script prints is a probe artifact, not a live bug — rewrite to drive the real
+ * doSettle/doRelease path before trusting it. Kept for history only.
  */
 const crypto = require("crypto");
 const { ethers } = require("ethers");

@@ -48,7 +48,9 @@ const RTP   = 0.85;
 const P_MIN = 0.0025;
 const P_MAX = 0.9;
 const BONUS_BUDGET         = { chest: 25, frenzy: 25, storm: 25 };
-const SPLASH_TARGET_BUDGET = { bomb: 4, chain: 3 };
+// #17: removed the dead `chain: 3` — no FISH below has `special: "chain"`, so that budget was never read
+// (never added to any fish's mult, never disbursed). Only `bomb` is an active splash special.
+const SPLASH_TARGET_BUDGET = { bomb: 4 };
 
 // ---- fish roster (key -> {mult, bonus?, special?}) — fishtable-engine.js:41-60 ----
 // Only the money-relevant fields; cosmetic fields (color/r/tier/...) are omitted.

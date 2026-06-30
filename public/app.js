@@ -159,7 +159,7 @@
   // ---- shareable win/loss card (canvas -> PNG -> Web Share / download) ----
   let lastResult = null;
   // Active TV channel → friendly game name + emoji for the share card.
-  const SHARE_GAME = { 8: ["Coin Flip", "🪙"], 9: ["0-100", "🎲"], 10: ["Dice #2", "🎲"], 11: ["Crash", "🚀"], 13: ["Balloon Pop", "🎈"], 14: ["Plane", "✈️"], 15: ["Gem Vault", "💎"] };
+  const SHARE_GAME = { 8: ["Coin Flip", "🪙"], 9: ["0-100", "🎲"], 10: ["Dice #2", "🎲"], 11: ["Crash", "🚀"], 13: ["Balloon Pop", "🎈"], 14: ["Plane", "✈️"], 15: ["Gem Vault", "💎"], 16: ["Blackjack", "🂡"], 17: ["Reef Raiders", "🐠"], 18: ["Sky Swoop", "🪂"], 19: ["Fish Shooter", "🎣"] }; // #40: CH 16–19 added (were missing → generic share branding)
   function hideShareBtn() { const b = $("share-result-btn"); if (b) b.classList.add("hidden"); }
   function setLastResult(r) {
     r = r || {};
@@ -350,7 +350,9 @@
   // bet without scrolling. No game logic is duplicated — every change funnels
   // through the same <input> + "input" event the panel already listens to.
   const BETBAR_GAMES = new Set(["flip", "dice", "twodice", "crash", "pressure", "plane", "slots3d", "fish", "swoop", "fishshooter"]);
-  const BETBAR_SL = { flip: "house-bet", dice: "dice-stake", twodice: "td-stake", crash: "crash-stake", pressure: "pr-bet-slider", slots3d: "s3d-bet-slider", plane: "plane-a-bet", fish: "fish-bet" };
+  // #26: fishshooter + swoop were in BETBAR_GAMES but missing here → curStakeSlider() returned null → blank
+  // mobile stake strip on those channels. Map them to their real sliders (fsh-bet / swoop-bet).
+  const BETBAR_SL = { flip: "house-bet", dice: "dice-stake", twodice: "td-stake", crash: "crash-stake", pressure: "pr-bet-slider", slots3d: "s3d-bet-slider", plane: "plane-a-bet", fish: "fish-bet", fishshooter: "fsh-bet", swoop: "swoop-bet" };
   function curStakeSlider() { return $(BETBAR_SL[currentGame]); }
   // Measure the active game's pinned action dock and lift the stake strip above it.
   // Docks vary in height — Plane has TWO buttons, others one — so a fixed offset
@@ -2271,21 +2273,21 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1243").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1254").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   // PlayCanvas engine (~2.2MB) — only loaded when the Sky Swoop channel is first opened.
   function loadPlayCanvasOnce() {
     if (window.pc) return Promise.resolve();
     if (playcanvasLoadPromise) return playcanvasLoadPromise;
-    playcanvasLoadPromise = loadScriptOnce("vendor/playcanvas.min.js?v=1243").catch((e) => { playcanvasLoadPromise = null; throw e; });
+    playcanvasLoadPromise = loadScriptOnce("vendor/playcanvas.min.js?v=1254").catch((e) => { playcanvasLoadPromise = null; throw e; });
     return playcanvasLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=1243"))
+      .then(() => loadScriptOnce("slots.js?v=1254"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -2295,11 +2297,11 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=1243"))
-      .then(() => loadScriptOnce("pressure-render.js?v=1243"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=1249"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=1254"))
+      .then(() => loadScriptOnce("pressure-render.js?v=1254"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=1254"))
       // optional 3D red balloon (Three.js) — falls back to the 2D balloon if it can't load
-      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1243")).catch(() => {}))
+      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1254")).catch(() => {}))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -2371,10 +2373,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=1243"))
-      .then(() => loadScriptOnce("plane-render.js?v=1243"))
-      .then(() => loadScriptOnce("plane-feed.js?v=1243"))
-      .then(() => loadScriptOnce("plane-ui.js?v=1249"))
+      .then(() => loadScriptOnce("plane-engine.js?v=1254"))
+      .then(() => loadScriptOnce("plane-render.js?v=1254"))
+      .then(() => loadScriptOnce("plane-feed.js?v=1254"))
+      .then(() => loadScriptOnce("plane-ui.js?v=1254"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2478,15 +2480,15 @@
   function loadThreeOnce() {
     if (window.THREE) return Promise.resolve();
     if (threeLoadPromise) return threeLoadPromise;
-    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1243").catch((e) => { threeLoadPromise = null; throw e; });
+    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1254").catch((e) => { threeLoadPromise = null; throw e; });
     return threeLoadPromise;
   }
   function ensureSlots3dLoaded() {
     if (window.Slots3D) return Promise.resolve(true);
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("slots3d-engine.js?v=1243"))
-      .then(() => loadScriptOnce("slots3d.js?v=1248"))
+      .then(() => loadScriptOnce("slots3d-engine.js?v=1254"))
+      .then(() => loadScriptOnce("slots3d.js?v=1254"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2528,8 +2530,8 @@
     if (window.FishTable) return Promise.resolve(true);
     if (fishLoadPromise) return fishLoadPromise;
     fishLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishtable-engine.js?v=1243"))
-      .then(() => loadScriptOnce("fishtable.js?v=1243"))
+      .then(() => loadScriptOnce("fishtable-engine.js?v=1254"))
+      .then(() => loadScriptOnce("fishtable.js?v=1254"))
       .then(() => true)
       .catch((e) => { fishLoadPromise = null; throw e; });
     return fishLoadPromise;
@@ -2612,7 +2614,7 @@
     if (window.SwoopGame) return Promise.resolve(true);
     if (swoopLoadPromise) return swoopLoadPromise;
     swoopLoadPromise = loadPlayCanvasOnce()
-      .then(() => loadScriptOnce("swoop3d.js?v=1243"))
+      .then(() => loadScriptOnce("swoop3d.js?v=1254"))
       .then(() => true)
       .catch((e) => { swoopLoadPromise = null; throw e; });
     return swoopLoadPromise;
@@ -2693,8 +2695,8 @@
     if (window.FishShooter) return Promise.resolve(true);
     if (fishshooterLoadPromise) return fishshooterLoadPromise;
     fishshooterLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishshooter-engine.js?v=1243")) // OWN engine (decoupled from Reef's fishtable-engine.js)
-      .then(() => loadScriptOnce("fishshooter.js?v=1243"))
+      .then(() => loadScriptOnce("fishshooter-engine.js?v=1254")) // OWN engine (decoupled from Reef's fishtable-engine.js)
+      .then(() => loadScriptOnce("fishshooter.js?v=1254"))
       .then(() => true)
       .catch((e) => { fishshooterLoadPromise = null; throw e; });
     return fishshooterLoadPromise;
@@ -2779,7 +2781,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1243"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1254"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -2806,7 +2808,7 @@
   function loadRail3dOnce() {
     if (window.Rail3D) return Promise.resolve(true);
     if (rail3dLoadPromise) return rail3dLoadPromise;
-    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1243")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
+    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1254")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
     return rail3dLoadPromise;
   }
   function buildRail3d() {
@@ -2827,7 +2829,7 @@
   function loadDice2_3dOnce() {
     if (window.TwoDice3D) return Promise.resolve(true);
     if (d2_3dLoadPromise) return d2_3dLoadPromise;
-    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1243")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
+    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1254")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
     return d2_3dLoadPromise;
   }
   function buildDice2_3d() {
