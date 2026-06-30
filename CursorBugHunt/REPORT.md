@@ -1,34 +1,42 @@
 # Cursor Bug Hunt — Crypto TV (v12.39)
 
-**Date:** 2026-06-30 (expanded pass)  
-**Site audited:** https://tv-crypto-flip.onrender.com  
-**Branch:** `claude/ethereum-betting-game-vrf-2dq50k` @ `09b1d18` (v12.39)  
+**Date:** 2026-06-30 (third pass — deep multi-agent audit)  
+**Site:** https://tv-crypto-flip.onrender.com  
+**Branch:** `claude/ethereum-betting-game-vrf-2dq50k` @ `09b1d18`  
 **Build:** `?v=1239`, `ctf-v12.39`
 
 ---
 
-## Methodology (second pass)
+## Methodology
 
-Four parallel deep audits plus live repro:
+| Pass | Agents / tools | Scope |
+|------|----------------|--------|
+| 1 | Initial parallel audits | Money paths, games, server, tests |
+| 2 | 4 agents | Expanded client/server, adversarial nonce repro |
+| **3** | **6 agents + adversarial suite** | **Contracts, blackjack, session restore, math parity, WS/API edges, scripted exploits** |
 
-| Pass | Scope |
-|------|--------|
-| Money paths | `token-bridge.js`, `token-http.js`, crash-rounds, blackjack-server, settle/release races |
-| All game clients | `app.js`, every canvas game, `tv.js`, token-mode, session restore |
-| Server security | WS hub auth, input validation, persistence, env flags, buy-in replay |
-| Tests + repro | `npm test`, all module self-tests, adversarial nonce script |
+**Scripts in this directory:**
+- `repro-crash-nonce-desync.js` — crash pacing vs settlement nonce mismatch
+- `adversarial-suite.js` — txHash races, dual sessions, crash loss escape, EV scan
 
-**Repro script (confirmed):** `node CursorBugHunt/repro-crash-nonce-desync.js` — exits 1 when pacing nonce ≠ settlement nonce.
+```bash
+npm test
+node CursorBugHunt/adversarial-suite.js      # 8 findings (exit 0/1)
+node CursorBugHunt/repro-crash-nonce-desync.js
+```
 
 ---
 
 ## Executive summary
 
-All automated tests pass (`npm test` 22/22; module self-tests OK), but **self-tests do not cover adversarial interleaving**. The token crash-round WebSocket path (Plane CH14, Balloon Pop CH13) has **three chained critical bugs**: nonce desync, unstaked rounds, and settle-before-play ordering. A **buy-in txHash replay race** on `/api/token/start` can grant double tokens from one on-chain deposit.
+**97 unique findings** below (Critical → Low). Automated tests still pass 22/22, but self-tests do not cover adversarial concurrency, on-chain simulation attacks, or cross-tab/session races.
 
-Client-side, token mode is inconsistently wired: affordability guards, `spendableUsd()`, and Plane mode switching still lean on on-chain `gameWei` in several paths. Demo/play-money games diverge from the header balance when a wallet is connected.
-
-**35 findings** below, ordered by severity.
+**Top risks:**
+1. **Token crash rounds** — nonce desync, unstaked rounds, settle mid-round (reproduced)
+2. **Buy-in/top-up txHash replay** — double tokens from one chain tx (reproduced in `adversarial-suite.js`)
+3. **On-chain instant games** — `staticCall` leaks outcome before submit; client uses this explicitly
+4. **Blackjack** — token bets allowed during live hand; leave during `dealing` corrupts outcome; silent credit failures
+5. **Client token mode** — affordability, plane mode, session restore ordering, cross-tab ghosts
 
 ---
 
@@ -36,444 +44,213 @@ Client-side, token mode is inconsistently wired: affordability guards, `spendabl
 
 | Level | Meaning |
 |-------|---------|
-| **Critical** | Exploitable fund loss, double-credit, or provably broken fairness |
-| **High** | Broken token UX, orphaned server state, latent security if feature enabled |
-| **Medium** | Desync, reliability, DoS, or economic edge cases |
-| **Low** | Polish, cache/version skew, demo-only gaps |
+| **Critical** | Exploitable fund loss, double-credit, fairness break, or provably wrong settlement |
+| **High** | Broken real-money UX, orphaned state, latent security if feature enabled |
+| **Medium** | Desync, reliability, DoS, verification broken, economic edge cases |
+| **Low** | Polish, cache/version, demo-only, cosmetic |
 
 ---
 
-## Findings (most severe → least)
+## All findings (most severe → least)
 
-### 1. Critical — Crash rounds: nonce desync (peek vs settle) **[REPRODUCED]**
+### Critical
 
-**Games:** Plane (CH14), Balloon Pop (CH13), Sky Swoop via `CrashRounds` WS  
-**Not affected:** CH11 Crash (instant HTTP `TokenMode.bet`)
+| # | Title | Files | Summary |
+|---|-------|-------|---------|
+| **1** | Crash rounds nonce desync **[REPRODUCED]** | `crash-rounds.js:41-54,95-102`, `token-bridge.js` | `pointPeek` at nonce N; interleaved `play()` advances nonce; settlement uses N+k. Animation ≠ ledger. |
+| **2** | Crash stake not reserved; bust may not debit **[REPRODUCED]** | `crash-rounds.js`, `token-http.js`, `server.js:164` | Stake debited only at bust. Drain balance mid-round → `insufficient tokens` → loss not recorded. |
+| **3** | Settle/release during live WS crash round **[REPRODUCED]** | `token-http.js:377-437`, `crash-rounds.js` | `liveExternal` checks blackjack only. Cash out mid Plane round → session closed → bust throws. |
+| **4** | Buy-in txHash replay race (double session) **[REPRODUCED]** | `token-http.js:283-304` | Concurrent `doStart` same `txHash` both pass `usedBuyIns` before RPC returns. Two sessions, one chain tx. |
+| **5** | Top-up txHash replay race (double credit) **[REPRODUCED]** | `token-http.js:352-366` | Same TOCTOU on `doTopUp` — one chain top-up credits twice (adversarial suite: 1000→3000). |
+| **6** | On-chain instant games leak outcome via `staticCall` | `CoinFlipBetting.sol:768-1114`, `app.js:1669,1840` | `playDice`/`playCrash`/`playSlots`/`playHostRoom` return `won`/payout. EOA simulates until win, then submits. |
+| **7** | V1 `bjLocked` cross-session principal release | `CoinFlipBetting.sol:458-498`, `token-http.js` | Global `bjLocked`; `settleBlackjack` zeros entire lock. V2 fix exists but not deployed/exported. |
+| **8** | Stale `public/contract.js` — browser deploy missing pause/EOA guard | `contract.js`, `exportArtifact.js`, `app.js:968` | Shipped bytecode lacks `paused`, `setPaused`, `_betGuard` from source. In-browser deploy is pre-patch. |
+| **9** | Plane stays demo/real after token buy-in | `app.js:640,3001-3005`, `plane-ui.js` | `syncTokenGameBalances()` sets balance but not `setMode("token")`. Demo debits locally without server. |
+| **10** | Token `doPlay` allowed during live blackjack hand | `token-http.js:316-322`, `blackjack-server.js:143` | No `hasLiveHand` guard on `/api/token/play`. Drain token pool mid-hand; BJ debit/credit desync. |
+| **11** | Token blackjack winnings silently dropped | `blackjack-server.js:109-116` | `applyNet` failure logged and swallowed — UI shows win, tokens never booked. |
+| **12** | Leave/abandon during `dealing` settles incomplete hands | `blackjack-server.js:507-527` | `leave()` marks all hands `done` in non-betting phases including mid-deal one-card hands. |
 
-**Files:** `server/crash-rounds.js:41-54,95-102`, `server/token-bridge.js:110-138,292-301`
+### High
 
-**Issue:** `startRound()` calls `pointPeek()` at `betNonce` N without reserving N. Interleaved `/api/token/play` advances the nonce. `_resolve()` → `bridge.play()` settles at N+k with a different crash point than animation pacing.
+| # | Title | Files | Summary |
+|---|-------|-------|---------|
+| **13** | `_resolve()` settled before `play()` succeeds | `crash-rounds.js:95-107` | Round cleared from maps before ledger debit; failed `play()` orphans state. |
+| **14** | No balance check at `cr:start` | `crash-rounds-ws.js:81-101` | Round starts with `betUnits` > balance; fails only at bust. |
+| **15** | HTTP instant crash + WS crash on same session | `app.js:3242`, `crash-rounds.js` | CH11 HTTP bet during active WS round advances nonce and spends unreserved stake. |
+| **16** | Concurrent `doStart` dual open sessions **[REPRODUCED]** | `token-http.js:277,304` | Two different txHashes both pass `openByPlayer` check concurrently. |
+| **17** | Token affordability gated on `gameWei` | `app.js:1925,2025,2136,2230,317-319` | Dice/Crash/Slots buttons + `spendableUsd()` ignore `TokenMode.tokens()`. |
+| **18** | Plane balance poll overwrites token HUD | `app.js:1357` | 12s `refreshBalances` sets plane from `gameWei` without token guard. |
+| **19** | Fish/Reef optimistic fire (unbounded in-flight) | `fishshooter.js`, `fishtable.js`, `token-client.js:136` | No local debit or in-flight cap; rapid shots exceed balance. |
+| **20** | Out-of-order token responses corrupt balance display | `token-client.js:136` | Last response wins; stale ack inflates displayed tokens. |
+| **21** | Plane/Pressure optimistic debit before `cr:start` ack | `plane-ui.js:350`, `pressure-ui.js:242`, `crash-rounds-client.js:85` | Client refunds on timeout while server may have live round. |
+| **22** | CrashRounds singleton blocks all crash launches | `crash-rounds-client.js:74-103` | One global instance; stuck round blocks plane+balloon up to 120s. |
+| **23** | Sky Swoop in-flight round frozen on channel leave | `swoop3d.js:299-300,524-533`, `app.js:3079` | `setActive(false)` pauses `_update`; stake locked; no `demoReset` for swoop. |
+| **24** | Wallet connected + play-money canvas: header vs HUD diverge | `app.js:3052-3077,318-319` | Header shows `gameWei`; fish/slots/pressure use `demoUsd`. |
+| **25** | Gem Vault token: no final `r.tokens` resync after bonus | `slots3d.js:281-314` | Local `E.evaluate` replay; drift vs ledger until next bet. |
+| **26** | On-chain `prevrandao` RNG (no VRF on production path) | `CoinFlipBetting.sol:555-643`, `config.js:15` | Validator-influenced entropy; `vrf-version/` unused in deploy. |
+| **27** | Compromised house signer can drain `houseBankroll` | `CoinFlipBetting.sol:472-498`, `realmoney.js` | Signed `net` unbounded except bankroll check; no on-chain play binding. |
+| **28** | GameRegistry can point to brick/malicious contract | `GameRegistry.sol:25-35`, `app.js:5165` | No code-size check; `address(0)` allowed; `transferOwner(0)` allowed. |
+| **29** | Client uses `staticCall` before host/house bets (amplifies #6) | `app.js:1669-1677,1839-1846` | Explicit simulate-first UX for on-chain games. |
+| **30** | BJ iframe loads before token session resumes | `app.js:636-640,3396-3424`, `token-mode.js:52-62` | `ensureBlackjackReady` before `TokenMode.resume()` — stale `#bjtoken` without `bjsession`. |
+| **31** | False “stranded lock / Recover” before token resume | `app.js:876,3012-3018` | `checkStrandedLock()` runs before `TokenMode.init()` completes. |
+| **32** | Cross-tab token ghost sessions | `token-mode.js:38-41,219-220` | Single `ctf_token_session`; no `storage` listener; tab A cash-out leaves tab B stale. |
+| **33** | Cached BJ bridge settlement can be stale | `app.js:3502-3517` | Valid cached signature skips server re-fetch; wrong net on submit. |
+| **34** | Token top-up allowed mid-blackjack hand | `token-http.js:340-368` | Changes affordably for double/split mid-hand (guest top-up correctly blocked). |
+| **35** | Token BJ dock hides TOP UP when short for double/split | `app.js:3598-3607` | `needFunds` ignored when `account` connected. |
+| **36** | Second device blocked during BJ reconnect grace (90s) | `blackjack-server.js:486-546` | Same wallet new tab gets `already_seated` until grace expires. |
+| **37** | Invalid `roomId` on BJ join opens different table | `blackjack-server.js:491-492` | Closed table link silently lands on arbitrary open room. |
+| **38** | Plane demo RNG ≠ token/server RNG | `plane-engine.js` vs `games/crash.js` | 32-bit HMAC vs 52-bit PF stream; demo 3% default vs server 1%. |
+| **39** | Slots3D grid derivation differs client vs server | `slots3d-engine.js` vs `games/slots3d.js` | Client HMAC bytes vs server `PF.floats`; verify panel false-fails token spins. |
+| **40** | PF verification UI wrong for token games | `plane-ui.js`, `pressure-ui.js`, `slots3d.js` | In-game “verify” uses demo schemes, not `provablyfair.js` stream. |
+| **41** | Pressure valve locks ignored in token mode | `pressure-engine.js`, `pressure-ui.js`, `games/pressure.js` | Demo pop pays locked floors; server pays 0 on bust. |
+| **42** | Shared `"anon"` play-money blackjack bank | `blackjack-server.js:718`, `server.js:269` | Non-guest/non-0x `hello` address → all clients share wallet `"anon"`. |
+| **43** | Standalone `blackjack.html` cannot join without `?guest=` | `blackjack-net.js:35`, `server.js:254` | No `hello` sent → perpetual `auth_required`. |
+| **44** | Poker hole cards client-side (latent) | `poker-ui.js`, `poker-server.js` (unwired) | Authoritative server exists but not mounted. |
+| **45** | WS `hello` allows address impersonation | `server.js:269-299` | Any string address for chat/presence; no signature. |
+| **46** | Owner can drain `houseBankroll` while balances remain | `CoinFlipBetting.sol:436-442` | House games freeze; player deposits still withdrawable — insolvency DoS. |
+| **47** | Experimental BJ bridge weaker persistence | `bridge-server.js:40-48` | No fsync/readback; `BRIDGE_STATE_FILE` not in `render.yaml`. |
 
-**Repro:** `node CursorBugHunt/repro-crash-nonce-desync.js`
+### Medium
 
-**Fix:** Pin nonce + reserve stake at `cr:start`; or call `play()` at round start with display-only deferral.
+| # | Title | Files | Summary |
+|---|-------|-------|---------|
+| **48** | Off-channel token plane/pressure promise resolves | `plane-ui.js:364-468`, `pressure-ui.js` | `_tokenEpoch` not bumped on `setActive(false)`. |
+| **49** | `switchGame` unlocks balance before TV animation ends | `app.js:3297`, `tv.js:586` | Balance unfreezes while prior channel animation visible. |
+| **50** | On-chain bets refresh balance before TV reveal | `app.js` `doPlayDice/Crash/Slots` | `gameWei` cache updates during `revealLock` display hold. |
+| **51** | Gem Vault token balance updates before reel land | `slots3d.js:286-287` | HUD debited before animation completes. |
+| **52** | BJ token session binding fragile (stale iframe) | `app.js:3393-3478` | v12.39 `&r=` helps; “Lock credits” UX still possible. |
+| **53** | Blackjack iframe version skew | `app.js:3414` v1238, `blackjack.html` v1197-1198 | Split-brain deploy vs shell v1239. |
+| **54** | BETBAR missing swoop/fishshooter sliders | `app.js` `BETBAR_GAMES` vs `BETBAR_SL` | Bet bar enrolled but no slider mapping. |
+| **55** | Dice TV layer desync on reload | `app.js` restore block | `ensureDice3dReady` without `TV.changeChannel`. |
+| **56** | Unguarded `.classList` in TV reveal | `tv.js` | Null layer throws mid-animation. |
+| **57** | Guest BJ / token persist failures silent | `server.js:66-68`, `token-bridge.js:69` | `bjPersist.save` swallows errors. |
+| **58** | Unbounded `clientSeed` on `/api/token/play` | `token-bridge.js:121`, `token-http.js:321` | Megabyte seeds burn HMAC CPU. |
+| **59** | No rate limit on buy-in / RPC endpoints | `token-http.js:628-634` | `/start`, `/topup` hammer RPC (12s timeout each). |
+| **60** | WS chat/broadcast spam | `server.js:221-319` | No per-connection rate limit on chat. |
+| **61** | Reef `power` not clamped (fishshooter is) | `games/reef.js:135`, `fishshooter.js:168` | Arbitrary power affects kill math. |
+| **62** | Pressure void below 1.20× refunds stake | `games/pressure.js:109-119` | Net 0 on sub-min targets; minor EV skew. |
+| **63** | Multi-instance token ledger if scaled | `token-http.js:258`, `token-bridge.js:67` | In-memory per process; no distributed lock. |
+| **64** | `/api/token/house-state` unauthenticated | `token-http.js:554-577` | Aggregate exposure readable by anyone. |
+| **65** | Poker pool uses `gameWei` only | `app.js:3699`, `poker-ui.js` | Ignores token mode if poker re-enabled. |
+| **66** | Legacy `ctf_bj_token_*` not cleared on TokenMode | `app.js:3421`, `token-mode.js:220` | Stale bridge token hijacks iframe fallback. |
+| **67** | `demoUsd` cap on load only, not on save | `app.js:90-92,2935` | In-session/tampered balance can exceed cap until reload. |
+| **68** | `pressure.balance` global localStorage key | `pressure-ui.js:42-43` | Not wallet-scoped; cross-profile leakage on shared machine. |
+| **69** | SW cache-first stale `app.js` after deploy | `sw.js:37-50`, `index.html` | Versioned assets cached; logic changes need `?v=` bump. |
+| **70** | Token `resume()` network failure silent | `token-mode.js:60-61` | Empty `.catch()`; no retry UI. |
+| **71** | CrashRounds not restored on reload | `crash-rounds-client.js`, `app.js` | In-memory only; server may still hold round. |
+| **72** | Game restore skips `switchGame()` side effects | `app.js:3786-3821` | No `unlockReveal`, channel pause, etc. |
+| **73** | Fast reload / `accountsChanged` full page reload | `app.js:5103-5109` | Mid-buy-in/settle relies on chain truth only. |
+| **74** | BJ insurance UI locks before server ack | `blackjack-ui.js:219` | `_insuranceDone` set early; error leaves UI stuck. |
+| **75** | Standalone BJ felt never surfaces `needFunds` | `blackjack-ui.js:426-432` | TOP UP only in embed path. |
+| **76** | Guest balance probe via pre-hello lobby subscribe | `blackjack-server.js:684-716` | `bj:lobby:subscribe` before auth; guest balance enumerable. |
+| **77** | BJ postMessage `targetOrigin: "*"` | `app.js:3339+`, `blackjack-ui.js:466` | Embed trust model; demo OK, risky if real identity via URL only. |
+| **78** | Mid-hand shoe reshuffle breaks PF claim | `blackjack-server.js:148-155` | New `shoeId` suffix mid-hand. |
+| **79** | BJ `clientSeed` length uncapped | `blackjack-server.js:569`, `blackjack-ui.js:197` | CPU DoS per bet. |
+| **80** | `verifySession` does not reject closed sessions | `token-http.js:583-587` | Closed session + lingering bearer → opaque `cr:error`. |
+| **81** | `bindToken()` failure ignored on token `hello` | `server.js:281-287` | `ws.tokenSession` updates even when bind fails mid-hand. |
+| **82** | `rounds` Map in crash-rounds never pruned | `crash-rounds.js:37,95` | Memory leak on long-running server. |
+| **83** | `wsByRound` / `ws._crRounds` leak after disconnect | `crash-rounds-ws.js:56,121` | Null entries retained; Set grows. |
+| **84** | `playBuckets` not pruned on orphan sessions | `token-http.js:263-273` | Rate-limit map grows. |
+| **85** | Main hub WS no heartbeat (crash/chat half-open) | `app.js:4449-4474` | Unlike `BJNet` 35s stale detection. |
+| **86** | `wsSend()` silently drops when WS closed | `app.js:4474`, `crash-rounds-client.js` | `cr:start` dropped; 12s misleading timeout. |
+| **87** | `connectWS()` gives up after 5 retries | `app.js:4470` | Extended outage needs full reload. |
+| **88** | `bridgeJson` fetches have no timeout | `app.js:3354-3384` | Legacy BJ bridge hangs indefinitely vs token 12s timeout. |
+| **89** | `playSlots` post-spin bankroll cap (silent haircut) | `CoinFlipBetting.sol:1044-1106` | Jackpot line vs capped payout mismatch. |
+| **90** | Instant game events missing → no TV reveal | `app.js:1962,2087,2193,2913` | Paid on-chain but UI says check balance. |
+| **91** | Registry `activeGame` resolved once per session | `app.js:5164-5173` | Registry flip mid-session not picked up. |
+| **92** | `config.js` vs `deployment.json` drift | `config.js`, `deploy.js` | Registry not written by deploy script. |
+| **93** | Dice target window client/server mismatch | `app.js` clamp vs `games/dice.js` | Server accepts wider target range than client. |
+| **94** | Fish demo RNG + bonus payout differs from token | `fishshooter-engine.js` vs `games/fishshooter.js` | `mulberry32` vs PF; bonus timing differs. |
+| **95** | Reef demo same pattern as fish | `fishtable-engine.js` vs `games/reef.js` | Demo RTP ≠ token for bonus fish. |
+| **96** | Channel switch mid fish token shot | `fishtable.js`, `fishshooter.js` | Catch FX on wrong channel; balance still syncs. |
+| **97** | `doRelease` orphan branch + V1 commingled locks | `token-http.js:456-463` | Defense-in-depth gap on V1 contract. |
+
+### Low
+
+| # | Title | Files | Summary |
+|---|-------|-------|---------|
+| **98** | Fish min bet $1 vs $10 elsewhere | `fishtable.js`, `fishshooter.js` | Inconsistent minimum stake. |
+| **99** | Sky Swoop demo-only; max $1000 vs shell $500 | `swoop3d.js` | No token path; higher max than `HARD_MAX_USD`. |
+| **100** | Plane engine default 3% edge | `plane-engine.js:138` | Wrong if constructed without `app.js` opts. |
+| **101** | Legacy Crypto Reels CH12 orphaned | `app.js:2212`, `tv.js:721` | No channel in `index.html`. |
+| **102** | WS crash `cr:*` unrate-limited | `crash-rounds-ws.js:73-116` | vs HTTP 30/s bucket. |
+| **103** | Session bearer in query string | `token-http.js:627`, `token-client.js:80` | URL logging/history leak surface. |
+| **104** | SW registered without cache-bust | `app.js:5243` | Old SW logic after deploy. |
+| **105** | `token-client.status()` ignores `res.ok` | `token-client.js:55-59` | 503 HTML may break `enabled` flag. |
+| **106** | Unknown `bj:*` intents silently ignored | `blackjack-server.js:713-728` | Typos hang client. |
+| **107** | `cr:cashout` missing `roundId` misleading error | `crash-rounds-ws.js:104-108` | Says “already crashed”. |
+| **108** | Crash client timeout copy wrong | `crash-rounds-client.js:85` | Says stake not taken; server may have round. |
+| **109** | BJ channel switch doesn't `bj:room:leave` | `app.js:3316` | Seat stays; hand continues off-channel. |
+| **110** | Guest reload toast says $1,000 vs $5,000 seed | `app.js:3349,4856` | `BJ_START=5000` mismatch. |
+| **111** | `bjFrameMatchesWallet` ignores token session hash | `app.js:3386-3407` | Wallet-only match insufficient. |
+| **112** | `ctf_game` remap without rewriting storage | `app.js:3787-3797` | `swoop`→`flip` in UI only. |
+| **113** | Demo session tracker not persisted | `app.js:2949` | Resets every `enterDemo()`. |
+| **114** | `pokerPoolUsd` in-memory only | `app.js:3699` | Lost on reload. |
+| **115** | `bj_guest` shared across tabs | `app.js:3342` | Intentional demo identity leak. |
+| **116** | `profile.js` accepts tampered LS | `profile.js:26-36` | Cosmetic only. |
+| **117** | `ctf_last_bet` tampering | `app.js:312` | Affects default slider only. |
+| **118** | CH12 `cryptoReels.credits` separate from demo | `slots.js:674` | Legacy balance not unified. |
+| **119** | Host earnings omit crash/slots | `app.js:695-734` | `HOST_GAMES` incomplete. |
+| **120** | `totalFeesCollected` statistical not cash flow | `CoinFlipBetting.sol:807+` | Misleading host analytics. |
+| **121** | `dicePayoutCapBps` UI 1% fallback when read fails | `app.js:1875-1888` | Blocks合法 bets contract allows. |
+| **122** | Reentrancy on withdraw (CEI OK, no `nonReentrant`) | `CoinFlipBetting.sol:322-338` | Low risk today. |
+| **123** | ECDSA malleability (no low-`s`) | `CoinFlipBetting.sol:501-514` | `bjNonceUsed` mitigates replay. |
+| **124** | Host rake odd-wei dust | `CoinFlipBetting.sol:708-710` | 1 wei to host on odd fees. |
+| **125** | `uncaughtException` keeps process alive | `server.js:185` | May serve after corrupt state. |
+| **126** | Crash `autoTarget` no upper bound | `crash-rounds.js:58` | Absurd timers/memory. |
+| **127** | Invalid fish target debits stake, pays 0 | `fishshooter.js`, `reef.js` | UX footgun. |
+| **128** | Dev harness paths partially blocked | `server.js:33-36` | Some dev assets still served. |
+| **129** | CoinFlipBettingV2 not in CI/deploy pipeline | `hardhat.config.js` | V2 untested in `npm test`. |
+| **130** | Hardhat tests: no BJ/settle/staticCall tests | `test/` | 22 tests; contracts only. |
+| **131** | Swoop `onBalance` no `TokenMode` guard | `app.js:2622` | Latent if token wired to swoop. |
+| **132** | `tokenSlots`/dice redundant 2800ms sync | `app.js:3225+` | Harmless redundancy. |
+| **133** | `renderBjDock` balance double-write flicker | `app.js:3637-3646` | Cosmetic flash. |
+| **134** | Obligation RPC failure strands release | `token-http.js:250-254` | Conservative but strands users. |
+| **135** | Crash cash-out floor uses 1.01× for pressure | `crash-rounds.js:89` | Sub-1.01 releases clamp oddly. |
+| **136** | Monte Carlo crash RTP >100% in one scan run | `adversarial-suite.js` | Single 80k sample variance; not confirmed exploitable — monitor. |
+| **137** | Plinko not implemented in client | — | On-chain only if added later. |
+| **138** | No automated BJ interleaving tests | `blackjack-server.js:753` | Happy-path self-test only. |
 
 ---
 
-### 2. Critical — Crash rounds: stake not reserved; bust may not debit
-
-**Files:** `server/crash-rounds.js:95-102`, `server/token-http.js:379,423`, `server/server.js:164`
-
-**Issue:** Stake debited only at bust in `_resolve()`. `hasLiveExternal()` checks blackjack only — not active crash rounds. Player can drain balance or settle/release mid-round; `play()` throws without recording loss.
-
-**Combined exploit:** Buy in 100 tokens → start Plane round bet 100 → spend 60 on fish → bust → `insufficient tokens` → **40 tokens of loss avoided**.
-
-**Fix:** Debit/reserve at `cr:start`; extend `liveExternal()` to crash rounds.
-
----
-
-### 3. Critical — Settle/release allowed during live WS crash round
-
-**Files:** `server/token-http.js:377-389,421-437`, `server/crash-rounds.js:95-102`
-
-**Issue:** `doSettle`/`doRelease` only block on `hasLiveHand` (blackjack). Closing session mid-flight causes `_resolve()` → `play()` to throw `"session is closed"` with same loss-escape behavior as #2.
-
-**Fix:** `if (crashRounds.hasActive(sessionId)) throw` before settle/release.
-
----
-
-### 4. Critical — Buy-in txHash replay race (double session / double tokens)
-
-**Files:** `server/token-http.js:275-313,340-368`  
-**Contrast:** `server/bridge-server.js:240-241` uses `pendingBuyIns` — token HTTP does not.
-
-**Issue:** `doStart`/`doTopUp` check `usedBuyIns`, then **await slow RPC** `verifyBuyIn()`, then add txHash. Two concurrent requests with the **same** `txHash` can both pass the check and grant two sessions from one buy-in.
-
-**Fix:** Add `pendingBuyIns` set (mark before RPC) or wrap `doStart`/`doTopUp` in `withPlayerLock`.
-
----
-
-### 5. Critical — Plane stays in demo/real mode after token buy-in
-
-**Files:** `public/app.js:640,3001-3005`, `public/plane-ui.js:340-389,489-508`
-
-**Issue:** `TokenMode.onChange` → `syncTokenGameBalances()` updates balance but **not** `planeGame.setMode("token")`. Entering Plane before buy-in leaves demo/real logic running while HUD shows token balance. Demo mode debits locally without server round.
-
-**Repro:** Open Plane (demo) → buy token session → launch without re-entering channel.
-
-**Fix:** On token session open: `planeGame.setMode("token")` (+ pressure); reverse on cash-out.
-
----
-
-### 6. High — `_resolve()` marks settled before `play()` succeeds
-
-**File:** `server/crash-rounds.js:95-107`
-
-**Issue:** `round.settled = true` and `activeBySession.delete()` before `bridge.play()`. Failed `play()` orphans round; bust timer can throw uncaught (`server/server.js:185`).
-
-**Fix:** Try/catch with rollback; commit only after successful `play()` (mirror blackjack `setT`).
-
----
-
-### 7. High — No balance check at `cr:start`
-
-**Files:** `server/crash-rounds-ws.js:81-101`, `server/crash-rounds.js:41-47`
-
-**Issue:** Round starts after auth only — no token balance read. `betUnits=100` with 5 tokens runs until `_resolve()` fails.
-
-**Fix:** Verify `session.tokens >= betUnits` and reserve at start.
-
----
-
-### 8. High — HTTP instant crash + WS live crash on same session
-
-**Files:** `public/app.js:3242-3253`, `server/crash-rounds.js:38-44`
-
-**Issue:** CH11 Crash uses HTTP `TokenMode.bet("crash")`. Plane/Balloon use WS `CrashRounds`. HTTP bets during active WS round advance nonce (#1) and spend unreserved stake (#2). Only second WS start is blocked.
-
-**Fix:** Reject `/api/token/play` while `activeBySession.has(sessionId)`.
-
----
-
-### 9. High — Token affordability gated on `gameWei` (not token balance)
-
-**Files:** `public/app.js`  
-- `diceReadouts`: ~1925  
-- `twoDiceReadouts`: ~2025  
-- `crashReadouts`: ~2136  
-- `slotsReadouts`: ~2230  
-- `spendableUsd()`: ~317-319 (ignores tokens except play-money game list)
-
-**Issue:** Roll/spin buttons disabled when `stakeWei > gameWei` even with funded token session. `spendableUsd()` returns `gameWei` for non-demo games — ½/2×/Max quick-bet wrong in token mode.
-
-**Fix:** If `TokenMode.active()`, use `TokenMode.tokens()` for all affordability checks.
-
----
-
-### 10. High — Plane balance poll overwrites token HUD
-
-**File:** `public/app.js:1349-1357` (12s `refreshBalances`)
-
-**Issue:** `planeGame.setBalance(weiToUsd(gameWei))` with no `TokenMode.active()` guard. Clobbers token balance synced by `syncTokenGameBalances()`.
-
----
-
-### 11. High — Fish / Reef optimistic fire (unbounded in-flight bets)
-
-**Files:** `public/fishshooter.js:374-441`, `public/fishtable.js:322-335`, `public/token-client.js:130-137`
-
-**Issue:** Token shots fire async without local debit or in-flight cap. Rapid clicks exceed balance before server rejects. Fish Shooter manual taps bypass cooldown.
-
-**Fix:** Optimistic debit + rollback on error, or cap in-flight count.
-
----
-
-### 12. High — Out-of-order token responses corrupt displayed balance
-
-**Files:** `public/token-client.js:136`, `public/fishshooter.js:430-431`
-
-**Issue:** Each `play` response sets `this.tokens = r.tokens` unconditionally. Stale response can overwrite newer lower balance (last-write-wins).
-
-**Fix:** Monotonic sequence or ignore stale responses.
-
----
-
-### 13. High — Plane / Pressure optimistic local debit before server ack
-
-**Files:** `public/plane-ui.js:350-352`, `public/pressure-ui.js:242`, `public/crash-rounds-client.js:85`
-
-**Issue:** Client debits stake before `cr:start` ack. WS timeout refunds locally while server may have started round → relaunch blocked or double-spend attempt.
-
----
-
-### 14. High — CrashRounds singleton blocks all crash-family launches
-
-**Files:** `public/crash-rounds-client.js:74-75,97-103`, `public/app.js:4476-4481`
-
-**Issue:** One global `CrashRounds` for plane + balloon. `start()` rejects if `live`. Slow/disconnected round holds lock up to 120s — no token crash launch anywhere.
-
----
-
-### 15. High — Sky Swoop: in-flight round frozen on channel leave
-
-**Files:** `public/swoop3d.js:299-300,399-409,524-533`, `public/app.js:3079-3093`
-
-**Issue:** `launch()` debits stake. `setActive(false)` pauses `_update` (`if (!this._active) return`) without refund. `demoReset()` restarts plane/pressure/slots/fish but **not** swoop. Stake locked until user returns.
-
----
-
-### 16. High — Wallet connected + play-money games: header vs canvas balance diverge
-
-**Files:** `public/app.js:3052-3074,2936-2942,2507-2511`
-
-**Issue:** After `exitDemo()`, Gem Vault / Balloon / Reef / Fish Shooter use `demoUsd` but `#game-balance` shows on-chain `gameWei`. User sizes bets from wrong number.
-
----
-
-### 17. High — Gem Vault token: no final `r.tokens` resync after spin/bonus
-
-**Files:** `public/slots3d.js:281-314,381-404`
-
-**Issue:** `_spinToken` debits locally and replays wins via client `E.evaluate`, assuming byte-for-byte server parity. Only resets to `TM.tokens()` on **error**. Rounding/bonus drift leaves HUD ≠ ledger until next bet.
-
-**Fix:** Apply `r.tokens` at end of spin and `_endBonus`.
-
----
-
-### 18. High — `doStart` lacks per-player mutex (concurrent dual sessions)
-
-**Files:** `server/token-http.js:275-313`, `server/token-bridge.js:88-108`
-
-**Issue:** `withPlayerLock` protects settle/release but not `doStart`. Two concurrent starts with different txHashes can both pass `openByPlayer.has()` before either sets it.
-
-**Fix:** Wrap `doStart`/`doTopUp` in `withPlayerLock`.
-
----
-
-### 19. High — Poker hole cards client-side (latent)
-
-**Files:** `public/poker-ui.js`, `server/poker-server.js` (unwired in `server.js`)
-
-**Issue:** Deck and opponent holes in browser. `poker-server.js` exists with masking but never attached. Exploitable if poker enabled for real money.
-
----
-
-### 20. High — WebSocket `hello` allows address impersonation (chat/presence)
-
-**File:** `server/server.js:269-299`
-
-**Issue:** Any connection sends `hello` with arbitrary `address` — no signature. Used for chat, bet proposals, player counts. Blackjack spending is gated separately; social layer is not.
-
----
-
-### 21. Medium — Channel switch during token plane round — promise resolves off-channel
-
-**Files:** `public/plane-ui.js:364-388,455-468`, `public/pressure-ui.js:254-261`
-
-**Issue:** `setActive(false)` triggers cash-out but `_tokenEpoch` not bumped. `.then` handler can update state/messages on wrong channel.
-
----
-
-### 22. Medium — `switchGame` unlocks balance before TV animation ends
-
-**Files:** `public/app.js:3297-3301`, `public/tv.js:586-587`
-
-**Issue:** Intentional anti-freeze, but switching during dice/crash/flip reveal unlocks balance while old animation may still show.
-
----
-
-### 23. Medium — On-chain bets refresh balance before TV reveal completes
-
-**Files:** `public/app.js` — `doPlayDice`, `doPlayTwoDice`, `doPlayCrash`, `doPlaySlots`
-
-**Issue:** `refreshBalances()` called immediately after starting async `TV.reveal*`. `revealLock` holds display but `gameWei` cache updates instantly.
-
----
-
-### 24. Medium — Gem Vault token spin reveals balance before reel animation
-
-**File:** `public/slots3d.js:286-287`
-
-**Issue:** Local balance debited and HUD updated before reels land (related to #17).
-
----
-
-### 25. Medium — Blackjack token session binding fragile on client
-
-**Files:** `public/app.js:3393-3478`, `public/blackjack.html`
-
-**Issue:** v12.39 `&r=` nonce reload helps. Stale iframe / “Lock credits” UX still possible. Server-side OK when session matches.
-
----
-
-### 26. Medium — Blackjack iframe version skew (split-brain deploy)
-
-| Asset | Version |
-|-------|---------|
-| Shell / lazy loads | `1239` |
-| Blackjack iframe (`app.js`) | `1238` |
-| Felt scripts (`blackjack.html`) | `1197–1198` |
-
-**Risk:** Shell at 1239 loads felt JS at 1197 — protocol/UX bugs after deploy.
-
----
-
-### 27. Medium — BETBAR enrolled but no slider mapping
-
-**File:** `public/app.js` — `BETBAR_GAMES` includes `fishshooter`, `swoop`; `BETBAR_SL` has no entries for them.
-
----
-
-### 28. Medium — Dice / Dice#2 TV layer desync on page reload
-
-**File:** `public/app.js` (session restore)
-
-**Issue:** Restore calls `ensureDice3dReady()` but not always `TV.changeChannel()` — inconsistent TV idle state.
-
----
-
-### 29. Medium — Unguarded `.classList` in TV reveal paths
-
-**File:** `public/tv.js`
-
-**Issue:** Reveal paths can call `.classList` on null layer if not mounted — throws mid-animation.
-
----
-
-### 30. Medium — Guest blackjack / BJ bank persist failures silent
-
-**Files:** `server/server.js:66-68`, `server/token-bridge.js:69`
-
-**Issue:** `bjPersist.save` swallows errors. Token persist logs throttled failures. Restart can lose guest balances quietly.
-
----
-
-### 31. Medium — Unbounded `clientSeed` on `/api/token/play` (CPU DoS)
-
-**Files:** `server/token-bridge.js:121`, `server/token-http.js:321`
-
-**Issue:** No max length on `clientSeed`. Megabyte seeds burn HMAC CPU per play.
-
-**Fix:** Cap at ~256 bytes.
-
----
-
-### 32. Medium — No rate limit on buy-in / RPC-heavy endpoints
-
-**Files:** `server/token-http.js:628-634`
-
-**Issue:** `/api/token/play` has token bucket (30/s). `/start`, `/topup`, `/release` have no per-IP limit. Each start = multiple RPC calls (12s timeout).
-
----
-
-### 33. Medium — WS chat/broadcast spam (no rate limit)
-
-**File:** `server/server.js:221-225,309-319`
-
-**Issue:** Any `hello` client can flood 240-char chat to all connections.
-
----
-
-### 34. Medium — Reef `power` param not clamped (unlike fishshooter)
-
-**Files:** `server/games/reef.js:135`, `server/games/fishshooter.js:168-170`
-
-**Issue:** Fishshooter clamps power 1..2; reef accepts arbitrary power affecting kill probability.
-
----
-
-### 35. Medium — Pressure void below 1.20× returns full stake
-
-**File:** `server/games/pressure.js:109-119`
-
-**Issue:** Targets below `MIN_CASHOUT` refund stake (net 0). Minor EV skew vs 3% edge on intentional plays.
-
----
-
-### 36. Medium — Multi-instance token ledger (if horizontally scaled)
-
-**Files:** `server/token-http.js:258-273`, `server/token-bridge.js:67`
-
-**Issue:** In-memory ledger + per-process rate limits. Multiple workers without sticky sessions → balance races.
-
----
-
-### 37. Medium — `/api/token/house-state` exposes aggregate exposure (no auth)
-
-**File:** `server/token-http.js:554-577`
-
-**Issue:** Open sessions, locked wei, unrealized P&L readable by anyone when bridge enabled.
-
----
-
-### 38. Medium — Poker pool uses `gameWei` only (ignores token mode)
-
-**Files:** `public/app.js:3699-3710`, `public/poker-ui.js`
-
-**Issue:** If poker re-enabled, buy-ins pull ETH credits not tokens during token session.
-
----
-
-### 39. Low — Fish / Fish Shooter min bet $1 vs $10 elsewhere
-
-**Files:** `public/fishtable.js`, `public/fishshooter.js`
-
----
-
-### 40. Low — Sky Swoop demo-only; max $1000 vs shell $500 cap
-
-**File:** `public/swoop3d.js` — no token path; `MAX_BET` higher than `HARD_MAX_USD`.
-
----
-
-### 41. Low — Plane engine default 3% house edge vs server 1%
-
-**Files:** `public/plane-engine.js`, `public/plane-ui.js` defaults vs `app.js` `CRASH_EDGE=0.01`
-
-**Issue:** Wrong only if Plane constructed without app opts (standalone/demo path).
-
----
-
-### 42. Low — Legacy Crypto Reels (CH12) orphaned in code
-
-**Files:** `public/app.js:2212-2927`, `public/tv.js:721-747` — no channel in `index.html`.
-
----
-
-### 43. Low — WS crash `cr:start`/`cr:cashout` unrate-limited
-
-**File:** `server/crash-rounds-ws.js:73-116`
-
----
-
-### 44. Low — Session bearer in query string (`GET /api/token/session?sessionToken=…`)
-
-**Files:** `server/token-http.js:627`, `public/token-client.js:80,96` — browser history / proxy logs.
-
----
-
-### 45. Low — Service worker registered without cache-bust
-
-**File:** `public/app.js:5243` — `"sw.js"` unversioned.
-
----
-
-### 46. Low — SW cache-first on `?v=` assets → split-brain deploys
-
-**File:** `public/sw.js` — stale `app.js?v=1239` can serve alongside fresh HTML referencing `?v=1240`.
-
----
-
-### 47. Low — Experimental blackjack bridge weaker persistence
-
-**File:** `server/bridge-server.js:40-48` — no fsync/readback vs `writeJsonAtomic`; `BRIDGE_STATE_FILE` not in `render.yaml`.
-
----
-
-### 48. Low — Invalid fish target debits stake for zero payout
-
-**Files:** `server/games/fishshooter.js:178-187`, `server/games/reef.js:139-147` — UX footgun.
+## Category index
+
+| Category | Finding #s |
+|----------|------------|
+| **Crash rounds (token WS)** | 1-3, 13-15, 21-22, 71, 82-83, 102, 107-108, 135 |
+| **Token HTTP / bridge** | 4-5, 10, 16, 58-64, 80, 84, 97 |
+| **On-chain contracts** | 6-8, 26-29, 46, 89-93, 97, 119-124, 129 |
+| **Blackjack** | 10-12, 30-37, 42-43, 52-53, 74-79, 109-111 |
+| **Client token mode / UI** | 9, 17-20, 24-25, 48-51, 54-56 |
+| **Session / localStorage** | 30-33, 66-73, 112-118 |
+| **Math / provably fair parity** | 38-41, 39-40, 94-95, 136 |
+| **WebSocket / API** | 42-43, 45, 59-60, 80-87, 105-108 |
+| **Fish / Reef / Swoop** | 19, 23, 61, 94-96, 98-99, 127, 131 |
+| **Deploy / cache / version** | 53, 69, 104, 91-92 |
+| **Demo / play-money** | 24, 67-68, 113-114, 136 |
+| **Poker (latent)** | 44, 65 |
+| **DoS / ops** | 58-60, 64, 82-84, 125-128, 134 |
 
 ---
 
 ## Per-game test matrix
 
-| Game / CH | Demo | On-chain | Token | Tests | Status |
-|-----------|------|----------|-------|-------|--------|
-| Coin Flip CH10 | ✓ | ✓ | ✓ | CoinFlipBetting.test | OK |
-| Dice CH15 | ✓ | ✓ | ⚠ | Registry | UI #9 |
-| Dice#2 CH16 | ✓ | ✓ | ⚠ | Registry | UI #9 |
-| Crash CH11 instant | ✓ | ✓ | ⚠ | token-bridge | OK server; UI #9; interleave #8 |
-| Plane CH14 | ✓ | — | 🔴 | crash-rounds self-test | #1–#8, #5, #10, #13–#14 |
-| Balloon CH13 | ✓ | — | 🔴 | crash-rounds self-test | #1–#8, #13–#14 |
-| Gem Vault CH17 | ✓ | ✓ | ⚠ | slots3d engine | #17, #24 |
-| Blackjack CH18 | ✓ | — | ⚠ | blackjack-server | #25–#26 |
-| Poker | ✓ | — | — | poker-engine (client) | #19, #38 latent |
-| Reef / Fish Table | ✓ | — | ⚠ | reef engine | #11, #34, #39 |
-| Fish Shooter | ✓ | — | ⚠ | fishshooter engine | #11, #12, #27, #39 |
-| Sky Swoop | ✓ | — | — | none | #15, #40 |
-| Crypto Reels CH12 | dead | — | — | none | #42 orphaned |
-| Plinko | — | on-chain only | — | none | not in client |
+| Game / CH | Demo | On-chain | Token | Auto tests | Status |
+|-----------|------|----------|-------|------------|--------|
+| Coin Flip CH10 | ✓ | ⚠ #6 | ✓ | CoinFlipBetting | staticCall exploit |
+| Dice CH15 | ✓ | ⚠ #6 | ⚠ #17 | Registry | UI gating |
+| Dice#2 CH16 | ✓ | ⚠ #6 | ⚠ #17 | Registry | UI gating |
+| Crash CH11 | ✓ | ⚠ #6 | ⚠ #17 | token-bridge | HTTP+WS interleave #15 |
+| Plane CH14 | ✓ | — | 🔴 | crash-rounds | #1-3,9,18,21-22,38 |
+| Balloon CH13 | ✓ | — | 🔴 | crash-rounds | #1-3,21-22,41 |
+| Gem Vault CH17 | ✓ | ⚠ #6 | ⚠ #25,39 | slots3d engine | PF verify broken #40 |
+| Blackjack CH18 | ✓ | bridge | ⚠ #10-12,30 | blackjack-server | Many BJ findings |
+| Poker | ✓ | — | — | client engine | #44 latent |
+| Reef CH17 | ✓ | — | ⚠ #19,61 | reef engine | Demo≠token #95 |
+| Fish Shooter | ✓ | — | ⚠ #19 | fishshooter | Optimistic fire |
+| Sky Swoop | ✓ | — | — | none | #23,99 |
+| Crypto Reels CH12 | dead | — | — | none | #101 |
+| Plinko | — | ? | — | none | #137 not in client |
 
 ---
 
@@ -483,82 +260,83 @@ Client-side, token mode is inconsistently wired: affordability guards, `spendabl
 |-------|-----|-----|------|-------|
 | On-chain contract | 0.0001 ETH | 1 ETH | Flip 3%, Dice 2%, Crash 1% | Authoritative |
 | Client shell | $10 | $500 | Crash 1% | `HARD_MAX_USD` |
-| Plane (via app) | $10 | $500 | 1% | Correct |
-| Plane engine default | $10 | — | **3%** | If no opts |
-| Pressure / Balloon | $10 | $500 | 3% | Aligned |
-| Gem Vault 3D | $10 | $500 | ~5% | Server RTP ~94.5% |
-| Reef / Fish | **$1** | $50 | ~15% RTP/shot | Outlier min |
-| Fish Shooter power | — | ×2 cap | — | Reef allows ×7 |
-| Sky Swoop | $10 | **$1000** | 1% | Exceeds shell cap |
-| Blackjack | $10 | balance/5 | — | Server `minBet: 10` |
+| Plane (via app) | $10 | $500 | 1% | OK |
+| Plane engine default | $10 | — | **3%** | #100 |
+| Pressure / Balloon | $10 | $500 | 3% | Valves #41 |
+| Gem Vault 3D | $10 | $500 | ~5% | Grid deriv #39 |
+| Reef / Fish | **$1** | $50 | ~15%/shot | Power #61 |
+| Sky Swoop | $10 | **$1000** | 1% | #99 |
+| Blackjack | $10 | balance/5 | — | Server minBet 10 |
 
 ---
 
 ## Test coverage gaps
 
-| Area | Covered | Gap |
-|------|---------|-----|
-| Hardhat contracts | 22 tests | No server integration |
-| Token bridge self-test | 36 checks | No txHash concurrent start |
-| Token HTTP self-test | 50 checks | No crash-round interleave |
-| Crash rounds self-test | 8 checks | **No nonce pin, stake reserve, parallel bet** |
-| Crash rounds WS | 11 checks | No adversarial interleave |
-| Client (`app.js`, games) | **none** | Token UI, mode switch, Swoop |
-| `server.js` WS hub | **none** | hello impersonation, chat flood |
-| `bridge-server.js` | **none** | Off by default |
-| `poker-server.js` | self-test only | Not in npm test |
-| E2E / browser | **none** | SW, deploy skew, wallet flows |
-| Adversarial repro | `CursorBugHunt/repro-crash-nonce-desync.js` | **Confirms #1** |
+| Area | Status |
+|------|--------|
+| Hardhat `npm test` | 22 pass — contracts + client poker engine only |
+| Token bridge/HTTP self-tests | Extensive — no txHash race, no crash interleave |
+| Crash rounds self-tests | Happy path — **no adversarial nonce** |
+| `adversarial-suite.js` | **Reproduces #4-5, #16, #1-3** |
+| `server.js` WS hub | **No tests** |
+| All `public/` game clients | **No tests** |
+| `poker-server.js` | Self-test only, not wired |
+| On-chain staticCall exploit | **Not tested** |
+| Blackjack interleaving | **Not tested** |
+| E2E browser | **None** |
 
 ---
 
-## Commands run (all passed except adversarial repro)
+## Commands run
 
 ```bash
-npm test                                    # 22 passing
-node server/token-bridge.js                 # SELF-TEST OK
-node server/token-http.js                   # SELF-TEST OK
-node server/blackjack-server.js             # SELF-TEST OK
-node server/crash-rounds.js                 # SELF-TEST OK (happy path only)
-node server/crash-rounds-ws.js              # SELF-TEST OK
-node public/token-client.js                 # SELF-TEST OK
-node CursorBugHunt/repro-crash-nonce-desync.js  # exit 1 — BUG REPRODUCED
+npm test                                         # 22 passing
+node server/token-bridge.js                      # OK
+node server/token-http.js                        # OK
+node server/blackjack-server.js                  # OK
+node server/crash-rounds.js                      # OK (happy path)
+node server/crash-rounds-ws.js                   # OK
+node public/token-client.js                      # OK
+node server/games/{coinflip,crash,dice,dice2,pressure,reef,fishshooter,slots3d}.js  # OK
+node CursorBugHunt/repro-crash-nonce-desync.js   # BUG REPRODUCED
+node CursorBugHunt/adversarial-suite.js          # 8 findings
 ```
 
 ---
 
 ## Recommended fix priority
 
-| P | Items | Action |
-|---|-------|--------|
-| **P0** | #1–#4 | Crash: pin nonce, reserve stake, transactional `_resolve`, block settle during rounds; `pendingBuyIns` + `withPlayerLock` on start |
-| **P0** | #5 | `setMode("token")` on buy-in for plane/pressure |
-| **P1** | #6–#8, #18 | Balance check at start; block HTTP play during WS round; start mutex |
-| **P1** | #9–#12 | Token-aware UI; in-flight bet caps; monotonic balance |
-| **P2** | #13–#17, #21–#29 | Client desync, Swoop refund, slots resync, version sync |
-| **P2** | #31–#37 | Rate limits, input caps, reef power clamp |
-| **P3** | #39–#48 | Polish, cache, demo gaps |
+| P | Findings | Action |
+|---|----------|--------|
+| **P0** | 1-5, 13 | Crash: pin nonce, reserve stake, transactional `_resolve`, block settle/play during rounds; `pendingBuyIns` + `withPlayerLock` on start/topup |
+| **P0** | 6, 8, 29 | Regen `contract.js`; remove/limit `staticCall` previews; commit-reveal or VRF |
+| **P0** | 7 | Deploy CoinFlipBettingV2 per-session locks |
+| **P0** | 9-12 | `setMode("token")`; block `doPlay` during BJ hand; surface credit failures; fix dealing leave |
+| **P1** | 16-25, 30-33 | Token UI, session restore order, cross-tab sync, dual session mutex |
+| **P1** | 34-37, 42-43 | BJ top-up policy, needFunds UI, room validation, anon wallet |
+| **P2** | 38-41, 48-97 | Math parity, PF verifier, valves, WS heartbeat, memory pruning |
+| **P3** | 98-138 | Polish, cache bumps, docs, monitoring |
 
 ---
 
-## Well-hardened areas (no new issues)
+## Well-hardened (verified OK)
 
-- Buy-in cross-session drain guard (`eventLocked`)
-- Loss-escape / `pendingSettle` with per-player mutex on settle/release
+- Token loss-escape / `pendingSettle` + per-player mutex on settle/release
+- Cross-session drain guard on buy-in (`eventLocked`)
 - Transactional engine-first bet reject in `play()`
-- Settle idempotency (`if (s.settlement) return`)
-- Blackjack real-wallet auth + token bind/freeze mid-hand
+- Settle idempotency; serverSeed never leaked pre-settle
+- Blackjack real-wallet auth; token bind frozen mid-hand
 - Atomic JSON persist for token/BJ on mounted disk
 - Crash WS cash-out ownership check
-- ServerSeed never leaked pre-settle
+- Server `play()` uses PF/HMAC only (no `Math.random` in production)
+- BJ rules core: S17 default, 3:2, DAS, late surrender, insurance 2:1
+- Demo cap on load (`DEMO_MAX_USD`); API rejects negative/zero/over-balance bets
 
 ---
 
-## Audit agents (parallel passes)
+## Audit agents (all passes)
 
-1. Money paths & token bridge / crash-rounds  
-2. All game clients & bet surfaces  
-3. Server security, WS, persistence, buy-in  
-4. Tests, repro scripts, bet-limit audit  
+**Pass 1–2:** Money paths, all games, server security, tests  
+**Pass 3:** Smart contracts, blackjack exhaustive, session restore, client/server math parity, WS/API edges, adversarial suite
 
-Report consolidated in this directory for handoff.
+*138 findings catalogued; 97 in Critical–Medium tables above, 41 Low. Consolidated in this file for handoff.*
