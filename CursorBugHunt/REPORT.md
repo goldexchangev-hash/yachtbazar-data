@@ -730,3 +730,35 @@ Update this report: strike closed findings, note wave completed in HANDOFF.
 **Pass 5:** Meta-review, live v12.44 diff, settlement math, slots3d parity, crash RTP verify, HANDOFF/AUDIT-NOTES cross-ref, admin/RPC
 
 *~230 findings in this file. Primary report: `CursorBugHunt/REPORT.md`.*
+
+---
+
+# Pass 6 — Re-verification against LIVE v12.46 (Claude takeover, 2026-06-30)
+
+**Method:** Claude (deploy-branch owner) re-ran every probe against the CURRENT repo (v12.46, == live), then ran multi-agent design fleets (Wave 1 crash money-path, Wave 2 persist/recover) that VERIFIED each finding against current code before proposing patches. **Key result: the report was written at v12.39; the deploy branch is 7 versions ahead, and most "Critical/High" money-path findings are ALREADY FIXED.** The legacy repro probes still "reproduce" because they call the obsolete `pointPeek`+`play` API, not because the bug is open.
+
+## Already FIXED in v12.46 (verified by reading current code + new probes — do NOT re-fix)
+| Finding | Fixed by (current code) |
+|---|---|
+| **#1, #2, #13, #14, #82, #126** crash nonce-desync / unreserved stake / resolve order / over-balance / map prune / autoTarget | `token-bridge.reserve()`/`resolveReserved()` (pins+BURNS the nonce, debits stake up front, integer-cent balance check); `crash-rounds._resolve` is ledger-first with rollback + prune. **New regression gate: `CursorBugHunt/crash-reserve-probe.js` → PROBE OK.** |
+| **#4, #5, #16(same-tx), #139** buy-in/top-up txHash replay | `doStart`/`doTopUp` reserve `pendingBuyIns` before the await + `withPlayerLock` (per-player serialize) |
+| **#209/#215, #140/#145** recover loss-escape orphan | `doRelease` re-issues the recorded settlement for `s.closed && s.settlement` (branch 1) + defense-in-depth `findSettledSessionForPlayer` (branch 2b) — never a net=0 orphan when a settlement exists. settlement-math-probe shows NO critical loss-escape. |
+| **#210/#216, #217** admin-release | `doAdminRelease` has the `liveExternal` guard + closed-session re-issue + clears a stale `openByPlayer` slot |
+| **#143, #144** shutdown flush | `gracefulShutdown()` (flush → server.close drain → 4s cap); `unhandledRejection` now flushes |
+| **#9, #206** plane token mode | `syncTokenGameBalances` forces `setMode("token")` when connected (v12.44) |
+
+## Wave 0 (shipped live this session)
+- **#204** `_idlePrompt()` infinite recursion broke demo Balloon Pop — a regression I introduced in v12.44 (a too-greedy string replace). Fixed v12.46.
+- **#193** Gem Vault stuck-on-"Spinning…": token spin settled prematurely (undefined `_result` → throw). Fixed v12.45 (`_awaitingServer` guard + null-result guard + off-channel recovery + token-bar resync).
+
+## Wave 1 ADDED (shipped this session — genuinely-open defense-in-depth)
+- **#3, #15, #141** crash-round liveness guards: `setActiveCrashCheck` → `liveCrashSession`/`liveCrashPlayer`; `doSettle/doRelease/doAdminRelease/doPlay` refuse while a server-paced round is live; `crash-rounds.drain()` on `gracefulShutdown` settles in-flight rounds into the ledger before a redeploy.
+
+## Genuinely-open remaining (re-verified against v12.46)
+- **Client robustness (Wave 1C):** #85 main-hub WS heartbeat, #86 silent `wsSend` drop, #108 timeout copy, #22 CrashRounds cancel on channel-leave, #48 plane/pressure `_tokenEpoch` bump. (Designed; not yet applied. NB: the agent's plane reconcile used a nonexistent `TokenMode.refresh` — use `TokenMode.active()?TokenMode.tokens():this.balance`.)
+- **Settlement rounding (Wave 2C):** #204/#205/#220 sub-cent loss → `netWei=0` → full lock returned (≤1¢/session house leak); #206 small buy-in rounds to 0 tokens; #207 weiToUsd precision; #208 gcClosed `createdAt=0`; #227 play() 1e-9 overbet tolerance. All Medium/Low.
+- **#16 dual-session** (different txHashes, one wallet): `doStart` is now `withPlayerLock`'d in v12.46? — re-confirm; single-session invariant, not a money exploit (cross-session-drain guard holds).
+- **Waves 3-10** (blackjack guards, contracts/staticCall, PvP, wallet, headers, polish): NOT yet re-verified against v12.46 — many likely already fixed; need the same current-code check.
+
+## Stale probes (rewrite to the current API before trusting)
+- `repro-crash-nonce-desync.js`, `concurrency-fuzzer.js` (CONC-CRASH-*), `adversarial-suite.js` (crash sections) — all test the obsolete `pointPeek`+`play` model. The authoritative crash gate is now `crash-reserve-probe.js`. The txHash-race sections of adversarial-suite also predate `pendingBuyIns`.
