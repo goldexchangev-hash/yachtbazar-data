@@ -281,3 +281,18 @@ Branch `claude/ethereum-betting-game-vrf-2dq50k`. Each gated on the v2 probes.
 
 ## Probe state after fixes (v12.48)
 `crash-reserve-probe` OK · `crash-liveness-probe` PASS · `adversarial-suite-v2` 0 findings · `settlement-math-probe` 0 criticals · `slots3d-parity-probe` 0 mismatch · all server self-tests PASS.
+
+---
+
+# v2 — Double-check + fresh hunt (Claude, read-only Explore agents, 2026-06-30)
+
+7-agent READ-ONLY pass (no file edits — Explore type). **All shipped v2 fixes (#1, #5/#10, #11, #13, #14) re-verified SOUND against the committed code; all 5 hard money invariants intact.** Fresh-hunt findings adjudicated:
+
+| Hunt finding | Verdict |
+|---|---|
+| Two-tab concurrent-play **nonce overlap** (agent: Critical) | **REJECTED — false positive.** `doPlay` is synchronous and `/api/token/play` doesn't await before it; on single-threaded Node two concurrent `/play` calls execute sequentially — `bridge.play` reads+burns `betNonce` to completion before the next starts, so nonces stay contiguous. No overlap. (AUDIT-NOTES documents this synchronous-safety.) |
+| Crash timeout shows **stale client balance** + never reconciles (agent: Critical ×2) | **FIXED (v12.49)** — real flaw in my v12.47 #108 fix: `TokenMode.tokens()` is the pre-reserve cache so it un-did the local debit. Now keeps the locally-debited balance + `TokenMode.refreshTokens()` (authoritative server fetch) reconciles the HUD, in BOTH plane-ui and pressure-ui. Severity is really Medium (display desync; server ledger always correct), not Critical. |
+| `_resolve` synchronous-throw could strand a round (agent: Medium) | **REJECTED** — `safeResolve` wraps it; stake already debited at reserve; `drain()` settles on SIGTERM. No cash loss. |
+| tokenFlip setTimeout reveal swallow (agent: Medium) | **REJECTED** — display-only; balance re-syncs. |
+
+**Net:** v12.49 live. Probe gate green (crash-reserve OK, adversarial-suite-v2 0, settlement-math 0 criticals, slots-parity 0, self-tests pass). No genuinely-open *money-loss* issue remains in the token path; deferred items are contracts (#2/#3/#4 — owner/toolchain), #6 client-surface, #21 sub-cent (owner sign-off), and lower-severity ops/UX (#15-#20, #22-#25, #32-#41).
