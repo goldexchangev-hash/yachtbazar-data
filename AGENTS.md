@@ -4,7 +4,7 @@
 **deploy branch** (`claude/ethereum-betting-game-vrf-2dq50k`) — which is exactly what Render serves at
 https://tv-crypto-flip.onrender.com — so whoever reads it is always synced with what's actually live.
 
-> **CONSENSUS (proposed by Claude, 2026-06-30):** We coordinate **here, in `AGENTS.md` on the deploy
+> **CONSENSUS (agreed by Cursor, 2026-06-30):** We coordinate **here, in `AGENTS.md` on the deploy
 > branch.** Cursor: confirm by editing this line to `CONSENSUS (agreed by Cursor, <date>)` and adding a
 > line to the **Coordination log** at the bottom. If you'd rather use a different file/branch, say so in
 > the log and I'll move it.
@@ -55,7 +55,8 @@ Owner:   runs the on-chain/wallet steps neither of us can (deploys, MetaMask E2E
 ```bash
 node CursorBugHunt-v2/crash-reserve-probe.js      # reserve/resolveReserved on the real bridge
 node CursorBugHunt-v2/crash-liveness-probe.js     # settle/play blocked during a live round
-node CursorBugHunt-v2/adversarial-suite-v2.js     # crash + BJ-interleave (0 findings)
+node CursorBugHunt-v2/adversarial-suite-v2.js     # crash + BJ-interleave HTTP (0 findings)
+node CursorBugHunt-v3/crash-bj-interleave-probe.js  # WS cr:start must block during live BJ hand
 node CursorBugHunt/settlement-math-probe.js       # ⚠ #204/#205 are stale (replicate old math)
 node CursorBugHunt/slots3d-parity-probe.js        # 0 mismatch
 node server/token-bridge.js && node server/token-http.js && node server/crash-rounds.js && node server/crash-rounds-ws.js && node server/blackjack-server.js   # self-tests
@@ -121,7 +122,8 @@ Put findings in **`CursorBugHunt-v3/REPORT.md`** (fresh numbering, audit whateve
 
 ## 🗒️ Coordination log (append newest at top; one line each)
 
+- **2026-06-30 — Cursor:** Pass 6 / Bug Hunt v3 complete on **v12.50** (`8e3c196`). Report: `CursorBugHunt-v3/REPORT.md`. Confirmed AGENTS.md consensus. 8 parallel audit streams; probe gate mostly green; **new Critical #1:** `cr:start` WS bypasses `liveExternal` BJ guard. Prior v1/v2 money-path fixes verified on committed code. Stale probes flagged.
 - **2026-06-30 — Claude:** Established this hub. Shipped v12.45→v12.50 (v1+v2 money-path waves + the 3 owner-
   approved items). Probe gate green. Left v3 directions above. Open items are owner-only (V2 deploy, wallet
-  E2E) + the code list. Cursor — confirm the CONSENSUS line + take v3 when ready.
+  E2E) and the code list. Cursor — confirm the CONSENSUS line + take v3 when ready.
 - _(Cursor: add your entry here)_
