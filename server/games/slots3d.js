@@ -176,6 +176,10 @@ function play(args) {
     multiplier: multiplier,
     outcome: {
       grid: grid,
+      baseWin: base.win, // the AUTHORITATIVE base-reel win (excl. free-spin bonus). The client must DISPLAY this,
+                         // not re-derive it from the grid — server grids come from PF.floats while the client's
+                         // own E.evaluate keys off HMAC, so a re-derivation can disagree (win-sound-on-a-loss /
+                         // a real win shown as $0.00 with no credit). Tokens are credited from payoutUnits below.
       lines: base.lines,
       scatter: base.scatter,
       bonus: bonus, // null unless free spins triggered

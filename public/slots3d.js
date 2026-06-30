@@ -309,7 +309,13 @@
       try {
         var grid = (r && r.outcome && r.outcome.grid) || [[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]];
         self.nonce += 1;
-        self._result = E.evaluate(grid, bet); // identical to the server's base result (same grid+paytable)
+        // MONEY: use the SERVER's authoritative base win (what tokens were actually credited against), NOT a
+        // client re-derivation of the grid. Server grids come from PF.floats while the client's E.evaluate keys
+        // off HMAC, so re-deriving can disagree — that's what made a real win read "$0.00 / no tokens" and a loss
+        // play the win sound. The server's lines/scatter are shape-compatible (the bonus plan already reuses them).
+        self._result = (r && r.outcome && r.outcome.baseWin != null)
+          ? { winUsd: Math.round((r.outcome.baseWin || 0) * 100) / 100, lines: (r.outcome.lines) || [], scatter: (r.outcome.scatter) || null }
+          : E.evaluate(grid, bet); // demo / pre-baseWin server fallback
         self._landedGrid = grid;
         // stash the server's bonus plan so _beginBonus renders the SERVER free spins, not a
         // locally-derived one (remap each result.win → the client's winUsd field name).
