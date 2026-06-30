@@ -1,0 +1,2721 @@
+/* ============================================================
+   Crypto TV Flip — design system
+   Professional, fun, simple. Neon-on-dark with a retro red CRT.
+   ============================================================ */
+:root {
+  --bg: #0a0b12;
+  --bg-2: #0f1120;
+  --panel: rgba(22, 24, 40, 0.72);
+  --panel-line: rgba(255, 255, 255, 0.08);
+  --ink: #eef1ff;
+  --muted: #b1bad3; /* brighter grey — readable on the Stake navy surfaces */
+  --cyan: #39e7ff;
+  --magenta: #ff4d9d;
+  --gold: #ffd23f;
+  --green: #45f0a6;
+  --red: #ff5b5b;
+  --tv-red: #e23b34;
+  --tv-red-d: #a81f1b;
+  --radius: 18px;
+  --shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
+  --font: "Space Grotesk", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  --display: "Bungee", var(--font);
+
+  /* ── Stake-style shell palette (professional dark navy + green) ── */
+  --s-bg: #0f212e;        /* app background */
+  --s-bg-deep: #0b1a24;   /* deepest */
+  --s-panel: #1a2c38;     /* cards / top bar / sidebar */
+  --s-surface: #213743;   /* raised surface, inputs, hover rows */
+  --s-border: #2f4553;    /* borders / dividers */
+  --s-border-2: #3d5564;
+  --s-muted: #557086;     /* muted icons */
+  --s-text-2: #b1bad3;    /* secondary text */
+  --s-text: #ffffff;
+  --s-green: #00e701;     /* primary accent */
+  --s-green-h: #00c802;
+  --s-green-glow: #1fff20;
+  --s-blue: #1475e1;
+  --s-red: #e9113c;
+  --s-gold: #ffb949;
+  --s-font: "Space Grotesk", Inter, ui-sans-serif, system-ui, sans-serif;
+  --s-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+  --r-sm: 4px; --r-md: 8px; --r-full: 9999px;
+  --rail-w: 240px;
+  --topbar-h: 62px;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: var(--font);
+  color: var(--ink);
+  background: var(--s-bg);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  padding-left: var(--rail-w); /* room for the fixed left sidebar */
+  /* no accidental double-tap zoom anywhere (every mobile browser + Safari) */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+/* Kill text selection + the iOS long-press magnifier loupe on EVERY element
+   (universal + !important so nothing slips through inheritance gaps). */
+*, *::before, *::after {
+  -webkit-touch-callout: none !important;
+  -webkit-user-select: none !important; -moz-user-select: none !important;
+  -ms-user-select: none !important; user-select: none !important;
+}
+/* …but form fields stay selectable/editable so you can type + copy from them */
+input, textarea, select, [contenteditable="true"], .selectable, .selectable * {
+  -webkit-user-select: text !important; -moz-user-select: text !important;
+  -ms-user-select: text !important; user-select: text !important;
+}
+/* informational readouts (addresses, payouts, chat, feed) stay long-press copyable */
+.chat-text, #contract-link, #profile-addr-short, .feed-list li, .result-money {
+  -webkit-user-select: text !important; -moz-user-select: text !important;
+  -ms-user-select: text !important; user-select: text !important;
+  -webkit-touch-callout: default !important;
+}
+/* tone the neon backdrop way down — the Stake shell is flat dark navy */
+.bg-glow { opacity: 0.12; }
+.bg-grid { opacity: 0.5; }
+a { color: var(--cyan); text-decoration: none; }
+.hidden { display: none !important; }
+.muted { color: var(--muted); }
+.mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+
+/* Animated backdrop */
+.bg-grid {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background-image: linear-gradient(rgba(120, 140, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(120, 140, 255, 0.06) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(1000px 700px at 50% 30%, #000 30%, transparent 80%);
+}
+.bg-glow {
+  position: fixed; inset: -20% -20% auto -20%; height: 60vh; z-index: 0; pointer-events: none;
+  background: radial-gradient(closest-side, rgba(57, 231, 255, 0.18), transparent 70%),
+    radial-gradient(closest-side, rgba(255, 77, 157, 0.16), transparent 70%);
+  background-position: 20% 0, 80% 10%;
+  background-repeat: no-repeat;
+  filter: blur(20px);
+  animation: drift 16s ease-in-out infinite alternate;
+}
+@keyframes drift { to { transform: translateX(6%) translateY(3%); } }
+
+/* ───────────────────────── Topbar ───────────────────────── */
+.topbar {
+  position: relative; z-index: 5;
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  padding: 16px clamp(14px, 4vw, 40px);
+}
+.brand { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+.brand-tv { font-size: 30px; filter: drop-shadow(0 0 10px rgba(57, 231, 255, 0.5)); }
+.brand-name { font-family: var(--display); font-size: clamp(18px, 2.6vw, 26px); letter-spacing: 1px; }
+.brand-accent { color: var(--magenta); }
+.brand-live {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 700; letter-spacing: 1.5px; color: var(--red);
+  border: 1px solid rgba(255, 91, 91, 0.4); border-radius: 999px; padding: 4px 9px;
+}
+.brand-live i { width: 8px; height: 8px; border-radius: 50%; background: var(--red); box-shadow: 0 0 10px var(--red); animation: blink 1.2s steps(2) infinite; }
+.build-tag { font-family: var(--display); font-size: 11px; font-weight: 700; letter-spacing: 0.5px; color: var(--cyan); border: 1px solid rgba(57, 231, 255, 0.35); background: rgba(57, 231, 255, 0.08); border-radius: 999px; padding: 3px 8px; }
+.testnet-chip { font-family: var(--display); font-size: 10px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase; color: #ffd56b; border: 1px solid rgba(255, 200, 60, 0.45); background: rgba(255, 200, 60, 0.10); border-radius: 999px; padding: 3px 8px; white-space: nowrap; }
+/* on-chain verify link on each game row */
+.hist-verify { font-size: 10px; color: var(--cyan); text-decoration: none; opacity: 0.75; white-space: nowrap; }
+.hist-verify:hover { opacity: 1; text-decoration: underline; }
+/* HIGH SCORES leaderboard */
+.leaderboard-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.leaderboard-list .empty { color: var(--muted); font-size: 13px; padding: 6px 2px; }
+.lb-item { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 8px; background: rgba(255, 255, 255, 0.03); font-size: 13px; }
+.lb-item.me { background: rgba(57, 231, 255, 0.10); border: 1px solid rgba(57, 231, 255, 0.3); }
+.lb-rank { width: 22px; text-align: center; font-weight: 700; }
+.lb-who { flex: 1; font-family: ui-monospace, monospace; color: #e8ecff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lb-rec { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.lb-net { font-weight: 700; min-width: 30px; text-align: right; }
+.lb-net.up { color: var(--green); }
+.lb-net.down { color: var(--red); }
+.lb-streak { font-size: 12px; }
+/* Live wins feed */
+.feed-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; max-height: 210px; overflow-y: auto; }
+.feed-list .empty { color: var(--muted); font-size: 13px; padding: 6px 2px; }
+.feed-item { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 7px; font-size: 12.5px; background: rgba(255,255,255,0.03); }
+.feed-item.win { border-left: 3px solid var(--green); }
+.feed-item.loss { border-left: 3px solid var(--red); }
+.feed-who { flex: 1; font-family: ui-monospace, monospace; color: #dfe6ff; }
+.feed-res { color: var(--muted); }
+.feed-amt { font-weight: 700; }
+.feed-amt.up { color: var(--green); } .feed-amt.down { color: var(--red); }
+/* Achievements grid */
+.ach-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.ach { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 3px; border-radius: 10px; text-align: center; background: rgba(255,255,255,0.03); border: 1px solid transparent; }
+.ach.got { background: rgba(255,210,63,0.12); border-color: rgba(255,210,63,0.4); }
+.ach.locked { opacity: 0.4; filter: grayscale(1); }
+.ach-ic { font-size: 18px; line-height: 1; }
+.ach-nm { font-size: 9px; color: #cdd5ee; line-height: 1.15; }
+kbd { font-family: ui-monospace, monospace; font-size: 11px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 5px; padding: 1px 5px; }
+/* Keyboard focus ring (mouse clicks stay clean via :focus-visible) */
+:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; border-radius: 4px; }
+@keyframes blink { 50% { opacity: 0.25; } }
+
+.topbar-right { display: flex; align-items: center; gap: 10px; }
+.net-badge {
+  display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600;
+  background: var(--panel); border: 1px solid var(--panel-line); border-radius: 999px; padding: 7px 12px;
+}
+.net-badge i { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); }
+.net-badge.wrong i { background: var(--red); box-shadow: 0 0 8px var(--red); }
+.wallet-chip { display: inline-flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--panel-line); border-radius: 999px; padding: 5px 12px 5px 5px; font-weight: 600; }
+.wallet-chip canvas { border-radius: 50%; }
+
+/* ───────────────────────── Buttons ───────────────────────── */
+.btn {
+  font-family: var(--font); font-weight: 700; font-size: 14px; cursor: pointer;
+  border: 1px solid transparent; border-radius: 12px; padding: 10px 16px; color: var(--ink);
+  background: rgba(255, 255, 255, 0.06); transition: transform 0.08s ease, filter 0.2s ease, background 0.2s; white-space: nowrap;
+}
+.btn:hover { filter: brightness(1.12); }
+.btn:active { transform: translateY(1px) scale(0.99); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-primary { background: linear-gradient(135deg, var(--cyan), #2bb8ff 55%, var(--magenta)); color: #04121a; box-shadow: 0 8px 22px rgba(57, 231, 255, 0.25); }
+.btn-ghost { background: rgba(255, 255, 255, 0.06); border-color: var(--panel-line); }
+.btn-block { width: 100%; margin-top: 4px; }
+.btn-mini { padding: 2px 8px; font-size: 13px; border-radius: 8px; background: rgba(255, 255, 255, 0.07); }
+.cta-pulse { animation: ctaPulse 1.7s ease-in-out infinite; }
+@keyframes ctaPulse { 0%, 100% { box-shadow: 0 8px 22px rgba(57, 231, 255, 0.25); } 50% { box-shadow: 0 0 0 6px rgba(57, 231, 255, 0.18), 0 8px 26px rgba(57, 231, 255, 0.5); } }
+
+/* ───────────────────────── Layout ───────────────────────── */
+.layout {
+  position: relative; z-index: 2;
+  display: grid; grid-template-columns: minmax(0, 1.95fr) minmax(290px, 0.8fr);
+  align-items: start;
+  gap: clamp(16px, 2vw, 28px);
+  padding: 40px clamp(14px, 3vw, 44px) 64px; /* top room for the antenna */
+  max-width: 1500px; margin: 0 auto;
+}
+.stage { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+/* Layout: every game's BET PANEL (.dice-panel = slots3d/pressure/dice/… , and #play-house for
+   coinflip) lives in `.stage` AFTER the #bankroll deposit/withdraw card in source order, so by
+   default the bet controls render BELOW the deposit box. Players want the bet panel right under the
+   TV. The ONLY safe way to do that with a flex column is to PUSH the deposit + host cards DOWN —
+   never to raise the TV's order, which would drop every default-order-0 child (incl. the bet
+   panels) ABOVE the TV. So: leave the TV, token bar, session strips, action docks and bet panels
+   at the natural order 0 (source order keeps them in place, TV stays at the top under the thin
+   banners), and send only the deposit/wallet + host cards to the bottom. */
+.stage > #bankroll { order: 1; }                                   /* deposit/withdraw → below the bet panel */
+.stage > #host-tools,
+.stage > #host-stats-card,
+.stage > #host-setup,
+.stage > #theme-switch { order: 2; }                               /* host/owner cards → very bottom */
+.sidebar { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+
+.card { background: var(--panel); backdrop-filter: blur(10px); border: 1px solid var(--panel-line); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow); }
+.card-title { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; font-size: 15px; letter-spacing: 0.4px; }
+.pill { font-size: 12px; font-weight: 700; background: rgba(57, 231, 255, 0.16); color: var(--cyan); border-radius: 999px; padding: 2px 9px; }
+.card-title .btn-mini { margin-left: auto; }
+
+/* ───────────────────── The TV ───────────────────── */
+.tv { display: flex; flex-direction: column; align-items: center; margin: 0; position: relative; }
+/* antenna floats above the TV body (out of flow) so the TV top lines up with the sidebar */
+.tv-antenna { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); margin-bottom: -6px; height: 42px; width: 150px; opacity: 0.85; }
+.tv-antenna span {
+  position: absolute; bottom: 0; left: 50%; width: 3px; height: 50px; transform-origin: bottom center;
+  background: linear-gradient(#cfd6ff, #6b73a8); border-radius: 3px;
+}
+.tv-antenna span:first-child { transform: rotate(-28deg); }
+.tv-antenna span:last-child { transform: rotate(24deg); }
+.tv-antenna span::after { content: ""; position: absolute; top: -5px; left: -3px; width: 8px; height: 8px; border-radius: 50%; background: #cfd6ff; }
+
+.tv-body {
+  position: relative; width: min(100%, 920px); margin: 0 auto;
+  background: linear-gradient(160deg, var(--tv-red), var(--tv-red-d));
+  border-radius: 30px; padding: 22px 22px 16px;
+  box-shadow: var(--shadow), inset 0 2px 0 rgba(255, 255, 255, 0.25), inset 0 -8px 22px rgba(0, 0, 0, 0.4);
+}
+.tv-body::before { /* subtle plastic sheen */
+  content: ""; position: absolute; inset: 0; border-radius: 30px; pointer-events: none;
+  background: linear-gradient(120deg, rgba(255, 255, 255, 0.18), transparent 30%);
+}
+.tv-screen-frame {
+  background: #0a0a0a; border-radius: 18px; padding: 16px;
+  box-shadow: inset 0 0 0 6px #1b1b1b, inset 0 0 30px rgba(0, 0, 0, 0.9);
+}
+.tv-screen {
+  position: relative; aspect-ratio: 4 / 3; border-radius: 14px / 18px; overflow: hidden;
+  background: #05060a; isolation: isolate;
+  box-shadow: inset 0 0 80px rgba(0, 0, 0, 0.9);
+}
+.static-canvas { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0.55; z-index: 1; mix-blend-mode: screen; }
+.scanlines {
+  position: absolute; inset: 0; z-index: 3; pointer-events: none;
+  background: repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.045) 0 1px, transparent 1px 4px);
+  animation: roll 8s linear infinite;
+}
+@keyframes roll { to { background-position: 0 12px; } }
+.vignette { position: absolute; inset: 0; z-index: 3; pointer-events: none; box-shadow: inset 0 0 120px rgba(0, 0, 0, 0.85); border-radius: 14px / 18px; }
+/* Keep the CRT scanlines + static OFF the live game image — they painted faint
+   horizontal black lines over the canvas (most visible on Fish Shooter's bright art).
+   The TV idle / channel-surf screens still get the full CRT look. */
+body[class*="game-"] .scanlines,
+body[class*="game-"] .static-canvas { display: none !important; }
+
+.screen-layer {
+  position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; padding: 14px; gap: 8px;
+}
+.idle-logo { font-size: clamp(40px, 9vw, 72px); filter: drop-shadow(0 0 16px rgba(57, 231, 255, 0.5)); animation: floaty 3s ease-in-out infinite; }
+@keyframes floaty { 50% { transform: translateY(-8px); } }
+.idle-title { font-family: var(--display); font-size: clamp(20px, 4.5vw, 34px); color: #fff; text-shadow: 0 0 18px rgba(57, 231, 255, 0.6); }
+.idle-sub { color: #cdfaff; font-weight: 700; text-shadow: 0 0 6px rgba(57, 231, 255, 0.95), 0 0 16px rgba(57, 231, 255, 0.7), 0 1px 2px rgba(0, 0, 0, 0.6); animation: idleGlow 2.2s ease-in-out infinite; }
+@keyframes idleGlow {
+  0%, 100% { text-shadow: 0 0 5px rgba(57, 231, 255, 0.75), 0 0 12px rgba(57, 231, 255, 0.45), 0 1px 2px rgba(0, 0, 0, 0.6); }
+  50% { text-shadow: 0 0 11px rgba(57, 231, 255, 1), 0 0 26px rgba(57, 231, 255, 0.85), 0 1px 2px rgba(0, 0, 0, 0.6); }
+}
+
+/* Waiting / standby (static) */
+.standby-badge { position: absolute; top: 12px; left: 14px; font-size: 12px; font-weight: 700; letter-spacing: 1px; color: var(--red); text-shadow: 0 0 8px rgba(255, 91, 91, 0.8); }
+.waiting-text { font-family: var(--display); font-size: clamp(20px, 5vw, 38px); line-height: 1.05; color: #fff; text-shadow: 0 2px 0 #000, 0 0 22px rgba(255, 255, 255, 0.35); }
+.waiting-dots { display: flex; gap: 10px; margin-top: 6px; }
+.waiting-dots span { width: 11px; height: 11px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 10px var(--cyan); animation: bounce 1.1s ease-in-out infinite; }
+.waiting-dots span:nth-child(2) { animation-delay: 0.15s; background: var(--magenta); box-shadow: 0 0 10px var(--magenta); }
+.waiting-dots span:nth-child(3) { animation-delay: 0.3s; background: var(--gold); box-shadow: 0 0 10px var(--gold); }
+@keyframes bounce { 0%, 100% { transform: translateY(0); opacity: 0.6; } 50% { transform: translateY(-9px); opacity: 1; } }
+.waiting-sub { color: #d7deff; font-weight: 600; font-size: 13px; }
+
+/* Tuning */
+.tuning-text { font-family: var(--display); font-size: clamp(22px, 6vw, 44px); color: var(--gold); text-shadow: 0 0 22px rgba(255, 210, 63, 0.7); animation: jitter 0.18s steps(2) infinite; }
+.tuning-sub { color: #fff; font-weight: 600; letter-spacing: 1px; }
+@keyframes jitter { 50% { transform: translate(1px, -1px); } }
+
+/* Countdown */
+.count-num { font-family: var(--display); font-size: clamp(80px, 26vw, 200px); color: #fff; text-shadow: 0 0 40px var(--cyan), 0 0 12px #fff; animation: countPop 1s ease-out; }
+.count-num.flip-word { font-size: clamp(40px, 13vw, 110px); color: var(--gold); text-shadow: 0 0 40px var(--gold); }
+@keyframes countPop { 0% { transform: scale(2.4); opacity: 0; } 30% { opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+
+/* 3D neon rail stage (0-100) — fills the dice layer behind the DOM number/verdict */
+.dice3d-stage { position: absolute; inset: 0; z-index: 0; }
+.dice3d-stage canvas { width: 100% !important; height: 100% !important; display: block; }
+body.dice3d-on #dice-tv-line { display: none; } /* the 3D rail replaces the DOM number-line bar */
+#layer-dice .dice-tv-target, #layer-dice .dice-roll-num, #layer-dice .dice-bottom, #layer-dice .dice-verdict, #layer-dice .dice-payout { position: relative; z-index: 2; }
+.dice-bottom { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+/* with the 3D rail filling the center, pin the readouts to the top/bottom edges so
+   the rail (and the win/lose celebration) are never covered by text. */
+body.dice3d-on #layer-dice .dice-tv-target { position: absolute; top: 8px; left: 0; right: 0; }
+body.dice3d-on #layer-dice .dice-roll-num { position: absolute; top: 33%; left: 0; right: 0; transform: translateY(-50%); font-size: clamp(23px,7vw,48px); } /* sized + lifted clear of the needle in the dial */
+body.dice3d-on #layer-dice .dice-bottom { position: absolute; bottom: 10px; left: 0; right: 0; }
+
+/* 3D tumbling dice stage (Dice #2) — fills the layer behind the DOM target/sum/verdict */
+.dice2-3d-stage { position: absolute; inset: 0; z-index: 0; }
+.dice2-3d-stage canvas { width: 100% !important; height: 100% !important; display: block; }
+body.dice2-3d-on .td-dice { display: none; } /* the 3D dice replace the CSS dice */
+#layer-twodice .td-target, #layer-twodice .td-bottom, #layer-twodice .td-sum, #layer-twodice .dice-verdict, #layer-twodice .dice-payout { position: relative; z-index: 2; }
+.td-bottom { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+/* with the 3D dice filling the center, pin the labels to the top/bottom edges so
+   the dice (and the win/lose celebration) are never covered by text. */
+body.dice2-3d-on #layer-twodice .td-target { position: absolute; top: 10px; left: 0; right: 0; }
+body.dice2-3d-on #layer-twodice .td-bottom { position: absolute; bottom: 10px; left: 0; right: 0; }
+
+/* 3D coin stage (Three.js) — fills the flip layer; hides the CSS coin when live */
+.flip3d-stage { position: absolute; inset: 0; z-index: 1; }
+.flip3d-stage canvas { width: 100% !important; height: 100% !important; display: block; }
+.flip3d-stage:empty { display: none; } /* not built yet → show the CSS coin fallback */
+body.coin3d-on #coin-toss, body.coin3d-on #coin-shadow { display: none; }
+
+/* Coin */
+/* Inherit .screen-layer's `position:absolute; inset:0` so the flip layer FILLS
+   the TV screen (an explicit position:relative here used to shrink it to its
+   content, pinning the coin to the top third). Still a positioned box, so the
+   absolute coin-shadow / caption resolve against it. */
+#layer-flip { perspective: 900px; }
+/* ── The TOSS: a wrapper does the vertical arc (launch up → hover/spin in the
+   air while we wait → drop + bounce on the reveal); the .coin inside owns the
+   rotateX flip-spin. Two concerns, two transforms, no conflict. ── */
+/* A touch below dead-center so it sits in the open area under the scoreboard;
+   `top` is independent of the toss `transform` arc, so it composes cleanly. */
+.coin-toss { position: relative; top: 4%; transform: translateY(0); transform-style: preserve-3d; will-change: transform; }
+/* While a bet is live (toss → land) hide the "PLACE YOUR BET BELOW" prompt. */
+#layer-flip.betting .flip-caption { opacity: 0; }
+.coin-toss.up   { animation: coinUp 0.5s cubic-bezier(.2,.7,.3,1) forwards, coinHover 1.7s ease-in-out 0.5s infinite; }
+.coin-toss.land { animation: coinDrop 0.92s cubic-bezier(.22,1.18,.42,1) forwards; }
+/* Rise + shrink (flies up & away into the distance), then fall + grow back and
+   bounce — keeps the toss inside the short TV screen and adds real depth. */
+@keyframes coinUp   { from { transform: translateY(0) scale(1); } to { transform: translateY(-40px) scale(0.72); } }
+@keyframes coinHover{ 0%,100% { transform: translateY(-40px) scale(0.72); } 50% { transform: translateY(-50px) scale(0.69); } }
+@keyframes coinDrop {
+  0%   { transform: translateY(-40px) scale(0.72); }
+  52%  { transform: translateY(0) scale(1); }            /* falls back & lands big */
+  66%  { transform: translateY(-22px) scale(0.97); }     /* big bounce */
+  80%  { transform: translateY(0) scale(1.03); }
+  90%  { transform: translateY(-7px) scale(0.99); }      /* little bounce */
+  100% { transform: translateY(0) scale(1); }
+}
+/* Ground shadow under the coin: tightens + dims while it's up in the air. */
+.coin-shadow {
+  position: absolute; bottom: 14%; left: 50%; width: clamp(90px, 24vw, 160px); height: 22px;
+  transform: translateX(-50%); border-radius: 50%; pointer-events: none; z-index: 0;
+  background: radial-gradient(ellipse at center, rgba(0,0,0,.55), rgba(0,0,0,0) 70%);
+  transition: transform .5s cubic-bezier(.2,.7,.3,1), opacity .5s ease;
+}
+#layer-flip.airborne .coin-shadow { transform: translateX(-50%) scale(.6); opacity: .45; }
+.coin {
+  width: clamp(110px, 30vw, 200px); aspect-ratio: 1; position: relative; transform-style: preserve-3d;
+  filter: drop-shadow(0 16px 22px rgba(0, 0, 0, 0.6)); will-change: transform;
+  /* the decelerating "land" once the result is known */
+  transition: transform 0.85s cubic-bezier(0.15, 0.85, 0.25, 1);
+}
+.coin.spin { animation: coinSpin 0.42s linear infinite; transition: none; }
+/* Land on a forward multiple so the coin always rotates onward into its face:
+   1440 ≡ 0  -> HEADS face up; 1620 ≡ 180 -> TAILS face up. */
+.coin.show-heads { transform: rotateX(2160deg); } /* 6 turns ≡ 0   → HEADS up */
+.coin.show-tails { transform: rotateX(2340deg); } /* 6½ turns ≡ 180 → TAILS up */
+@keyframes coinSpin { from { transform: rotateX(0); } to { transform: rotateX(360deg); } }
+.coin-face {
+  position: absolute; inset: 0; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  font-size: clamp(34px, 9vw, 64px); font-weight: 800; backface-visibility: hidden; color: #3a2c00;
+  box-shadow: inset 0 0 0 8px rgba(0, 0, 0, 0.15), inset 0 8px 16px rgba(255, 255, 255, 0.5), inset 0 -10px 16px rgba(0, 0, 0, 0.25);
+}
+.coin-face small { font-family: var(--display); font-size: 13px; letter-spacing: 1px; margin-top: 2px; }
+.coin-heads { background: radial-gradient(circle at 35% 30%, #fff3b0, var(--gold) 55%, #c79200); }
+.coin-tails { background: radial-gradient(circle at 35% 30%, #d6e4ff, #9fb6e8 55%, #6f86bd); color: #1f2b4d; transform: rotateX(180deg); }
+.flip-caption { position: absolute; bottom: 16px; font-family: var(--display); color: #fff; letter-spacing: 2px; font-size: 14px; opacity: 0.9; }
+/* "please wait" banner while a bet tx is signing/mining (esp. mobile) */
+.tv-pending { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); z-index: 8; text-align: center; padding: 0 14px;
+  font-family: "Press Start 2P", var(--display); font-size: clamp(7px, 1.7vw, 10px); line-height: 1.8;
+  color: #ffe9a8; text-shadow: 2px 2px 0 #000; animation: tvPendBlink 1.1s steps(2, end) infinite; }
+@keyframes tvPendBlink { 50% { opacity: 0.4; } }
+
+/* Result */
+#layer-result { gap: 4px; }
+#layer-result.win { background: radial-gradient(circle at 50% 40%, rgba(69, 240, 166, 0.22), transparent 65%); }
+#layer-result.lose { background: radial-gradient(circle at 50% 40%, rgba(255, 91, 91, 0.18), transparent 65%); }
+/* Universal outcome OVERLAY: the same result screen, shown ON TOP of the live
+   game (raised z-index) over a dark scrim that dims the game behind it, so the
+   win/lose reads clearly and stays until the next bet. */
+#layer-result.as-overlay { z-index: 8; }
+/* dark CENTER scrim (under the text, for contrast) + a faint colour ring (vibe) */
+#layer-result.as-overlay.win  { background: radial-gradient(circle at 50% 42%, rgba(2,4,10,0.62) 0%, rgba(2,4,10,0.42) 30%, transparent 60%), radial-gradient(circle at 50% 40%, rgba(45,255,150,0.16), transparent 64%), rgba(4,6,14,0.70); }
+#layer-result.as-overlay.lose { background: radial-gradient(circle at 50% 42%, rgba(2,4,10,0.66) 0%, rgba(2,4,10,0.46) 30%, transparent 60%), radial-gradient(circle at 50% 40%, rgba(255,70,86,0.12), transparent 64%), rgba(4,6,14,0.74); }
+.result-emoji { font-size: clamp(48px, 13vw, 92px); animation: emojiPop 0.55s cubic-bezier(0.18, 1.6, 0.4, 1) both; }
+@keyframes emojiPop { 0% { transform: scale(0) rotate(-12deg); opacity: 0; } 60% { transform: scale(1.25) rotate(6deg); opacity: 1; } 80% { transform: scale(.92) rotate(-2deg); } 100% { transform: scale(1) rotate(0); } }
+@keyframes pop { 0% { transform: scale(0); } 100% { transform: scale(1); } }
+/* win emoji gets a gentle continuous bob on big/mega */
+#layer-result.win.tier-big .result-emoji, #layer-result.win.tier-mega .result-emoji { animation: emojiPop 0.55s cubic-bezier(0.18, 1.6, 0.4, 1) both, emojiBob 2.6s ease-in-out 0.6s infinite; }
+@keyframes emojiBob { 0%, 100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-6px) rotate(3deg); } }
+
+/* LEGIBLE NEON: a sharp near-white glyph core + tight dark stroke, with the
+   coloured glow pushed OUTWARD (large blur, low opacity) so it never washes
+   out the digits. paint-order keeps the stroke behind the fill. */
+.result-headline { font-family: var(--display); font-size: clamp(28px, 8vw, 60px); letter-spacing: 1px; paint-order: stroke fill; }
+#layer-result.win .result-headline { color: #f6fff6; -webkit-text-stroke: 2px rgba(2,10,6,.9); text-shadow: 0 2px 0 rgba(0,0,0,.85), 0 0 3px rgba(0,0,0,.9), 0 0 18px rgba(57,255,138,.6), 0 0 44px rgba(43,255,136,.30); }
+#layer-result.lose .result-headline { color: #fff0f1; -webkit-text-stroke: 2px rgba(14,2,4,.9); text-shadow: 0 2px 0 rgba(0,0,0,.85), 0 0 3px rgba(0,0,0,.9), 0 0 18px rgba(255,60,76,.55), 0 0 40px rgba(255,46,67,.28); }
+
+.result-money { font-family: var(--display); font-weight: 800; line-height: 1; letter-spacing: 1px; font-size: clamp(26px, 8vw, 58px);
+  padding: 9px 18px 11px; border-radius: 14px; paint-order: stroke fill;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.10), inset 0 -2px 8px rgba(0,0,0,.55), 0 6px 22px rgba(0,0,0,.45); }
+.result-money:empty { display: none; }
+#layer-result.win .result-money { color: #f4fff4; border: 1px solid rgba(57,255,138,.45);
+  background: linear-gradient(180deg, rgba(10,14,24,.86), rgba(4,6,12,.92));
+  -webkit-text-stroke: 2px rgba(2,10,6,.92);
+  text-shadow: 0 1px 0 rgba(0,0,0,.9), 0 0 2px rgba(0,0,0,.9), 0 0 14px rgba(45,255,150,.55), 0 0 34px rgba(45,255,150,.32), 0 0 60px rgba(45,255,150,.18); }
+#layer-result.lose .result-money { color: #ffe9ea; border: 1px solid rgba(255,80,96,.40);
+  background: linear-gradient(180deg, rgba(18,8,10,.86), rgba(8,3,4,.92));
+  -webkit-text-stroke: 2px rgba(14,2,4,.92);
+  text-shadow: 0 1px 0 rgba(0,0,0,.9), 0 0 2px rgba(0,0,0,.9), 0 0 12px rgba(255,70,86,.40), 0 0 30px rgba(255,70,86,.20); }
+.result-money.win, .result-money.lose { animation: moneyPop 0.55s cubic-bezier(0.18, 1.5, 0.4, 1); }
+@keyframes moneyPop { 0% { transform: scale(0.6); } 60% { transform: scale(1.22); } 80% { transform: scale(.94); } 100% { transform: scale(1); } }
+/* sub-text ("1.96× payout") — readable pill, quieter than the amount */
+.result-sub { font-weight: 700; font-size: clamp(12px, 3vw, 18px); letter-spacing: .5px; padding: 4px 12px; border-radius: 999px; background: rgba(6,10,18,.72); color: #eaf6ff; text-shadow: 0 1px 2px rgba(0,0,0,.8); }
+.result-sub:empty { display: none; }
+#layer-result.win .result-sub { color: #c8ffe0; border: 1px solid rgba(57,255,138,.30); }
+#layer-result.lose .result-sub { color: #ffd6da; border: 1px solid rgba(255,80,96,.28); }
+.result-coin { margin-top: 6px; font-family: var(--display); font-size: 13px; letter-spacing: 2px; color: var(--muted); }
+.share-result-btn { margin-top: 12px; z-index: 8; font-size: 12px; padding: 7px 14px; }
+/* Pixel win-scene overlay — full TV screen, only visible while a scene plays */
+.scene-canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 9; pointer-events: none; image-rendering: pixelated; opacity: 0; transition: opacity 0.18s; }
+.scene-canvas.on { opacity: 1; }
+
+/* ----- Escalating win celebrations: big ($100+ pot) and mega ($500+ pot) ----- */
+.win-banner { position: absolute; top: 14px; left: 0; right: 0; text-align: center; z-index: 7;
+  font-family: "Press Start 2P", var(--display); font-size: clamp(12px, 3.4vw, 22px);
+  pointer-events: none; opacity: 0; }
+.win-banner.show { opacity: 1; }
+.win-banner.show.big { color: #ffd23f; text-shadow: 0 0 12px rgba(255, 210, 63, 0.95), 3px 3px 0 #7a4b00;
+  animation: bannerSlam 0.6s cubic-bezier(0.2, 1.6, 0.3, 1) both, bannerFloat 1.6s ease-in-out 0.6s infinite; }
+.win-banner.show.mega { font-size: clamp(14px, 4.2vw, 26px);
+  background: linear-gradient(90deg, #ff4d9d, #ffd23f, #39e7ff, #45f0a6, #b14dff, #ff4d9d);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.55));
+  animation: bannerSlam 0.6s cubic-bezier(0.2, 1.6, 0.3, 1) both, megaHue 1.1s linear infinite; }
+@keyframes bannerSlam { 0% { opacity: 0; transform: scale(2.6) translateY(-12px); } 60% { opacity: 1; transform: scale(0.9); } 100% { opacity: 1; transform: scale(1); } }
+@keyframes bannerFloat { 50% { transform: translateY(-4px); } }
+@keyframes megaHue { to { filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.55)) hue-rotate(360deg); } }
+
+#layer-result.tier-big .result-money { font-size: clamp(28px, 8.5vw, 62px); }
+#layer-result.tier-mega .result-money { font-size: clamp(30px, 9.5vw, 68px); }
+
+/* ── THE BREATHE: a slow, luxurious scale + glow swell on big/mega wins ── */
+@keyframes breathe {
+  0%, 100% { transform: scale(1);     filter: drop-shadow(0 0 6px rgba(45,255,150,.20)); }
+  50%      { transform: scale(1.045); filter: drop-shadow(0 0 26px rgba(45,255,150,.55)); }
+}
+#layer-result.tier-big .result-money         { animation: moneyPop 0.55s cubic-bezier(.18,1.5,.4,1), breathe 2.6s ease-in-out .55s infinite; }
+#layer-result.win.tier-big .result-headline  { animation: winHeadlinePunch 0.6s cubic-bezier(.18,1.6,.4,1), breathe 2.6s ease-in-out .7s infinite; }
+
+/* MEGA: bigger breathe + hue cycle + a metallic sheen sweeping the plate */
+@keyframes breatheMega {
+  0%, 100% { transform: scale(1);     filter: drop-shadow(0 0 8px rgba(45,255,150,.30)) hue-rotate(0deg); }
+  50%      { transform: scale(1.075); filter: drop-shadow(0 0 40px rgba(120,255,200,.7)) hue-rotate(28deg); }
+}
+@keyframes megaSheen { 0% { background-position: -150% 0, 0 0; } 100% { background-position: 250% 0, 0 0; } }
+#layer-result.tier-mega .result-money {
+  border-color: rgba(120,255,200,.6);
+  background: linear-gradient(110deg, transparent 35%, rgba(180,255,225,.18) 50%, transparent 65%) 0 0 / 200% 100%,
+             linear-gradient(180deg, rgba(10,14,24,.86), rgba(4,6,12,.92));
+  animation: moneyPop 0.55s cubic-bezier(.18,1.5,.4,1), breatheMega 2.2s ease-in-out .55s infinite, megaSheen 3.2s linear infinite;
+}
+#layer-result.win.tier-mega .result-headline { animation: winHeadlinePunch 0.6s cubic-bezier(.18,1.6,.4,1), breatheMega 2.2s ease-in-out .7s infinite; }
+
+/* slow-rotating rays behind the cluster (big/mega), masked so they never cross the text */
+.result-rays { display: none; }
+#layer-result.tier-big .result-rays, #layer-result.tier-mega .result-rays {
+  display: block; position: absolute; inset: 0; pointer-events: none; z-index: 5;
+  background: repeating-conic-gradient(from 0deg at 50% 42%, rgba(45,255,150,.10) 0deg 6deg, transparent 6deg 18deg);
+  -webkit-mask: radial-gradient(circle at 50% 42%, transparent 24%, #000 52%);
+          mask: radial-gradient(circle at 50% 42%, transparent 24%, #000 52%);
+  animation: raysSpin 18s linear infinite; opacity: .75;
+}
+#layer-result.tier-mega .result-rays { background: repeating-conic-gradient(from 0deg at 50% 42%, rgba(120,255,200,.12) 0deg 5deg, transparent 5deg 16deg); }
+@keyframes raysSpin { to { transform: rotate(360deg); } }
+
+.tv-screen.quake { animation: quake 0.4s ease-in-out 2; }
+.tv-screen.quake-hard { animation: quakeHard 0.34s ease-in-out 4; }
+@keyframes quake { 0%, 100% { transform: translate(0, 0); } 25% { transform: translate(-3px, 2px); } 50% { transform: translate(3px, -2px); } 75% { transform: translate(-2px, -2px); } }
+@keyframes quakeHard { 0%, 100% { transform: translate(0, 0); } 20% { transform: translate(-6px, 3px) rotate(-0.4deg); } 40% { transform: translate(6px, -3px) rotate(0.4deg); } 60% { transform: translate(-5px, -3px); } 80% { transform: translate(5px, 3px); } }
+
+/* ════════ Coin-flip WIN celebration: green burst + raining gold coins ════════ */
+/* A green shock-flash sweeps the result screen the instant a win lands. */
+#layer-result.win { animation: winGreenBurst 0.8s ease-out; }
+@keyframes winGreenBurst {
+  0%   { background: radial-gradient(circle at 50% 42%, rgba(43,255,136,0.9), rgba(43,255,136,0.25) 38%, transparent 66%); }
+  30%  { background: radial-gradient(circle at 50% 42%, rgba(43,255,136,0.55), rgba(43,255,136,0.18) 46%, transparent 68%); }
+  100% { background: radial-gradient(circle at 50% 40%, rgba(69,240,166,0.22), transparent 65%); }
+}
+/* big/mega win: entrance burst only — the breathe now lives on the money/headline */
+#layer-result.win.tier-big, #layer-result.win.tier-mega { animation: winGreenBurst 0.8s ease-out; }
+/* the headline punches in bigger and greener, scaled by tier */
+#layer-result.win .result-headline { animation: winHeadlinePunch 0.6s cubic-bezier(.18,1.6,.4,1); }
+@keyframes winHeadlinePunch { 0% { transform: scale(.3); opacity: 0; } 60% { transform: scale(1.18); } 100% { transform: scale(1); opacity: 1; } }
+#layer-result.win.tier-big  .result-headline { text-shadow: 0 0 30px rgba(69,240,166,.95), 0 0 60px rgba(43,255,136,.6); }
+#layer-result.win.tier-mega .result-headline { text-shadow: 0 0 36px #fff, 0 0 64px rgba(43,255,136,.8); }
+
+/* Raining gold coins — JS spawns .scoin children and sets --fall (drop distance). */
+.coin-shower { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 6; }
+.coin-shower .scoin {
+  position: absolute; top: -7%; line-height: 1; will-change: transform, opacity;
+  font-size: clamp(18px, 4.4vw, 34px); filter: drop-shadow(0 2px 3px rgba(0,0,0,.45));
+  animation: scoinFall var(--dur, 1.5s) cubic-bezier(.35,.1,.7,1) forwards;
+}
+@keyframes scoinFall {
+  0%   { transform: translateY(-10%) rotate(0deg)   scale(var(--s,1)); opacity: 0; }
+  10%  { opacity: 1; }
+  88%  { opacity: 1; }
+  100% { transform: translateY(var(--fall, 560px)) rotate(var(--spin, 540deg)) scale(var(--s,1)); opacity: 0; }
+}
+/* ════════ LOSE: a tight shake + sink + one red flash, then a settled dim ════════ */
+@keyframes loseSlamShake {
+  0%   { transform: translateY(-10px) scale(1.04); opacity: 0; filter: blur(4px); }
+  18%  { transform: translateX(-6px) scale(1);     opacity: 1; filter: blur(0); }
+  32%  { transform: translateX(5px); }
+  46%  { transform: translateX(-3px); }
+  60%  { transform: translateX(2px); }
+  100% { transform: translateX(0) translateY(2px); }
+}
+#layer-result.lose .result-headline, #layer-result.lose .result-money { animation: loseSlamShake .55s cubic-bezier(.3,.7,.4,1) both; }
+#layer-result.lose .result-emoji { animation: emojiPop .55s cubic-bezier(.18,1.6,.4,1) both, loseDesat .8s ease-out .4s both; }
+@keyframes loseDesat { to { filter: grayscale(.25) brightness(.92); } }
+@keyframes loseFlash { 0% { opacity: 0; } 12% { opacity: .55; } 100% { opacity: 0; } }
+#layer-result.as-overlay.lose::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 5;
+  background: radial-gradient(circle at 50% 42%, rgba(255,60,76,.35), transparent 60%);
+  animation: loseFlash .6s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #layer-result *, #layer-result::after, #layer-result .result-rays { animation: none !important; transform: none !important; filter: none !important; }
+  #layer-result.win, #layer-result.lose { animation: rmFade .25s ease-out both !important; }
+  @keyframes rmFade { from { opacity: 0; } to { opacity: 1; } }
+  #layer-result.tier-mega .result-money { background-position: 0 0 !important; }
+  .coin-shower { display: none !important; }
+  .coin-toss.up, .coin-toss.land { animation: none !important; }
+}
+
+.confetti-canvas { position: absolute; inset: 0; z-index: 9; width: 100%; height: 100%; pointer-events: none; }
+
+/* TV controls (speaker + dials) */
+.tv-controls { display: flex; align-items: center; gap: 16px; margin-top: 14px; padding: 0 6px; }
+.tv-knobs { display: flex; gap: 12px; }
+.knob { width: 28px; height: 28px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #2a2a2a, #0a0a0a); box-shadow: inset 0 2px 3px rgba(255, 255, 255, 0.25), 0 2px 4px rgba(0, 0, 0, 0.5); border: 2px solid rgba(0, 0, 0, 0.4); }
+.knob::after { content: ""; position: absolute; }
+.tv-speaker { display: grid; grid-template-columns: repeat(6, 5px); gap: 5px; margin-left: 4px; }
+.tv-speaker span { height: 30px; background: rgba(0, 0, 0, 0.45); border-radius: 3px; box-shadow: inset 0 0 2px rgba(0, 0, 0, 0.8); }
+.tv-channel { margin-left: auto; font-family: var(--display); font-size: 13px; color: #2a0f0d; background: #f0c84a; border-radius: 8px; padding: 5px 10px; box-shadow: inset 0 -2px 4px rgba(0, 0, 0, 0.3); }
+.tv-stand { width: 180px; height: 16px; margin-top: -2px; background: linear-gradient(var(--tv-red-d), #6e120f); border-radius: 0 0 14px 14px; box-shadow: var(--shadow); }
+
+/* ───────────────────── Bankroll ───────────────────── */
+.bankroll { display: flex; flex-direction: column; gap: 14px; }
+.bankroll-bal { display: flex; gap: 20px; }
+.bankroll-bal span { display: block; font-size: 12px; }
+.bankroll-bal strong { font-size: 20px; font-family: var(--display); }
+.bankroll-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.bankroll-actions .input { flex: 1 1 120px; }
+.bankroll-actions .slider-wrap.deposit-slider { flex: 1 1 100%; margin: 2px 0 4px; }
+.bankroll-btns { display: flex; gap: 8px; flex: 1 1 100%; }
+.bankroll-btns .btn { flex: 1; }
+.deposit-max-hint { display: block; text-align: center; font-size: 11px; margin-top: 4px; opacity: 0.8; }
+
+/* Play vs House */
+.play-house { border-color: rgba(255, 210, 63, 0.35); }
+/* Breathing glow so Quick play is clearly its own thing — not mistaken for the
+   deposit slider sitting right above it. */
+#play-house { animation: phBreathe 2.6s ease-in-out infinite; }
+@keyframes phBreathe {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(255, 210, 63, 0.22), 0 0 14px rgba(255, 210, 63, 0.10); border-color: rgba(255, 210, 63, 0.30); }
+  50%      { box-shadow: 0 0 0 1px rgba(255, 210, 63, 0.55), 0 0 28px rgba(255, 210, 63, 0.35); border-color: rgba(255, 210, 63, 0.78); }
+}
+.ph-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ph-head .card-title { margin-bottom: 0; }
+.ph-bankroll { font-size: 12px; white-space: nowrap; }
+.ph-bankroll strong { color: var(--gold); }
+.ph-note { font-size: 12px; margin: 8px 0 10px; }
+.create-breakdown { font-size: 12px; margin: 6px 0 12px; line-height: 1.45; }
+.create-breakdown strong { color: var(--gold); }
+.host-tools .ht-body { display: flex; flex-direction: column; gap: 8px; padding-top: 6px; }
+.host-tools .ht-fund { margin: 0; }
+
+/* ───────────────────── Forms ───────────────────── */
+.input {
+  width: 100%; background: rgba(8, 10, 20, 0.7); border: 1px solid var(--panel-line); border-radius: 12px;
+  color: var(--ink); font-family: var(--font); font-size: 15px; padding: 11px 13px; outline: none; transition: border 0.2s, box-shadow 0.2s;
+}
+.input:focus { border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(57, 231, 255, 0.18); }
+.field-label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 5px; }
+.share-box { margin-top: 12px; padding: 12px; background: rgba(57, 231, 255, 0.08); border: 1px dashed rgba(57, 231, 255, 0.35); border-radius: 12px; }
+.share-row { display: flex; gap: 8px; margin-top: 6px; }
+.share-input { font-size: 13px; }
+
+/* ───────────────────── Sliders ───────────────────── */
+.slider-wrap { display: flex; align-items: center; gap: 12px; margin: 6px 0 12px; }
+.slider { -webkit-appearance: none; appearance: none; flex: 1; height: 8px; border-radius: 999px; background: linear-gradient(90deg, var(--cyan), var(--magenta)); outline: none; }
+.slider::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; border-radius: 50%; background: #fff; border: 3px solid var(--cyan); cursor: pointer; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5); }
+.slider::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; background: #fff; border: 3px solid var(--cyan); cursor: pointer; }
+.slider-val { font-family: var(--display); font-size: 16px; white-space: nowrap; color: var(--gold); min-width: 110px; text-align: right; }
+.eth-sub { display: block; font-family: var(--font); font-size: 10.5px; color: var(--muted); font-weight: 500; letter-spacing: 0; }
+
+/* Heads / Tails side picker */
+.side-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 4px 0 12px; flex-wrap: wrap; }
+.side-label { font-size: 12px; color: var(--muted); }
+.side-toggle { display: inline-flex; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--panel-line); border-radius: 999px; padding: 3px; gap: 2px; }
+.side-btn { border: 0; background: transparent; color: var(--muted); font-family: var(--display); font-weight: 700; font-size: 13px; padding: 6px 14px; border-radius: 999px; cursor: pointer; transition: color 0.15s, background 0.15s, box-shadow 0.15s; }
+.side-btn:hover { color: #fff; }
+.side-btn.active { color: #07101f; background: linear-gradient(135deg, #39e7ff, #ff4d9d); box-shadow: 0 0 14px rgba(57, 231, 255, 0.4); }
+.bet-side { text-align: center; font-family: var(--display); font-weight: 700; font-size: 14px; color: var(--gold); background: rgba(255, 210, 63, 0.08); border: 1px solid rgba(255, 210, 63, 0.25); border-radius: 10px; padding: 7px; margin: 8px 0; }
+
+/* ─────────────── Full-motion win/loss video reel ─────────────── */
+.reveal-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: none; z-index: 30; background: #000; }
+.reveal-video.show { display: block; }
+/* The Coin Flip reveal is the spinning coin toss again (no video reel), so the
+   coin must always show — the old cine-theme hide is intentionally dropped. */
+
+/* ─────────────── Win-animation theme switcher ─────────────── */
+.theme-switch { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 10px 14px; margin: 10px 0; }
+.theme-switch[hidden] { display: none !important; } /* CSS display:flex would otherwise beat the hidden attribute */
+.theme-switch-label { font-family: var(--display); font-weight: 700; font-size: 13px; color: var(--gold); }
+.theme-toggle { display: inline-flex; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--panel-line); border-radius: 999px; padding: 3px; gap: 2px; }
+.theme-btn { border: 0; background: transparent; color: var(--muted); font-family: var(--display); font-weight: 700; font-size: 12px; padding: 6px 12px; border-radius: 999px; cursor: pointer; transition: color 0.15s, background 0.15s, box-shadow 0.15s; }
+.theme-btn:hover { color: #fff; }
+.theme-btn.active { color: #07101f; background: linear-gradient(135deg, #39e7ff, #ff4d9d); box-shadow: 0 0 14px rgba(57, 231, 255, 0.4); }
+.theme-preview-btn { border: 1px solid var(--panel-line); background: rgba(255, 255, 255, 0.04); color: var(--muted); font-family: var(--display); font-weight: 700; font-size: 12px; padding: 6px 12px; border-radius: 10px; cursor: pointer; transition: color 0.15s, background 0.15s; }
+.theme-preview-btn:hover { color: #fff; background: rgba(57, 231, 255, 0.12); }
+.theme-credit { flex: 1 1 100%; font-size: 11px; color: var(--muted); opacity: 0.75; }
+
+/* ─────────────── Quick-bet buttons (½ last / 2× last / max) ─────────────── */
+.quickbet-row { display: flex; gap: 8px; margin: -4px 0 12px; }
+.qbet { flex: 1 1 0; border: 1px solid var(--panel-line); background: rgba(255, 255, 255, 0.04); color: var(--muted); font-family: var(--display); font-weight: 700; font-size: 12px; padding: 8px 4px; border-radius: 10px; cursor: pointer; transition: color 0.15s, background 0.15s, box-shadow 0.15s, transform 0.08s; }
+.qbet:hover { color: #fff; background: rgba(57, 231, 255, 0.12); box-shadow: 0 0 12px rgba(57, 231, 255, 0.25); }
+.qbet:active { transform: translateY(1px); }
+.qbet[data-mode="max"] { color: var(--gold); border-color: rgba(255, 210, 63, 0.35); }
+.qbet[data-mode="max"]:hover { background: rgba(255, 210, 63, 0.14); box-shadow: 0 0 12px rgba(255, 210, 63, 0.3); }
+
+/* ───────────────────── Bet modal breakdown ───────────────────── */
+.bet-card { max-width: 420px; }
+.bet-breakdown { margin: 14px 0; border: 1px solid var(--panel-line); border-radius: 14px; overflow: hidden; }
+.bd-row { display: flex; justify-content: space-between; align-items: center; padding: 11px 14px; font-size: 14px; border-bottom: 1px solid var(--panel-line); }
+.bd-row:last-child { border-bottom: none; }
+.bd-row strong { font-family: var(--display); font-size: 15px; }
+.bd-row.total { background: rgba(255, 255, 255, 0.04); }
+.bd-row.total strong { color: var(--cyan); }
+.bd-row.fee strong { color: var(--magenta); }
+.bd-row.win { background: rgba(69, 240, 166, 0.1); }
+.bd-row.win strong { color: var(--green); font-size: 18px; }
+.bet-hint { font-size: 12px; margin-top: 10px; min-height: 1em; }
+.bet-raise { margin-bottom: 6px; }
+
+.nego-text { line-height: 1.5; margin: 6px 0 16px; }
+.nego-text b { color: var(--gold); }
+.nego-actions { display: flex; gap: 10px; }
+.nego-actions .btn { flex: 1; }
+
+/* ───────────────────── Matrix chat ───────────────────── */
+.chat-card { background: #03100a; border-color: rgba(57, 255, 20, 0.22); }
+.chat-card .card-title { color: #6effa0; }
+.chat-dot { color: #39ff14; animation: blink 1s steps(2) infinite; margin-left: auto; }
+.chat-log {
+  height: 168px; overflow-y: auto; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px;
+  line-height: 1.55; background: #030b07; border: 1px solid rgba(57, 255, 20, 0.18); border-radius: 10px; padding: 10px;
+  text-shadow: 0 0 6px rgba(57, 255, 20, 0.35);
+}
+.chat-sys { color: #2f9c5a; opacity: 0.8; }
+.chat-line { word-break: break-word; }
+.chat-line .chat-handle { font-weight: 700; }
+.chat-line.host .chat-handle { color: #39ff14; text-shadow: 0 0 8px rgba(57, 255, 20, 0.7); }
+.chat-line.host .chat-text { color: #8dffb0; }
+.chat-line.visitor .chat-handle { color: #ff4d4d; text-shadow: 0 0 8px rgba(255, 77, 77, 0.7); }
+.chat-line.visitor .chat-text { color: #ffb0b0; }
+.chat-line .chat-ago { color: var(--muted); opacity: 0.55; font-size: 0.82em; }
+.chat-divider { text-align: center; color: var(--muted); opacity: 0.6; font-size: 0.78em; letter-spacing: 1px; margin: 6px 0 4px; text-transform: uppercase; }
+.chat-input-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.chat-prompt { color: #39ff14; font-family: ui-monospace, monospace; font-weight: 700; }
+.chat-input {
+  flex: 1; background: #030b07; border: 1px solid rgba(57, 255, 20, 0.25); border-radius: 8px; color: #8dffb0;
+  font-family: ui-monospace, monospace; font-size: 13px; padding: 8px 10px; outline: none;
+}
+.chat-input::placeholder { color: #2f9c5a; }
+.chat-input:focus { border-color: #39ff14; box-shadow: 0 0 0 3px rgba(57, 255, 20, 0.15); }
+.chat-card .btn-mini { background: rgba(57, 255, 20, 0.16); color: #aaffc4; font-weight: 700; }
+
+/* ───────────────────── Dropdown (collapsible card section) ───────────────────── */
+.dropdown summary { list-style: none; cursor: pointer; outline: none; }
+.dropdown summary::-webkit-details-marker { display: none; }
+.dd-summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 0; }
+.dropdown[open] .dd-summary { margin-bottom: 12px; }
+.dd-arrow { color: var(--muted); transition: transform 0.2s ease; font-size: 12px; }
+.dropdown[open] .dd-arrow { transform: rotate(180deg); }
+
+/* ───────────────────── Players & rooms ───────────────────── */
+.players-list, .rooms-list, .hist-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; max-height: 260px; overflow-y: auto; }
+.players-list .empty, .rooms-list .empty, .hist-list .empty { color: var(--muted); font-size: 14px; padding: 6px 2px; }
+.hist-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 10px; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--panel-line); border-radius: 10px; border-left-width: 3px; }
+.hist-item.won { border-left-color: #34e39b; }
+.hist-item.lost { border-left-color: #ff7a7a; }
+.hist-label { font-size: 13px; font-weight: 600; color: var(--muted); }
+.hist-amt { font-family: var(--display); font-weight: 800; font-size: 15px; white-space: nowrap; }
+.hist-amt.up { color: #34e39b; }
+.hist-amt.down { color: #ff7a7a; }
+.hist-net { font-size: 12px; font-weight: 800; font-family: var(--display); }
+.hist-net.up { color: #34e39b; }
+.hist-net.down { color: #ff7a7a; }
+.player-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--panel-line); border-radius: 12px; }
+.player-item canvas { border-radius: 50%; flex: none; }
+.pmid { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+.ptop { display: flex; align-items: center; gap: 6px; }
+.player-item .pname { font-weight: 600; font-size: 14px; }
+.player-item .pyou { font-size: 10px; color: var(--green); font-weight: 800; background: rgba(0, 255, 140, 0.12); border: 1px solid rgba(0, 255, 140, 0.35); border-radius: 999px; padding: 1px 6px; letter-spacing: .04em; }
+.precord { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.pbadge { font-size: 10px; font-weight: 800; min-width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; }
+.pbadge.win { background: rgba(0, 200, 120, 0.2); color: #34e39b; border: 1px solid rgba(0, 200, 120, 0.4); }
+.pbadge.loss { background: rgba(230, 70, 70, 0.18); color: #ff7a7a; border: 1px solid rgba(230, 70, 70, 0.4); }
+.pbadge.none { min-width: 0; padding: 0 4px; font-weight: 600; color: var(--muted); background: transparent; border: 0; font-size: 11px; height: auto; }
+.ptally { font-size: 11px; color: var(--muted); font-weight: 700; margin-left: 2px; }
+.pstreak { font-size: 11px; font-weight: 800; color: #ffb347; margin-left: 2px; }
+.pstreak.hot { color: #ff8a3d; text-shadow: 0 0 6px rgba(255, 138, 61, 0.6); }
+.room-item { display: flex; align-items: center; gap: 10px; padding: 10px; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--panel-line); border-radius: 12px; }
+.room-item .rinfo { min-width: 0; }
+.room-item .rname { font-weight: 700; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.room-item .rmeta { font-size: 12px; color: var(--muted); }
+.room-item .rbet { margin-left: auto; font-family: var(--display); font-size: 14px; color: var(--gold); white-space: nowrap; }
+.room-item .btn { margin-left: 6px; }
+
+/* House card */
+.house-card { display: flex; flex-direction: column; gap: 8px; }
+.house-row { display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
+.house-row.tiny { font-size: 12px; }
+.house-row a { max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ───────────────────── Toast / modal / banner ───────────────────── */
+.toast {
+  position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(20px);
+  background: rgba(18, 20, 36, 0.96); border: 1px solid var(--panel-line);
+  color: var(--ink); padding: 12px 18px; border-radius: 12px; box-shadow: var(--shadow); z-index: 50; opacity: 0;
+  transition: opacity 0.25s, transform 0.25s; max-width: 90vw; text-align: center; font-weight: 600;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast.err { border-color: rgba(255, 91, 91, 0.5); }
+.toast.ok { border-color: rgba(69, 240, 166, 0.5); }
+
+.modal { position: fixed; inset: 0; z-index: 120; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(4, 5, 12, 0.7); backdrop-filter: blur(6px); }
+.modal-card { position: relative; max-width: 560px; width: 100%; max-height: 86vh; overflow-y: auto; background: var(--bg-2); border: 1px solid var(--panel-line); border-radius: 20px; padding: 26px; box-shadow: var(--shadow); }
+.modal-card h2 { margin: 0 0 14px; font-family: var(--display); font-size: 22px; }
+.modal-close { position: absolute; top: 14px; right: 14px; background: rgba(255, 255, 255, 0.08); border: none; color: var(--ink); width: 34px; height: 34px; border-radius: 50%; cursor: pointer; font-size: 15px; }
+/* wallet ↔ credits transfer confirmation */
+.xfer-card { max-width: 420px; text-align: center; }
+.xfer-sub { margin: 0 0 16px; }
+.xfer-amount { display: flex; flex-direction: column; gap: 2px; margin: 6px 0 16px; }
+.xfer-amount #xfer-usd { font-family: var(--display); font-size: 40px; line-height: 1; color: var(--ink); }
+.xfer-amount .xfer-eth { font-size: 14px; color: var(--muted); }
+.xfer-flow { display: flex; align-items: center; justify-content: center; gap: 14px; margin: 0 0 20px; padding: 14px; border: 1px solid var(--panel-line); border-radius: 14px; background: rgba(255,255,255,0.03); }
+.xfer-flow .xfer-end { display: flex; flex-direction: column; gap: 3px; min-width: 92px; }
+.xfer-flow .xfer-end .muted { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.xfer-flow .xfer-end strong { font-size: 15px; }
+.xfer-flow .xfer-arrow { font-size: 22px; color: var(--accent, #45f0a6); }
+.xfer-card .btn-block { width: 100%; margin-top: 8px; }
+.xfer-note { margin: 12px 0 0; font-size: 12px; }
+.help-steps { padding-left: 20px; display: flex; flex-direction: column; gap: 9px; line-height: 1.5; }
+.help-steps b { color: var(--cyan); }
+.help-foot { margin-top: 16px; font-size: 13px; line-height: 1.5; }
+
+.setup-banner { position: relative; z-index: 3; margin: 2px auto 0; width: fit-content; max-width: min(760px, 92vw); background: rgba(57, 231, 255, 0.1); border: 1px solid rgba(57, 231, 255, 0.3); color: #d7ecff; padding: 9px 18px; border-radius: 999px; font-weight: 600; font-size: 13.5px; text-align: center; box-shadow: var(--shadow); }
+.setup-banner.warn { background: rgba(255, 210, 63, 0.14); border-color: rgba(255, 210, 63, 0.5); color: #fff0c2; }
+.house-banner { position: relative; z-index: 3; margin: 8px auto 0; width: fit-content; max-width: min(820px, 94vw); background: rgba(255, 174, 0, 0.14); border: 1px solid rgba(255, 174, 0, 0.5); color: #ffe6b0; padding: 9px 18px; border-radius: 14px; font-weight: 600; font-size: 13.5px; text-align: center; box-shadow: var(--shadow); }
+.mobile-hint { position: relative; z-index: 3; margin: 8px auto 0; max-width: min(560px, 92vw); background: rgba(118, 69, 217, 0.16); border: 1px solid rgba(150, 110, 245, 0.55); color: #e7ddff; padding: 10px 16px; border-radius: 14px; font-weight: 500; font-size: 13px; line-height: 1.45; text-align: center; box-shadow: var(--shadow); }
+.mobile-hint strong { color: #fff; }
+
+/* Host earnings dashboard (house wallet only) */
+.host-stats { border-color: rgba(255, 210, 63, 0.3); background: linear-gradient(180deg, rgba(255, 210, 63, 0.06), rgba(255, 255, 255, 0.02)); }
+.hs-private { font-family: var(--font); font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #ffd23f; border: 1px solid rgba(255, 210, 63, 0.4); border-radius: 999px; padding: 2px 7px; vertical-align: middle; }
+.hs-tabs { display: flex; gap: 3px; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--panel-line); border-radius: 999px; padding: 3px; margin: 4px 0 4px; }
+.hs-tab { flex: 1; border: 0; background: transparent; color: var(--muted); font-family: var(--display); font-weight: 700; font-size: 12px; padding: 6px 4px; border-radius: 999px; cursor: pointer; transition: color 0.15s, background 0.15s; }
+.hs-tab:hover { color: #fff; }
+.hs-tab.active { color: #1a1300; background: linear-gradient(135deg, #ffd23f, #ffae00); }
+/* Per-game earnings filter tabs — distinct (cyan/violet) so they read apart from the period tabs */
+.hs-gtab { flex: 1; border: 0; background: transparent; color: var(--muted); font-family: var(--display); font-weight: 700; font-size: 12px; padding: 6px 4px; border-radius: 999px; cursor: pointer; transition: color 0.15s, background 0.15s; }
+.hs-gtab:hover { color: #fff; }
+.hs-gtab.active { color: #06121f; background: linear-gradient(135deg, #51e0ff, #8a7dff); }
+
+/* Matrix-style live ETH price ticker */
+.eth-ticker { display: flex; align-items: center; gap: 8px; background: #02110a; border: 1px solid rgba(0, 255, 120, 0.35); border-radius: 10px; padding: 6px 10px; box-shadow: inset 0 0 18px rgba(0, 255, 120, 0.1); overflow: hidden; }
+.eth-ticker-tag { flex: none; font-family: var(--display); font-size: 9px; color: #2bff88; letter-spacing: 1px; text-shadow: 0 0 6px rgba(43, 255, 136, 0.8); animation: blink 1.4s steps(2) infinite; }
+.eth-ticker-win { flex: 1; overflow: hidden; white-space: nowrap; }
+.eth-ticker-track { display: inline-block; will-change: transform; font-family: "Press Start 2P", monospace; font-size: 11px; letter-spacing: 1px; color: #2bff88; text-shadow: 0 0 6px rgba(43, 255, 136, 0.7); animation: tickerScroll 26s linear infinite; }
+.eth-ticker-track.down { color: #ff6b6b; text-shadow: 0 0 6px rgba(255, 107, 107, 0.7); }
+@keyframes tickerScroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.hs-hero { text-align: center; padding: 8px 0 12px; }
+.hs-hero .muted { font-size: 12px; }
+.hs-big { display: block; font-family: var(--display); font-size: clamp(30px, 7vw, 44px); color: #34e39b; text-shadow: 0 0 18px rgba(43, 227, 155, 0.4); line-height: 1.1; margin: 2px 0; }
+.hs-sub { display: block; font-size: 11.5px; }
+.hs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.hs-cell { background: rgba(255, 255, 255, 0.04); border: 1px solid var(--panel-line); border-radius: 10px; padding: 8px 10px; }
+.hs-cell .muted { display: block; font-size: 11px; }
+.hs-cell strong { font-family: var(--display); font-size: 16px; }
+.hs-cell.hs-cash { grid-column: 1 / -1; border-color: rgba(43, 227, 155, 0.35); background: rgba(43, 227, 155, 0.07); }
+.hs-cell.hs-cash strong { color: #34e39b; }
+
+/* ============================================================
+   16-bit / SNES theme — the TV screen renders like a console game
+   ============================================================ */
+.tv-screen { image-rendering: pixelated; image-rendering: crisp-edges; }
+.tv-screen .screen-layer { font-family: "Press Start 2P", var(--display); line-height: 1.5; }
+
+/* recolor screen text to chunky pixel type */
+.idle-title, .waiting-text, .tuning-text, .idle-sub, .waiting-sub, .tuning-sub,
+.result-headline, .result-money, .result-sub, .result-coin, .flip-caption, .standby-badge {
+  font-family: "Press Start 2P", var(--display) !important;
+}
+.idle-title { font-size: clamp(12px, 3.2vw, 22px); text-shadow: 3px 3px 0 #1033ff, 0 0 14px rgba(57, 231, 255, 0.5); }
+.idle-sub { font-size: clamp(8px, 1.8vw, 11px); }
+.waiting-text { font-size: clamp(12px, 3.4vw, 24px); text-shadow: 3px 3px 0 #000; line-height: 1.6; }
+.waiting-sub { font-size: clamp(7px, 1.7vw, 10px); }
+.tuning-text { font-size: clamp(13px, 3.6vw, 26px); text-shadow: 3px 3px 0 #b25b00; }
+.tuning-sub { font-size: clamp(7px, 1.7vw, 10px); }
+.count-num { font-family: "Press Start 2P", var(--display); font-size: clamp(56px, 18vw, 130px); text-shadow: 6px 6px 0 #1033ff, 0 0 30px var(--cyan); }
+.count-num.flip-word { font-size: clamp(30px, 9vw, 72px); text-shadow: 6px 6px 0 #b25b00; }
+.result-headline { font-size: clamp(18px, 5vw, 40px); text-shadow: 4px 4px 0 #000; }
+.result-money { font-size: clamp(20px, 6vw, 44px); }
+.result-sub { font-size: clamp(8px, 1.8vw, 11px); }
+.result-coin { font-size: 9px; }
+.flip-caption { font-size: 10px; }
+.standby-badge { font-size: 9px; }
+
+/* Pixel scoreboard (PLAYER 1 vs PLAYER 2) drawn above the action */
+.scoreboard {
+  position: absolute; top: 10px; left: 0; right: 0; z-index: 3;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 12px;
+  font-family: "Press Start 2P", monospace; font-size: clamp(6px, 1.5vw, 9px);
+}
+.scoreboard .p { display: flex; flex-direction: column; gap: 4px; max-width: 42%; }
+.scoreboard .p.p2 { text-align: right; align-items: flex-end; }
+.scoreboard .p .who { color: var(--cyan); }
+.scoreboard .p.p2 .who { color: var(--magenta); }
+.scoreboard .p .addr { color: #fff; text-shadow: 2px 2px 0 #000; white-space: nowrap; }
+.scoreboard .vs { color: var(--gold); text-shadow: 2px 2px 0 #000; }
+
+/* ───────────────────── COIN — neon arcade gold (smooth · round · glowing · glossy) ─────────────────────
+   Drop-in replacement for the old voxel coin. Perfectly round (border-radius:50%, NO clip-path,
+   NO pixelation). Rich layered 24k gold that pops on a dark CRT, polished metallic rim + masked
+   reeded edge, a traveling specular sweep, a warm pulsing halo, and a punchy white-gold rim-flash
+   on landing. Gold only — all color skins dropped.
+   Keeps every JS hook: .coin / .coin-face / .coin-heads / .coin-tails / .eth-logo + .e1..e6 /
+   .spin / .show-heads / .show-tails / coinSpin / show-heads / show-tails.
+   NOTE: layout (size, perspective, transform-style, transition, the coinSpin/show transforms)
+   is left to the existing JS-driven CSS — this block restyles the coin's *appearance* only. */
+
+.coin {
+  /* tunable gold + glow palette */
+  --g-light:  #fff6c2;   /* hot highlight       */
+  --g-bright: #ffe066;   /* vivid arcade gold   */
+  --g-mid:    #ffc41f;   /* core gold           */
+  --g-deep:   #e69500;   /* amber               */
+  --g-bronze: #a35a00;   /* shadowed rim        */
+  --g-edge:   #7a3d00;   /* deepest rim         */
+  --g-ink:    #5a3800;   /* engraving ink       */
+  --g-glow:      rgba(255, 196, 31, 0.75);
+  --g-glow-soft: rgba(255, 168, 0, 0.45);
+
+  will-change: transform, filter;
+  /* warm halo + grounding shadow; halo gently pulses while idle */
+  filter:
+    drop-shadow(0 14px 20px rgba(0, 0, 0, 0.6))
+    drop-shadow(0 0 14px var(--g-glow-soft))
+    drop-shadow(0 0 30px var(--g-glow-soft));
+  animation: coinHalo 2.4s ease-in-out infinite;
+}
+
+/* idle warm halo breathing */
+@keyframes coinHalo {
+  0%, 100% { filter: drop-shadow(0 14px 20px rgba(0,0,0,0.6)) drop-shadow(0 0 12px var(--g-glow-soft)) drop-shadow(0 0 26px var(--g-glow-soft)); }
+  50%      { filter: drop-shadow(0 14px 20px rgba(0,0,0,0.6)) drop-shadow(0 0 18px var(--g-glow))      drop-shadow(0 0 40px var(--g-glow)); }
+}
+
+/* While spinning: swap the slow idle halo for a brighter, faster glow shimmer.
+   (coinSpin itself is provided by the existing CSS/JS; we add a second glow track.) */
+.coin.spin { animation: coinSpin 0.45s linear infinite, coinSpinGlow 0.45s ease-in-out infinite; }
+@keyframes coinSpinGlow {
+  0%, 100% { filter: drop-shadow(0 14px 20px rgba(0,0,0,0.6)) drop-shadow(0 0 16px var(--g-glow))           drop-shadow(0 0 34px var(--g-glow-soft)); }
+  50%      { filter: drop-shadow(0 14px 20px rgba(0,0,0,0.6)) drop-shadow(0 0 26px rgba(255,255,255,0.25))  drop-shadow(0 0 52px var(--g-glow)); }
+}
+
+/* COOLER LANDING: on .show-heads / .show-tails the glow blooms white-gold then settles.
+   (The show-heads/show-tails *transforms* stay as defined in the existing CSS.) */
+.coin.show-heads,
+.coin.show-tails { animation: coinLandFlash 0.7s ease-out; }
+@keyframes coinLandFlash {
+  0%   { filter: drop-shadow(0 14px 20px rgba(0,0,0,0.6)) drop-shadow(0 0 14px var(--g-glow-soft)); }
+  18%  { filter: drop-shadow(0 14px 20px rgba(0,0,0,0.6)) drop-shadow(0 0 40px #ffffff) drop-shadow(0 0 72px var(--g-glow)) brightness(1.12); }
+  100% { filter: drop-shadow(0 14px 20px rgba(0,0,0,0.6)) drop-shadow(0 0 16px var(--g-glow-soft)) drop-shadow(0 0 32px var(--g-glow-soft)) brightness(1); }
+}
+
+/* ── Round metallic faces ──────────────────────────────────────────────── */
+.coin-face {
+  border-radius: 50%;
+  overflow: hidden;
+  color: var(--g-ink);
+  text-shadow: 0 1px 0 rgba(255, 246, 194, 0.55), 0 -1px 1px rgba(90, 40, 0, 0.4);
+  /* layered gold: hot top-left highlight falling into deep amber/bronze rim */
+  background:
+    radial-gradient(circle at 34% 28%,
+      var(--g-light)  0%,
+      var(--g-bright) 22%,
+      var(--g-mid)    46%,
+      var(--g-deep)   72%,
+      var(--g-bronze) 100%);
+  /* polished rim ring + two-axis satin inner sheen — no chunky voxel bevels */
+  box-shadow:
+    inset 0 0 0 4px rgba(255, 246, 194, 0.45),   /* bright inner lip     */
+    inset 0 0 0 8px var(--g-edge),               /* solid dark rim band  */
+    inset 0 10px 18px rgba(255, 255, 255, 0.45), /* top inner gloss      */
+    inset 0 -14px 22px rgba(122, 61, 0, 0.55),   /* bottom inner shade   */
+    inset 8px 8px 16px rgba(255, 250, 220, 0.22),/* soft TL gloss        */
+    inset -8px -8px 18px rgba(80, 48, 4, 0.42),  /* soft BR depth        */
+    inset 0 0 28px rgba(255, 200, 60, 0.35);     /* warm inner glow      */
+}
+
+/* Reeded / fluted collector-coin edge: repeating conic ticks masked to a thin outer ring.
+   Brightens while spinning for a believable metallic shimmer. */
+.coin-face::before {
+  content: ""; position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+  background:
+    /* electric-gold rim light */
+    conic-gradient(from 220deg,
+      transparent 0deg, rgba(255, 246, 194, 0.55) 28deg, transparent 70deg,
+      transparent 180deg, rgba(255, 224, 102, 0.50) 215deg, transparent 260deg),
+    /* fine reeding */
+    repeating-conic-gradient(from 0deg,
+      rgba(255, 246, 200, 0.40) 0deg 1.6deg,
+      rgba(110, 68, 6, 0.40) 1.6deg 3.2deg);
+  -webkit-mask: radial-gradient(circle, transparent 0 88%, #000 90% 96.5%, transparent 98%);
+          mask: radial-gradient(circle, transparent 0 88%, #000 90% 96.5%, transparent 98%);
+  mix-blend-mode: screen; opacity: 0.85;
+  transition: filter 0.25s ease, opacity 0.25s ease;
+}
+.coin.spin .coin-face::before { opacity: 1; filter: brightness(1.35); }
+
+/* Glossy specular sweep that travels across the face (GPU-cheap translateX),
+   racing while spinning. */
+.coin-face::after {
+  content: ""; position: absolute; inset: -25%; pointer-events: none; border-radius: 50%;
+  background: linear-gradient(115deg,
+    transparent 38%,
+    rgba(255, 255, 255, 0.0) 44%,
+    rgba(255, 255, 255, 0.85) 50%,
+    rgba(255, 255, 255, 0.0) 56%,
+    transparent 62%);
+  transform: translateX(-120%);
+  mix-blend-mode: screen;
+  animation: coinSheen 3.4s ease-in-out infinite;
+}
+.coin.spin .coin-face::after { animation-duration: 0.9s; }
+@keyframes coinSheen {
+  0%   { transform: translateX(-120%); }
+  55%  { transform: translateX(120%); }
+  100% { transform: translateX(120%); }
+}
+
+/* Crisp white-gold rim-flash on landing — a sharp "stamp" pop layered over the bloom. */
+.coin.show-heads .coin-face::before,
+.coin.show-tails .coin-face::before { animation: coinRimFlash 0.7s ease-out; }
+@keyframes coinRimFlash {
+  0%   { opacity: 0.85; filter: brightness(1); }
+  22%  { opacity: 1;    filter: brightness(2.4) saturate(1.35); }
+  100% { opacity: 0.85; filter: brightness(1); }
+}
+
+.coin-face small {
+  font-family: var(--display, "Press Start 2P", monospace);
+  font-size: 11px; letter-spacing: 1px; margin-top: 4px;
+  color: var(--g-ink);
+  text-shadow: 0 1px 0 rgba(255, 246, 194, 0.6), 0 -1px 0 rgba(90, 40, 0, 0.3);
+}
+
+/* HEADS keeps the default gold; TAILS is a slightly deeper, warmer gold reverse. */
+.coin-tails {
+  transform: rotateX(180deg);            /* keep back face */
+  filter: brightness(0.97) saturate(1.05);
+  color: var(--g-edge);
+  font-size: clamp(40px, 11vw, 84px);
+  font-weight: 800; line-height: 1;
+  text-shadow:
+    0 2px 1px rgba(255, 246, 194, 0.55),
+    0 -1px 1px rgba(90, 40, 0, 0.6),
+    0 0 14px rgba(255, 200, 80, 0.4);    /* the ★ embossed + softly glowing */
+}
+
+/* ── Ethereum diamond on heads: smooth, gently embossed darker-gold facets ── */
+.coin-face .eth-logo {
+  width: 50%; height: auto; display: block; position: relative; z-index: 1;
+  margin-bottom: 2px;
+  shape-rendering: geometricPrecision;   /* no crispEdges */
+  filter:
+    drop-shadow(0 1px 0 rgba(255, 246, 194, 0.6))   /* top light edge  */
+    drop-shadow(0 -1px 1px rgba(90, 40, 0, 0.5));   /* under shadow    */
+}
+.eth-logo polygon { stroke: rgba(122, 61, 0, 0.45); stroke-width: 2; stroke-linejoin: round; }
+/* facet shading in deeper gold — lit upper faces lighter, lower faces darker */
+.eth-logo .e1 { fill: #cf8a12; }   /* upper-right        */
+.eth-logo .e2 { fill: #e8a52a; }   /* upper-left (lit)   */
+.eth-logo .e3 { fill: #a86600; }   /* lower-right        */
+.eth-logo .e4 { fill: #b87400; }   /* lower-left         */
+.eth-logo .e5 { fill: #8f5400; }   /* inner-right (shade)*/
+.eth-logo .e6 { fill: #a96400; }   /* inner-left         */
+
+/* ── Accessibility: no infinite pulse / sheen / spin-glow / land-flash ── */
+@media (prefers-reduced-motion: reduce) {
+  .coin { animation: none; }
+  .coin.spin { animation: coinSpin 0.6s linear infinite; }
+  .coin-face::after,
+  .coin.spin .coin-face::after { animation: none; transform: translateX(0); opacity: 0.35; }
+  .coin-face::before,
+  .coin.spin .coin-face::before { animation: none; }
+  .coin.show-heads, .coin.show-tails,
+  .coin.show-heads .coin-face::before, .coin.show-tails .coin-face::before { animation: none; }
+}
+
+/* Mini ETH diamond used inline on the "Heads" side-toggle buttons */
+.eth-mini { width: 0.92em; height: 0.92em; vertical-align: -0.15em; }
+.eth-mini polygon { fill: currentColor; opacity: 0.7; }
+.eth-mini polygon.b { opacity: 1; }
+
+
+/* Pixel "BONUS" sparkle stars layer for wins handled on confetti-canvas */
+
+/* ───────────────── Super Nintendo on top of the TV ───────────────── */
+.snes {
+  width: min(62%, 430px); margin: 0 auto -14px; position: relative; z-index: 2;
+  filter: drop-shadow(0 10px 16px rgba(0, 0, 0, 0.5));
+}
+.snes-body {
+  position: relative; border-radius: 16px 16px 10px 10px; padding: 12px 16px 14px;
+  background: linear-gradient(#d8d8d8, #b9bcc4 60%, #9a9ea9);
+  box-shadow: inset 0 2px 0 #fff, inset 0 -6px 12px rgba(0, 0, 0, 0.25);
+  border: 1px solid #8a8d96;
+}
+.snes-vents { display: flex; gap: 6px; justify-content: center; margin-bottom: 8px; }
+.snes-vents i { width: 26%; height: 5px; background: repeating-linear-gradient(90deg, #8d9099 0 3px, transparent 3px 6px); border-radius: 2px; }
+.snes-center { position: relative; height: 30px; border-radius: 8px; background: linear-gradient(#9aa0ad, #c4c8d0); box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.35); display: flex; align-items: center; justify-content: center; }
+.snes-cart {
+  position: absolute; top: -12px; width: 46%; height: 20px; border-radius: 4px 4px 2px 2px;
+  background: linear-gradient(#3a3f4b, #21242d); box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.15), 0 3px 6px rgba(0, 0, 0, 0.4);
+  border: 1px solid #15171d;
+}
+.snes-cart::after { content: ""; position: absolute; left: 18%; right: 18%; top: 5px; height: 7px; background: #aeb4c2; border-radius: 2px; }
+.snes-eject { font-family: "Press Start 2P", monospace; font-size: 6px; color: #5a5e68; letter-spacing: 1px; }
+.snes-buttons { display: flex; justify-content: center; gap: 22px; margin-top: 10px; }
+.snes-btn { display: flex; flex-direction: column; align-items: center; gap: 4px; font-family: "Press Start 2P", monospace; font-size: 6px; color: #5a5e68; background: none; border: none; cursor: default; }
+.snes-btn span { width: 22px; height: 7px; border-radius: 4px; box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4); }
+.snes-btn.power span { background: linear-gradient(#7b4bd8, #5a2fae); }
+.snes-btn.reset span { background: linear-gradient(#b9bcc4, #8f939c); }
+.snes-label { text-align: center; margin-top: 9px; font-family: "Press Start 2P", monospace; font-size: 7px; color: #5a5e68; }
+.snes-label b { color: #7b4bd8; }
+
+/* The antenna should poke up behind the SNES, not overlap it */
+.tv .snes { margin-top: -8px; }
+
+@media (max-width: 560px) {
+  .snes { width: min(78%, 320px); }
+  .scoreboard { font-size: 6px; }
+}
+
+/* ───────────────────── Responsive / mobile ───────────────────── */
+/* Collapse the 2-column layout earlier (1100px) so the right column never
+   shares a narrow tablet width with the 240px fixed sidebar. */
+@media (max-width: 1100px) {
+  .layout { grid-template-columns: 1fr; }
+  .sidebar { order: 2; }
+}
+@media (max-width: 560px) {
+  .brand-live { display: none; } /* keep .build-tag visible so the version shows on phones */
+  .brand-name { font-size: 18px; }
+  .topbar { padding: 12px 14px; flex-wrap: nowrap; }
+  .tv-body { padding: 14px 14px 12px; border-radius: 22px; }
+  .tv-antenna { height: 50px; }
+  .tv-speaker { display: none; }
+  .bankroll-bal { gap: 12px; }
+  .btn { padding: 9px 13px; font-size: 13px; }
+  .wallet-chip #wallet-addr { max-width: 96px; overflow: hidden; text-overflow: ellipsis; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bg-glow, .scanlines, .idle-logo, .tuning-text, .waiting-dots span, .coin.spin, .chat-dot, .idle-sub,
+  #layer-result.tier-big, #layer-result.tier-mega, .tv-screen.quake, .tv-screen.quake-hard, .eth-ticker-track, #play-house, .tv-pending,
+  .win-banner, #layer-result.tier-mega .result-headline, #layer-result.tier-mega .result-money { animation: none !important; }
+  .tv-screen.quake, .tv-screen.quake-hard { transform: none !important; }
+  .coin { transition: none !important; }
+}
+
+/* ════════════════════ DICE GAME + CHANNEL SWITCHER (CH 09) ════════════════════ */
+/* Game visibility gate — a body class per active game swaps which panel shows.
+   Default (no class) = flip. Each dice-type panel shows only when its game is on. */
+body:not(.game-dice) [data-game="dice"] { display: none !important; }
+body:not(.game-twodice) [data-game="twodice"] { display: none !important; }
+body:not(.game-crash) [data-game="crash"] { display: none !important; }
+body:not(.game-slots) [data-game="slots"] { display: none !important; }
+body:not(.game-pressure) [data-game="pressure"] { display: none !important; }
+body:not(.game-plane) [data-game="plane"] { display: none !important; }
+body:not(.game-slots3d) [data-game="slots3d"] { display: none !important; }
+body:not(.game-fish) [data-game="fish"] { display: none !important; }
+body:not(.game-swoop) [data-game="swoop"] { display: none !important; }
+body:not(.game-fishshooter) [data-game="fishshooter"] { display: none !important; }
+body:not(.game-blackjack) [data-game="blackjack"] { display: none !important; }
+body.game-dice [data-game="flip"], body.game-twodice [data-game="flip"], body.game-crash [data-game="flip"], body.game-slots [data-game="flip"], body.game-pressure [data-game="flip"], body.game-plane [data-game="flip"], body.game-slots3d [data-game="flip"], body.game-fish [data-game="flip"], body.game-swoop [data-game="flip"], body.game-fishshooter [data-game="flip"], body.game-blackjack [data-game="flip"] { display: none !important; }
+/* …but the channel selector tiles are always visible (they're how you switch) */
+#game-nav .game-card { display: flex !important; }
+#game-nav .game-card[hidden] { display: none !important; } /* hidden channels (e.g. poker) stay hidden */
+
+/* ── Crypto TV Channels — Apple home-screen icon selector ── */
+.channels { margin: 4px auto 20px; }
+.channels-head { text-align: center; margin-bottom: 14px; }
+.channels-title { font-family: var(--display); font-size: 17px; font-weight: 800; letter-spacing: .2px; color: #fff; margin: 0; display: inline-flex; align-items: center; gap: 8px; }
+.channels-tv { font-size: 18px; }
+.channels-sub { display: block; margin-top: 3px; font-family: var(--display); font-size: 12px; color: var(--muted); }
+.channels-grid { display: flex; justify-content: center; flex-wrap: wrap; gap: 22px; }
+
+.game-card { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 92px; padding: 0; background: none; border: 0; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.gc-tile { position: relative; width: 84px; height: 84px; border-radius: 22px; display: grid; place-items: center; overflow: hidden;
+  box-shadow: 0 8px 18px rgba(0,0,0,.38), inset 0 1px 0 rgba(255,255,255,.45), inset 0 -10px 18px rgba(0,0,0,.18);
+  transition: transform .22s cubic-bezier(.2,.9,.25,1), box-shadow .22s ease; }
+/* glossy bubble highlight */
+.gc-tile::after { content:""; position:absolute; inset:0; border-radius:22px; background: linear-gradient(180deg, rgba(255,255,255,.42) 0%, rgba(255,255,255,.10) 38%, rgba(255,255,255,0) 60%); pointer-events:none; }
+.game-card.flip .gc-tile { background: linear-gradient(160deg, #7b5cff 0%, #5a32e6 55%, #3d1fb0 100%); }
+.game-card.dice .gc-tile { background: linear-gradient(160deg, #ff8a3d 0%, #ff5d8f 55%, #e23a86 100%); }
+.gc-glyph { width: 58px; height: 58px; position: relative; z-index: 1; filter: drop-shadow(0 2px 3px rgba(0,0,0,.22)); }
+.gc-name { font-family: var(--display); font-size: 14px; font-weight: 700; color: rgba(255,255,255,.92); letter-spacing: .2px; }
+.gc-ch { display:none; }
+
+.game-card:hover .gc-tile { transform: translateY(-3px); box-shadow: 0 14px 26px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.5), inset 0 -10px 18px rgba(0,0,0,.18); }
+.game-card:active .gc-tile { transform: scale(.94); }
+/* selected channel: glowing ring + brighter label */
+.game-card.active .gc-tile { box-shadow: 0 0 0 3px rgba(255,255,255,.9), 0 0 22px 2px var(--cyan), 0 8px 18px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.45); }
+.game-card.dice.active .gc-tile { box-shadow: 0 0 0 3px rgba(255,255,255,.9), 0 0 22px 2px var(--gold), 0 8px 18px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.45); }
+.game-card.active .gc-name { color: #fff; }
+
+.tv-channel.changing { animation: chBadge .42s ease; }
+@keyframes chBadge { 0%{transform:rotateX(0)} 45%{transform:rotateX(90deg) scale(1.1)} 55%{transform:rotateX(-90deg)} 100%{transform:rotateX(0)} }
+.tv-screen.ch-switch { animation: chHold .5s ease; }
+@keyframes chHold { 0%{transform:translateY(0) skewX(0)} 25%{transform:translateY(-16%) skewX(5deg)} 55%{transform:translateY(10%) skewX(-3deg)} 80%{transform:translateY(-4%) skewX(1deg)} 100%{transform:translateY(0)} }
+@media (prefers-reduced-motion: reduce){ .gc-tile { transition: none; } }
+
+/* ── Dice betting panel ── */
+.dice-panel .ch-tag { font-family: var(--display); font-size: 11px; color: var(--gold); background: rgba(255,210,63,.1); border: 1px solid rgba(255,210,63,.3); border-radius: 999px; padding: 2px 8px; margin-left: 6px; }
+.dice-oddsbar { position: relative; height: 30px; border-radius: 10px; margin: 4px 0 26px; border: 1px solid var(--panel-line); background: #0d0f1c; box-shadow: inset 0 1px 4px rgba(0,0,0,.5); }
+/* draggable target bar (replaces the separate slider): taller hit area + a grip knob */
+.dice-oddsbar.is-draggable { height: 40px; margin: 6px 0 30px; cursor: ew-resize; touch-action: none; user-select: none; -webkit-user-select: none; outline: none; }
+.dice-oddsbar.is-draggable:focus-visible { box-shadow: inset 0 1px 4px rgba(0,0,0,.5), 0 0 0 2px var(--gold); }
+.ob-grip { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 16px; height: 26px; border-radius: 6px;
+  background: var(--gold); box-shadow: 0 0 10px var(--gold), inset 0 0 0 2px rgba(0,0,0,.18); pointer-events: none; }
+.ob-grip::after { content: ""; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 2px; height: 12px; background: rgba(0,0,0,.35); box-shadow: -3px 0 rgba(0,0,0,.35), 3px 0 rgba(0,0,0,.35); border-radius: 2px; }
+.ob-draghint { font-size: 11px; }
+.ob-zone { position: absolute; top: 0; bottom: 0; transition: left .08s linear, width .08s linear; border-radius: 8px; }
+.ob-win { background: linear-gradient(90deg, var(--green), var(--cyan)); box-shadow: inset 0 0 16px rgba(69,240,166,.45); }
+.ob-lose { background: linear-gradient(90deg, rgba(255,91,91,.5), rgba(255,77,157,.4)); }
+.ob-ticks i { position: absolute; top: 0; bottom: 0; width: 1px; background: rgba(255,255,255,.12); }
+.ob-target { position: absolute; top: -3px; bottom: -3px; width: 3px; margin-left: -1.5px; background: var(--gold); box-shadow: 0 0 12px var(--gold); transition: left .08s linear; z-index: 3; }
+.ob-flag { position: absolute; top: -22px; left: 50%; transform: translateX(-50%); font-family: var(--display); font-size: 12px; color: #2a0f0d; background: var(--gold); border-radius: 6px; padding: 2px 6px; white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,.5); }
+.slider-dice::-webkit-slider-thumb { border-color: var(--gold); }
+.slider-dice::-moz-range-thumb { border-color: var(--gold); }
+.field-label { display: block; font-size: 13px; color: var(--muted); margin: 4px 0 6px; font-weight: 600; }
+.dice-readouts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 6px 0 14px; }
+.ro-cell { background: rgba(255,255,255,.04); border: 1px solid var(--panel-line); border-radius: 12px; padding: 9px 8px; text-align: center; }
+.ro-k { display: block; font-size: 11px; margin-bottom: 3px; }
+.ro-v { font-family: var(--display); font-size: 17px; transition: transform .15s; display: block; }
+.ro-mult .ro-v { color: var(--cyan); }
+.ro-profit .ro-v { color: var(--green); }
+.ro-v.flash { animation: roFlash .25s; }
+@keyframes roFlash { 0%{transform:scale(1.12)} 100%{transform:scale(1)} }
+.dice-roll-btn { font-family: var(--display); letter-spacing: .5px; font-size: 17px; }
+.dice-roll-hint { margin-top: 8px; text-align: center; font-size: 12px; color: var(--red); }
+.dice-roll-hint:empty { display: none; }
+@media (max-width:380px){ .ro-v { font-size: 15px; } }
+
+/* ── Dice result on the TV ── */
+#layer-dice { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: clamp(6px,1.6vh,14px); padding: 4%; }
+.dice-tv-target { font-family: "Press Start 2P", var(--display); font-size: clamp(9px,2.4vw,13px); color: var(--gold); text-shadow: 0 0 10px rgba(255,210,63,.5); }
+.dice-roll-num { font-family: "Press Start 2P", var(--display); font-size: clamp(38px,12vw,86px); color: #fff; line-height: 1; font-variant-numeric: tabular-nums; text-shadow: 5px 5px 0 #1033ff, 0 0 30px var(--cyan); }
+#layer-dice.win .dice-roll-num { color: #eafff5; text-shadow: 5px 5px 0 #0a6b3e, 0 0 34px var(--green); }
+#layer-dice.lose .dice-roll-num { color: #ffe9e9; text-shadow: 5px 5px 0 #7a1414, 0 0 26px var(--red); }
+.dice-line { position: relative; width: min(86%,420px); height: 18px; border-radius: 999px; background: #0d0f1c; border: 1px solid rgba(255,255,255,.14); }
+.dl-win, .dl-lose { position: absolute; top: 0; bottom: 0; }
+.dl-win { background: linear-gradient(90deg, var(--green), var(--cyan)); opacity: .6; box-shadow: inset 0 0 14px rgba(69,240,166,.5); }
+.dl-lose { background: linear-gradient(90deg, rgba(255,91,91,.5), rgba(255,77,157,.35)); }
+.dl-targetmark { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--gold); box-shadow: 0 0 8px var(--gold); z-index: 2; }
+.dl-marker { position: absolute; top: -18px; left: 0; transform: translateX(-50%); will-change: left; z-index: 3; }
+.dl-marker .dl-pip { color: #fff; font-size: 18px; filter: drop-shadow(0 0 6px var(--cyan)); }
+#layer-dice.win .dl-pip { color: var(--green); }
+#layer-dice.lose .dl-pip { color: var(--red); }
+.dl-scale { position: absolute; top: 22px; left: 0; right: 0; display: flex; justify-content: space-between; font-family: "Press Start 2P", var(--display); font-size: 8px; color: var(--muted); }
+.dice-verdict { font-family: var(--display); font-size: clamp(18px,5vw,34px); }
+#layer-dice.win .dice-verdict { color: var(--green); text-shadow: 0 0 18px rgba(69,240,166,.6); }
+#layer-dice.lose .dice-verdict { color: var(--red); }
+.dice-payout { font-family: var(--display); font-size: clamp(16px,4vw,26px); color: var(--gold); }
+.dice-payout:empty { display: none; }
+#layer-dice.nearmiss .dice-roll-num { animation: nmShake .4s; }
+@keyframes nmShake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-5px)} 75%{transform:translateX(5px)} }
+@media (prefers-reduced-motion: reduce) {
+  .tv-screen.ch-switch, .tv-channel.changing, .channel-glider, .dl-marker { animation: none !important; transition: none !important; }
+}
+
+/* ───────────────── Dice #2 (CH 10) — two physical d6 dice ───────────────── */
+.td-intro { font-size: 12px; margin: 2px 0 10px; }
+/* Dice #2 target: full-width slider so the thumb tracks the scale exactly
+   (no value readout stealing width). The 11px side padding on both the slider
+   wrap and the scale = the thumb radius, so tick labels line up with the thumb
+   at every value, and the selected number lights up to remove all doubt. */
+.td-slider-wrap { width: 100%; margin: 8px 0 2px; padding: 0 11px; }
+.td-slider-wrap .slider { width: 100%; flex: none; display: block; }
+.td-scale { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); padding: 0 11px; margin-top: 2px; }
+.td-scale span { width: 14px; text-align: center; transition: color .1s, transform .1s; }
+.td-scale span.on { color: var(--gold); font-weight: 700; transform: scale(1.35); }
+/* TV reveal layer */
+.td-target { font-family: var(--display); font-weight: 700; color: #cfd6ff; letter-spacing: 1px; font-size: 14px; }
+.td-dice { display: flex; gap: 20px; justify-content: center; align-items: center; margin: 14px 0 6px; }
+.td-sum { font-family: var(--display); font-weight: 800; font-size: 22px; margin-top: 2px; color: #fff; }
+#layer-twodice.win .td-sum { color: #34e39b; }
+#layer-twodice.lose .td-sum { color: #ff7a7a; }
+/* a die: 3x3 grid of pips */
+.die {
+  width: 62px; height: 62px; box-sizing: border-box; padding: 9px;
+  display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); gap: 2px;
+  background: linear-gradient(145deg, #ffffff, #d9deec); border-radius: 14px;
+  box-shadow: 0 6px 0 rgba(0,0,0,.35), inset 0 2px 4px rgba(255,255,255,.8);
+}
+.die span { width: 11px; height: 11px; border-radius: 50%; align-self: center; justify-self: center; visibility: hidden;
+  background: radial-gradient(circle at 35% 30%, #555b73, #14161f); box-shadow: inset 0 1px 1px rgba(0,0,0,.4); }
+.die[data-face="1"] span:nth-child(5) { visibility: visible; }
+.die[data-face="2"] span:nth-child(1), .die[data-face="2"] span:nth-child(9) { visibility: visible; }
+.die[data-face="3"] span:nth-child(1), .die[data-face="3"] span:nth-child(5), .die[data-face="3"] span:nth-child(9) { visibility: visible; }
+.die[data-face="4"] span:nth-child(1), .die[data-face="4"] span:nth-child(3), .die[data-face="4"] span:nth-child(7), .die[data-face="4"] span:nth-child(9) { visibility: visible; }
+.die[data-face="5"] span:nth-child(1), .die[data-face="5"] span:nth-child(3), .die[data-face="5"] span:nth-child(5), .die[data-face="5"] span:nth-child(7), .die[data-face="5"] span:nth-child(9) { visibility: visible; }
+.die[data-face="6"] span:nth-child(1), .die[data-face="6"] span:nth-child(3), .die[data-face="6"] span:nth-child(4), .die[data-face="6"] span:nth-child(6), .die[data-face="6"] span:nth-child(7), .die[data-face="6"] span:nth-child(9) { visibility: visible; }
+.die.rolling { animation: dieTumble 0.45s linear infinite; }
+@keyframes dieTumble {
+  0% { transform: rotate(0) translateY(0); } 25% { transform: rotate(90deg) translateY(-7px); }
+  50% { transform: rotate(180deg) translateY(0); } 75% { transform: rotate(270deg) translateY(-5px); }
+  100% { transform: rotate(360deg) translateY(0); }
+}
+/* channel card accent for Dice #2 */
+.game-card.twodice.active { box-shadow: 0 0 0 2px #8a5bff inset, 0 8px 22px rgba(120,90,255,.28); }
+@media (prefers-reduced-motion: reduce) { .die.rolling { animation: none !important; } }
+
+
+/* ════════════════════ POKER ROOM (CH 11) — responsive neon table ════════════════════
+   Everything inside the table scales with the table itself via container-query
+   units (cqmin/cqw), so seats, cards and text shrink together instead of
+   smushing. The table is portrait-ish on phones (room for 9 seats) and a wide
+   oval on desktop. */
+.poker-view { width: min(98vw, 1340px); margin: 0 auto; padding: 4px 0 26px; }
+.poker-topline { display:flex; justify-content:space-between; align-items:center; gap:8px; margin:2px 6px 8px; flex-wrap:wrap; }
+.poker-topline .pk-title { font-family:"Bungee", sans-serif; font-size: clamp(15px,3.6vw,20px); color:#eaf6ff; letter-spacing:1px; }
+.poker-topline .pk-sub { font-size:11px; color:#6b829e; }
+.poker-topline .pk-house { font-size:12px; color:#9fb3cc; display:flex; align-items:center; gap:6px; }
+.poker-topline .pk-house b { color:#39ff9e; }
+
+/* the oval — a size container so children can use cqmin units */
+.poker-table {
+  position: relative;
+  width: 100%;
+  height: clamp(430px, 86vw, 660px);
+  container-type: size;
+  margin: 0 auto;
+}
+.poker-rail { position:absolute; inset:0; border-radius:50% / 50%;
+  background: radial-gradient(ellipse at 50% 40%, #15263f 0%, #0c1626 58%, #060c16 100%);
+  border: 3px solid #1c2b44;
+  box-shadow: 0 0 0 5px #0b1322, 0 0 26px 3px rgba(0,234,255,.14), inset 0 0 80px rgba(0,0,0,.62); }
+.poker-rail::after { content:""; position:absolute; inset:11% 9%; border-radius:50% / 50%; border:1px dashed rgba(0,234,255,.10); pointer-events:none; }
+
+/* center: pot + board (clamped so it never reaches the side seats) */
+.poker-center { position:absolute; left:50%; top:40%; transform:translate(-50%,-50%); text-align:center; z-index:2;
+  width:min(53cqw, 360px); }
+.poker-pot { font-family:"Press Start 2P", monospace; font-size:clamp(10px,3.2cqmin,15px); color:#ffe34d;
+  margin-bottom:clamp(6px,2cqmin,12px); text-shadow:0 0 10px rgba(255,227,77,.4); }
+.poker-board { display:flex; gap:clamp(3px,1cqmin,7px); justify-content:center; list-style:none; padding:0; margin:0; }
+.poker-status { margin-top:clamp(6px,2cqmin,12px); font-size:clamp(10px,2.6cqmin,13px); color:#cfe6ff; min-height:14px; font-family:"Space Grotesk",sans-serif; }
+
+/* playing cards — board cards scale with the table */
+.pcard { border-radius:7px; background:linear-gradient(160deg,#fff,#e7ecf5);
+  display:flex; flex-direction:column; align-items:center; justify-content:center; position:relative;
+  box-shadow:0 2px 6px rgba(0,0,0,.5); font-family:"Space Grotesk",sans-serif; font-weight:700; color:#16202e; flex:none; }
+.poker-board .pcard { width:clamp(28px,8.4cqmin,58px); height:clamp(40px,11.8cqmin,82px); }
+.poker-board .pcard .pc-r { font-size:clamp(13px,3.8cqmin,24px); line-height:1; }
+.poker-board .pcard .pc-s { font-size:clamp(10px,3cqmin,18px); line-height:1; }
+.pcard .pc-r { font-size:20px; line-height:1; } .pcard .pc-s { font-size:16px; line-height:1; }
+.pcard.red { color:#e0344e; }
+.pcard.back { background:repeating-linear-gradient(45deg,#15233c,#15233c 5px,#1c2f4e 5px,#1c2f4e 10px); border:1px solid #2a3d5c; }
+.pcard.empty { background:rgba(255,255,255,.03); border:1px dashed #20324d; box-shadow:none; }
+.pcard.sm { width:clamp(15px,4.6cqmin,26px); height:clamp(21px,6.4cqmin,36px); border-radius:4px; }
+.pcard.sm .pc-r{ font-size:clamp(8px,2.4cqmin,12px);} .pcard.sm .pc-s{ font-size:clamp(7px,2cqmin,10px);}
+
+/* hole cards in the hero zone (below the table) — bigger, fixed */
+.poker-hole .pcard { width:clamp(58px,16vw,82px); height:clamp(82px,22vw,116px); }
+.poker-hole .pcard .pc-r{ font-size:clamp(22px,6vw,30px);} .poker-hole .pcard .pc-s{ font-size:clamp(17px,4.6vw,23px);}
+
+/* ── seats: compact vertical stack (cards · avatar · name/stack) ── */
+.pseat { position:absolute; transform:translate(-50%,-50%); z-index:3; display:flex; flex-direction:column;
+  align-items:center; gap:clamp(1px,.5cqmin,3px); width:clamp(46px,15cqmin,96px); }
+.pseat__cards { display:flex; gap:2px; justify-content:center; min-height:clamp(18px,5.4cqmin,30px); }
+.pseat__av { width:clamp(32px,10.5cqmin,58px); height:clamp(32px,10.5cqmin,58px); border-radius:50%; position:relative;
+  background:#1a2740; border:2px solid #2a3d5c; display:grid; place-items:center; font-size:clamp(15px,5cqmin,26px); flex:none; }
+.pseat__info { background:#0d1526; border:1px solid #223550; border-radius:7px; padding:clamp(1px,.6cqmin,3px) clamp(4px,1.4cqmin,8px);
+  max-width:clamp(54px,16cqmin,108px); text-align:center; }
+.pseat__name { display:block; font:700 clamp(8px,2.5cqmin,12px)/1.1 "Space Grotesk",sans-serif; color:#cfe6ff;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.pseat__stack { display:block; font:clamp(7px,2.2cqmin,10px)/1.3 "Press Start 2P",monospace; color:#39ff9e; white-space:nowrap; }
+.pseat__bet { position:absolute; top:-9px; left:50%; transform:translateX(-50%);
+  font:clamp(7px,2.1cqmin,10px)/1 "Press Start 2P",monospace; color:#ffe34d; background:#0c1626;
+  border:1px solid #3a3a1a; border-radius:6px; padding:clamp(2px,.7cqmin,4px) clamp(4px,1.3cqmin,7px); white-space:nowrap; }
+.pseat__bet:empty { display:none; }
+.pseat.is-hero .pseat__av { border-color:#2f5d8a; }
+.pseat.is-active .pseat__av { border-color:#00eaff; box-shadow:0 0 16px rgba(0,234,255,.6); }
+.pseat.is-active .pseat__info { border-color:#00eaff; }
+.pseat.is-folded { opacity:.34; filter:grayscale(.6); }
+.pseat.is-allin .pseat__stack { color:#ff4d6d; }
+.pseat__d { position:absolute; top:-5px; right:-5px; width:clamp(14px,4.6cqmin,20px); height:clamp(14px,4.6cqmin,20px);
+  border-radius:50%; background:#fff; color:#0a0a12; font:700 clamp(8px,2.8cqmin,11px)/1 "Press Start 2P",monospace;
+  display:none; align-items:center; justify-content:center; box-shadow:0 0 8px #fff; }
+.pseat.has-button .pseat__d { display:flex; }
+/* depleting timer ring on the active seat */
+.pseat.is-active .pseat__av::before { content:""; position:absolute; inset:-4px; border-radius:50%;
+  background: conic-gradient(#00eaff var(--timer,360deg), #1b2740 0);
+  -webkit-mask: radial-gradient(farthest-side,#0000 calc(100% - 3px),#000 0);
+          mask: radial-gradient(farthest-side,#0000 calc(100% - 3px),#000 0); }
+/* empty seat = join target (dashed ring). Hidden entirely once the hero sits. */
+.pseat.is-empty .pseat__av, .pseat.is-empty .pseat__info, .pseat.is-empty .pseat__cards, .pseat.is-empty .pseat__bet { display:none; }
+.poker-table.is-seated .pseat.is-empty { display:none; }
+.pseat__join { font:clamp(7px,2.4cqmin,11px)/1 "Press Start 2P",monospace; color:#3a5a7d; cursor:pointer; background:rgba(8,14,26,.5);
+  border:1.5px dashed #3a5a7d; border-radius:50%; width:clamp(38px,11cqmin,60px); height:clamp(38px,11cqmin,60px); padding:0; transition:.15s; }
+.pseat__join:hover { color:#00eaff; border-color:#00eaff; box-shadow:0 0 14px rgba(0,234,255,.4); }
+.pseat.is-empty:not(.joinable) .pseat__join { opacity:.3; pointer-events:none; }
+
+/* hero zone below the oval */
+.poker-herozone { display:flex; flex-direction:column; align-items:center; gap:10px; margin-top:12px; }
+.poker-hole { display:flex; gap:6px; min-height:clamp(82px,22vw,116px); align-items:center; }
+.poker-actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:center; min-height:44px; }
+.pbtn { font:clamp(9px,2.6vw,12px)/1 "Press Start 2P",monospace; padding:clamp(10px,2.4vw,15px) clamp(12px,3vw,20px);
+  border-radius:8px; border:2px solid; background:#0d1526; cursor:pointer; letter-spacing:.03em; color:#cfe6ff; transition:transform .08s, box-shadow .15s; }
+.pbtn:active { transform:translateY(2px); } .pbtn[disabled]{ opacity:.3; cursor:not-allowed; }
+.pbtn.fold { color:#ff4d6d; border-color:#ff4d6d; }
+.pbtn.check, .pbtn.call { color:#39ff9e; border-color:#39ff9e; }
+.pbtn.raise { color:#0a0a12; background:#00eaff; border-color:#00eaff; box-shadow:0 0 14px rgba(0,234,255,.5); }
+.praise-wrap { display:flex; align-items:center; gap:7px; background:#0b1322; border:1px solid #223550; border-radius:10px; padding:6px 9px; flex-wrap:wrap; justify-content:center; }
+.praise-wrap input[type=range]{ accent-color:#00eaff; width:clamp(110px,40vw,180px); }
+.praise-amt { font:11px/1 "Press Start 2P",monospace; color:#ffe34d; min-width:6ch; text-align:center; }
+.praise-presets { display:flex; gap:5px; }
+.ppreset { font:9px/1 "Press Start 2P",monospace; color:#9fb3cc; background:#0d1526; border:1px solid #223550; border-radius:6px; padding:7px 8px; cursor:pointer; }
+.ppreset:hover { color:#00eaff; border-color:#00eaff; }
+.poker-hint { font-size:12px; color:#6b829e; font-family:"Space Grotesk",sans-serif; min-height:15px; }
+
+/* buy-in / modal */
+.poker-modal { position:fixed; inset:0; background:rgba(4,6,12,.8); display:grid; place-items:center; z-index:200; padding:16px; }
+.poker-modal.hidden { display:none; }
+.poker-card-modal { background:#0c1424; border:1px solid #25395a; border-radius:14px; padding:22px 24px; width:min(94vw,380px); text-align:center; box-shadow:0 18px 60px rgba(0,0,0,.6); }
+.poker-card-modal h3 { font-family:"Bungee",sans-serif; color:#eaf6ff; margin:0 0 6px; font-size:18px; }
+.poker-card-modal p { color:#9fb3cc; font-size:12px; margin:0 0 14px; }
+.poker-card-modal .pm-row { display:flex; gap:8px; align-items:center; margin:12px 0; }
+.poker-card-modal input[type=range]{ accent-color:#00eaff; flex:1; }
+.poker-card-modal .pm-amt { font:13px/1 "Press Start 2P",monospace; color:#ffe34d; min-width:6ch; }
+@media (prefers-reduced-motion: reduce){ .pseat.is-active .pseat__av::before{ transition:none; } }
+
+/* poker takes over the screen; the TV layout hides */
+body.game-poker .layout { display:none !important; }
+body:not(.game-poker) #poker-view { display:none !important; }
+
+/* ---------------------------------------------------------------------------
+   Reflective-glass overlay — makes #tv-screen read like real curved CRT glass.
+   Sits above every screen layer but never eats pointer events. The base layer
+   does the convex sheen + edge darkening; ::before is the big diagonal glare
+   streak, ::after a fainter secondary streak. mix-blend-mode:screen brightens
+   highlights without washing out the neon content underneath.
+--------------------------------------------------------------------------- */
+.tv-glass {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+  border-radius: inherit;
+  overflow: hidden;
+}
+
+/* Convex glass curvature: a bright top-left hotspot, gloss falloff toward the
+   bottom, plus subtle edge vignetting so the panel looks rounded, not flat. */
+.tv-glass::before,
+.tv-glass::after {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  pointer-events: none;
+}
+
+/* --- Subtle showroom glare (default) --------------------------------------
+   Reads like soft ambient room light catching the glass. Two crossing
+   diagonal streaks, gentle and slightly cyan-tinted to match the theme. */
+.tv-glass--subtle {
+  background:
+    /* convex curvature sheen — hotspot upper-left */
+    radial-gradient(120% 90% at 18% 12%,
+      rgba(255,255,255,0.18) 0%,
+      rgba(255,255,255,0.06) 18%,
+      rgba(255,255,255,0) 42%),
+    /* top gloss band */
+    linear-gradient(165deg,
+      rgba(255,255,255,0.10) 0%,
+      rgba(255,255,255,0.02) 22%,
+      rgba(255,255,255,0) 46%),
+    /* edge darkening for the curved-glass falloff */
+    radial-gradient(135% 120% at 50% 50%,
+      rgba(0,0,0,0) 62%,
+      rgba(0,0,0,0.22) 100%);
+  mix-blend-mode: screen;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.16),
+    inset 0 0 22px rgba(0,0,0,0.34);
+}
+
+/* Primary diagonal glare streak */
+.tv-glass--subtle::before {
+  background: linear-gradient(255deg,
+    rgba(255,255,255,0) 38%,
+    rgba(190,245,255,0.05) 47%,
+    rgba(255,255,255,0.14) 50%,
+    rgba(190,245,255,0.05) 53%,
+    rgba(255,255,255,0) 62%);
+  transform: rotate(-8deg) skewX(-12deg);
+  filter: blur(6px);
+  mix-blend-mode: screen;
+  animation: glassShimmer 16s ease-in-out infinite;
+}
+
+/* Fainter secondary streak, offset and thinner */
+.tv-glass--subtle::after {
+  background: linear-gradient(255deg,
+    rgba(255,255,255,0) 64%,
+    rgba(255,255,255,0.07) 72%,
+    rgba(255,255,255,0) 80%);
+  transform: rotate(-8deg) skewX(-12deg) translateX(8%);
+  filter: blur(8px);
+  mix-blend-mode: screen;
+}
+
+/* --- Glossier variant (swap the class on the div to try it) ---------------- */
+.tv-glass--glossy {
+  background:
+    radial-gradient(120% 90% at 20% 10%,
+      rgba(255,255,255,0.30) 0%,
+      rgba(255,255,255,0.10) 16%,
+      rgba(255,255,255,0) 40%),
+    linear-gradient(160deg,
+      rgba(255,255,255,0.18) 0%,
+      rgba(255,255,255,0.04) 24%,
+      rgba(255,255,255,0) 44%),
+    radial-gradient(140% 120% at 50% 55%,
+      rgba(0,0,0,0) 56%,
+      rgba(0,0,0,0.30) 100%);
+  mix-blend-mode: screen;
+  box-shadow:
+    inset 0 2px 0 rgba(255,255,255,0.22),
+    inset 0 0 30px rgba(0,0,0,0.42);
+}
+.tv-glass--glossy::before {
+  background: linear-gradient(255deg,
+    rgba(255,255,255,0) 34%,
+    rgba(200,248,255,0.10) 46%,
+    rgba(255,255,255,0.26) 50%,
+    rgba(200,248,255,0.10) 54%,
+    rgba(255,255,255,0) 66%);
+  transform: rotate(-8deg) skewX(-12deg);
+  filter: blur(5px);
+  mix-blend-mode: screen;
+  animation: glassShimmer 14s ease-in-out infinite;
+}
+
+/* Slow, barely-there drift so the glare feels alive as you move the device */
+@keyframes glassShimmer {
+  0%   { transform: rotate(-8deg) skewX(-12deg) translateX(-4%); opacity: 0.85; }
+  50%  { transform: rotate(-8deg) skewX(-12deg) translateX(4%);  opacity: 1; }
+  100% { transform: rotate(-8deg) skewX(-12deg) translateX(-4%); opacity: 0.85; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tv-glass::before { animation: none; }
+}
+
+
+/* ════════════════════ CRASH GAME — rocket on the TV (CH 11) ════════════════════ */
+/* The renderer paints the rocket scene onto this canvas, sized to the screen. */
+#layer-crash { padding: 0; overflow: hidden; }
+.crash-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+/* Live multiplier read-out, overlaid near the top of the screen */
+.crash-hud { position: absolute; left: 0; right: 0; top: 7%; text-align: center; pointer-events: none; z-index: 3; }
+.crash-mult {
+  font-family: "Press Start 2P", var(--display); line-height: 1; font-variant-numeric: tabular-nums;
+  font-size: clamp(26px, 9vw, 60px); color: #eafdff;
+  text-shadow: 4px 4px 0 #0a2a6b, 0 0 26px var(--cyan);
+}
+.crash-mult.win  { color: #eafff5; text-shadow: 4px 4px 0 #0a6b3e, 0 0 30px var(--green); }
+.crash-mult.bust { color: #ffe9e9; text-shadow: 4px 4px 0 #7a1414, 0 0 26px var(--red); animation: nmShake .4s; }
+.crash-sub {
+  margin-top: 8px; font-family: var(--display); font-weight: 700;
+  font-size: clamp(11px, 3vw, 18px); color: #bfe9ff; text-shadow: 0 0 10px rgba(0,234,255,.4);
+}
+#layer-crash.win  .crash-sub { color: var(--green); }
+#layer-crash.lose .crash-sub { color: var(--red); }
+/* Number-input target reuses the slider look but stays legible */
+#crash-target.slider-dice {
+  -webkit-appearance: none; appearance: none; width: 100%; height: 40px;
+  background: #0c1424; border: 1px solid #25395a; border-radius: 10px;
+  color: #ffe34d; font: 700 16px/1 "Space Grotesk", sans-serif; text-align: center; padding: 0 10px;
+  touch-action: auto; -ms-touch-action: auto; /* it's a typed number field, not a range slider */
+}
+#crash-target.slider-dice:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 0 2px rgba(0,234,255,.25); }
+#crash-target-presets .qbet { font-weight: 700; }
+
+/* ════════════════════ CRYPTO REELS — slot on the TV (CH 12) ════════════════════ */
+/* The PixiJS canvas mounts here and is scaled to fit the TV screen. */
+#layer-slots { padding: 0; overflow: hidden; }
+.pixi-mount { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+/* Pixi appends a <canvas>; fit it to the screen while preserving the 960x600 aspect */
+.pixi-mount canvas { max-width: 100%; max-height: 100%; width: auto; height: auto; display: block; }
+/* Small status line overlaid at the bottom of the screen */
+.slots-hud { position: absolute; left: 0; right: 0; bottom: 5%; text-align: center; pointer-events: none; z-index: 3; }
+.slots-msg {
+  font-family: var(--display); font-weight: 700; font-size: clamp(11px, 3vw, 18px);
+  color: #bfe9ff; text-shadow: 0 0 10px rgba(0,234,255,.45); letter-spacing: 1px;
+}
+#layer-slots.win  .slots-msg { color: var(--green); text-shadow: 0 0 14px rgba(69,240,166,.6); }
+#layer-slots.lose .slots-msg { color: #9aa3c7; }
+
+/* ════════════════════════════════════════════════════════════════════
+   STAKE-STYLE SHELL — fixed left sidebar, clean top bar, flat dark navy.
+   The TV screen + game reveals keep their neon look; everything around
+   them adopts Stake's professional palette.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── Left sidebar (was the horizontal .channels strip) ── */
+.channels {
+  position: fixed; left: 0; top: 0; bottom: 0; width: var(--rail-w);
+  margin: 0; padding: 0; z-index: 66;
+  background: var(--s-panel); border-right: 1px solid var(--s-border);
+  display: flex; flex-direction: column; overflow-y: auto; overflow-x: hidden;
+}
+.channels::-webkit-scrollbar { width: 8px; }
+.channels::-webkit-scrollbar-thumb { background: var(--s-border); border-radius: 8px; }
+.rail-brand {
+  display: flex; align-items: center; gap: 8px; padding: 16px 16px 10px;
+  font-family: var(--display); color: var(--s-text); font-size: 17px; letter-spacing: .5px;
+}
+.rail-brand-tv { font-size: 22px; }
+.rail-brand-accent { color: var(--s-green); }
+.channels-head { padding: 8px 18px 2px; display: block; }
+.channels-title {
+  margin: 0; font: 700 11px/1 var(--s-font); letter-spacing: 1.4px;
+  color: var(--s-muted); text-transform: uppercase;
+}
+.channels-sub { display: none; }
+.channels-grid { display: flex !important; flex-direction: column; gap: 2px; padding: 6px 8px; margin: 0; min-width: 0; }
+
+/* game menu rows */
+#game-nav .game-card {
+  display: flex !important; flex-direction: row; align-items: center; gap: 12px;
+  width: 100%; padding: 9px 10px; border: none; border-radius: var(--r-sm);
+  background: transparent; cursor: pointer; text-align: left; box-shadow: none;
+  color: var(--s-text-2); font: 600 14px/1 var(--s-font); min-height: 0;
+  transition: background .12s, color .12s;
+}
+#game-nav .game-card:hover { background: var(--s-surface); color: var(--s-text); transform: none; }
+#game-nav .game-card.active { background: var(--s-surface); color: var(--s-text); box-shadow: inset 3px 0 0 var(--s-green); }
+#game-nav .game-card .gc-tile {
+  width: 28px; height: 28px; flex: 0 0 28px; padding: 0; margin: 0;
+  display: grid; place-items: center; background: none; border: none; box-shadow: none; border-radius: 0;
+}
+#game-nav .game-card .gc-glyph { width: 26px; height: 26px; filter: none; }
+#game-nav .game-card .gc-name { font: inherit; margin: 0; color: inherit; text-shadow: none; }
+#game-nav .game-card[hidden] { display: none !important; }
+
+.rail-sep { height: 1px; background: var(--s-border); margin: 8px 14px; }
+.rail-links { display: flex; flex-direction: column; gap: 2px; padding: 0 8px; }
+.rail-link {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 9px 10px; border: none; border-radius: var(--r-sm); background: transparent;
+  color: var(--s-text-2); font: 600 14px/1 var(--s-font); cursor: pointer; text-align: left;
+}
+.rail-link:hover { background: var(--s-surface); color: var(--s-text); }
+.rail-link[hidden] { display: none; }
+.rail-foot { margin-top: auto; padding: 14px 16px; border-top: 1px solid var(--s-border); display: flex; flex-direction: column; gap: 4px; }
+.rail-foot-net { display: flex; align-items: center; gap: 7px; color: var(--s-text-2); font: 600 12px/1 var(--s-font); }
+.rail-foot-net i { width: 7px; height: 7px; border-radius: 50%; background: var(--s-green); box-shadow: 0 0 8px var(--s-green); }
+.rail-foot-sub { color: var(--s-muted); font: 500 11px/1.3 var(--s-font); }
+
+/* ── Top bar ── */
+.topbar {
+  position: sticky; top: 0; z-index: 50;
+  background: var(--s-panel); border-bottom: 1px solid var(--s-border);
+  min-height: calc(var(--topbar-h) + env(safe-area-inset-top, 0px));
+  padding: env(safe-area-inset-top, 0px) 18px 0; backdrop-filter: none;
+}
+.topbar .brand-name, .topbar .brand-tv { display: none; } /* brand lives in the sidebar now */
+.brand-live { background: transparent; }
+.testnet-chip { background: var(--s-surface); border: 1px solid var(--s-border); color: var(--s-text-2); }
+.build-tag { color: var(--s-muted); }
+.rail-toggle {
+  display: none; align-items: center; justify-content: center;
+  flex: 0 0 38px;
+  width: 38px; height: 38px; border-radius: var(--r-sm); border: 1px solid var(--s-border);
+  background: var(--s-surface); color: var(--s-text); font-size: 18px; cursor: pointer;
+}
+
+/* ── Tidier top bar: one row, grouped icon tools, prominent Connect ── */
+.topbar { display: flex; align-items: center; gap: 12px; flex-wrap: nowrap; }
+.brand { flex: 1 1 auto; min-width: 0; flex-wrap: nowrap; overflow: hidden; gap: 6px 10px; }
+.topbar-right { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; margin-left: auto; flex-wrap: nowrap; }
+/* group music/help/chat into one neat tray so they stop competing with Connect */
+.tb-tools { display: inline-flex; align-items: center; gap: 6px; padding: 3px; border-radius: var(--r-md); background: rgba(0,0,0,0.22); border: 1px solid var(--s-border); }
+.btn-icon { width: 38px; height: 38px; padding: 0; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 16px; line-height: 1; border-radius: var(--r-sm); background: var(--s-surface); border: 1px solid var(--s-border); color: var(--s-text-2); }
+.btn-icon:hover { background: var(--s-border); color: var(--s-text); }
+.btn-icon.active, #chat-toggle.active, #sound-btn.active { color: var(--s-green); border-color: var(--s-green); }
+/* version reads as a quiet build stamp, not a control */
+.build-tag { font-size: 10px; font-weight: 700; color: var(--s-muted); background: none; border: none; padding: 0 2px; letter-spacing: .3px; }
+
+/* ── Closable notice banners (DEMO bar + the "on a phone" hint) ── */
+.demo-bar, .mobile-hint { position: relative; padding-right: 38px; }
+.notice-x { position: absolute; top: 6px; right: 8px; width: 26px; height: 26px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center; border: none; border-radius: 999px;
+  background: rgba(0,0,0,.20); color: inherit; opacity: .7; font-size: 13px; line-height: 1; cursor: pointer; }
+.notice-x:hover { opacity: 1; background: rgba(0,0,0,.34); }
+.notice-dismissed { display: none !important; }
+
+@media (max-width: 900px) { .btn-icon { min-width: 40px; min-height: 40px; } .notice-x { width: 30px; height: 30px; } }
+/* mobile version pill sitting just right of the ☰ menu (the brand build-tag is hidden on phones) */
+.build-tag-m { display: none; }
+@media (max-width: 480px) {
+  .testnet-chip, .build-tag { display: none; }
+  .build-tag-m { display: inline-flex; align-items: center; flex: 0 0 auto; margin-right: auto;
+    font-family: var(--display); font-size: 10px; font-weight: 700; letter-spacing: .3px; color: var(--cyan);
+    border: 1px solid rgba(57,231,255,.35); background: rgba(57,231,255,.08); border-radius: 999px; padding: 3px 7px; }
+  .tb-tools { gap: 4px; padding: 2px; }
+  .btn-icon { width: 36px; height: 36px; }
+  #connect-btn { padding: 9px 12px; font-size: 13px; }
+  .topbar { gap: 8px; }
+}
+@media (max-width: 360px) {
+  .brand-tv { display: none; }
+  #connect-btn { padding: 8px 10px; }
+  .tb-tools { background: none; border: none; padding: 0; gap: 2px; }
+}
+
+/* ── Cards / panels → Stake flat surfaces ── */
+.card {
+  background: var(--s-panel); border: 1px solid var(--s-border);
+  border-radius: var(--r-md); box-shadow: none; backdrop-filter: none;
+}
+.card-title { color: var(--s-text); }
+.input, .slider-val, .share-input {
+  background: var(--s-surface); border-color: var(--s-border); color: var(--s-text);
+}
+.field-label { color: var(--s-text-2); }
+
+/* ── Buttons → Stake green primary, surface ghost ── */
+.btn-primary {
+  background: var(--s-green); color: #06231a; border: none;
+  box-shadow: none; text-shadow: none; font-weight: 700;
+}
+.btn-primary:hover { background: var(--s-green-h); box-shadow: 0 0 0 1px var(--s-green-glow) inset; }
+.btn-primary:disabled { background: var(--s-surface); color: var(--s-muted); }
+.btn-ghost { background: var(--s-surface); border: 1px solid var(--s-border); color: var(--s-text-2); }
+.btn-ghost:hover { background: var(--s-border); color: var(--s-text); }
+#connect-btn { background: var(--s-green); color: #06231a; font-weight: 700; }
+.dice-roll-btn, .btn-block.btn-primary { letter-spacing: .3px; }
+
+/* ── Main content gets a little breathing room from the rail ── */
+.layout { padding-left: 0; }
+
+/* ════════ Responsive: sidebar → slide-in drawer ════════ */
+@media (max-width: 900px) {
+  body { padding-left: 0; }
+  .channels {
+    transform: translateX(-100%); transition: transform .22s ease;
+    box-shadow: 0 0 40px rgba(0,0,0,.6); width: min(82vw, 300px);
+  }
+  body.rail-open .channels { transform: translateX(0); }
+  body.rail-open::after {
+    content: ""; position: fixed; inset: 0; z-index: 65; background: rgba(0,0,0,.5);
+  }
+  .rail-toggle { display: inline-flex; }
+}
+
+/* ── Stake shell: neutralize leftover icon-tile gloss/hover from the old grid ── */
+#game-nav .game-card .gc-tile::after { display: none !important; }
+#game-nav .game-card:hover .gc-tile,
+#game-nav .game-card.active .gc-tile,
+#game-nav .game-card:active .gc-tile { transform: none !important; box-shadow: none !important; }
+#game-nav .game-card.flip .gc-tile,
+#game-nav .game-card.dice .gc-tile,
+#game-nav .game-card.twodice .gc-tile,
+#game-nav .game-card.crash .gc-tile,
+#game-nav .game-card.slots .gc-tile,
+#game-nav .game-card.plane .gc-tile,
+#game-nav .game-card.slots3d .gc-tile { background: none !important; }
+
+/* ════════ Mobile gesture lockdown ════════
+   Dragging a slider must move the SLIDER, never pan/swipe the page; and the page
+   must not be horizontally swipeable off-screen by accident. */
+html, body {
+  overflow-x: hidden;
+  overscroll-behavior-x: none;   /* no horizontal rubber-band / swipe-nav */
+}
+/* Range sliders capture horizontal thumb drags but must still allow a vertical
+   swipe to scroll the page (pan-y), so a finger that lands on a slider mid-scroll
+   doesn't freeze the page. */
+.slider,
+input[type="range"] {
+  touch-action: pan-y;
+  -ms-touch-action: pan-y;
+}
+/* The slider track/thumb shouldn't be text-selectable on a drag either. */
+.slider, .slider-wrap, .td-slider-wrap {
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+}
+
+/* ── Wallet cluster: keep the disconnect button on-screen on mobile ── */
+.wallet-cluster { display: flex; align-items: center; gap: 10px; }
+body:not(.connected) .wallet-cluster { display: none; }
+@media (max-width: 640px) {
+  .topbar { padding-left: 8px; padding-right: 8px; gap: 6px; overflow: hidden; }
+  .topbar-right { flex-wrap: nowrap; justify-content: flex-end; gap: 6px; min-width: 0; flex: 1 1 auto; overflow: hidden; }
+  .wallet-cluster { flex: 1 1 118px; min-width: 96px; max-width: 180px; flex-direction: row; align-items: center; gap: 4px; overflow: hidden; }
+  .wallet-chip { min-width: 0; flex: 1 1 auto; }
+  #wallet-addr { min-width: 0; max-width: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #disconnect-btn {
+    flex: 0 0 auto;
+    width: 42px;
+    height: 30px;
+    padding: 0;
+    font-size: 0;
+    overflow: hidden;
+  }
+  #disconnect-btn::before { content: "OUT"; font-size: 10px; letter-spacing: .4px; }
+}
+@media (max-width: 480px) {
+  .topbar-right { gap: 4px; }
+  .btn-icon { width: 34px; height: 34px; min-width: 34px; min-height: 34px; font-size: 14px; }
+  .net-badge { width: 28px; height: 30px; justify-content: center; padding: 0; }
+  .net-badge span { display: none; }
+  .tb-tools { flex: 0 0 auto; gap: 1px; padding: 1px; }
+  .wallet-cluster { max-width: 126px; min-width: 82px; padding-left: 3px; }
+  .wallet-chip { gap: 4px; }
+  .wallet-chip canvas { width: 22px; height: 22px; }
+  #disconnect-btn { width: 34px; height: 28px; }
+  #disconnect-btn::before { font-size: 9px; }
+  body.connected .wallet-cluster #disconnect-btn { padding: 0; }
+}
+
+/* ════════ Stake cohesion: unify the remaining neon panels/accents ════════ */
+/* Chat — clean dark panel instead of the matrix-green terminal */
+.chat-card { background: var(--s-panel); border-color: var(--s-border); }
+.chat-card .card-title { color: var(--s-text); }
+.chat-dot { color: var(--s-green); }
+.chat-log {
+  background: var(--s-bg-deep); border: 1px solid var(--s-border);
+  text-shadow: none; color: var(--s-text-2); font-family: var(--s-font);
+}
+.chat-sys { color: var(--s-muted); }
+.chat-line.host .chat-handle { color: var(--s-green); text-shadow: none; }
+.chat-line.host .chat-text { color: #cfe9d6; }
+.chat-line.visitor .chat-handle { color: var(--s-red); text-shadow: none; }
+.chat-line.visitor .chat-text { color: #f0c2c8; }
+.chat-prompt { color: var(--s-green); }
+.chat-input {
+  background: var(--s-surface); border: 1px solid var(--s-border); color: var(--s-text);
+  font-family: var(--s-font);
+}
+.chat-input::placeholder { color: var(--s-muted); }
+.chat-input:focus { border-color: var(--s-green); box-shadow: 0 0 0 3px rgba(0,231,1,.15); }
+.chat-card .btn-mini { background: var(--s-green); color: #06231a; font-weight: 700; }
+
+/* ETH ticker — flat surface, green tag */
+.eth-ticker { background: var(--s-surface); border: 1px solid var(--s-border); box-shadow: none; }
+.eth-ticker-tag { color: var(--s-green); text-shadow: none; }
+.eth-ticker-track { color: var(--s-text-2); text-shadow: none; }
+.eth-ticker-track.down { color: var(--s-red); text-shadow: none; }
+
+/* Accent chips + readouts → single Stake-green accent */
+.pill { background: rgba(0,231,1,.14); color: var(--s-green); }
+.dice-panel .ch-tag, .ch-tag {
+  color: var(--s-green); background: rgba(0,231,1,.1); border: 1px solid rgba(0,231,1,.32);
+}
+.ro-mult .ro-v { color: var(--s-text); }
+.ro-profit .ro-v { color: var(--s-green); }
+
+/* History rows + host-stats cells → Stake surfaces */
+.hist-item, .hs-cell { background: var(--s-surface); border-color: var(--s-border); }
+.hs-big { color: var(--s-green); text-shadow: none; }
+.hs-cell.hs-cash { background: rgba(0,231,1,.07); border-color: rgba(0,231,1,.32); }
+.hs-cell.hs-cash strong { color: var(--s-green); }
+
+/* ════════ Slide-in chat drawer ════════ */
+.chat-drawer {
+  position: fixed; right: 0; top: 0; bottom: 0; z-index: 70;
+  width: min(86vw, 380px); display: flex; flex-direction: column;
+  background: var(--s-panel); border-left: 1px solid var(--s-border);
+  transform: translateX(100%);
+  transition: transform .34s cubic-bezier(.32,.72,0,1); /* iOS-like slide-over */
+  box-shadow: -10px 0 44px rgba(0,0,0,.5);
+  padding-top: env(safe-area-inset-top); padding-right: env(safe-area-inset-right); padding-bottom: env(safe-area-inset-bottom);
+  will-change: transform;
+}
+body.chat-open .chat-drawer { transform: translateX(0); }
+
+/* ── Right-edge pull tab: peeks from the edge, opens the chat (iOS slide-over style) ── */
+.chat-tab {
+  position: fixed; z-index: 69; right: 0; top: 50%; transform: translateY(-50%);
+  width: 34px; height: 64px; display: flex; align-items: center; justify-content: center;
+  background: rgba(26,44,56,.82); border: 1px solid var(--s-border); border-right: none;
+  border-radius: var(--r-md) 0 0 var(--r-md); color: var(--s-green);
+  box-shadow: -4px 0 18px rgba(0,0,0,.4), inset 0 0 12px rgba(0,231,1,.08);
+  cursor: pointer; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  transition: transform .34s cubic-bezier(.32,.72,0,1), opacity .2s ease; padding: 0;
+}
+.chat-tab-glyph { font-size: 17px; line-height: 1; pointer-events: none; }
+.chat-tab:active { background: var(--s-surface); }
+body.chat-open .chat-tab { transform: translate(120%, -50%); opacity: 0; pointer-events: none; }
+@media (min-width: 901px) { .chat-tab { display: none; } } /* desktop uses the top-bar 💬 */
+@media (max-width: 900px) { .chat-tab::before { content: ""; position: absolute; right: 0; top: 50%; transform: translateY(-50%); width: 44px; height: 72px; } }
+
+/* shared red unread pill (tab, top-bar 💬, bottom-nav Chat) */
+.chat-badge { position: absolute; top: -5px; right: -5px; min-width: 17px; height: 17px; padding: 0 4px;
+  border-radius: var(--r-full); background: var(--s-red, #e9113c); color: #fff; font: 700 10px/17px var(--s-font);
+  text-align: center; box-shadow: 0 0 0 2px var(--s-panel), 0 0 10px rgba(233,17,60,.6); pointer-events: none; }
+.chat-badge.hidden { display: none; }
+.btn-icon.has-badge { position: relative; }
+.bn-ic { position: relative; }
+@keyframes chatTabPulse { 0%,100% { box-shadow: -4px 0 18px rgba(0,0,0,.4), inset 0 0 12px rgba(0,231,1,.08); } 50% { box-shadow: -4px 0 22px rgba(0,231,1,.55), inset 0 0 18px rgba(0,231,1,.30); } }
+.chat-tab.pulsing { animation: chatTabPulse 1.1s ease-in-out 4; }
+.chat-tab.pulsing .chat-tab-glyph { animation: chatNudge .9s ease-in-out 4; }
+@keyframes chatNudge { 0%,100%{transform:translateX(0)} 50%{transform:translateX(-2px)} }
+.chat-drawer-head { display: flex; align-items: center; gap: 8px; padding: 14px 16px; border-bottom: 1px solid var(--s-border); }
+.chat-drawer-title { font: 700 14px/1 var(--s-font); color: var(--s-text); }
+.chat-online { display: flex; align-items: center; gap: 5px; font: 600 11px/1 var(--s-font); color: var(--s-text-2); }
+.chat-online i { width: 7px; height: 7px; border-radius: 50%; background: var(--s-green); box-shadow: 0 0 8px var(--s-green); }
+.chat-drawer-close { margin-left: auto; background: var(--s-surface); border: 1px solid var(--s-border); color: var(--s-text-2); border-radius: var(--r-sm); width: 30px; height: 30px; cursor: pointer; font-size: 14px; line-height: 1; }
+.chat-drawer-close:hover { color: var(--s-text); }
+.chat-drawer .chat-card { flex: 1; display: flex; flex-direction: column; margin: 12px; border: none; background: transparent; padding: 0; box-shadow: none; min-height: 0; }
+.chat-drawer .chat-log { flex: 1; height: auto; min-height: 0; }
+.chat-note { font-size: 11px; margin: 8px 2px 0; }
+/* dim + tappable scrim behind the drawer on small screens (tap to close) */
+.chat-scrim { position: fixed; inset: 0; z-index: 67; background: rgba(0,0,0,.5); opacity: 0; pointer-events: none; transition: opacity .34s ease; }
+@media (max-width: 900px) { body.chat-open .chat-scrim { opacity: 1; pointer-events: auto; } }
+@media (prefers-reduced-motion: reduce) {
+  .chat-drawer { transition: none; }
+  .chat-tab { transition: opacity .15s linear; }
+  .chat-scrim { transition: opacity .15s linear; }
+  .chat-tab.pulsing, .chat-tab.pulsing .chat-tab-glyph { animation: none; }
+}
+
+/* ════════ Mobile bottom tab bar ════════ */
+.bottom-nav { display: none; }
+@media (max-width: 900px) {
+  /* meet the ~44px touch-target guidance for the smallest, most-tapped controls */
+  .btn-mini, .mm-ctrl, .chat-drawer-close, .modal-close {
+    min-width: 40px; min-height: 40px;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .bottom-nav {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 64;
+    background: var(--s-panel); border-top: 1px solid var(--s-border);
+    padding: 6px 4px; padding-bottom: max(6px, env(safe-area-inset-bottom));
+  }
+  .bn-item {
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    background: none; border: none; color: var(--s-text-2);
+    font: 600 10px/1 var(--s-font); padding: 6px 0; cursor: pointer;
+  }
+  .bn-ic { font-size: 18px; line-height: 1; }
+  .bn-item:active, .bn-item.active { color: var(--s-green); }
+  body { padding-bottom: calc(64px + env(safe-area-inset-bottom)); } /* keep content clear of the bar + home indicator */
+  .toast { bottom: calc(78px + env(safe-area-inset-bottom)); }       /* lift toasts above the bar */
+}
+
+/* ── Floating bet bar (phones) ──────────────────────────────────────────────
+   Pin the active game's REAL action dock + a quick stake stepper to the bottom
+   of the viewport so you never scroll to change or place a bet. CSS-only for the
+   button (so Plane's live CASH-OUT swap etc. comes for free); the stepper drives
+   the same per-game slider the panel uses. Phones only; not blackjack/poker. */
+.betbar-stake { display: none; }
+@media (max-width: 900px) {
+  body.has-betbar { --betbar-action-h: 80px; }
+  body.has-betbar #betbar-stake,
+  body.has-betbar .stage > .action-dock:not(.bj-dock) {
+    position: fixed; left: 0; right: 0; z-index: 62; margin: 0;
+    background: var(--s-panel); border-top: 1px solid var(--s-border);
+    box-shadow: 0 -8px 24px rgba(0,0,0,.45);
+    padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right));
+  }
+  body.has-betbar .stage > .action-dock:not(.bj-dock) {
+    bottom: calc(58px + env(safe-area-inset-bottom)); /* sit just above the bottom-nav */
+    padding-top: 8px; padding-bottom: 8px;
+  }
+  body.has-betbar #betbar-stake:not([hidden]) {
+    display: block;
+    bottom: calc(58px + env(safe-area-inset-bottom) + var(--betbar-action-h));
+    padding: 8px 12px;
+  }
+  body.has-betbar #betbar-stake[hidden] { display: none; }
+  .bbs-top { display: flex; align-items: center; gap: 10px; }
+  .bbs-bot { display: flex; align-items: center; gap: 7px; margin-top: 8px; }
+  .bbs-slider { flex: 1 1 auto; min-width: 0; height: 10px; } /* the slide-to-change-bet control */
+  .bbs-slider::-webkit-slider-thumb { width: 26px; height: 26px; } /* bigger thumb for thumbs */
+  .bbs-slider::-moz-range-thumb { width: 24px; height: 24px; }
+  .bbs-step { flex: 0 0 auto; width: 44px; height: 44px; font-size: 24px; font-weight: 800; line-height: 1;
+    border-radius: 12px; background: var(--s-surface); color: var(--s-text); border: 1px solid var(--s-border); cursor: pointer; }
+  .bbs-amt { flex: 1 1 auto; min-width: 0; font-family: var(--display); font-weight: 800;
+    font-size: clamp(18px, 6vw, 24px); color: var(--s-green); white-space: nowrap; }
+  .bbs-preset { flex: 0 0 auto; min-width: 44px; padding: 0 10px; height: 40px; border-radius: 12px;
+    background: var(--s-surface); color: var(--s-text-2); border: 1px solid var(--s-border); font-weight: 700; font-size: 14px; cursor: pointer; }
+  .bbs-step:active, .bbs-preset:active { transform: scale(.95); }
+  .bbs-preset:hover, .bbs-step:hover { border-color: var(--s-green); color: var(--s-green); }
+  /* clear BOTH pinned rows (slider strip is ~2 rows tall) + the nav so content never hides behind them */
+  body.has-betbar { padding-bottom: calc(58px + var(--betbar-action-h) + 104px + env(safe-area-inset-bottom)); }
+}
+
+/* ════════ Music dropdown (top bar) ════════ */
+.music-wrap { position: relative; }
+.music-menu {
+  /* fixed + high z-index so it escapes the sticky topbar's stacking context and
+     paints above the chat drawer (z:70) / left rail; positioned in JS. */
+  position: fixed; top: 64px; right: 10px; z-index: 120;
+  width: 240px; max-width: calc(100vw - 24px);
+  background: var(--s-panel); border: 1px solid var(--s-border);
+  border-radius: var(--r-md); box-shadow: 0 12px 40px rgba(0,0,0,.5); padding: 10px;
+}
+.music-menu.hidden { display: none; }
+.mm-transport { display: flex; align-items: center; gap: 6px; padding-bottom: 8px; border-bottom: 1px solid var(--s-border); margin-bottom: 8px; }
+.mm-ctrl { background: var(--s-surface); border: 1px solid var(--s-border); color: var(--s-text); border-radius: var(--r-sm); width: 34px; height: 30px; cursor: pointer; font-size: 13px; }
+.mm-ctrl:hover { background: var(--s-border); }
+.mm-play { background: var(--s-green); color: #06231a; border: none; font-weight: 700; }
+.mm-now { flex: 1; min-width: 0; font: 600 12px/1.2 var(--s-font); color: var(--s-green); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mm-tracks { display: flex; flex-direction: column; gap: 2px; max-height: 264px; overflow-y: auto; }
+.mm-track { text-align: left; background: transparent; border: none; color: var(--s-text-2); font: 600 13px/1 var(--s-font); padding: 8px 10px; border-radius: var(--r-sm); cursor: pointer; }
+.mm-track:hover { background: var(--s-surface); color: var(--s-text); }
+.mm-track.active { background: var(--s-surface); color: var(--s-green); box-shadow: inset 3px 0 0 var(--s-green); }
+
+/* ════════ Player profile modal ════════ */
+.profile-card { width: min(94vw, 460px); text-align: left; }
+.profile-head { display: flex; align-items: center; gap: 14px; margin: 4px 0 12px; }
+#profile-avatar { border-radius: 10px; border: 1px solid var(--s-border); image-rendering: pixelated; }
+/* Inset the name/address column so it never slides under the absolutely-positioned ✕ (top/right 14px). */
+.profile-head-main { flex: 1; min-width: 0; padding-right: 40px; }
+.profile-name-input { width: 100%; background: var(--s-surface); border: 1px solid var(--s-border); color: var(--s-text); border-radius: var(--r-sm); padding: 8px 10px; font: 700 16px/1 var(--s-font); }
+.profile-addr { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.profile-addr .mono { color: var(--s-text-2); font-size: 12px; }
+#profile-bio { width: 100%; background: var(--s-surface); border: 1px solid var(--s-border); color: var(--s-text); border-radius: var(--r-sm); padding: 8px 10px; font: 400 13px/1.4 var(--s-font); resize: vertical; margin-bottom: 12px; }
+.profile-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 14px; }
+.ps-cell { background: var(--s-surface); border: 1px solid var(--s-border); border-radius: var(--r-sm); padding: 8px 10px; }
+.ps-k { display: block; font-size: 11px; }
+.ps-v { font: 700 15px/1.2 var(--s-font); color: var(--s-text); }
+.profile-h3 { margin: 2px 0 8px; font: 700 13px/1 var(--s-font); color: var(--s-text-2); }
+.profile-history { max-height: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; }
+.ph-row { display: flex; align-items: center; justify-content: space-between; padding: 7px 10px; background: var(--s-surface); border: 1px solid var(--s-border); border-radius: var(--r-sm); border-left-width: 3px; }
+.ph-row.win { border-left-color: var(--s-green); }
+.ph-row.lose { border-left-color: var(--s-red); }
+.ph-game { font: 600 13px/1 var(--s-font); color: var(--s-text-2); }
+.ph-net { font: 700 13px/1 var(--s-mono); }
+.ph-row.win .ph-net { color: var(--s-green); }
+.ph-row.lose .ph-net { color: var(--s-red); }
+.profile-note { font-size: 11px; margin-top: 4px; }
+
+/* House-only diagnostics panel inside the profile modal (owner clicks a player) */
+.profile-house { background: rgba(45, 224, 160, 0.06); border: 1px solid rgba(45, 224, 160, 0.28); border-radius: var(--r-sm); padding: 10px 12px; margin-bottom: 14px; }
+.profile-house .hd-row { display: flex; align-items: center; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 13px; }
+.profile-house .hd-row:last-of-type { border-bottom: none; }
+.profile-house .hd-row strong { font: 700 13px/1 var(--s-mono); color: var(--s-text); }
+.profile-house .hd-row strong.warn { color: #ffc357; }
+.profile-house .hd-row strong.up { color: var(--s-green); }
+.profile-house .hd-row strong.down { color: var(--s-red); }
+.profile-house .hd-note { font-size: 11px; margin: 8px 0 6px; }
+.profile-house #hd-release-btn { margin-top: 4px; }
+
+/* Players & Records / leaderboard rows are clickable → open that player's profile */
+.player-item.clickable, .lb-item.clickable { cursor: pointer; }
+.player-item.clickable:hover, .lb-item.clickable:hover { background: rgba(255, 255, 255, 0.05); }
+
+/* chat: reveal-address button next to a display name */
+.chat-reveal { background: none; border: none; cursor: pointer; font-size: 11px; padding: 0 4px; opacity: .55; }
+.chat-reveal:hover { opacity: 1; }
+
+/* SIGNAL LOST — black letters with a beautiful emitting white glow */
+.idle-title.signal-lost {
+  color: #050505;
+  text-shadow:
+    0 0 8px #ffffff,
+    0 0 18px #ffffff,
+    0 0 34px rgba(255,255,255,.92),
+    0 0 60px rgba(255,255,255,.6);
+  animation: signalGlow 2.2s ease-in-out infinite;
+}
+@keyframes signalGlow {
+  50% { text-shadow:
+    0 0 12px #ffffff,
+    0 0 26px #ffffff,
+    0 0 50px rgba(255,255,255,.98),
+    0 0 86px rgba(255,255,255,.72); }
+}
+@media (prefers-reduced-motion: reduce) { .idle-title.signal-lost { animation: none; } }
+
+/* ════════ Deposit / withdraw rows (slider + live-value button) ════════ */
+.bankroll-actions { display: flex; flex-direction: column; gap: 10px; }
+.ba-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ba-row .slider-wrap.deposit-slider,
+.ba-row .slider-wrap.withdraw-slider { flex: 1 1 220px; margin: 0; min-width: 0; }
+.ba-btn { flex: 0 0 auto; min-width: 232px; }
+.ba-btn.is-busy { opacity: .8; cursor: progress; }
+@media (max-width: 760px) { .ba-btn { flex: 1 1 100%; min-width: 0; } }
+
+/* ════════════════════════════════════════════════════════════════════
+   Stake cohesion pass 2 — sweep remaining neon out of the SHELL.
+   (The TV screen #layer-* / coin / dice reveal / SIGNAL LOST keep neon.)
+   ════════════════════════════════════════════════════════════════════ */
+.slider { background: var(--s-surface); }
+.slider::-webkit-slider-thumb { border-color: var(--s-green); box-shadow: none; }
+.slider::-moz-range-thumb { border-color: var(--s-green); box-shadow: none; }
+.slider-dice::-webkit-slider-thumb { border-color: var(--s-green); }
+.slider-dice::-moz-range-thumb { border-color: var(--s-green); }
+.slider-val { background: transparent; border: none; color: var(--s-text); }
+.slider-val .eth-sub { color: var(--s-muted); }
+.side-toggle, .theme-toggle { background: var(--s-bg-deep); border-color: var(--s-border); }
+.side-btn.active, .theme-btn.active { background: var(--s-green); color: #06231a; box-shadow: none; }
+@keyframes ctaPulse {
+  0%,100% { box-shadow: 0 0 0 0 rgba(0,231,1,0); }
+  50%     { box-shadow: 0 0 0 6px rgba(0,231,1,.18), 0 8px 26px rgba(0,231,1,.42); }
+}
+.qbet { border-color: var(--s-border); background: var(--s-surface); color: var(--s-text-2); }
+.qbet:hover { color: var(--s-text); background: var(--s-border); box-shadow: none; }
+.qbet[data-mode="max"] { color: var(--s-green); border-color: rgba(0,231,1,.32); }
+.qbet[data-mode="max"]:hover { background: rgba(0,231,1,.12); box-shadow: none; }
+.player-item, .room-item { background: var(--s-surface); border-color: var(--s-border); }
+.lb-item.me { background: rgba(0,231,1,.10); border-color: rgba(0,231,1,.30); }
+.room-item .rbet { color: var(--s-green); }
+.share-box { background: rgba(0,231,1,.07); border: 1px dashed rgba(0,231,1,.32); }
+.play-house { border-color: rgba(0,231,1,.30); }
+#play-house { animation: none; }
+.btn { border-radius: var(--r-md); }
+.input, .share-box, .bet-breakdown { border-radius: var(--r-md); }
+.modal-card { border-radius: 12px; }
+.toast { border-radius: var(--r-md); }
+.input:focus { border-color: var(--s-green); box-shadow: 0 0 0 3px rgba(0,231,1,.15); }
+:focus-visible { outline-color: var(--s-green); }
+a { color: var(--s-green); }
+.help-steps b { color: var(--s-text); }
+.bd-row.total strong { color: var(--s-text); }
+.bd-row.fee strong { color: var(--s-text-2); }
+.host-stats { background: var(--s-panel); border-color: var(--s-border); }
+.hs-tab.active, .hs-gtab.active { background: var(--s-green); color: #06231a; box-shadow: none; }
+.hs-private { color: var(--s-green); }
+.bet-side, .nego-text b, .ph-bankroll strong, .create-breakdown strong { color: var(--s-green); }
+.ob-win { background: var(--s-green); box-shadow: inset 0 0 16px rgba(0,231,1,.4); }
+.ob-lose { background: var(--s-surface); }
+.ob-target, .ob-flag { background: var(--s-text); color: var(--s-bg); box-shadow: none; }
+.idle-sub.ready {
+  display: inline-block; padding: 5px 14px; border-radius: var(--r-full);
+  background: rgba(0,231,1,.12); border: 1px solid var(--s-green);
+  color: var(--s-green-glow); text-shadow: 0 0 8px rgba(0,231,1,.55);
+  font: 700 11px/1 "Press Start 2P", var(--display); letter-spacing: 1px;
+}
+.build-tag { color: var(--s-text-2); }
+
+/* ════════ Connected wallet pill + mobile music sheet + CHANNEL FOUND ════════ */
+/* When connected, the chip + Disconnect read as one clean pill */
+body.connected .wallet-cluster {
+  background: var(--s-surface); border: 1px solid var(--s-border);
+  border-radius: var(--r-full); padding: 3px 4px 3px 6px;
+  flex-direction: row; align-items: center; gap: 6px;
+}
+body.connected .wallet-cluster .wallet-chip { background: transparent; border: none; padding: 2px 2px 2px 0; }
+body.connected .wallet-cluster #disconnect-btn { border-radius: var(--r-full); padding: 6px 12px; font-size: 12px; }
+@media (max-width: 640px) {
+  /* keep the wallet pill on one tidy line (was stacking vertically) */
+  .wallet-cluster { flex-direction: row; align-items: center; gap: 6px; }
+  #wallet-addr { max-width: 92px; overflow: hidden; text-overflow: ellipsis; }
+  body.connected .wallet-cluster #disconnect-btn { padding: 6px 10px; }
+  /* music menu → fixed sheet pinned under the (wrapped) top bar (top set in JS) */
+  .music-menu { position: fixed; left: 10px; right: 10px; width: auto; max-width: none; }
+}
+/* connected idle title: positive green bloom (parallels SIGNAL LOST) */
+.idle-title.channel-found {
+  color: #eafff2;
+  text-shadow: 0 0 8px rgba(0,231,1,.9), 0 0 20px rgba(0,231,1,.7), 0 0 40px rgba(0,231,1,.45);
+  animation: none;
+}
+
+/* ════════ Promo intro video on the TV ════════ */
+.promo-video {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  /* the promo is now a native 4:3 clip matching the 4:3 TV → fill edge-to-edge
+     with zero black bars and zero crop. */
+  object-fit: cover; object-position: center; background: #000; z-index: 45;
+  opacity: 1; transition: opacity .55s ease;
+}
+.promo-video.hidden { display: none; }
+/* fade the intro to black before handing off to the game screen */
+.promo-video.promo-fade { opacity: 0; }
+.tv-controls { flex-wrap: wrap; }
+
+/* ════════════════════════════════════════════════════════════════════════
+   DEMO MODE — play-money try-before-you-connect. Amber accent so it reads as
+   clearly distinct from the real-money (green) flow.
+   ════════════════════════════════════════════════════════════════════════ */
+.demo-bar {
+  position: relative; z-index: 4;
+  margin: 8px auto 0; max-width: min(960px, 94vw);
+  display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px;
+  background: linear-gradient(180deg, rgba(255, 196, 60, 0.16), rgba(255, 168, 40, 0.10));
+  border: 1px solid rgba(255, 196, 60, 0.55);
+  color: #ffe6b0; padding: 10px 16px; border-radius: 14px;
+  font-weight: 600; font-size: 13.5px; box-shadow: var(--shadow);
+}
+.demo-bar .demo-chip {
+  font-family: var(--display); font-size: 12px; font-weight: 800; letter-spacing: .5px;
+  color: #2a1a00; background: #ffc43c; border-radius: 999px; padding: 4px 10px;
+  box-shadow: 0 0 14px rgba(255, 196, 60, 0.5); white-space: nowrap;
+}
+.demo-bar .demo-text { flex: 1 1 240px; min-width: 0; line-height: 1.4; }
+.demo-bar .demo-text strong { color: #fff7e0; }
+.demo-bar .demo-bal { white-space: nowrap; font-family: var(--display); font-size: 12px; color: #fff; }
+.demo-bar .demo-bal strong { color: #ffd23f; font-size: 14px; }
+.demo-bar .demo-reset { white-space: nowrap; border-color: rgba(255, 210, 63, 0.5); color: #ffe6b0; }
+.demo-bar .demo-cta { white-space: nowrap; }
+@media (max-width: 640px) {
+  .demo-bar { font-size: 12.5px; padding: 9px 12px; gap: 8px 10px; }
+  .demo-bar .demo-cta, .demo-bar .demo-reset { flex: 1 1 100%; }
+}
+
+/* Corner watermark on the TV so play money is unmistakable mid-game. */
+.demo-tv-badge {
+  position: absolute; top: 10px; right: 12px; z-index: 46;
+  font-family: var(--display); font-size: 12px; font-weight: 800; letter-spacing: 1.5px;
+  color: #2a1a00; background: rgba(255, 196, 60, 0.92);
+  padding: 3px 9px; border-radius: 6px; pointer-events: none;
+  box-shadow: 0 0 12px rgba(255, 196, 60, 0.6); opacity: .92;
+}
+
+/* In demo we drive plays from the panels but there's no wallet to deposit to —
+   keep the deposit/withdraw bankroll card out of the way. */
+body.demo-mode #bankroll { display: none !important; }
+
+/* ════════════════════ BALLOON POP (CH 13) ════════════════════ */
+/* TV layer hosts the PixiJS balloon canvas — fill the screen, no distortion
+   (the renderer is sized to the screen on build). */
+#layer-pressure { position: absolute; inset: 0; }
+.pressure-stage { position: absolute; inset: 0; z-index: 1; display: flex; align-items: center; justify-content: center; }
+.pressure-stage canvas { width: 100% !important; height: 100% !important; display: block; }
+/* 3D red balloon sits behind the (transparent) Pixi HUD, over a soft purple stage glow */
+.pressure3d-stage { position: absolute; inset: 0; z-index: 0; background: radial-gradient(ellipse at 50% 42%, #2a1450 0%, #160a2e 48%, #08040f 100%); }
+.pressure3d-stage canvas { width: 100% !important; height: 100% !important; display: block; }
+
+/* Bet panel controls */
+/* Compact ½ / 2× / Max quick-bet chips (smaller + easier than the old buttons) */
+.pr-quickbet { gap: 6px; }
+.pr-quickbet .qbet { padding: 7px 6px; font-size: 12px; font-weight: 700; border-radius: var(--r-sm, 4px); }
+.pr-select { background: var(--s-surface, #213743); border: 1px solid var(--s-border, #2f4553); border-radius: var(--r-md, 8px); color: var(--s-text, #fff); font-family: var(--font); font-size: 14px; padding: 8px 10px; outline: none; }
+.pressure-panel .pr-auto-toggle { margin-left: auto; }
+.pressure-panel .pr-auto-toggle.active { background: linear-gradient(135deg, rgba(0,231,1,.22), rgba(0,231,1,.10)); border-color: var(--s-green, #00e701); color: #fff; }
+.pr-hold {
+  background: linear-gradient(135deg, #ffd23f, #ff8a3d 55%, #ff4d9d); color: #2a0a12; font-weight: 800;
+  /* lock the label so a press/long-press never selects or blue-highlights it */
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent; touch-action: none;
+}
+.pr-hold:active { transform: translateY(2px); }
+
+/* Mobile: keep the Balloon Pop panel short so the TV + HOLD button share the screen */
+@media (max-width: 900px) {
+  .pressure-panel { padding: 12px 12px 10px; }
+  .pressure-panel .ph-head { margin-bottom: 6px; }
+  .pressure-panel .pr-intro { font-size: 11.5px; line-height: 1.35; margin: 2px 0 8px; }
+  .pressure-panel .field-label { margin: 8px 0 4px; }
+  .pressure-panel .quickbet-row { margin-top: 6px; }
+  .pressure-panel .side-row { margin: 8px 0; }
+  .pressure-panel .slider-wrap { margin-top: 4px; margin-bottom: 2px; }
+  .pressure-panel .pr-hold { padding: 14px 10px; margin-top: 8px; }
+  .pressure-panel #pr-message { margin-top: 5px; font-size: 11px; }
+  .pressure-panel .pr-fair { margin-top: 8px; }
+}
+.pr-fair { margin-top: 12px; }
+.pr-fair-body { font-size: 12px; }
+.pr-fair-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.pr-fair-row code { font-family: ui-monospace, monospace; color: var(--s-green, #00e701); }
+.pr-fair-row input { flex: 1; min-width: 120px; }
+.pr-fair-reveal { font-family: ui-monospace, monospace; font-size: 10.5px; color: var(--s-green, #00e701); word-break: break-all; }
+
+/* Demo balance + reset, docked directly under the TV (moved out of the top bar) */
+/* One line, never wraps: chip + balance number + reset button always stay on a
+   single row. When space is tight the "Play balance" LABEL truncates first, so
+   the number and the Reset button are never pushed below or clipped. */
+.demo-below {
+  display: flex; align-items: center; justify-content: center; flex-wrap: nowrap; gap: 8px 10px;
+  margin: 2px auto 0; max-width: 520px; padding: 8px 14px;
+  background: linear-gradient(180deg, rgba(255, 196, 60, 0.14), rgba(255, 168, 40, 0.08));
+  border: 1px solid rgba(255, 196, 60, 0.45); border-radius: 14px; box-shadow: var(--shadow);
+}
+.demo-below-chip { flex: 0 0 auto; font-family: var(--display); font-size: 11px; font-weight: 800; letter-spacing: .5px; color: #2a1a00; background: #ffc43c; border-radius: 999px; padding: 3px 9px; box-shadow: 0 0 12px rgba(255,196,60,.5); }
+.demo-below-lbl { flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 700; color: #ffe6b0; }
+.demo-below-num { flex: 0 0 auto; white-space: nowrap; color: #ffd23f; font-family: var(--display); font-size: clamp(13px, 3.6vw, 16px); }
+.demo-below .demo-reset { flex: 0 0 auto; white-space: nowrap; border-color: rgba(255, 210, 63, 0.5); color: #ffe6b0; }
+@media (max-width: 640px) { .demo-below { gap: 6px 8px; padding: 7px 10px; } .demo-below .demo-reset { padding: 7px 10px; font-size: 12px; } }
+@media (max-width: 440px) { .demo-below-lbl { display: none; } } /* phones: drop the label, keep DEMO · $balance · Reset on one line */
+
+/* Primary action button docked under the play balance (above the bet controls) */
+.action-dock { margin-top: 2px; }
+.action-dock .btn {
+  margin: 0;
+  /* RULE: every play-activation button has its label "burned in" — a tap/long
+     press can never select or blue-highlight the text on mobile. */
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.action-dock .dice-roll-hint { margin-top: 6px; text-align: center; }
+
+/* Compact auto cash-out strip, sits right under the action button in the dock so it can be
+   toggled + adjusted without scrolling up to the settings panel. */
+.dock-auto { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.dock-auto .pr-auto-toggle, .dock-auto .plane-auto-toggle { flex: 0 0 auto; white-space: nowrap; }
+.dock-auto .dock-auto-slider { flex: 1 1 auto; min-width: 80px; margin: 0; }
+.dock-auto .dock-auto-val { flex: 0 0 auto; font-size: 12px; color: var(--s-text-2, #9fb0cc); white-space: nowrap; }
+.dock-auto .dock-auto-val strong { color: var(--s-gold, #ffe08a); }
+/* a toggled-OFF auto control greys out (the game adds .off on the toggle) */
+.dock-auto.off { opacity: .62; }
+/* Plane has two auto rows (A safe, B risky) stacked under the BET buttons */
+.plane-dock-auto { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.dock-auto .dock-auto-lbl { flex: 0 0 auto; width: 16px; text-align: center; font-weight: 800; font-size: 12px; color: var(--s-gold, #ffe08a); }
+.plane-dock-auto .dock-auto[data-bet="b"] .dock-auto-lbl { color: #ff7ab8; }
+
+/* UNIFORM action button across every game: VERB on top, BET · WIN below */
+.act-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  line-height: 1.15; padding: 10px 12px;
+}
+.act-btn .ab-verb { font-family: var(--display); font-weight: 800; font-size: 15px; letter-spacing: .5px; }
+.act-btn .ab-amt { font-weight: 700; font-size: clamp(11px, 3.4vw, 13px); opacity: .9; letter-spacing: .2px; white-space: normal; text-align: center; word-break: break-word; max-width: 100%; }
+.act-btn .ab-amt b { font-weight: 800; }
+@media (max-width: 640px) {
+  .act-btn .ab-verb { font-size: 14px; }
+  .act-btn .ab-amt { font-size: 12px; }
+}
+.stage > .demo-bar { width: 100%; max-width: 100%; margin: 0 auto; justify-content: center; }
+.stage > .mobile-hint { width: 100%; max-width: 100%; margin: 0 auto -8px; }
+
+/* Right cluster in the TV control strip: share-win pill sits just left of CH badge */
+.tv-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.tv-right .tv-channel { margin-left: 0; }
+
+/* "Share win" — small green bubbly pill (only on a win) */
+.share-win-btn {
+  background: linear-gradient(180deg, #2bf06e 0%, #00c24f 60%, #00a544 100%);
+  color: #04210f; font-family: var(--font); font-weight: 800;
+  font-size: 11px; letter-spacing: .2px; border: none; border-radius: 999px;
+  padding: 6px 12px; cursor: pointer; white-space: nowrap;
+  box-shadow: 0 4px 14px rgba(0,231,1,.5), inset 0 1px 0 rgba(255,255,255,.5), inset 0 -2px 0 rgba(0,0,0,.2);
+  animation: shareBubble 1.5s ease-in-out infinite;
+  -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none;
+}
+.share-win-btn:hover { filter: brightness(1.07); }
+.share-win-btn:active { animation: none; transform: translateY(1px) scale(.96); }
+.share-win-btn.hidden { display: none; }
+@keyframes shareBubble {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-2px) scale(1.05); }
+}
+@media (prefers-reduced-motion: reduce) { .share-win-btn { animation: none; } }
+
+/* ════════════════════ GEM VAULT 3D (CH 15) ════════════════════ */
+#layer-slots3d { position: absolute; inset: 0; }
+.slots3d-stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.slots3d-stage canvas { width: 100% !important; height: 100% !important; display: block; }
+
+/* ════════════════════ REEF RAIDERS (CH 17) ════════════════════ */
+#layer-fish { position: absolute; inset: 0; }
+.fish-stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: #041326; }
+.fish-stage canvas { width: 100% !important; height: 100% !important; display: block; touch-action: none; }
+/* In fullscreen, preserve the 3:2 render instead of stretching it to the phone's
+   tall portrait box (which made fish/coins look squashed-tall). object-fit:contain
+   letterboxes it; rotating to landscape (turn the phone) then fills the screen. */
+#layer-fish.rr-fs .fish-stage canvas { object-fit: contain; }
+/* fullscreen: CSS-pinned (works on iOS too) — fills the whole viewport */
+#layer-fish.rr-fs { display: block !important; position: fixed !important; inset: 0 !important; width: 100vw !important; height: 100dvh !important; z-index: 2147483646 !important; background: #041326; }
+/* Reef fullscreen: toggleFullscreen() REPARENTS #layer-fish to be a direct child of
+   <body>, so this single rule hides ALL other page chrome (top bar, bottom nav, the
+   landscape side menu, the ETH ticker, the Share-win button, modals, everything) in
+   every layout/orientation. The game layer is the only thing left visible. */
+html.rr-fs-on, body.rr-fs-on { width: 100vw !important; height: 100dvh !important; overflow: hidden !important; overscroll-behavior: none !important; background: #041326 !important; }
+body.rr-fs-on > *:not(#layer-fish):not(#layer-swoop):not(#layer-fishshooter) { display: none !important; }
+body.rr-fs-on .topbar,
+body.rr-fs-on .bottom-nav,
+body.rr-fs-on .chat-tab,
+body.rr-fs-on .channels,
+body.rr-fs-on .ticker,
+body.rr-fs-on .share-win-btn,
+body.rr-fs-on #chat-drawer,
+body.rr-fs-on #xfer-modal,
+body.rr-fs-on #help-modal { display: none !important; visibility: hidden !important; pointer-events: none !important; }
+body.rr-fs-on #layer-fish,
+body.rr-fs-on #layer-fish * { visibility: visible !important; }
+/* The "back to normal view" button — large, fixed, always on top of the game. */
+#layer-fish.rr-fs .fish-fs-exit {
+  display: block; position: fixed;
+  top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right));
+  z-index: 2147483647; background: rgba(4,19,38,.82); color: #fff;
+  border: 2px solid rgba(255,255,255,.55); border-radius: 12px;
+  padding: 11px 16px; font-weight: 800; font-size: 15px; cursor: pointer;
+  -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+}
+#layer-fish:fullscreen, #layer-fish:-webkit-full-screen { width: 100vw; height: 100vh; background: #041326; }
+.fish-fs-exit { display: none; }
+
+/* ════════════ HOUSE / BOSS MODE (connected as the house wallet) ════════════ */
+/* "WELCOME BOSS …" — green blocky matrix text on a solid black TV screen. */
+.boss-screen { display: none; position: absolute; inset: 0; z-index: 100; background: #000; align-items: center; justify-content: center; text-align: center; }
+body.is-house .boss-screen { display: flex; }
+.boss-text {
+  font-family: "Courier New", Courier, monospace; font-weight: 900; text-transform: uppercase;
+  font-size: clamp(18px, 6.2vw, 46px); letter-spacing: 3px; line-height: 1.1; color: #00ff41;
+  text-shadow: 0 0 6px #00ff41, 0 0 18px rgba(0,255,65,.55); white-space: nowrap;
+}
+.boss-dots span { display: inline-block; animation: bossBlink 1.2s steps(1) infinite; }
+.boss-dots span:nth-child(2) { animation-delay: .25s; }
+.boss-dots span:nth-child(3) { animation-delay: .5s; }
+@keyframes bossBlink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: .12; } }
+/* As the boss you fund/manage but never bet — HIDE the betting controls entirely (the floating
+   quick-stake bet bar + the action docks/panels are just in the way). Host tools below stay. */
+body.is-house #betbar-stake,
+body.is-house .action-dock,
+body.is-house .play-house,
+body.is-house #dice-panel, body.is-house #twodice-panel, body.is-house #crash-panel,
+body.is-house #pressure-panel, body.is-house #plane-panel, body.is-house #slots3d-panel, body.is-house #fish-panel { display: none !important; }
+#layer-fish.rr-fs .fish-fs-exit { display: block; position: fixed; top: max(10px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); z-index: 2147483647; background: rgba(4,19,38,.82); color: #fff; border: 1px solid rgba(255,255,255,.5); border-radius: 10px; padding: 9px 14px; font-weight: 800; cursor: pointer; }
+/* ════════════════════ SKY SWOOP (CH 18) ════════════════════ */
+#layer-swoop { position: absolute; inset: 0; }
+.swoop-stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: #7ec4f5; }
+.swoop-stage canvas { width: 100% !important; height: 100% !important; display: block; touch-action: none; }
+#layer-swoop.rr-fs .swoop-stage canvas { object-fit: contain; }
+#layer-swoop.rr-fs { display: block !important; position: fixed !important; inset: 0 !important; width: 100vw !important; height: 100dvh !important; z-index: 2147483646 !important; background: #7ec4f5; }
+body.rr-fs-on #layer-swoop, body.rr-fs-on #layer-swoop * { visibility: visible !important; }
+#layer-swoop.rr-fs .fish-fs-exit { display: block; position: fixed; top: max(10px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); z-index: 2147483647; background: rgba(4,19,38,.82); color: #fff; border: 1px solid rgba(255,255,255,.5); border-radius: 10px; padding: 9px 14px; font-weight: 800; cursor: pointer; }
+/* Fish Shooter (CH 19): PixiJS top-down fish-table — mirrors Reef Raiders layer rules */
+#layer-fishshooter { position: absolute; inset: 0; }
+.fishshooter-stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: #041326; }
+.fishshooter-stage canvas { width: 100% !important; height: 100% !important; display: block; touch-action: none; }
+#layer-fishshooter.rr-fs .fishshooter-stage canvas { object-fit: contain; }
+#layer-fishshooter.rr-fs { display: block !important; position: fixed !important; inset: 0 !important; width: 100vw !important; height: 100dvh !important; z-index: 2147483646 !important; background: #041326; }
+body.rr-fs-on #layer-fishshooter, body.rr-fs-on #layer-fishshooter * { visibility: visible !important; }
+#layer-fishshooter.rr-fs .fish-fs-exit { display: block; position: fixed; top: max(10px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); z-index: 2147483647; background: rgba(4,19,38,.82); color: #fff; border: 1px solid rgba(255,255,255,.5); border-radius: 10px; padding: 9px 14px; font-weight: 800; cursor: pointer; }
+.fishshooter-dock { display: flex; flex-direction: column; gap: 8px; }
+
+.swoop-dock { display: flex; flex-direction: column; gap: 8px; }
+.swoop-toprow { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; }
+.swoop-mult { font-weight: 800; font-size: 26px; letter-spacing: -1px; color: #eaf6ff; }
+.swoop-mult.win { color: #36e06f; }
+.swoop-mult.bust { color: #ff6a6a; }
+.swoop-go { border: 0; border-radius: 14px; padding: 15px 22px; font-size: 18px; font-weight: 800; color: #042033; cursor: pointer; background: #ffd23f; box-shadow: 0 5px 0 #b9912a; transition: transform .05s, background .15s; }
+.swoop-go:active { transform: translateY(3px); box-shadow: 0 2px 0 #b9912a; }
+.swoop-go.cash { background: #36e06f; box-shadow: 0 5px 0 #1f9b4c; color: #042818; }
+.swoop-go.dead { background: #cfd8e0; color: #6b7682; box-shadow: 0 5px 0 #9aa6b0; }
+
+.fish-dock { display: flex; flex-direction: column; gap: 8px; }
+/* compact cost + fullscreen live inside .fish-row, smaller */
+.fish-cost { font-weight: 800; color: var(--s-gold, #ffd23f); font-size: .9rem; margin-left: auto; }
+.fish-fs { background: transparent; color: var(--s-gold, #ffd23f); border: 1px solid rgba(57,231,255,.30); border-radius: 8px; padding: 6px 9px; font-size: 1rem; line-height: 1; font-weight: 800; cursor: pointer; }
+.fish-fs:active { transform: translateY(1px); }
+
+/* one tidy row: power stepper | cost | fullscreen */
+.fish-row { display: flex; align-items: center; gap: 8px; }
+
+/* unified power stepper — [–][POWER / N][+] as a single pill */
+.fish-stepper { display: inline-flex; align-items: stretch; border: 1px solid rgba(57,231,255,.30); border-radius: 10px; overflow: hidden; background: var(--s-surface, #15203a); }
+.fish-step { background: transparent; color: var(--s-text, #cfe2ff); border: 0; width: 34px; font-size: 1.1rem; font-weight: 800; line-height: 1; cursor: pointer; }
+.fish-step:active { background: rgba(57,231,255,.18); }
+.fish-step:first-child { border-right: 1px solid rgba(57,231,255,.18); }
+.fish-step:last-child  { border-left:  1px solid rgba(57,231,255,.18); }
+.fish-step-val { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 56px; padding: 3px 4px; line-height: 1.05; }
+.fish-step-val small { font-size: .56rem; letter-spacing: .08em; color: var(--s-muted, #8fa3c8); font-weight: 800; }
+.fish-step-val strong { font-size: .9rem; color: var(--s-gold, #ffe08a); }
+
+/* toggle pills — small, ghost by default, fill cyan when .on */
+.fish-toggles { display: flex; gap: 8px; }
+.fish-pill { flex: 1 1 0; background: var(--s-surface, #15203a); color: var(--s-text, #cfe2ff); border: 1px solid rgba(57,231,255,.30); border-radius: 999px; padding: 7px 10px; font-size: .82rem; font-weight: 800; cursor: pointer; }
+.fish-pill:active { transform: translateY(1px); }
+.fish-pill.on { background: #39e7ff; color: #041326; border-color: #39e7ff; }
+
+/* speed — one labelled segmented control of small emoji buttons */
+.fish-seg { display: flex; align-items: center; gap: 8px; }
+.fish-seg-lbl { font-family: var(--display, inherit); font-weight: 800; letter-spacing: .04em; color: var(--gold, #ffd23f); text-transform: uppercase; font-size: .68rem; }
+.fish-seg-track { display: inline-flex; flex: 1 1 auto; border: 1px solid rgba(57,231,255,.25); border-radius: 10px; overflow: hidden; }
+.fish-seg-btn { flex: 1 1 0; background: var(--s-surface, #15203a); color: var(--s-text, #cfe2ff); border: 0; border-left: 1px solid rgba(57,231,255,.18); padding: 7px 0; font-size: 1rem; line-height: 1; cursor: pointer; }
+.fish-seg-btn:first-child { border-left: 0; }
+.fish-seg-btn:active { transform: translateY(1px); }
+.fish-seg-btn.on { background: #39e7ff; }
+.fish-winval { color: #45f0a6; }
+.fish-flow { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin: 8px 0; padding: 8px 10px; border-radius: 10px; background: rgba(57,231,255,.06); border: 1px solid rgba(57,231,255,.18); font-size: .86rem; }
+.fish-flow .ff-label { font-weight: 800; color: var(--s-gold, #ffd23f); }
+.fish-flow .ff-item { color: var(--s-muted, #8fa3c8); }
+.fish-flow .ff-item strong { color: var(--s-text, #cfe2ff); }
+.fish-flow .ff-net.up { color: #45f0a6; }
+.fish-flow .ff-net.down { color: #ff6f8a; }
+/* Site-wide session tracker bar (#demo-session) — shown under the TV on every channel in demo mode */
+.demo-session { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; justify-content: center; margin: 6px auto 0; max-width: 760px; padding: 7px 12px; border-radius: 12px; background: rgba(57,231,255,.06); border: 1px solid rgba(57,231,255,.18); font-size: .82rem; }
+.demo-session.hidden { display: none; }
+/* Token-mode bar — lock ETH once → play every game popup-free → cash out. */
+#token-mount[hidden] { display: none; }
+.token-bar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: center; margin: 6px auto 0; max-width: 620px; padding: 8px 12px; border-radius: 12px; background: rgba(45,224,160,.08); border: 1px solid rgba(45,224,160,.35); }
+.token-bal { font-weight: 800; color: #2de0a0; }
+.token-hint { color: var(--muted); font-size: 12px; }
+.token-input { width: 84px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--panel-line); background: var(--panel); color: #fff; font-weight: 700; text-align: right; }
+.token-btn { padding: 6px 14px; }
+/* Buy-in / top-up amount slider — flex-grows in the bar, stacks to its own row on a phone. Capped
+   to the player's in-game balance by the max attribute the JS sets. */
+.token-slider { flex: 1 1 150px; min-width: 120px; max-width: 300px; height: 28px; accent-color: #2de0a0; cursor: pointer; touch-action: pan-y; }
+.demo-session .ds-label { font-family: var(--display, inherit); font-weight: 800; letter-spacing: .02em; color: var(--gold, #ffd23f); text-transform: uppercase; font-size: .74rem; }
+.demo-session .ds-item { color: var(--muted, #8fa3c8); }
+.demo-session .ds-item strong { color: var(--text, #cfe2ff); margin-left: 2px; }
+.demo-session .ds-net.up strong, .demo-session strong.ds-net.up { color: #45f0a6; }
+.demo-session .ds-net.down strong, .demo-session strong.ds-net.down { color: #ff6f8a; }
+.demo-session strong.ds-net.up { color: #45f0a6; }
+.demo-session strong.ds-net.down { color: #ff6f8a; }
+/* Fish Shooter help accordion (#fishshooter-panel) */
+.fish-help { margin: 6px 0 4px; border: 1px solid rgba(57,231,255,.18); border-radius: 10px; background: rgba(57,231,255,.05); overflow: hidden; }
+.fish-help > summary { cursor: pointer; list-style: none; padding: 8px 11px; font-weight: 800; font-size: .84rem; color: var(--s-gold, #ffd23f); user-select: none; }
+.fish-help > summary::-webkit-details-marker { display: none; }
+.fish-help > summary::after { content: "▸"; float: right; transition: transform .15s; opacity: .7; }
+.fish-help[open] > summary::after { transform: rotate(90deg); }
+.fish-help[open] > summary { border-bottom: 1px solid rgba(57,231,255,.14); }
+.fish-help-body { padding: 4px 12px 10px; font-size: .8rem; line-height: 1.45; color: var(--s-muted, #8fa3c8); }
+.fish-help-body p { margin: 8px 0; }
+.fish-help-body strong { color: var(--s-text, #cfe2ff); }
+.fish-help-body em { color: var(--s-gold, #ffd23f); font-style: normal; }
+.fish-help-body ul { margin: 6px 0; padding-left: 18px; }
+.fish-help-body li { margin: 3px 0; }
+
+/* Blackjack (CH 16) felt runs in an isolated iframe filling the 4:3 screen */
+.bj-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; background: #06091a; }
+/* ── Blackjack controls — felt is in the TV iframe, these sit under it. Driven by
+   postMessage; styled with the same tokens as every other game's dock. ── */
+.bj-dock { max-width: 520px; margin: 4px auto 0; }
+.bj-statusrow { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 20px; margin-bottom: 10px; }
+.bj-status { text-align: center; color: var(--s-text-2); font-weight: 700; font-size: 14px; }
+.bj-status b { color: var(--s-text); }
+.bj-controls:empty { display: none; }
+.bj-dock:has(.bj-controls:empty) .bj-statusrow { margin-bottom: 0; }
+.bj-bet { display: flex; flex-direction: column; gap: 10px; }
+.bj-bet-val { display: flex; align-items: baseline; justify-content: center; gap: 10px; }
+.bj-bet-money { display: inline-flex; align-items: baseline; gap: 10px; }
+.bj-bv { font-family: var(--display); font-size: 26px; line-height: 1; color: var(--s-green); }
+.bj-bv-eth { color: var(--s-text-2); font-size: 13px; }
+.bj-count { font-family: var(--display); font-size: 14px; color: var(--s-text-2); }
+.bj-count.crit { color: var(--s-gold); }
+.bj-count:empty { display: none; }
+.bj-slider { -webkit-appearance: none; appearance: none; width: 100%; height: 8px; border-radius: 999px; margin: 0;
+  background: linear-gradient(90deg, var(--s-green) 0 var(--fill, 30%), var(--s-surface) var(--fill, 30%) 100%); outline: none; cursor: pointer; }
+.bj-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 22px; height: 22px; border-radius: 50%;
+  background: #fff; border: 3px solid var(--s-green); box-shadow: 0 2px 8px rgba(0, 0, 0, .45); cursor: pointer; }
+.bj-slider::-moz-range-thumb { width: 22px; height: 22px; border-radius: 50%; background: #fff; border: 3px solid var(--s-green); box-shadow: 0 2px 8px rgba(0, 0, 0, .45); cursor: pointer; }
+.bj-chips { display: flex; gap: 6px; }
+.bj-chip { flex: 1; padding: 8px 4px; font-weight: 700; font-size: 13px; }
+.bj-place { margin-top: 2px; }
+.bj-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.bj-act { flex: 1 1 calc(50% - 4px); min-width: 92px; padding: 13px 10px;
+  font-family: var(--display); font-size: 15px; letter-spacing: .5px; }
+.bj-act.bj-stand { background: var(--cyan); color: #04121a; border: none; font-weight: 700; }
+.bj-act.bj-stand:hover { background: #5cebff; }
+.bj-act.bj-double { background: var(--s-gold); color: #2a1a00; border: none; font-weight: 700; }
+.bj-act.bj-double:hover { filter: brightness(1.08); }
+.bj-act.bj-split { background: var(--magenta); color: #fff; border: none; font-weight: 700; }
+.bj-act.bj-split:hover { filter: brightness(1.08); }
+.bj-act:disabled { opacity: .45; filter: grayscale(.35); cursor: default; }
+/* "TOP UP to double/split" — you can do the move but need chips to cover the bet */
+.bj-act.bj-topup-act { background: linear-gradient(180deg, #ffd23f, #f0a700); color: #2a1a00; border: none; font-weight: 800;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.05; gap: 1px; animation: bjTuPulse 1.6s ease-in-out infinite; }
+.bj-act.bj-topup-act:hover { filter: brightness(1.08); }
+.bj-act.bj-topup-act .bj-tu-sub { font-size: 10px; font-weight: 700; opacity: .8; letter-spacing: .3px; }
+@keyframes bjTuPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(255,210,63,.5); } 50% { box-shadow: 0 0 0 6px rgba(255,210,63,0); } }
+.bj-share { margin: 12px auto 0; display: block; width: 100%; font-size: 13px; letter-spacing: .3px; }
+.bj-share:disabled { opacity: .5; cursor: default; }
+/* top row: live balance (left) + countdown (right) */
+/* standalone blackjack server wallet + balance (independent of demo credits) */
+/* Hidden: redundant with the top token bar (which shows your live balance) + the wallet chip. It also
+   exposed the confusing "guest:…" / stale "$0 tokens" line. The JS still updates these elements; they're
+   just not shown. */
+.bj-walletrow { display: none; }
+.bj-wallet { font-family: var(--mono, monospace); font-size: 12px; color: var(--s-text-2); letter-spacing: .2px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
+.bj-bal { font-family: var(--display); font-size: 16px; color: var(--s-gold); font-weight: 700; white-space: nowrap; }
+.bj-bal:empty { display: none; }
+.bj-toprow { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 20px; margin-bottom: 6px; }
+.bj-reload { font-family: var(--display); font-size: 13px; color: var(--s-text-2); background: var(--s-surface);
+  border: 1px solid var(--s-border); border-radius: 999px; padding: 4px 12px; cursor: pointer; transition: color .15s, border-color .15s, background .15s; }
+.bj-reload:hover { color: var(--s-gold); border-color: var(--s-gold); background: rgba(255,210,63,.08); }
+.bj-reload:active { transform: scale(.96); }
+.bj-toprow .bj-count { position: static; }
+/* on the blackjack channel the demo credits are irrelevant (blackjack has its own balance) → hide them */
+body.connected #demo-below,
+body.connected #demo-bar,
+body.connected #demo-tv-badge,
+body.bj-channel #demo-below,
+body.bj-channel #demo-bar { display: none !important; }
+/* bet-locked-in confirmation + remove button */
+.bj-placed { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.bj-placed-lbl { color: var(--s-text-2); font-size: 13px; }
+.bj-placed-lbl b { color: var(--s-green); font-family: var(--display); }
+.bj-remove { width: 100%; max-width: 240px; }
+
+/* Universal "loading <game>…" screen while a lazy 3D module builds */
+#layer-loading { gap: 14px; }
+.tv-loading-spinner { width: clamp(34px, 9vw, 52px); height: clamp(34px, 9vw, 52px); border-radius: 50%;
+  border: 4px solid rgba(57,231,255,.18); border-top-color: #39e7ff; border-right-color: #39e7ff;
+  box-shadow: 0 0 18px rgba(57,231,255,.45); animation: tvLoadSpin .8s linear infinite; }
+@keyframes tvLoadSpin { to { transform: rotate(360deg); } }
+.tv-loading-title { font-family: "Press Start 2P", var(--display); font-size: clamp(11px, 3vw, 18px); color: #cdeeff;
+  letter-spacing: 1px; text-shadow: 0 0 12px rgba(57,231,255,.7); text-align: center; padding: 0 12px;
+  animation: tvLoadPulse 1.3s ease-in-out infinite; }
+@keyframes tvLoadPulse { 0%,100% { opacity: .8; } 50% { opacity: 1; } }
+.tv-loading-sub { font-family: var(--display); font-size: clamp(8px, 2vw, 12px); color: #7fbfe0; letter-spacing: .5px; }
+@media (prefers-reduced-motion: reduce) { .tv-loading-spinner, .tv-loading-title { animation: none; } }
+/* SPIN button (action dock) — burned-in label, neon gem gradient */
+.s3d-spin {
+  width: 100%; border: none; border-radius: var(--r-md, 10px); cursor: pointer;
+  font-family: var(--display); font-weight: 800; font-size: clamp(14px, 4vw, 17px); letter-spacing: .4px;
+  padding: 15px 8px; color: #06231a; background: linear-gradient(135deg, #45f0a6, #39e7ff 55%, #b14dff);
+  box-shadow: 0 6px 18px rgba(57,231,255,.3); transition: transform .06s ease, filter .15s ease;
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+}
+.s3d-spin:hover { filter: brightness(1.06); }
+.s3d-spin:active { transform: translateY(2px); }
+.s3d-spin[data-kind="wait"] { background: var(--s-surface, #1a2238); color: var(--s-muted, #6f7ba0); box-shadow: none; cursor: default; }
+.s3d-spin:disabled { cursor: not-allowed; }
+.s3d-msg { margin-top: 6px; text-align: center; }
+.s3d-msg.win { color: var(--s-green, #45f0a6); font-weight: 700; }
+.s3d-msg.lose { color: #ff6b86; }
+.s3d-winval { color: #ffd23f; font-family: var(--display); }
+
+/* ── FREE SPINS bonus overlay (rendered over the slot canvas) ── */
+.s3d-bonus {
+  position: absolute; inset: 0; z-index: 6; pointer-events: none;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; gap: 6px; padding: 12px;
+  font-family: "Press Start 2P", var(--display, monospace);
+}
+.s3d-bonus.hidden { display: none; }
+.s3d-bonus-title { color: #ff8ad0; font-size: clamp(11px, 2.6vw, 18px); letter-spacing: 1px; text-shadow: 0 2px 0 #000, 0 0 16px rgba(255,77,157,.8); }
+.s3d-bonus-big   { color: #fff; font-size: clamp(22px, 6vw, 46px); letter-spacing: 1px; text-shadow: 0 3px 0 #000, 0 0 26px rgba(255,210,63,.9); }
+.s3d-bonus-sub   { color: #ffd23f; font-size: clamp(8px, 2vw, 12px); letter-spacing: .5px; text-shadow: 0 2px 0 #000; }
+/* Intro + finale take over the whole screen with a darkening scrim. */
+.s3d-bonus.intro, .s3d-bonus.end { background: radial-gradient(ellipse at center, rgba(40,6,30,.55), rgba(4,5,15,.82) 75%); }
+.s3d-bonus.intro .s3d-bonus-big { color: #ffd23f; }
+.s3d-bonus.end   .s3d-bonus-big { color: #6dffb0; }
+/* While the free spins run, dock the running total to the BOTTOM band so the
+   reels show and it sits where the normal win amount does. */
+.s3d-bonus.spin {
+  inset: auto 0 4% 0; top: auto; justify-content: flex-end; gap: 2px;
+  background: linear-gradient(0deg, rgba(40,6,30,.66), rgba(40,6,30,0));
+  padding: 16px 10px 4px;
+}
+.s3d-bonus.spin .s3d-bonus-title { color: #ffd23f; font-size: clamp(8px, 2vw, 12px); }
+.s3d-bonus.spin .s3d-bonus-big   { font-size: clamp(15px, 3.6vw, 26px); color: #fff; }
+.s3d-bonus.spin .s3d-bonus-sub   { color: #6dffb0; }
+.s3d-bonus.pop { animation: s3dBonusPop .45s cubic-bezier(.18,1.5,.4,1); }
+@keyframes s3dBonusPop { 0% { transform: scale(.6); opacity: 0; } 60% { transform: scale(1.08); } 100% { transform: scale(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .s3d-bonus.pop { animation: none; } }
+
+/* ── on-TV win banner: sits in the black band just under the spinning reels ── */
+.s3d-winbanner {
+  position: absolute; left: 50%; bottom: 6%; transform: translateX(-50%);
+  z-index: 7; pointer-events: none; display: inline-flex; align-items: center; gap: 8px;
+  padding: 4px 14px; border-radius: 999px; white-space: nowrap;
+  background: linear-gradient(180deg, rgba(8,22,15,.85), rgba(3,9,7,.93));
+  border: 1px solid rgba(69,240,166,.55);
+  box-shadow: 0 0 22px rgba(69,240,166,.4), inset 0 0 12px rgba(69,240,166,.16);
+  font-family: "Press Start 2P", var(--display, monospace);
+}
+.s3d-winbanner.hidden { display: none; }
+.s3d-wb-label { color: #8effc8; font-size: clamp(7px, 2vw, 11px); letter-spacing: 1px; text-shadow: 0 0 8px rgba(69,240,166,.85); }
+.s3d-wb-label:empty { display: none; }
+/* "No win" banner: muted, smaller, sits in the same bottom shelf as a win */
+.s3d-winbanner.miss { border-color: rgba(120,140,180,.4); box-shadow: 0 0 14px rgba(0,0,0,.4); background: linear-gradient(180deg, rgba(14,18,28,.85), rgba(6,9,14,.92)); }
+.s3d-winbanner.miss .s3d-wb-amt { color: #c2cbde; font-size: clamp(10px, 3vw, 15px); text-shadow: 0 1px 2px rgba(0,0,0,.8); letter-spacing: 0; }
+.s3d-wb-amt   { color: #fff; font-size: clamp(14px, 4.2vw, 24px); letter-spacing: .5px; text-shadow: 0 2px 0 #000, 0 0 16px rgba(69,240,166,.9); }
+/* bigger wins push toward gold/magenta */
+.s3d-winbanner.big { border-color: rgba(255,210,63,.6); box-shadow: 0 0 26px rgba(255,210,63,.5), inset 0 0 12px rgba(255,210,63,.18); }
+.s3d-winbanner.big .s3d-wb-label { color: #ffe27a; text-shadow: 0 0 8px rgba(255,210,63,.9); }
+.s3d-winbanner.big .s3d-wb-amt { text-shadow: 0 2px 0 #000, 0 0 18px rgba(255,210,63,.95); }
+.s3d-winbanner.mega { border-color: rgba(255,138,208,.7); box-shadow: 0 0 30px rgba(255,77,157,.6), inset 0 0 14px rgba(255,77,157,.2); }
+.s3d-winbanner.mega .s3d-wb-label { color: #ff8ad0; text-shadow: 0 0 10px rgba(255,77,157,.95); }
+.s3d-winbanner.mega .s3d-wb-amt { color: #fff; text-shadow: 0 2px 0 #000, 0 0 22px rgba(255,77,157,1); }
+.s3d-winbanner.pop { animation: s3dWbPop .5s cubic-bezier(.18,1.5,.4,1); }
+@keyframes s3dWbPop { 0% { transform: translateX(-50%) scale(.5); opacity: 0; } 60% { transform: translateX(-50%) scale(1.13); } 100% { transform: translateX(-50%) scale(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .s3d-winbanner.pop { animation: none; } }
+
+/* ── Gem Vault "how it pays" button + explainer modal ── */
+.s3d-help-btn { width: 100%; margin: 2px 0 8px; font-weight: 700; }
+.s3d-help-card { max-width: 560px; max-height: 86vh; overflow-y: auto; }
+#s3d-help-body h2 { margin: 0 8px 8px 0; font-size: clamp(18px, 4.5vw, 24px); }
+#s3d-help-body h3 { margin: 18px 0 8px; font-size: clamp(14px, 3.6vw, 17px); color: var(--cyan, #39e7ff); }
+#s3d-help-body h3 .muted { font-size: .72em; }
+.s3dh-lead { color: #cdd6f0; line-height: 1.5; margin: 0 0 8px; font-size: 14px; }
+.s3dh-pay { width: 100%; border-collapse: collapse; margin: 4px 0 6px; font-size: 14px; }
+.s3dh-pay th, .s3dh-pay td { text-align: center; padding: 7px 6px; border-bottom: 1px solid rgba(255,255,255,.08); }
+.s3dh-pay th { color: #8f9bc0; font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
+.s3dh-pay td.s3dh-sym { text-align: left; font-weight: 600; }
+.s3dh-pay tbody tr:last-child td { border-bottom: none; }
+.s3dh-bonus td:first-child { text-align: left; }
+/* example trigger board */
+.s3dh-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; max-width: 320px; margin: 10px auto 4px; padding: 12px; border-radius: 12px;
+  background: radial-gradient(ellipse at 50% 40%, rgba(177,77,255,.14), rgba(8,10,20,.5)); border: 1px solid rgba(177,77,255,.25); }
+.s3dh-cell { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; font-size: clamp(18px, 5vw, 26px);
+  background: rgba(255,255,255,.04); border-radius: 8px; border: 1px solid rgba(255,255,255,.06); }
+.s3dh-cell.v { background: radial-gradient(circle at 50% 45%, rgba(255,77,157,.5), rgba(255,77,157,.12)); border-color: #ff4d9d;
+  box-shadow: 0 0 14px rgba(255,77,157,.6); animation: s3dhVault 1.1s ease-in-out infinite; }
+@keyframes s3dhVault { 50% { box-shadow: 0 0 22px rgba(255,77,157,.95); } }
+.s3dh-trigger { text-align: center; color: #ffd23f; font-weight: 700; margin: 2px 0 12px; font-size: 15px; }
+.s3dh-foot { margin-top: 14px; font-size: 12px; }
+@media (prefers-reduced-motion: reduce) { .s3dh-cell.v { animation: none; } }
+
+/* ════════════════════ PLANE (CH 14) ════════════════════ */
+/* TV layer hosts the PixiJS plane canvas — fill the 4:3 screen, no distortion. */
+#layer-plane { position: absolute; inset: 0; }
+.plane-stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.plane-stage canvas { width: 100% !important; height: 100% !important; display: block; }
+
+/* Demo-only vs real-only UI: body.plane-real flips which pieces show */
+.plane-real-only { display: none; }
+body.plane-real .plane-real-only { display: inline; }
+body.plane-real .plane-demo-only { display: none !important; }
+
+/* Two live cash-out buttons (A safe / B risky), docked under the play balance */
+.action-dock[data-game="plane"] .plane-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+body.plane-real .action-dock[data-game="plane"] .plane-actions { grid-template-columns: 1fr; } /* real = single bet */
+body.plane-real .plane-act-b { display: none; } /* no 2nd live bet in single-shot real mode */
+.plane-act {
+  width: 100%; border: none; border-radius: var(--r-md, 10px); cursor: pointer;
+  font-family: var(--display); font-weight: 800; font-size: clamp(12px, 3.4vw, 15px); letter-spacing: .3px;
+  padding: 14px 8px; color: #04121a; background: linear-gradient(135deg, #39e7ff, #45f0a6);
+  box-shadow: 0 6px 16px rgba(57,231,255,.28); transition: transform .06s ease, filter .15s ease;
+  /* RULE: burned-in label — a tap/long-press never selects/highlights it */
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+}
+.plane-act.plane-act-b { background: linear-gradient(135deg, #ff4d9d, #ff8a3d); color: #2a0a06; box-shadow: 0 6px 16px rgba(255,77,157,.28); }
+.plane-act:active { transform: translateY(2px); }
+.plane-act[data-kind="cashout"] { background: linear-gradient(135deg, #ffd23f, #ff8a3d 60%, #ff4d9d); color: #2a0a06; animation: planePulse .6s ease-in-out infinite; }
+.plane-act[data-kind="cancel"] { background: linear-gradient(135deg, #3a2560, #52407e); color: #fff; box-shadow: none; }
+.plane-act[data-kind="auto"] { background: #1c2747; color: #ffd23f; box-shadow: none; border: 1px solid rgba(255,210,63,.4); }
+.plane-act[data-kind="wait"], .plane-act[data-kind="done"] { background: var(--s-surface, #1a2238); color: var(--s-muted, #6f7ba0); box-shadow: none; cursor: default; }
+.plane-act:disabled { cursor: not-allowed; }
+@keyframes planePulse { 50% { box-shadow: 0 0 0 5px rgba(255,210,63,.16), 0 6px 20px rgba(255,210,63,.55); } }
+@media (prefers-reduced-motion: reduce) { .plane-act[data-kind="cashout"] { animation: none; } }
+.plane-msg { margin-top: 6px; min-height: 16px; text-align: center; font-weight: 700; font-size: 12px; }
+.plane-msg.win { color: var(--s-green, #45f0a6); }
+.plane-msg.lose { color: #ff6b86; }
+
+/* Control panel: two bet config blocks side by side (single in real mode) */
+.plane-bets { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 6px; }
+body.plane-real .plane-bets { grid-template-columns: 1fr; }
+.plane-bp { background: var(--s-surface, #18202f); border: 1px solid var(--s-border, #2a3550); border-radius: var(--r-md, 10px); padding: 10px; }
+.plane-bp.a { border-color: rgba(57,231,255,.32); }
+.plane-bp.b { border-color: rgba(255,77,157,.32); }
+.plane-bp-head { font-family: var(--display); font-weight: 800; font-size: 12px; letter-spacing: .4px; margin-bottom: 8px; }
+.plane-bp.a .plane-bp-head { color: #39e7ff; }
+.plane-bp.b .plane-bp-head { color: #ff4d9d; }
+.plane-tag { font-weight: 600; font-size: 11px; }
+.plane-bp .slider-wrap { margin: 4px 0; }
+.plane-bp .quickbet-row { gap: 6px; margin-top: 6px; }
+.plane-bp .quickbet-row .qbet { padding: 7px 4px; font-size: 12px; font-weight: 700; }
+.plane-bp .field-label { display: flex; align-items: center; gap: 6px; margin: 8px 0 4px; font-size: 12px; }
+.plane-auto-toggle { margin-left: auto; }
+.plane-auto-toggle.active { background: linear-gradient(135deg, rgba(57,231,255,.22), rgba(57,231,255,.10)); border-color: #39e7ff; color: #fff; }
+
+/* Recent crash history pills */
+.plane-history-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.plane-hist-label { font-size: 11px; flex: 0 0 auto; }
+.plane-history { display: flex; gap: 5px; flex-wrap: wrap; overflow: hidden; max-height: 24px; }
+.plane-history .ph-pill { font-family: ui-monospace, monospace; font-size: 10px; padding: 3px 6px; border-radius: 6px; background: rgba(10,16,30,.7); border: 1px solid #223550; color: #9fb3cc; }
+.plane-history .ph-pill.mid { color: #39e7ff; border-color: #1d5e72; }
+.plane-history .ph-pill.hi { color: #ffd23f; border-color: #6a5a1a; }
+.plane-history .ph-pill.mega { color: #ff4d9d; border-color: #7a2348; }
+
+/* Live (cosmetic) player feed */
+.plane-feed-wrap { margin-top: 10px; }
+.plane-feed-tabs { display: flex; gap: 5px; margin-bottom: 6px; }
+.plane-feed-tabs .ftab { flex: 1; font-family: var(--display); font-weight: 700; font-size: 10px; padding: 6px 0; text-align: center; border-radius: 6px; background: rgba(10,16,30,.5); border: 1px solid var(--s-border, #2a3550); color: var(--s-muted, #8a97b5); cursor: pointer; }
+.plane-feed-tabs .ftab.active { color: #39e7ff; border-color: #39e7ff; }
+.plane-feed { max-height: 168px; overflow-y: auto; font-size: 12px; }
+.plane-feed .pf-head { font-size: 10px; color: var(--s-muted, #8a97b5); padding: 4px; position: sticky; top: 0; background: var(--s-panel, #131a28); }
+.plane-feed .pf-head b { color: #ffd23f; }
+.plane-feed .pf-row { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 6px; }
+.plane-feed .pf-row:nth-child(even) { background: rgba(255,255,255,.025); }
+.plane-feed .pf-row.mine { background: rgba(57,231,255,.12); outline: 1px solid rgba(57,231,255,.3); }
+.plane-feed .pf-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; font-size: 11px; }
+.plane-feed .pf-stake { color: var(--s-muted, #8a97b5); font-size: 11px; }
+.plane-feed .pf-cashed { color: var(--s-green, #45f0a6); font-weight: 700; font-size: 11px; }
+.plane-feed .pf-row.big .pf-cashed { color: #ffd23f; }
+.plane-feed .pf-lost { color: #6f7ba0; font-size: 11px; }
+.plane-feed .pf-pending { color: #5a6a86; font-size: 10px; }
+
+@media (max-width: 900px) {
+  .plane-panel { padding: 12px 12px 10px; }
+  .plane-panel .plane-intro { font-size: 11.5px; line-height: 1.35; margin: 2px 0 8px; }
+  .plane-bets { gap: 8px; }
+  .plane-bp { padding: 8px; }
+  .plane-feed { max-height: 130px; }
+}
