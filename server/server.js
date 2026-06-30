@@ -98,15 +98,23 @@ const tokenPersist = {
 };
 // Boot preflight: prove the token-state path is writable so a broken/read-only TOKEN_BRIDGE_FILE is
 // caught at startup — not silently at the first buy-in (which would then freeze on the next restart).
+let _tokenStoreWritable = false;
 (function preflightTokenStore() {
   try {
     fs.mkdirSync(path.dirname(TOKEN_STATE_FILE), { recursive: true });
     const probe = TOKEN_STATE_FILE + ".probe";
     fs.writeFileSync(probe, "ok"); fs.rmSync(probe, { force: true });
+    _tokenStoreWritable = true;
   } catch (e) {
     try { console.error("TOKEN_BRIDGE_STORE_NOT_WRITABLE — point TOKEN_BRIDGE_FILE at a writable (ideally mounted-disk) path or token sessions won't survive a restart:", (e && e.message) || e); } catch (_) {}
   }
 })();
+// Durability diagnostic (exposed on /api/token/status): durable = the state file is on a CONFIGURED
+// (non-default) path AND writable — i.e. a mounted disk, so sessions survive restarts.
+function tokenStoreInfo() {
+  const custom = !!process.env.TOKEN_BRIDGE_FILE;
+  return { path: TOKEN_STATE_FILE, custom: custom, writable: _tokenStoreWritable, durable: custom && _tokenStoreWritable };
+}
 function tokenRpcUrl(chainId) {
   if (chainId === 11155111) return process.env.SEPOLIA_RPC_URL || process.env.RPC_URL || "";
   if (chainId === 31337) return process.env.LOCAL_RPC_URL || process.env.RPC_URL || "http://127.0.0.1:8545";
@@ -142,6 +150,7 @@ const tokenSvc = attachTokenBridge(app, {
   flag: () => process.env.ENABLE_TOKEN_BRIDGE === "1",
   rpcUrlFor: tokenRpcUrl,
   ethUsd: tokenEthUsd, // live ETH/USD (matches the client) so $X deposited ≈ $X tokens
+  storeInfo: tokenStoreInfo, // durability diagnostic on /api/token/status (disk mounted + writable?)
   // True once a REAL price is available (explicit override, or the live CoinGecko fetch landed).
   // Used to BLOCK a buy-in during the cold-start window when tokenEthUsd() still returns the 3400
   // fallback — otherwise a deposit made in the first seconds after a restart would be valued at

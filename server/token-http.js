@@ -319,7 +319,7 @@ function makeTokenService(opts) {
     return { ok: true, netWei: "0", nonce, signature, lockedWei: lockedWei.toString() };
   }
 
-  function status() { return { ok: true, enabled: true, signerAddress: (opts.signerAddress ? opts.signerAddress() : null), ethUsd: (opts.ethUsd ? opts.ethUsd() : null), games: bridge.games(), model: "server commit-reveal token bridge (no VRF)" }; }
+  function status() { return { ok: true, enabled: true, signerAddress: (opts.signerAddress ? opts.signerAddress() : null), ethUsd: (opts.ethUsd ? opts.ethUsd() : null), store: (opts.storeInfo ? opts.storeInfo() : null), games: bridge.games(), model: "server commit-reveal token bridge (no VRF)" }; }
 
   // Owner-facing AGGREGATE of every OPEN token session — so the house can see its live
   // exposure at a glance (locked principal it can't withdraw yet + unrealized P&L that
