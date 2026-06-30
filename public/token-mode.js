@@ -214,6 +214,7 @@
   }
 
   function fmt(n) { return "$" + (Math.round((+n || 0) * 100) / 100).toLocaleString(); }
+  function _gameBal() { try { return (deps && deps.gameBalanceUsd) ? (+deps.gameBalanceUsd() || 0) : 0; } catch (e) { return 0; } } // player's in-game credits in USD (the slider cap)
   function randSeed() { var s = ""; for (var i = 0; i < 8; i++) s += (Math.random() * 16 | 0).toString(16); return s; }
   function friendly(e) {
     var m = (e && (e.shortMessage || e.message)) || "Something went wrong";
@@ -229,15 +230,21 @@
     if (enabled === false) { mount.hidden = true; return; } // server flag off → hide entirely
     mount.hidden = false;
     if (TokenMode.active()) {
+      // Top-up is a SLIDER capped to remaining in-game credits (no typing). Hidden if no credits left.
+      var maxTop = Math.floor(_gameBal());
+      var topDflt = Math.min(50, Math.max(1, maxTop));
       mount.innerHTML =
         '<div class="token-bar">' +
         '<span class="token-bal">🎟️ <strong>' + fmt(TokenMode.tokens()) + '</strong> tokens</span>' +
-        '<span class="token-hint">play any game — no popups</span>' +
-        '<input id="token-topup" class="token-input" type="number" min="1" step="1" value="50" aria-label="Top-up amount in dollars" title="Add more tokens from your game credits" />' +
-        '<button id="token-topup-btn" class="btn btn-primary token-btn"' + (busy ? " disabled" : "") + '>' + (busy ? "…" : "+ Add") + '</button>' +
+        (maxTop >= 1
+          ? '<input id="token-topup-slider" class="token-slider" type="range" min="1" max="' + maxTop + '" step="1" value="' + topDflt + '" aria-label="Top-up amount in dollars" />' +
+            '<button id="token-topup-btn" class="btn btn-primary token-btn"' + (busy ? " disabled" : "") + '>' + (busy ? "…" : '+ Add <span id="token-topup-val">' + fmt(topDflt) + '</span>') + '</button>'
+          : '<span class="token-hint">play any game — no popups</span>') +
         '<button id="token-cashout" class="btn btn-ghost token-btn"' + (busy ? " disabled" : "") + '>Cash out</button>' +
         '</div>';
-      var tu = $("token-topup-btn"); if (tu) tu.onclick = function () { var v = parseFloat(($("token-topup") || {}).value); TokenMode.topUp(v); };
+      var tsl = $("token-topup-slider"), tlbl = $("token-topup-val");
+      if (tsl && tlbl) tsl.oninput = function () { tlbl.textContent = fmt(tsl.value); };
+      var tu = $("token-topup-btn"); if (tu) tu.onclick = function () { TokenMode.topUp(parseFloat((tsl && tsl.value) || topDflt)); };
       var co = $("token-cashout"); if (co) co.onclick = function () { TokenMode.cashOut(); };
     } else if (deps && deps.isHouseWallet && deps.isHouseWallet()) {
       // House wallet = the bankroll/dealer. It must NOT play with tokens (betting against itself).
@@ -258,14 +265,28 @@
         '</div>';
       var rcb = $("token-recover-btn"); if (rcb) rcb.onclick = function () { TokenMode.releaseStuck(); };
     } else {
-      mount.innerHTML =
-        '<div class="token-bar">' +
-        '<span class="token-bal">🎟️ Play with tokens</span>' +
-        '<span class="token-hint">lock game credits once → no per-bet popups</span>' +
-        '<input id="token-buyin" class="token-input" type="number" min="1" step="1" value="50" aria-label="Buy-in amount in dollars" />' +
-        '<button id="token-buyin-btn" class="btn btn-primary token-btn"' + (busy ? " disabled" : "") + '>' + (busy ? "…" : "Buy in") + '</button>' +
-        '</div>';
-      var b = $("token-buyin-btn"); if (b) b.onclick = function () { var v = parseFloat(($("token-buyin") || {}).value); TokenMode.buyIn(v); };
+      // Buy-in is a SLIDER capped to the player's in-game balance (no typing). Max = game credits.
+      var maxBal = Math.floor(_gameBal());
+      if (maxBal < 1) {
+        mount.innerHTML =
+          '<div class="token-bar">' +
+          '<span class="token-bal">🎟️ Play with tokens</span>' +
+          '<span class="token-hint">deposit game credits first (the Deposit box), then buy in</span>' +
+          '</div>';
+      } else {
+        var dflt = Math.min(50, maxBal);
+        mount.innerHTML =
+          '<div class="token-bar">' +
+          '<span class="token-bal">🎟️ Lock <strong id="token-buyin-val">' + fmt(dflt) + '</strong></span>' +
+          '<input id="token-buyin-slider" class="token-slider" type="range" min="1" max="' + maxBal + '" step="1" value="' + dflt + '" aria-label="Buy-in amount in dollars" />' +
+          '<button id="token-buyin-max" class="btn btn-ghost token-btn" type="button">Max</button>' +
+          '<button id="token-buyin-btn" class="btn btn-primary token-btn"' + (busy ? " disabled" : "") + '>' + (busy ? "…" : "Buy in") + '</button>' +
+          '</div>';
+        var sl = $("token-buyin-slider"), lbl = $("token-buyin-val");
+        if (sl && lbl) sl.oninput = function () { lbl.textContent = fmt(sl.value); };
+        var mx = $("token-buyin-max"); if (mx) mx.onclick = function () { if (sl) { sl.value = maxBal; if (lbl) lbl.textContent = fmt(maxBal); } };
+        var b = $("token-buyin-btn"); if (b) b.onclick = function () { TokenMode.buyIn(parseFloat((sl && sl.value) || dflt)); };
+      }
     }
   }
 
