@@ -415,10 +415,14 @@
     }
     this.lastRound = { nonce: this.nonce, win: res.winUsd };
     this._updatePf(); this._renderHud();
-    // Token mode: reconcile the top "🪙 tokens" bar to the authoritative ledger WITH the reveal
-    // (the bet already credited base+bonus into client.tokens). pressure/plane do this; slots3d
-    // historically didn't, so the bar sat stale at the pre-spin value.
-    if (root.TokenMode && root.TokenMode.active() && root.TokenMode.syncBalance) try { root.TokenMode.syncBalance(); } catch (e) {}
+    // Token mode: reconcile the top "🪙 tokens" bar to the authoritative ledger. The server credits
+    // base+bonus into client.tokens in ONE bet, so syncing on the bonus-TRIGGER spin (or a free spin)
+    // would reveal the final bonus total before the free-spin animation plays (#14). Defer to bonus
+    // end (_endBonus); only sync here on a NORMAL spin that neither is, nor starts, a bonus.
+    {
+      var _willBonus = res.scatter && res.scatter.count >= 3 && E.freeSpinsFor(res.scatter.count) > 0;
+      if (!this._bonus && !_willBonus && root.TokenMode && root.TokenMode.active() && root.TokenMode.syncBalance) try { root.TokenMode.syncBalance(); } catch (e) {}
+    }
 
     // During a free-spins round each settle accumulates toward the grand total.
     if (this._bonus) { this._afterBonusSpin(res); return; }
@@ -500,6 +504,9 @@
     const C = root.Chiptune; if (C && C.jackpot) try { C.jackpot(); } catch (e) {}
     if (this.onWin && total > 0) try { this.onWin({ profitUsd: total, mult: mult, bonus: true }); } catch (e) {}
     this._renderHud();
+    // #14: NOW reconcile the token bar — the bonus animation is done, so the final base+bonus total is
+    // no longer a spoiler (and the bar still ends on the authoritative client.tokens).
+    if (root.TokenMode && root.TokenMode.active() && root.TokenMode.syncBalance) try { root.TokenMode.syncBalance(); } catch (e) {}
     // Leave the grand total on screen (no auto-hide) so a big bonus can be
     // photographed — go idle + spin-ready, and _spin() clears it on next bet.
     clearTimeout(this._bonusT); this._bonusT = setTimeout(() => { this.state = "idle"; this._msg("🏆 Bonus banked — tap SPIN", "win"); this._renderSpinBtn(); }, 1400);
@@ -518,6 +525,7 @@
     if (this.onWin && b.total > 0) try { this.onWin({ profitUsd: b.total, mult: b.plan.mult, bonus: true }); } catch (e) {}
     this._bonus = null; this._spinning = false; this.state = "idle";
     this._hideOverlay(); this._renderHud(); this._renderSpinBtn();
+    if (root.TokenMode && root.TokenMode.active() && root.TokenMode.syncBalance) try { root.TokenMode.syncBalance(); } catch (e) {} // #14: reconcile after the aborted bonus banks
   };
 
   /* ---------- bonus overlay (DOM over the canvas) ---------- */

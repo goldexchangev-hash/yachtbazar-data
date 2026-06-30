@@ -1355,7 +1355,7 @@
       if (!revealLock) $("game-balance").textContent = usdOf(gb); // hold until the result is revealed
       $("wallet-balance").textContent = usdOf(wb);
       walletWei = wb;
-      if (planeGame && !demoOn && !revealLock) try { planeGame.setBalance(weiToUsd(gb)); } catch (e) {}
+      if (planeGame && !demoOn && !revealLock && !(window.TokenMode && TokenMode.active())) try { planeGame.setBalance(weiToUsd(gb)); } catch (e) {} // #11: in token mode the plane HUD shows TOKENS — don't let the on-chain poll overwrite it with gameWei
       paintBjConnectedBalance();
       syncDepositSlider();
       syncWithdrawSlider();
@@ -2490,7 +2490,7 @@
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
       .then(() => loadScriptOnce("slots3d-engine.js?v=1243"))
-      .then(() => loadScriptOnce("slots3d.js?v=1246"))
+      .then(() => loadScriptOnce("slots3d.js?v=1248"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;

@@ -129,11 +129,15 @@
   // PLAY: one instant off-chain bet (no popup). `game` is a token-enabled key.
   TokenBridgeClient.prototype.play = async function (game, betUnits, params, clientSeed) {
     if (!this.session) throw new Error("buy in first");
+    var seq = (this._playSeq = (this._playSeq || 0) + 1); // issue order
     const r = await this._post("/api/token/play", {
       sessionId: this.session.sessionId, sessionToken: this.session.sessionToken,
       game: game, betUnits: betUnits, params: params || {}, clientSeed: clientSeed || "",
     });
-    this.tokens = r.tokens;
+    // #13: only the LATEST-issued play may update the cached balance. The server settles bets in nonce
+    // order, so a higher seq's r.tokens is always the most recent truth; a slow earlier response arriving
+    // after a newer one must NOT roll the displayed tokens backward (rapid fish/reef fire).
+    if (seq > (this._playSeqApplied || 0)) { this._playSeqApplied = seq; this.tokens = r.tokens; }
     return r; // { win, multiplier, payoutUnits, outcome, detail, tokens }
   };
 
