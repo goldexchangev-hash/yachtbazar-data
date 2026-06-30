@@ -1945,7 +1945,8 @@ body.chat-open .chat-tab { transform: translate(120%, -50%); opacity: 0; pointer
 .profile-card { width: min(94vw, 460px); text-align: left; }
 .profile-head { display: flex; align-items: center; gap: 14px; margin: 4px 0 12px; }
 #profile-avatar { border-radius: 10px; border: 1px solid var(--s-border); image-rendering: pixelated; }
-.profile-head-main { flex: 1; min-width: 0; }
+/* Inset the name/address column so it never slides under the absolutely-positioned ✕ (top/right 14px). */
+.profile-head-main { flex: 1; min-width: 0; padding-right: 40px; }
 .profile-name-input { width: 100%; background: var(--s-surface); border: 1px solid var(--s-border); color: var(--s-text); border-radius: var(--r-sm); padding: 8px 10px; font: 700 16px/1 var(--s-font); }
 .profile-addr { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
 .profile-addr .mono { color: var(--s-text-2); font-size: 12px; }
@@ -1964,6 +1965,21 @@ body.chat-open .chat-tab { transform: translate(120%, -50%); opacity: 0; pointer
 .ph-row.win .ph-net { color: var(--s-green); }
 .ph-row.lose .ph-net { color: var(--s-red); }
 .profile-note { font-size: 11px; margin-top: 4px; }
+
+/* House-only diagnostics panel inside the profile modal (owner clicks a player) */
+.profile-house { background: rgba(45, 224, 160, 0.06); border: 1px solid rgba(45, 224, 160, 0.28); border-radius: var(--r-sm); padding: 10px 12px; margin-bottom: 14px; }
+.profile-house .hd-row { display: flex; align-items: center; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 13px; }
+.profile-house .hd-row:last-of-type { border-bottom: none; }
+.profile-house .hd-row strong { font: 700 13px/1 var(--s-mono); color: var(--s-text); }
+.profile-house .hd-row strong.warn { color: #ffc357; }
+.profile-house .hd-row strong.up { color: var(--s-green); }
+.profile-house .hd-row strong.down { color: var(--s-red); }
+.profile-house .hd-note { font-size: 11px; margin: 8px 0 6px; }
+.profile-house #hd-release-btn { margin-top: 4px; }
+
+/* Players & Records / leaderboard rows are clickable → open that player's profile */
+.player-item.clickable, .lb-item.clickable { cursor: pointer; }
+.player-item.clickable:hover, .lb-item.clickable:hover { background: rgba(255, 255, 255, 0.05); }
 
 /* chat: reveal-address button next to a display name */
 .chat-reveal { background: none; border: none; cursor: pointer; font-size: 11px; padding: 0 4px; opacity: .55; }

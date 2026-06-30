@@ -836,6 +836,22 @@
             if (rb && !rb._wired) { rb._wired = true; rb.onclick = async function () { if (!window.TokenMode) return; await TokenMode.releaseStuck(); try { await refreshHostPanel(); } catch (e) {} try { refreshBalances(); } catch (e) {} }; }
           } else { sr.hidden = true; }
         }
+        // House-only: a "look up a player by address" tool → open that player's profile (locked funds + release).
+        const pl = $("hs-player-lookup");
+        if (pl) {
+          pl.hidden = false;
+          const pb = $("hs-player-btn"), pi = $("hs-player-addr");
+          if (pb && !pb._wired) {
+            pb._wired = true;
+            const go = () => {
+              const v = (pi && pi.value || "").trim();
+              if (!/^0x[0-9a-fA-F]{40}$/.test(v)) return toast("Enter a valid 0x… wallet address", "err");
+              openProfile(v);
+            };
+            pb.onclick = go;
+            if (pi) pi.addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
+          }
+        }
       } catch (e) {}
     } catch {}
   }
@@ -2252,21 +2268,21 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1233").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1234").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   // PlayCanvas engine (~2.2MB) — only loaded when the Sky Swoop channel is first opened.
   function loadPlayCanvasOnce() {
     if (window.pc) return Promise.resolve();
     if (playcanvasLoadPromise) return playcanvasLoadPromise;
-    playcanvasLoadPromise = loadScriptOnce("vendor/playcanvas.min.js?v=1233").catch((e) => { playcanvasLoadPromise = null; throw e; });
+    playcanvasLoadPromise = loadScriptOnce("vendor/playcanvas.min.js?v=1234").catch((e) => { playcanvasLoadPromise = null; throw e; });
     return playcanvasLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=1233"))
+      .then(() => loadScriptOnce("slots.js?v=1234"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -2276,11 +2292,11 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=1233"))
-      .then(() => loadScriptOnce("pressure-render.js?v=1233"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=1233"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=1234"))
+      .then(() => loadScriptOnce("pressure-render.js?v=1234"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=1234"))
       // optional 3D red balloon (Three.js) — falls back to the 2D balloon if it can't load
-      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1233")).catch(() => {}))
+      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1234")).catch(() => {}))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -2351,10 +2367,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=1233"))
-      .then(() => loadScriptOnce("plane-render.js?v=1233"))
-      .then(() => loadScriptOnce("plane-feed.js?v=1233"))
-      .then(() => loadScriptOnce("plane-ui.js?v=1233"))
+      .then(() => loadScriptOnce("plane-engine.js?v=1234"))
+      .then(() => loadScriptOnce("plane-render.js?v=1234"))
+      .then(() => loadScriptOnce("plane-feed.js?v=1234"))
+      .then(() => loadScriptOnce("plane-ui.js?v=1234"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2455,15 +2471,15 @@
   function loadThreeOnce() {
     if (window.THREE) return Promise.resolve();
     if (threeLoadPromise) return threeLoadPromise;
-    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1233").catch((e) => { threeLoadPromise = null; throw e; });
+    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1234").catch((e) => { threeLoadPromise = null; throw e; });
     return threeLoadPromise;
   }
   function ensureSlots3dLoaded() {
     if (window.Slots3D) return Promise.resolve(true);
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("slots3d-engine.js?v=1233"))
-      .then(() => loadScriptOnce("slots3d.js?v=1233"))
+      .then(() => loadScriptOnce("slots3d-engine.js?v=1234"))
+      .then(() => loadScriptOnce("slots3d.js?v=1234"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2505,8 +2521,8 @@
     if (window.FishTable) return Promise.resolve(true);
     if (fishLoadPromise) return fishLoadPromise;
     fishLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishtable-engine.js?v=1233"))
-      .then(() => loadScriptOnce("fishtable.js?v=1233"))
+      .then(() => loadScriptOnce("fishtable-engine.js?v=1234"))
+      .then(() => loadScriptOnce("fishtable.js?v=1234"))
       .then(() => true)
       .catch((e) => { fishLoadPromise = null; throw e; });
     return fishLoadPromise;
@@ -2589,7 +2605,7 @@
     if (window.SwoopGame) return Promise.resolve(true);
     if (swoopLoadPromise) return swoopLoadPromise;
     swoopLoadPromise = loadPlayCanvasOnce()
-      .then(() => loadScriptOnce("swoop3d.js?v=1233"))
+      .then(() => loadScriptOnce("swoop3d.js?v=1234"))
       .then(() => true)
       .catch((e) => { swoopLoadPromise = null; throw e; });
     return swoopLoadPromise;
@@ -2670,8 +2686,8 @@
     if (window.FishShooter) return Promise.resolve(true);
     if (fishshooterLoadPromise) return fishshooterLoadPromise;
     fishshooterLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishshooter-engine.js?v=1233")) // OWN engine (decoupled from Reef's fishtable-engine.js)
-      .then(() => loadScriptOnce("fishshooter.js?v=1233"))
+      .then(() => loadScriptOnce("fishshooter-engine.js?v=1234")) // OWN engine (decoupled from Reef's fishtable-engine.js)
+      .then(() => loadScriptOnce("fishshooter.js?v=1234"))
       .then(() => true)
       .catch((e) => { fishshooterLoadPromise = null; throw e; });
     return fishshooterLoadPromise;
@@ -2756,7 +2772,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1233"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1234"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -2783,7 +2799,7 @@
   function loadRail3dOnce() {
     if (window.Rail3D) return Promise.resolve(true);
     if (rail3dLoadPromise) return rail3dLoadPromise;
-    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1233")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
+    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1234")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
     return rail3dLoadPromise;
   }
   function buildRail3d() {
@@ -2804,7 +2820,7 @@
   function loadDice2_3dOnce() {
     if (window.TwoDice3D) return Promise.resolve(true);
     if (d2_3dLoadPromise) return d2_3dLoadPromise;
-    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1233")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
+    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1234")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
     return d2_3dLoadPromise;
   }
   function buildDice2_3d() {
@@ -4105,19 +4121,32 @@
   }
 
   // ---------------------------------------------------------- player profile
-  async function openProfile() {
-    if (!account) return toast("Connect a wallet first", "err");
+  // The wallet whose profile the modal is showing: your own (editable), or another player's
+  // (read-only) when you click them in Players & Records. The house sees extra on-chain diagnostics.
+  let profileAddr = null;
+  async function openProfile(viewAddr) {
+    const addr = (typeof viewAddr === "string" && /^0x[0-9a-fA-F]{40}$/.test(viewAddr)) ? E.getAddress(viewAddr) : account;
+    if (!addr) return toast("Connect a wallet first", "err");
     const pm = $("profile-modal"); if (!pm) return;
-    const p = window.Profile ? Profile.load(account) : {};
-    if ($("profile-name")) $("profile-name").value = p.name || "";
-    if ($("profile-bio")) $("profile-bio").value = p.bio || "";
-    if ($("profile-addr-short")) $("profile-addr-short").textContent = short(account);
-    try { if ($("profile-avatar")) blockies(account, 8, 8, $("profile-avatar")); } catch {}
+    profileAddr = addr;
+    const mine = !!(account && eq(addr, account));
+    const p = window.Profile ? Profile.load(addr) : {};
+    const nameEl = $("profile-name");
+    if (nameEl) { nameEl.value = p.name || ""; nameEl.readOnly = !mine; nameEl.placeholder = mine ? "Display name" : (p.name || "Unnamed player"); }
+    // Bio is browser-local, so another player's is unknown — hide the field entirely when viewing them.
+    if ($("profile-bio")) { $("profile-bio").value = mine ? (p.bio || "") : ""; $("profile-bio").style.display = mine ? "" : "none"; }
+    if ($("profile-addr-short")) $("profile-addr-short").textContent = short(addr);
+    try { if ($("profile-avatar")) blockies(addr, 8, 8, $("profile-avatar")); } catch {}
+    { const sv = $("profile-save"); if (sv) sv.style.display = mine ? "" : "none"; }
+    { const nt = pm.querySelector(".profile-note"); if (nt) nt.style.display = mine ? "" : "none"; }
+    { const rv = $("profile-addr-reveal"); if (rv) rv.style.display = mine ? "" : "none"; } // copy is for your own address
     pm.classList.remove("hidden");
     renderProfileStats();
+    renderHouseDiag(addr, mine);
   }
   function saveProfile() {
     if (!account || !window.Profile) return;
+    if (profileAddr && !eq(profileAddr, account)) return; // never overwrite another player's profile
     const name = ($("profile-name") ? $("profile-name").value : "").slice(0, 24).trim();
     const bio = ($("profile-bio") ? $("profile-bio").value : "").slice(0, 160).trim();
     Profile.save(account, { name, bio });
@@ -4127,12 +4156,14 @@
   async function renderProfileStats() {
     const box = $("profile-stats"), hist = $("profile-history");
     if (!box || !window.Profile) return;
-    box.innerHTML = '<p class="muted">Loading your stats…</p>';
+    const addr = profileAddr || account;
+    const mine = !!(account && eq(addr, account));
+    box.innerHTML = '<p class="muted">Loading ' + (mine ? "your" : "their") + ' stats…</p>';
     let rooms = [], dice = [], twoDice = [];
     try { [rooms, dice, twoDice] = await Promise.all([
       recentRooms(2000).catch(() => []), recentDice(2000).catch(() => []), recentTwoDice(2000).catch(() => []),
     ]); } catch {}
-    const s = Profile.computeStats(account, { rooms, dice, twoDice }, eq);
+    const s = Profile.computeStats(addr, { rooms, dice, twoDice }, eq);
     const since = s.memberSinceSec ? new Date(s.memberSinceSec * 1000).toLocaleDateString() : "—";
     const cell = (k, v) => '<div class="ps-cell"><span class="ps-k muted">' + k + '</span><strong class="ps-v">' + v + "</strong></div>";
     box.innerHTML =
@@ -4153,6 +4184,47 @@
           '</span><span class="ph-net">' + netStr(h.net) + "</span></div>").join("");
       }
     }
+  }
+
+  // HOUSE-ONLY diagnostics panel inside the profile modal: the owner clicks a player and sees their
+  // live on-chain token state (locked principal, open-session tokens / buy-in / unrealized P&L) plus a
+  // one-tap "Release stuck funds" when they have an orphaned lock and no active session. Lets the owner
+  // unstick a player who reports trapped funds — settleBlackjack always returns to the PLAYER, so this
+  // can never move funds to the house.
+  async function renderHouseDiag(addr, mine) {
+    const box = $("profile-house"); if (!box) return;
+    const isHouse = account && hostTreasury && eq(account, hostTreasury);
+    if (!isHouse || mine || !window.TokenMode || !TokenMode.adminPlayerInfo) { box.classList.add("hidden"); box.innerHTML = ""; return; }
+    box.classList.remove("hidden");
+    box.innerHTML = '<h3 class="profile-h3">🏦 House view</h3><p class="muted">Reading on-chain token state…</p>';
+    let info = null;
+    try { info = await TokenMode.adminPlayerInfo(addr); }
+    catch (e) { box.innerHTML = '<h3 class="profile-h3">🏦 House view</h3><p class="muted">Couldn\'t read on-chain state — ' + ((e && e.message) || "error") + "</p>"; return; }
+    if (profileAddr !== addr) return; // the modal moved on while we awaited
+    const usd = (n) => "$" + (Math.round((+n || 0) * 100) / 100).toLocaleString();
+    const row = (k, v, cls) => '<div class="hd-row"><span class="muted">' + k + '</span><strong' + (cls ? ' class="' + cls + '"' : "") + ">" + v + "</strong></div>";
+    let html = '<h3 class="profile-h3">🏦 House view</h3>';
+    html += row("Locked on-chain", usd(info.lockedUsd), info.lockedUsd > 0 ? "warn" : "");
+    if (info.hasOpenSession && info.session) {
+      const pnl = info.session.unrealizedUnits;
+      html += row("Active session", "yes · " + usd(info.session.tokens) + " tokens");
+      html += row("Buy-in", usd(info.session.buyInUnits));
+      html += row("Unrealized P&L", (pnl >= 0 ? "+" : "−") + usd(Math.abs(pnl)).slice(1), pnl >= 0 ? "up" : "down");
+      html += '<p class="muted hd-note">Player is in a live game — they cash out themselves. Nothing to release.</p>';
+    } else {
+      html += row("Active session", "none");
+    }
+    if (info.strandedUsd > 0 && !info.hasOpenSession) {
+      html += '<p class="muted hd-note">' + usd(info.strandedUsd) + ' is locked with no active session — you can release it back to this player.</p>';
+      html += '<button id="hd-release-btn" class="btn btn-primary btn-block">🔓 Release ' + usd(info.strandedUsd) + " to player</button>";
+    }
+    box.innerHTML = html;
+    const rb = $("hd-release-btn");
+    if (rb) rb.onclick = async function () {
+      rb.disabled = true; rb.textContent = "Confirm in your wallet…";
+      try { await TokenMode.adminRelease(addr); toast("Released to player ✓", "ok"); await renderHouseDiag(addr, mine); }
+      catch (e) { rb.disabled = false; rb.textContent = "🔓 Release to player"; }
+    };
   }
 
   async function cancelRoom(id) {
@@ -4436,7 +4508,9 @@
     rows.forEach((r, i) => {
       const mine = account && eq(account, r.addr);
       const li = document.createElement("li");
-      li.className = "lb-item" + (mine ? " me" : "");
+      li.className = "lb-item clickable" + (mine ? " me" : "");
+      li.title = "View profile";
+      li.onclick = () => openProfile(r.addr);
       const rank = ["🥇", "🥈", "🥉"][i] || (i + 1) + ".";
       li.innerHTML =
         `<span class="lb-rank">${rank}</span>` +
@@ -4510,7 +4584,9 @@
     // You first, then the 7 most-recent participants — keeps the panel compact.
     for (const p of players.slice(0, 8)) {
       const li = document.createElement("li");
-      li.className = "player-item";
+      li.className = "player-item clickable";
+      li.title = "View profile";
+      li.onclick = () => openProfile(p); // click any player → their profile (read-only; house sees diagnostics)
       const c = document.createElement("canvas");
       blockies(p, 8, 3, c);
       li.appendChild(c);

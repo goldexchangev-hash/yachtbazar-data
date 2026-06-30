@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#0c0d16" />
     <meta name="referrer" content="same-origin" />
-    <link rel="manifest" href="manifest.webmanifest?v=1233" />
+    <link rel="manifest" href="manifest.webmanifest?v=1234" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -28,7 +28,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=1233" />
+    <link rel="stylesheet" href="styles.css?v=1234" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -38,13 +38,13 @@
     <!-- ───────────────────────── Header ───────────────────────── -->
     <header class="topbar">
       <button id="rail-toggle" class="rail-toggle" aria-label="Open menu" title="Menu">☰</button>
-      <span class="build-tag-m" id="build-tag-m" title="Live build version — confirms the deploy is up to date">v12.33</span>
+      <span class="build-tag-m" id="build-tag-m" title="Live build version — confirms the deploy is up to date">v12.34</span>
       <div class="brand">
         <span class="brand-tv">📺</span>
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v12.33</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v12.34</span>
       </div>
       <div class="topbar-right">
         <div class="tb-tools">
@@ -436,7 +436,7 @@
 
                 <!-- Promo intro reel — autoplays once (muted) on first load, then fades
                      to black and hands off to the game. Replay button under the TV. -->
-                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=1233"></video>
+                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=1234"></video>
 
                 <!-- Shown while a bet tx is being signed + mined (esp. slow on mobile) -->
                 <div id="tv-pending" class="tv-pending hidden">⏳ SENDING BET…<br />confirm in your wallet, then hold tight</div>
@@ -1131,6 +1131,14 @@
               <button id="release-stuck-btn" class="btn btn-primary" type="button">Release back to credits</button>
             </div>
           </div>
+          <!-- Help a stuck player: paste any wallet → open their profile to see locked funds + release. -->
+          <div class="hs-grid" id="hs-player-lookup" style="margin-top:8px" hidden>
+            <div class="hs-cell" style="grid-column:1/-1; display:flex; align-items:center; gap:8px; flex-wrap:wrap">
+              <span class="muted">🔎 Look up a player</span>
+              <input id="hs-player-addr" class="input" type="text" spellcheck="false" placeholder="0x… player wallet" style="flex:1 1 220px; min-width:180px" />
+              <button id="hs-player-btn" class="btn btn-ghost" type="button">Open profile</button>
+            </div>
+          </div>
           <div class="bankroll-actions" style="margin-top: 10px;">
             <input id="cashout-input" class="input" type="number" min="0" step="1" placeholder="Cash out $ (e.g. 100)" />
             <button id="cashout-amount-btn" class="btn btn-ghost">💸 Cash out</button>
@@ -1422,6 +1430,7 @@
         </div>
         <textarea id="profile-bio" maxlength="160" rows="2" placeholder="Short bio (saved in this browser only)"></textarea>
         <div class="profile-stats" id="profile-stats"></div>
+        <div class="profile-house hidden" id="profile-house"></div>
         <h3 class="profile-h3">Recent games</h3>
         <div class="profile-history" id="profile-history"><p class="muted">No games yet — go play a channel!</p></div>
         <button id="profile-save" class="btn btn-primary btn-block">💾 Save profile</button>
@@ -1525,21 +1534,21 @@
       </div>
     </aside>
 
-    <script defer src="vendor/ethers.umd.min.js?v=1233"></script>
-    <script defer src="config.js?v=1233"></script>
-    <script defer src="contract.js?v=1233"></script>
-    <script defer src="chiptune.js?v=1233"></script>
-    <script defer src="scenes.js?v=1233"></script>
-    <script defer src="tv.js?v=1233"></script>
-    <script defer src="poker-engine.js?v=1233"></script>
-    <script defer src="poker-bots.js?v=1233"></script>
-    <script defer src="poker-ui.js?v=1233"></script>
-    <script defer src="crash-engine.js?v=1233"></script>
-    <script defer src="crash-render.js?v=1233"></script>
-    <script defer src="profile.js?v=1233"></script>
-    <script defer src="token-client.js?v=1233"></script>
-    <script defer src="token-mode.js?v=1233"></script>
-    <script defer src="crash-rounds-client.js?v=1233"></script>
-    <script defer src="app.js?v=1233"></script>
+    <script defer src="vendor/ethers.umd.min.js?v=1234"></script>
+    <script defer src="config.js?v=1234"></script>
+    <script defer src="contract.js?v=1234"></script>
+    <script defer src="chiptune.js?v=1234"></script>
+    <script defer src="scenes.js?v=1234"></script>
+    <script defer src="tv.js?v=1234"></script>
+    <script defer src="poker-engine.js?v=1234"></script>
+    <script defer src="poker-bots.js?v=1234"></script>
+    <script defer src="poker-ui.js?v=1234"></script>
+    <script defer src="crash-engine.js?v=1234"></script>
+    <script defer src="crash-render.js?v=1234"></script>
+    <script defer src="profile.js?v=1234"></script>
+    <script defer src="token-client.js?v=1234"></script>
+    <script defer src="token-mode.js?v=1234"></script>
+    <script defer src="crash-rounds-client.js?v=1234"></script>
+    <script defer src="app.js?v=1234"></script>
   </body>
 </html>

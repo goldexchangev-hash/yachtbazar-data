@@ -142,14 +142,36 @@
       try {
         note("Recovering your locked funds…", "ok");
         var r = await client.releaseStuck();
-        var eth = Number(r.lockedWei) / 1e18;
-        note("Released " + eth.toFixed(4) + " ETH back to your game credits ✅", "ok");
+        // mode:"session" = the server cashed out a live session it still held (the client had lost track
+        // of it); mode:"orphan" = a net=0 release of a truly stranded lock. Either way the full on-chain
+        // lock is back in game credits.
+        if (r && (r.mode === "session" || r.mode === "obligation")) note("Recovered — your funds are back in your game credits ✅", "ok");
+        else { var eth = Number(r && r.lockedWei) / 1e18; note((isFinite(eth) ? "Released " + eth.toFixed(4) + " ETH" : "Recovered your funds") + " back to your game credits ✅", "ok"); }
         stranded = 0; // recovered — clear the prompt (app.js re-checks bjLocked via onChange too)
         _clearSession();
         changed();
       } catch (e) {
         note(friendly(e), "err");
+        try { changed(); } catch (e2) {} // re-check on-chain lock either way
       } finally { busy = false; render(); }
+    },
+
+    // HOUSE TOOLS (owner only) — read a player's on-chain token state, and release a stranded
+    // player's locked funds back to them. Delegated to the bridge client; the server enforces that
+    // the caller is the on-chain owner/treasury, so a non-owner call just fails server-side.
+    adminPlayerInfo: function (addr) { if (!client) return Promise.reject(new Error("connect your wallet first")); return client.adminPlayerInfo(addr); },
+    adminRelease: async function (addr) {
+      if (busy) throw new Error("busy");
+      if (!client) throw new Error("connect your wallet first");
+      busy = true; render();
+      try {
+        note("Releasing the player's locked funds…", "ok");
+        var r = await client.adminRelease(addr);
+        var eth = Number(r && r.lockedWei) / 1e18;
+        note("Released " + (isFinite(eth) ? eth.toFixed(4) + " ETH" : "funds") + " back to the player ✅", "ok");
+        return r;
+      } catch (e) { note(friendly(e), "err"); throw e; }
+      finally { busy = false; render(); }
     },
 
     // Top up an OPEN session: lock MORE game credits → more tokens, without cashing out. For when

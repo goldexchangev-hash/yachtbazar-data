@@ -35,6 +35,7 @@ const { makeTokenBridge } = require("./token-bridge.js");
 const BUYIN_ABI = [
   "event BlackjackBuyIn(address indexed player,uint256 amount,uint256 locked)",
   "function bjLocked(address player) view returns (uint256)",
+  "function bjNonceUsed(uint256 nonce) view returns (bool)",
 ];
 const WEI_PER_ETH = 10n ** 18n;
 
@@ -54,6 +55,9 @@ function tokenAuthMessage(intent, o) {
   if (intent === "start") lines.push("Buy-in wei: " + String(o.buyInWei || "0"));
   else if (intent === "settle") lines.push("Session: " + String(o.sessionId || ""));
   else if (intent === "topup") { lines.push("Session: " + String(o.sessionId || "")); lines.push("Buy-in wei: " + String(o.buyInWei || "0")); }
+  // admin-release / admin-player: the OWNER signs (Player: = the owner's own address) and names a
+  // TARGET player whose stranded lock to release / inspect. The server re-checks Player == on-chain owner.
+  else if (intent === "admin-release" || intent === "admin-player") lines.push("Target: " + address(o.target, "target"));
   return lines.join("\n");
 }
 function verifyWalletSignature(intent, body, o) {
@@ -112,6 +116,37 @@ function makeBjLockedReader(rpcUrlFor) {
   };
 }
 
+// Has a settle nonce already been consumed on-chain? Used to decide whether an outstanding settlement
+// obligation is still LIVE (re-issue it) or has been claimed (clear it). Injectable for tests.
+function makeNonceUsedReader(rpcUrlFor) {
+  return async function readNonceUsed(contract, chainId, nonce) {
+    const url = rpcUrlFor(chainId);
+    if (!url) throw new Error("bridge RPC not configured");
+    const fr = new ethers.FetchRequest(url); fr.timeout = 12000;
+    const provider = new ethers.JsonRpcProvider(fr, undefined, { staticNetwork: true });
+    const c = new ethers.Contract(contract, BUYIN_ABI, provider);
+    return !!(await c.bjNonceUsed(BigInt(String(nonce))));
+  };
+}
+
+// Read the contract's owner + treasury (the "house"). Used to authenticate an owner-signed
+// admin-release: only the on-chain owner OR treasury may sign a release of a player's funds.
+// (Safe because settleBlackjack always returns funds to the PLAYER — the owner gains nothing.)
+const OWNER_ABI = ["function owner() view returns (address)", "function treasury() view returns (address)"];
+function makeOwnerReader(rpcUrlFor) {
+  return async function readOwner(contract, chainId) {
+    const url = rpcUrlFor(chainId);
+    if (!url) throw new Error("bridge RPC not configured");
+    const fr = new ethers.FetchRequest(url); fr.timeout = 12000;
+    const provider = new ethers.JsonRpcProvider(fr, undefined, { staticNetwork: true });
+    const c = new ethers.Contract(contract, OWNER_ABI, provider);
+    let owner = null, treasury = null;
+    try { owner = String(await c.owner()); } catch (e) {}
+    try { treasury = String(await c.treasury()); } catch (e) {}
+    return { owner, treasury };
+  };
+}
+
 /**
  * Build the token service (pure-ish orchestration — no Express). Testable directly.
  * opts: { signer:{sign}, verifyBuyIn(o)->{lockedWei}, ethUsd():number, persist, now():number }
@@ -121,6 +156,8 @@ function makeTokenService(opts) {
   const ethUsdFn = typeof opts.ethUsd === "function" ? opts.ethUsd : () => Number(opts.ethUsd) || 3400;
   const verifyBuyIn = opts.verifyBuyIn || makeOnChainVerifier(opts.rpcUrlFor || (() => ""), opts.minConfirmations || 1);
   const readBjLocked = opts.readBjLocked || makeBjLockedReader(opts.rpcUrlFor || (() => ""));
+  const readNonceUsed = opts.readNonceUsed || makeNonceUsedReader(opts.rpcUrlFor || (() => ""));
+  const readOwner = opts.readOwner || makeOwnerReader(opts.rpcUrlFor || (() => ""));
 
   // ── durable replay guard + open-session map ──────────────────────────────
   // A restart MUST preserve usedBuyIns (so a confirmed buy-in tx can never re-fund a
@@ -151,6 +188,14 @@ function makeTokenService(opts) {
   const usedBuyIns = new Set();
   const tokenForSession = new Map(); // sessionId -> bearer token
   const openByPlayer = new Map();    // player -> sessionId (one open session per player)
+  // OUTSTANDING SETTLEMENT OBLIGATION — player(lowercased) -> { netWei, nonce, signature, chainId, contract }.
+  // The instant the server signs ANY settlement for a player's current on-chain lock (cash-out OR a
+  // recover that closed a session), it records the obligation here. Until the chain consumes that lock
+  // (bjLocked → 0), every later recover/admin-release RE-ISSUES this same settlement instead of signing
+  // a fresh net=0. Without it, a losing player could settle at a loss off-chain, NOT broadcast it, then
+  // recover a net=0 settlement (different nonce) and reclaim the full principal — escaping the loss
+  // (proven by the v12.34 adversarial audit). MUST be persisted so a redeploy can't reopen the hole.
+  const pendingSettle = new Map();
   if (httpPersist) {
     try {
       const st = httpPersist.load() || {};
@@ -161,6 +206,7 @@ function makeTokenService(opts) {
       // /play 400s "invalid session token" while the session still looks open client-side —
       // the balance freezes silently. Rehydrate the bearers alongside the open sessions.
       for (const [sid, tok] of st.tokenForSession || []) tokenForSession.set(String(sid), String(tok));
+      for (const [p, ob] of st.pendingSettle || []) if (ob) pendingSettle.set(String(p), ob);
     } catch (e) {}
   }
   function saveHttp() {
@@ -170,8 +216,41 @@ function makeTokenService(opts) {
         usedBuyIns: Array.from(usedBuyIns),
         openByPlayer: Array.from(openByPlayer.entries()),
         tokenForSession: Array.from(tokenForSession.entries()),
+        pendingSettle: Array.from(pendingSettle.entries()),
       });
     } catch (e) {}
+  }
+  // Record the signed settlement the server just committed to for this player's current lock.
+  function recordObligation(player, contract, chainId, settlement) {
+    if (!settlement || settlement.netWei == null || settlement.nonce == null || !settlement.signature) return;
+    pendingSettle.set(String(player).toLowerCase(), {
+      netWei: String(settlement.netWei), nonce: String(settlement.nonce), signature: settlement.signature,
+      chainId: Number(chainId), contract: String(contract),
+    });
+  }
+
+  // PER-PLAYER MUTEX — serialize every settlement-SIGNING op (settle / release / admin-release) for a
+  // given wallet so the check-then-record sequence is atomic. Without it, N concurrent releases on one
+  // open losing session could each fall through and mint a DISTINCT net=0 (the player keeps a loss AND a
+  // net=0 → escapes the loss). Chaining each call after the previous one's settlement closes that race.
+  const _playerChain = new Map();
+  function withPlayerLock(player, fn) {
+    const key = String(player).toLowerCase();
+    const prev = _playerChain.get(key) || Promise.resolve();
+    const result = prev.then(fn, fn); // run fn once the prior op for this player has settled (success or fail)
+    const settled = result.then(() => {}, () => {});
+    _playerChain.set(key, settled);
+    settled.then(() => { if (_playerChain.get(key) === settled) _playerChain.delete(key); });
+    return result;
+  }
+
+  // Is a recorded obligation still LIVE (must be re-issued) or already claimed on-chain (clear it)?
+  // Decided by the obligation's OWN contract/chainId/nonce — never request params — and tolerant of an
+  // RPC failure (treat as LIVE so we never mint a fresh net=0 in the dark).
+  async function obligationConsumed(ob) {
+    if (!ob || ob.nonce == null) return false;
+    try { return await readNonceUsed(ob.contract, ob.chainId, ob.nonce); }
+    catch (e) { return false; }
   }
 
   const bridge = makeTokenBridge({ signer: opts.signer || null, persist: nsPersist("bridge") });
@@ -224,6 +303,10 @@ function makeTokenService(opts) {
     const started = bridge.start({ player, chainId, contract, buyInUnits, lockedWei: lockedWei.toString(), now: (opts.now && opts.now()) || 0 });
     usedBuyIns.add(txKey);
     openByPlayer.set(player, started.sessionId);
+    // NOTE: we deliberately do NOT clear pendingSettle here. A stale obligation is harmless — recover's
+    // branch (2) re-reads bjNonceUsed and clears it only when the chain proves it consumed; and the next
+    // settle/release overwrites it. Clearing on doStart was attacker-poisonable (a fake contract could
+    // doStart-clear a real loss obligation), so it's removed.
     const sessionToken = crypto.randomBytes(24).toString("hex");
     tokenForSession.set(started.sessionId, sessionToken);
     saveHttp(); // durably record the spent txHash + open session + bearer BEFORE handing it back
@@ -285,38 +368,183 @@ function makeTokenService(opts) {
     return { ok: true, ...r };
   }
 
-  async function doSettle(body) {
+  function doSettle(body) {
     const player = address(body && body.player, "player");
     const s = bridge.session(body && body.sessionId);
     if (!s) throw new Error("no such session");
     if (s.player.toLowerCase() !== player.toLowerCase()) throw new Error("session does not belong to player");
     verifyWalletSignature("settle", body, { player, contract: s.contract, chainId: s.chainId, sessionId: s.id });
-    const settlement = await bridge.settle({ sessionId: s.id });
-    openByPlayer.delete(player);
-    tokenForSession.delete(s.id);
-    playBuckets.delete(s.id);
-    saveHttp(); // the session is no longer open — persist the freed slot + dropped bearer (txHash stays spent)
-    return settlement; // includes netWei, signature, serverSeedReveal (now safe), commit
+    // Serialize per player so a concurrent recover can't interleave with this cash-out (race-minted net=0).
+    return withPlayerLock(player, async () => {
+      const settlement = await bridge.settle({ sessionId: s.id });
+      openByPlayer.delete(player);
+      tokenForSession.delete(s.id);
+      playBuckets.delete(s.id);
+      // Record the obligation BEFORE freeing the slot: until the chain consumes this lock, a later
+      // recover must re-issue THIS settlement (same nonce/net), never a fresh net=0 (loss-escape guard).
+      recordObligation(player, s.contract, s.chainId, settlement);
+      saveHttp(); // the session is no longer open — persist the freed slot + dropped bearer (txHash stays spent)
+      return settlement; // includes netWei, signature, serverSeedReveal (now safe), commit
+    });
   }
 
-  // Recover a STRANDED on-chain lock — a session the server no longer has (e.g. lost on a restart
-  // before a durable disk was mounted). The PLAYER signs to prove ownership; the house signs a
-  // net=0 settlement so settleBlackjack returns EXACTLY the locked principal to their balance (no
-  // P&L, no house gain/loss). REFUSED while an open session exists (those settle normally), so this
-  // can never be used to escape a losing active session — only to unwind a truly orphaned lock.
-  async function doRelease(body) {
+  // BULLETPROOF RECOVER — get back EVERYTHING locked on-chain, no matter the session state, while NEVER
+  // letting a player escape a loss they already incurred.
+  //
+  // The contract's bjLocked is ONE per-player accumulator and settleBlackjack ALWAYS zeros it and
+  // returns (locked + net). So a stranded lock and an open session's lock are inseparable on-chain —
+  // you cannot release one without settling the other. The old code refused while a session was open,
+  // which stranded funds whenever the client's view desynced from the server's. This unified path
+  // removes that failure mode in THREE ordered branches:
+  //
+  //   (1) Open session → settle it at its real net (a normal cash-out). The contract returns the FULL
+  //       bjLocked + that net, so any commingled stranded principal rides back automatically. We record
+  //       the obligation so the next call can't hand out a different (net=0) settlement.
+  //   (2) No open session but an OUTSTANDING obligation against the still-locked funds → re-issue the
+  //       EXACT same settlement (same nonce/net/signature). This is the loss-escape guard: a player who
+  //       settled at a loss but didn't broadcast it gets that same losing settlement back, never net=0.
+  //   (3) No open session and NO obligation → a truly orphaned lock (e.g. lost before a disk was
+  //       mounted) → net=0 release of exactly the locked principal.
+  //
+  // The PLAYER always signs to prove ownership; the house signs the net. Funds only ever return to
+  // the player. Because every path against a given lock yields ONE settlement (re-issued idempotently),
+  // a player can claim at most that one — they can never withhold a loss and claim a fresh net=0.
+  function doRelease(body) {
     const player = address(body && body.player, "player");
     const contract = address(body && body.contract, "contract");
     const chainId = Number(body && body.chainId);
     if (!Number.isSafeInteger(chainId) || chainId <= 0) throw new Error("chain id is invalid");
     verifyWalletSignature("release", body, { player, contract, chainId });
-    if (openByPlayer.has(player)) throw new Error("you have an active token session — cash out normally instead of recovering");
-    const lockedWei = await readBjLocked(contract, chainId, player);
-    if (!(lockedWei > 0n)) throw new Error("no locked funds found for this wallet");
     if (!opts.signer || !opts.signer.sign) throw new Error("signer not configured");
-    const nonce = BigInt("0x" + crypto.randomBytes(16).toString("hex")).toString(); // fresh settle nonce
-    const signature = await opts.signer.sign(player, 0n, nonce, chainId, contract);
-    return { ok: true, netWei: "0", nonce, signature, lockedWei: lockedWei.toString() };
+    const key = player.toLowerCase();
+    // Serialize per player so the branch decision + obligation record can't interleave (no race-minted net=0).
+    return withPlayerLock(player, async () => {
+      // (1) Open session → cash it out (returns full bjLocked + its real net).
+      const sid = openByPlayer.get(player);
+      if (sid) {
+        const s = bridge.session(sid);
+        if (s && !s.closed) {
+          if (s.contract && s.contract.toLowerCase() !== contract.toLowerCase()) throw new Error("contract mismatch for your open session");
+          const settlement = await bridge.settle({ sessionId: sid });
+          openByPlayer.delete(player);
+          tokenForSession.delete(sid);
+          playBuckets.delete(sid);
+          recordObligation(player, s.contract || contract, s.chainId || chainId, settlement); // pin this as the ONLY claimable settlement
+          saveHttp();
+          // mode:"session" tells the client this cashed out a live session (clear local session too).
+          return { ok: true, mode: "session", ...settlement };
+        }
+        // The map pointed at a vanished/closed session — clear the stale slot, then fall through.
+        openByPlayer.delete(player);
+        saveHttp();
+      }
+
+      // (2) Outstanding obligation → re-issue the SAME settlement, UNLESS the chain already consumed its
+      //     nonce. Gated by the obligation's OWN contract/nonce (NOT request params) so a player can't
+      //     pass a different contract/chainId to dodge the guard and reach the net=0 branch.
+      const ob = pendingSettle.get(key);
+      if (ob) {
+        if (!(await obligationConsumed(ob))) {
+          let lw = "0"; try { lw = (await readBjLocked(ob.contract, ob.chainId, player)).toString(); } catch (e) {}
+          return { ok: true, mode: "obligation", netWei: String(ob.netWei), nonce: String(ob.nonce), signature: ob.signature, lockedWei: lw };
+        }
+        pendingSettle.delete(key); saveHttp(); // consumed on-chain → safe to clear, then treat as a fresh lock
+      }
+
+      // (3) No live obligation → net=0 release of whatever is locked on the REQUEST's contract.
+      const lockedWei = await readBjLocked(contract, chainId, player);
+      if (!(lockedWei > 0n)) throw new Error("no locked funds found for this wallet");
+      const nonce = BigInt("0x" + crypto.randomBytes(16).toString("hex")).toString(); // fresh settle nonce
+      const signature = await opts.signer.sign(player, 0n, nonce, chainId, contract);
+      recordObligation(player, contract, chainId, { netWei: "0", nonce, signature }); // pin it (idempotent re-issue)
+      saveHttp();
+      return { ok: true, mode: "orphan", netWei: "0", nonce, signature, lockedWei: lockedWei.toString() };
+    });
+  }
+
+  // OWNER-AUTHENTICATED owner check: the signer must be the contract's on-chain owner OR treasury.
+  async function requireOwner(owner, contract, chainId) {
+    const who = await readOwner(contract, chainId);
+    const o = String(owner).toLowerCase();
+    const isOwner = (who.owner && String(who.owner).toLowerCase() === o) || (who.treasury && String(who.treasury).toLowerCase() === o);
+    if (!isOwner) throw new Error("only the house owner can do that");
+  }
+
+  // HOUSE TOOL — release a STRANDED player's locked funds back to THAT player. The owner signs
+  // (proving they're the on-chain owner/treasury); the house signs a net=0 settlement for the target
+  // player; the owner submits it. Funds go to the PLAYER's balance — the owner gains nothing, so this
+  // is safe even though no player signature is involved. Refused while the player has an ACTIVE
+  // session (that's theirs to cash out — force-settling would yank a live game), so this only ever
+  // unwinds a truly orphaned lock.
+  function doAdminRelease(body) {
+    const owner = address(body && body.owner, "owner");
+    const contract = address(body && body.contract, "contract");
+    const chainId = Number(body && body.chainId);
+    if (!Number.isSafeInteger(chainId) || chainId <= 0) throw new Error("chain id is invalid");
+    const player = address(body && body.player, "player");
+    verifyWalletSignature("admin-release", body, { player: owner, contract, chainId, target: player });
+    if (!opts.signer || !opts.signer.sign) throw new Error("signer not configured");
+    const key = player.toLowerCase();
+    return withPlayerLock(player, async () => {
+      await requireOwner(owner, contract, chainId);
+      if (openByPlayer.has(player)) throw new Error("that player has an active session — they cash out themselves");
+      // Respect any LIVE obligation first (same loss-escape guard as doRelease): if this player settled a
+      // session (e.g. at a loss) and never broadcast it, re-issue THAT settlement — never a net=0 that
+      // would forgive their loss. Gated by the obligation's OWN nonce, not request params.
+      const ob = pendingSettle.get(key);
+      if (ob) {
+        if (!(await obligationConsumed(ob))) {
+          let lw = "0"; try { lw = (await readBjLocked(ob.contract, ob.chainId, player)).toString(); } catch (e) {}
+          return { ok: true, player, netWei: String(ob.netWei), nonce: String(ob.nonce), signature: ob.signature, lockedWei: lw };
+        }
+        pendingSettle.delete(key); saveHttp();
+      }
+      const lockedWei = await readBjLocked(contract, chainId, player);
+      if (!(lockedWei > 0n)) throw new Error("no locked funds found for that player");
+      const nonce = BigInt("0x" + crypto.randomBytes(16).toString("hex")).toString();
+      const signature = await opts.signer.sign(player, 0n, nonce, chainId, contract);
+      recordObligation(player, contract, chainId, { netWei: "0", nonce, signature });
+      saveHttp();
+      return { ok: true, player, netWei: "0", nonce, signature, lockedWei: lockedWei.toString() };
+    });
+  }
+
+  // HOUSE TOOL — per-player diagnostics for the owner's support view: on-chain locked principal +
+  // whether the server holds an open session for them (and its live tokens / buy-in / unrealized
+  // net). Owner-authenticated; returns NO secrets (the player's own public address + their public
+  // on-chain lock). Lets the owner tell "stuck orphaned lock" (releasable) from "live session"
+  // (player cashes out) at a glance when a player reports a problem.
+  async function doAdminPlayer(body) {
+    const owner = address(body && body.owner, "owner");
+    const contract = address(body && body.contract, "contract");
+    const chainId = Number(body && body.chainId);
+    if (!Number.isSafeInteger(chainId) || chainId <= 0) throw new Error("chain id is invalid");
+    const player = address(body && body.player, "player");
+    verifyWalletSignature("admin-player", body, { player: owner, contract, chainId, target: player });
+    await requireOwner(owner, contract, chainId);
+    let lockedWei = 0n; try { lockedWei = await readBjLocked(contract, chainId, player); } catch (e) {}
+    const ethUsd = ethUsdFn();
+    const sid = openByPlayer.get(player);
+    let session = null;
+    if (sid) {
+      const s = bridge.session(sid);
+      if (s && !s.closed) {
+        const buyInUnits = Number(s.buyInUnits) || 0, tokens = Number(s.tokens) || 0;
+        session = {
+          sessionId: s.id, buyInUnits: Math.round(buyInUnits * 100) / 100,
+          tokens: Math.round(tokens * 100) / 100,
+          unrealizedUnits: Math.round((tokens - buyInUnits) * 100) / 100, // player's current P&L vs buy-in
+        };
+      }
+    }
+    const lockedUsd = weiToUsd(lockedWei, ethUsd);
+    return {
+      ok: true, player, lockedWei: lockedWei.toString(), lockedUsd,
+      hasOpenSession: !!session, session,
+      // Funds locked on-chain that NO open session accounts for = a stranded/orphaned lock the owner
+      // can release. (sessionLock subtracted via lockedUsd − session.buyInUnits when a session exists.)
+      strandedUsd: Math.max(0, Math.round((lockedUsd - (session ? session.buyInUnits : 0)) * 100) / 100),
+    };
   }
 
   function status() { return { ok: true, enabled: true, signerAddress: (opts.signerAddress ? opts.signerAddress() : null), ethUsd: (opts.ethUsd ? opts.ethUsd() : null), priceReady: (opts.ethUsdReady ? !!opts.ethUsdReady() : true), store: (opts.storeInfo ? opts.storeInfo() : null), games: bridge.games(), model: "server commit-reveal token bridge (no VRF)" }; }
@@ -356,7 +584,7 @@ function makeTokenService(opts) {
     return bridge.session(sid) || null;
   }
 
-  return { doStart, doPlay, doTopUp, doSettle, doSession, doRelease, status, houseState, verifySession, _bridge: bridge };
+  return { doStart, doPlay, doTopUp, doSettle, doSession, doRelease, doAdminRelease, doAdminPlayer, status, houseState, verifySession, _bridge: bridge };
 }
 
 // Wire the service onto an Express app, behind a flag. Live demo is untouched.
@@ -380,6 +608,8 @@ function attachTokenBridge(app, opts) {
   app.post("/api/token/topup", async (req, res) => { if (!guard(res)) return; try { res.json(await svc.doTopUp(req.body || {})); } catch (e) { fail(res, e); } });
   app.post("/api/token/settle", async (req, res) => { if (!guard(res)) return; try { res.json(await svc.doSettle(req.body || {})); } catch (e) { fail(res, e); } });
   app.post("/api/token/release", async (req, res) => { if (!guard(res)) return; try { res.json(await svc.doRelease(req.body || {})); } catch (e) { fail(res, e); } });
+  app.post("/api/token/admin-release", async (req, res) => { if (!guard(res)) return; try { res.json(await svc.doAdminRelease(req.body || {})); } catch (e) { fail(res, e); } });
+  app.post("/api/token/admin-player", async (req, res) => { if (!guard(res)) return; try { res.json(await svc.doAdminPlayer(req.body || {})); } catch (e) { fail(res, e); } });
   return svc;
 }
 
@@ -472,6 +702,118 @@ if (require.main === module) {
     eq("release rejects when nothing is locked", relNone === 1);
     let relBadSig = 0; try { await relSvc.doRelease({ player: relp, contract, chainId, signature: "0x" + "0".repeat(130) }); } catch (e) { relBadSig = 1; }
     eq("release rejects a bad signature", relBadSig === 1);
+
+    // RECOVER WHILE A SESSION IS OPEN: doRelease now SETTLES the live session (returns its net),
+    // instead of refusing — so a confused client can always recover the full on-chain lock.
+    const recSvc = makeTokenService({ signer, ethUsd: () => 4000, verifyBuyIn: async (o) => ({ lockedWei: o.buyInWei }) });
+    const rw = ethers.Wallet.createRandom(); const rp = rw.address;
+    const rcSign = (intent, o) => rw.signMessage(tokenAuthMessage(intent, o));
+    const rcStartBody = { player: rp, contract, chainId, txHash: "0x" + "2".repeat(64), buyInWei: lockedWei.toString() };
+    rcStartBody.signature = await rcSign("start", { player: rp, contract, chainId, buyInWei: lockedWei.toString() });
+    const rcStarted = await recSvc.doStart(rcStartBody);
+    const rcRelSig = await rcSign("release", { player: rp, contract, chainId });
+    const rcRel = await recSvc.doRelease({ player: rp, contract, chainId, signature: rcRelSig });
+    eq("recover with an OPEN session settles it (mode:session, reveals seed)", rcRel.mode === "session" && !!rcRel.serverSeedReveal && typeof rcRel.netWei === "string");
+    let rcFreed = 0; try { const b2 = { player: rp, contract, chainId, txHash: "0x" + "3".repeat(64), buyInWei: lockedWei.toString() }; b2.signature = await rcSign("start", { player: rp, contract, chainId, buyInWei: lockedWei.toString() }); await recSvc.doStart(b2); } catch (e) { rcFreed = 1; }
+    eq("recover frees the open-session slot (can buy in again)", rcFreed === 0);
+
+    // ── LOSS-ESCAPE GUARD (the v12.34 audit finding) ──────────────────────────────────────────
+    // A losing player settles their session off-chain (gets a signed NEGATIVE net), withholds it, then
+    // calls recover AGAIN hoping for a fresh net=0. The server must RE-ISSUE the same losing settlement
+    // (same nonce/net), never net=0 — so the player can only ever claim their real (losing) result.
+    // readBjLocked stays full because the loss settlement was never broadcast on-chain.
+    const lossSvc = makeTokenService({ signer, ethUsd: () => 4000, verifyBuyIn: async (o) => ({ lockedWei: o.buyInWei }), readBjLocked: async () => lockedWei });
+    const lw = ethers.Wallet.createRandom(); const lp = lw.address;
+    const lSign = (intent, o) => lw.signMessage(tokenAuthMessage(intent, o));
+    const lStart = { player: lp, contract, chainId, txHash: "0x" + "5".repeat(64), buyInWei: lockedWei.toString() };
+    lStart.signature = await lSign("start", { player: lp, contract, chainId, buyInWei: lockedWei.toString() });
+    const lStarted = await lossSvc.doStart(lStart);
+    // deterministically drive the session into a loss (tokens below the $1000 buy-in) — directly
+    // (real play would be random; we only need a settled NEGATIVE net to test the guard).
+    lossSvc._bridge.session(lStarted.sessionId).tokens = 800; // a $200 loss
+    const lostTokens = lossSvc._bridge.session(lStarted.sessionId).tokens;
+    const lRelSig1 = await lSign("release", { player: lp, contract, chainId });
+    const lRel1 = await lossSvc.doRelease({ player: lp, contract, chainId, signature: lRelSig1 }); // settles the loss (withheld)
+    const lRelSig2 = await lSign("release", { player: lp, contract, chainId });
+    const lRel2 = await lossSvc.doRelease({ player: lp, contract, chainId, signature: lRelSig2 }); // must RE-ISSUE, not net=0
+    eq("loss-escape guard: a withheld losing settlement re-issues (never a fresh net=0)",
+       lostTokens < 1000 && BigInt(lRel1.netWei) < 0n && lRel2.mode === "obligation" && lRel2.netWei === lRel1.netWei && lRel2.nonce === lRel1.nonce);
+
+    // A TRULY orphaned lock (no session, no obligation) still gets a clean net=0 — and re-issues the SAME
+    // net=0 (same nonce) on a repeat call, so it can't mint a second distinct claimable settlement.
+    const orphSvc = makeTokenService({ signer, ethUsd: () => 4000, verifyBuyIn: async (o) => ({ lockedWei: o.buyInWei }), readBjLocked: async () => lockedWei });
+    const ow = ethers.Wallet.createRandom(); const op = ow.address;
+    const oRel1 = await orphSvc.doRelease({ player: op, contract, chainId, signature: await ow.signMessage(tokenAuthMessage("release", { player: op, contract, chainId })) });
+    const oRel2 = await orphSvc.doRelease({ player: op, contract, chainId, signature: await ow.signMessage(tokenAuthMessage("release", { player: op, contract, chainId })) });
+    eq("orphan release is net=0 and idempotent (same nonce on repeat)", oRel1.mode === "orphan" && oRel1.netWei === "0" && oRel2.netWei === "0" && oRel2.nonce === oRel1.nonce);
+
+    // CONTRACT/CHAINID BYPASS (the v12.34 re-audit finding): after settling a loss on the REAL contract,
+    // calling release for a DIFFERENT contract/chainId must NOT clear/overwrite the obligation or mint a
+    // fresh net=0 on the real contract. The guard ignores request params and re-issues the stored loss.
+    const C2 = "0x000000000000000000000000000000000000c2c2";
+    const bypSvc = makeTokenService({ signer, ethUsd: () => 4000, verifyBuyIn: async (o) => ({ lockedWei: o.buyInWei }), readBjLocked: async () => lockedWei, readNonceUsed: async () => false });
+    const bw = ethers.Wallet.createRandom(); const bp = bw.address;
+    const bStart = { player: bp, contract, chainId, txHash: "0x" + "6".repeat(64), buyInWei: lockedWei.toString() };
+    bStart.signature = await bw.signMessage(tokenAuthMessage("start", { player: bp, contract, chainId, buyInWei: lockedWei.toString() }));
+    const bStarted = await bypSvc.doStart(bStart);
+    bypSvc._bridge.session(bStarted.sessionId).tokens = 750; // a $250 loss
+    const bLoss = await bypSvc.doRelease({ player: bp, contract, chainId, signature: await bw.signMessage(tokenAuthMessage("release", { player: bp, contract, chainId })) });
+    // attacker pivots to a DIFFERENT contract C2 (and chainId) trying to poison/clear the obligation
+    const byp1 = await bypSvc.doRelease({ player: bp, contract: C2, chainId, signature: await bw.signMessage(tokenAuthMessage("release", { player: bp, contract: C2, chainId })) });
+    const byp2 = await bypSvc.doRelease({ player: bp, contract, chainId, signature: await bw.signMessage(tokenAuthMessage("release", { player: bp, contract, chainId })) });
+    eq("bypass guard: release on a different contract can't mint a fresh net=0 on the real one",
+       BigInt(bLoss.netWei) < 0n && byp1.netWei === bLoss.netWei && byp2.netWei === bLoss.netWei && byp1.nonce === bLoss.nonce && byp2.nonce === bLoss.nonce);
+
+    // CONCURRENCY: N simultaneous recovers on ONE open losing session must yield exactly ONE settlement
+    // (one nonce), never several distinct net=0 — the per-player mutex serializes the check-then-record.
+    const conSvc = makeTokenService({ signer, ethUsd: () => 4000, verifyBuyIn: async (o) => ({ lockedWei: o.buyInWei }), readBjLocked: async () => lockedWei, readNonceUsed: async () => false });
+    const cw = ethers.Wallet.createRandom(); const cp = cw.address;
+    const cStart = { player: cp, contract, chainId, txHash: "0x" + "8".repeat(64), buyInWei: lockedWei.toString() };
+    cStart.signature = await cw.signMessage(tokenAuthMessage("start", { player: cp, contract, chainId, buyInWei: lockedWei.toString() }));
+    const cStarted = await conSvc.doStart(cStart);
+    conSvc._bridge.session(cStarted.sessionId).tokens = 600; // a $400 loss
+    const cSig = await cw.signMessage(tokenAuthMessage("release", { player: cp, contract, chainId }));
+    const conResults = await Promise.all(Array.from({ length: 8 }, () => conSvc.doRelease({ player: cp, contract, chainId, signature: cSig }).catch((e) => ({ err: e.message }))));
+    const conNonces = new Set(conResults.filter((r) => r && r.nonce != null).map((r) => String(r.nonce)));
+    const anyNet0 = conResults.some((r) => r && r.netWei === "0");
+    eq("concurrency: 8 simultaneous recovers yield exactly ONE settlement, no net=0", conNonces.size === 1 && !anyNet0);
+
+    // LIVENESS: once the nonce is consumed on-chain, the obligation clears (no spent-nonce trap).
+    const livSvc = makeTokenService({ signer, ethUsd: () => 4000, verifyBuyIn: async (o) => ({ lockedWei: o.buyInWei }), readBjLocked: async () => 0n, readNonceUsed: async () => true });
+    const vw = ethers.Wallet.createRandom(); const vp = vw.address;
+    const vStart = { player: vp, contract, chainId, txHash: "0x" + "a".repeat(63) + "1", buyInWei: lockedWei.toString() };
+    vStart.signature = await vw.signMessage(tokenAuthMessage("start", { player: vp, contract, chainId, buyInWei: lockedWei.toString() }));
+    const vStarted = await livSvc.doStart(vStart);
+    livSvc._bridge.session(vStarted.sessionId).tokens = 900;
+    await livSvc.doRelease({ player: vp, contract, chainId, signature: await vw.signMessage(tokenAuthMessage("release", { player: vp, contract, chainId })) }); // settles + records
+    let livCleared = 0; try { await livSvc.doRelease({ player: vp, contract, chainId, signature: await vw.signMessage(tokenAuthMessage("release", { player: vp, contract, chainId })) }); } catch (e) { if (/no locked funds/.test(e.message)) livCleared = 1; }
+    eq("liveness: a consumed obligation is cleared (no spent-nonce trap)", livCleared === 1);
+
+    // ── ADMIN RELEASE (house recovers a STRANDED player's funds back to that player) ──────────
+    const ownerW = ethers.Wallet.createRandom();          // the on-chain owner/treasury
+    const admSvc = makeTokenService({ signer, ethUsd: () => 4000, verifyBuyIn: async (o) => ({ lockedWei: o.buyInWei }), readBjLocked: async () => lockedWei, readOwner: async () => ({ owner: ownerW.address, treasury: ownerW.address }) });
+    const tgt = ethers.Wallet.createRandom().address;     // a stranded player (no open session)
+    const admSig = await ownerW.signMessage(tokenAuthMessage("admin-release", { player: ownerW.address, contract, chainId, target: tgt }));
+    const adm = await admSvc.doAdminRelease({ owner: ownerW.address, contract, chainId, player: tgt, signature: admSig });
+    eq("admin-release: owner releases a stranded player's net=0 lock", adm.netWei === "0" && BigInt(adm.lockedWei) === lockedWei && adm.player.toLowerCase() === tgt.toLowerCase());
+    const admRec = ethers.verifyMessage(ethers.getBytes(settlementHash(tgt, 0n, BigInt(adm.nonce), chainId, contract)), adm.signature);
+    eq("admin-release: settlement recovers to the house signer (funds → player)", admRec === house.address);
+    // a NON-owner is rejected
+    const notOwner = ethers.Wallet.createRandom();
+    let admDeny = 0; try { const s = await notOwner.signMessage(tokenAuthMessage("admin-release", { player: notOwner.address, contract, chainId, target: tgt })); await admSvc.doAdminRelease({ owner: notOwner.address, contract, chainId, player: tgt, signature: s }); } catch (e) { admDeny = 1; }
+    eq("admin-release: rejects a non-owner signer", admDeny === 1);
+    // a player WITH an active session can't be force-released by the owner
+    const admSvc2 = makeTokenService({ signer, ethUsd: () => 4000, verifyBuyIn: async (o) => ({ lockedWei: o.buyInWei }), readBjLocked: async () => lockedWei, readOwner: async () => ({ owner: ownerW.address, treasury: ownerW.address }) });
+    const activeW = ethers.Wallet.createRandom(); const activeP = activeW.address;
+    const aBody = { player: activeP, contract, chainId, txHash: "0x" + "4".repeat(64), buyInWei: lockedWei.toString() };
+    aBody.signature = await activeW.signMessage(tokenAuthMessage("start", { player: activeP, contract, chainId, buyInWei: lockedWei.toString() }));
+    await admSvc2.doStart(aBody);
+    let admActive = 0; try { const s = await ownerW.signMessage(tokenAuthMessage("admin-release", { player: ownerW.address, contract, chainId, target: activeP })); await admSvc2.doAdminRelease({ owner: ownerW.address, contract, chainId, player: activeP, signature: s }); } catch (e) { admActive = 1; }
+    eq("admin-release: refuses a player with an ACTIVE session", admActive === 1);
+    // admin-player diagnostics: sees the live session + its net
+    const apSig = await ownerW.signMessage(tokenAuthMessage("admin-player", { player: ownerW.address, contract, chainId, target: activeP }));
+    const ap = await admSvc2.doAdminPlayer({ owner: ownerW.address, contract, chainId, player: activeP, signature: apSig });
+    eq("admin-player: reports the player's open session + locked funds", ap.hasOpenSession === true && ap.session && ap.session.buyInUnits === 1000 && BigInt(ap.lockedWei) === lockedWei);
 
     // settle: wallet sig required, net pinned to lockedWei, signature recovers to house
     const settleSig = await sign("settle", { player, contract, chainId, sessionId: started.sessionId });

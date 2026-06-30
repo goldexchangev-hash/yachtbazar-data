@@ -26,6 +26,7 @@
     if (intent === "start") lines.push("Buy-in wei: " + String(o.buyInWei || "0"));
     else if (intent === "settle") lines.push("Session: " + String(o.sessionId || ""));
     else if (intent === "topup") { lines.push("Session: " + String(o.sessionId || "")); lines.push("Buy-in wei: " + String(o.buyInWei || "0")); }
+    else if (intent === "admin-release" || intent === "admin-player") lines.push("Target: " + getAddress(o.target));
     return lines.join("\n");
   }
 
@@ -171,15 +172,40 @@
     return settled;
   };
 
-  // RECOVER a STRANDED lock: the server signs a net=0 settlement (returns the locked principal to
-  // THIS wallet's balance); we submit settleBlackjack. The server refuses if an open session exists.
+  // RECOVER everything locked on-chain. The server returns EITHER a net=0 orphan settlement OR — if it
+  // still holds a live session for this wallet — a full cash-out of that session (mode:"session"). Both
+  // arrive as { netWei, nonce, signature }; we submit settleBlackjack, which zeros the whole bjLocked
+  // and returns (locked + net). So this always recovers the full on-chain lock, even when the local
+  // session view has desynced from the server's. Clears any local session afterward.
   TokenBridgeClient.prototype.releaseStuck = async function () {
     const d = this.d, player = d.account, contract = d.contractAddr, chainId = Number(d.chainId);
     const signature = await d.signer.signMessage(tokenAuthMessage("release", { player, contract, chainId }, d.ethers.getAddress));
     const r = await this._post("/api/token/release", { player, contract, chainId, signature });
     const tx = await d.contract.settleBlackjack(player, BigInt(r.netWei), BigInt(r.nonce), r.signature, { gasLimit: 200000n });
     const receipt = await tx.wait();
+    this.session = null; this.tokens = 0; // the server settled/freed it — drop any stale local session
     return { ...r, claimTx: receipt.hash };
+  };
+
+  // HOUSE TOOL — the owner releases a STRANDED player's locked funds back to THAT player. The owner
+  // signs (the server checks they're the on-chain owner/treasury); the server signs a net=0 settle for
+  // the player; the owner submits it (pays gas; funds go to the player, never the owner).
+  TokenBridgeClient.prototype.adminRelease = async function (targetPlayer) {
+    const d = this.d, owner = d.account, contract = d.contractAddr, chainId = Number(d.chainId);
+    const player = d.ethers.getAddress(targetPlayer);
+    const signature = await d.signer.signMessage(tokenAuthMessage("admin-release", { player: owner, contract, chainId, target: player }, d.ethers.getAddress));
+    const r = await this._post("/api/token/admin-release", { owner, contract, chainId, player, signature });
+    const tx = await d.contract.settleBlackjack(player, BigInt(r.netWei), BigInt(r.nonce), r.signature, { gasLimit: 200000n });
+    const receipt = await tx.wait();
+    return { ...r, claimTx: receipt.hash };
+  };
+
+  // HOUSE TOOL — owner-authed per-player diagnostics (locked principal + open-session state). No tx.
+  TokenBridgeClient.prototype.adminPlayerInfo = async function (targetPlayer) {
+    const d = this.d, owner = d.account, contract = d.contractAddr, chainId = Number(d.chainId);
+    const player = d.ethers.getAddress(targetPlayer);
+    const signature = await d.signer.signMessage(tokenAuthMessage("admin-player", { player: owner, contract, chainId, target: player }, d.ethers.getAddress));
+    return await this._post("/api/token/admin-player", { owner, contract, chainId, player, signature });
   };
 
   const API = { TokenBridgeClient: TokenBridgeClient, tokenAuthMessage: tokenAuthMessage };
@@ -203,6 +229,8 @@ if (typeof require !== "undefined" && require.main === module) {
   eq("settle message matches server byte-for-byte", client.tokenAuthMessage("settle", settleO, ethers.getAddress) === server.tokenAuthMessage("settle", settleO));
   const topupO = { player, contract, chainId: 11155111, sessionId: "abc123", buyInWei: "250000000000000000" };
   eq("topup message matches server byte-for-byte", client.tokenAuthMessage("topup", topupO, ethers.getAddress) === server.tokenAuthMessage("topup", topupO));
+  const admO = { player, contract, chainId: 11155111, target: player };
+  eq("admin-release message matches server byte-for-byte", client.tokenAuthMessage("admin-release", admO, ethers.getAddress) === server.tokenAuthMessage("admin-release", admO));
   // a signature made client-side recovers to the player on the server's message (round-trip)
   (async () => {
     const w = ethers.Wallet.createRandom();
