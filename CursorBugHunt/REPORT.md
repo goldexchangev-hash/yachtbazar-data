@@ -1,6 +1,6 @@
 # Cursor Bug Hunt — Crypto TV (v12.39)
 
-**Date:** 2026-06-30 (third pass — deep multi-agent audit)  
+**Date:** 2026-06-30 (fourth pass — live chaos & E2E)  
 **Site:** https://tv-crypto-flip.onrender.com  
 **Branch:** `claude/ethereum-betting-game-vrf-2dq50k` @ `09b1d18`  
 **Build:** `?v=1239`, `ctf-v12.39`
@@ -13,30 +13,38 @@
 |------|----------------|--------|
 | 1 | Initial parallel audits | Money paths, games, server, tests |
 | 2 | 4 agents | Expanded client/server, adversarial nonce repro |
-| **3** | **6 agents + adversarial suite** | **Contracts, blackjack, session restore, math parity, WS/API edges, scripted exploits** |
+| **3** | **6 agents + adversarial suite** | Contracts, blackjack, session restore, math parity, WS/API edges |
+| **4** | **8 agents + live probes** | **Chaos/persistence, concurrency fuzzer, fork PoCs, host/PvP, wallet flows, canvas lifecycle, live site probes** |
 
 **Scripts in this directory:**
 - `repro-crash-nonce-desync.js` — crash pacing vs settlement nonce mismatch
-- `adversarial-suite.js` — txHash races, dual sessions, crash loss escape, EV scan
+- `adversarial-suite.js` — txHash races, dual sessions, crash loss escape
+- `concurrency-fuzzer.js` — parallel HTTP+WS+BJ interleave harness
+- `fork-staticCall-poc.js` — on-chain staticCall cherry-pick PoC
 
 ```bash
-npm test
-node CursorBugHunt/adversarial-suite.js      # 8 findings (exit 0/1)
+npm test                                          # 28/29 (pass4-exploits; 1 flaky dice profit assert)
+node CursorBugHunt/adversarial-suite.js
+node CursorBugHunt/concurrency-fuzzer.js          # 6 findings
 node CursorBugHunt/repro-crash-nonce-desync.js
+node CursorBugHunt/fork-staticCall-poc.js
+npx hardhat test test/pass4-exploits.test.js
 ```
 
 ---
 
 ## Executive summary
 
-**97 unique findings** below (Critical → Low). Automated tests still pass 22/22, but self-tests do not cover adversarial concurrency, on-chain simulation attacks, or cross-tab/session races.
+**~200 findings** catalogued across four passes (#1–#138 Passes 1–3; **#139–#202 Pass 4**). Live production runs **v12.43** (`?v=1243`) — repo audited at v12.39; drift noted in #199.
 
-**Top risks:**
-1. **Token crash rounds** — nonce desync, unstaked rounds, settle mid-round (reproduced)
-2. **Buy-in/top-up txHash replay** — double tokens from one chain tx (reproduced in `adversarial-suite.js`)
-3. **On-chain instant games** — `staticCall` leaks outcome before submit; client uses this explicitly
-4. **Blackjack** — token bets allowed during live hand; leave during `dealing` corrupts outcome; silent credit failures
-5. **Client token mode** — affordability, plane mode, session restore ordering, cross-tab ghosts
+**Top risks (all passes):**
+1. **Token crash rounds** — nonce desync, unstaked rounds, settle mid-round, server restart loss escape (#1–3, #141)
+2. **Persist split-brain** — buy-in/settle writes bridge slice before http slice; crash between = double credit or loss escape (#139–#140, #142)
+3. **Buy-in/top-up txHash replay** — concurrent AND sequential crash paths (#4–5, #139)
+4. **On-chain staticCall** — one-probe dice roll + post-hoc target; `gasleft()` sim≠tx (#6, #174–175)
+5. **PvP rooms never timeout** — escrow locked forever (#147)
+6. **Gem Vault spin stuck** — channel switch leaves `_spinning` true, stake debited (#193)
+7. **Live WS chat impersonation** — unauthenticated `hello` + broadcast (#200, confirmed on production)
 
 ---
 
@@ -300,6 +308,9 @@ node public/token-client.js                      # OK
 node server/games/{coinflip,crash,dice,dice2,pressure,reef,fishshooter,slots3d}.js  # OK
 node CursorBugHunt/repro-crash-nonce-desync.js   # BUG REPRODUCED
 node CursorBugHunt/adversarial-suite.js          # 8 findings
+node CursorBugHunt/concurrency-fuzzer.js         # 6 findings
+npx hardhat test test/pass4-exploits.test.js      # 28/29 pass
+node CursorBugHunt/fork-staticCall-poc.js        # on-chain PoC
 ```
 
 ---
@@ -334,9 +345,97 @@ node CursorBugHunt/adversarial-suite.js          # 8 findings
 
 ---
 
+# Pass 4 — Live Chaos & E2E Hunt (#139–#202)
+
+**Method:** 8 parallel agents + live probes against https://tv-crypto-flip.onrender.com + `concurrency-fuzzer.js` + Hardhat `pass4-exploits.test.js`.
+
+## Pass 4 Critical
+
+| # | Title | Files | Summary |
+|---|-------|-------|---------|
+| **139** | Two-phase persist split on buy-in | `token-http.js:303-312`, `token-bridge.js` | `bridge.start()` persists sessions **before** `saveHttp()` adds txHash/bearer. `kill -9` between → replay same txHash for second session (sequential #4). |
+| **140** | Settle obligation gap (persist split) | `token-http.js:378-387`, `token-bridge.js:189-218` | `bridge.settle()` persisted before `pendingSettle`/`saveHttp()`. Crash after sign → closed session on disk, no obligation → Recover mints orphan `net=0` (#140 loss escape). |
+| **141** | Server restart mid crash round | `crash-rounds.js`, `server.js:187` | In-memory rounds + timers lost on SIGTERM; stake never debited. Extends #2 for process death (not just drain). |
+| **142** | Corrupt state file → empty store | `server.js:87-88`, `token-http.js:169-173` | `JSON.parse` fail → `{}` boot; replay spent txHash, orphan recover. |
+| **147** | PvP open rooms never timeout | `CoinFlipBetting.sol:344-408` | Unlike host tables (`HOST_TIMEOUT`), PvP escrow locked forever if creator abandons. Only creator can `cancelRoom`. |
+| **148** | `?contract=` phishing override | `app.js:23-33,5165-5173` | URL param bypasses registry; no code-size probe. Malicious link → victim deposits to attacker contract. |
+| **193** | Gem Vault spin stuck on channel leave | `slots3d.js:690-696,648-652` | `setActive(false)` cancels RAF but not `_spinning`; stake debited; SPIN disabled forever. Token: server bet may complete while UI stuck. |
+
+## Pass 4 High
+
+| # | Title | Files | Summary |
+|---|-------|-------|---------|
+| **143** | SIGTERM only flushes guest BJ bank | `server.js:184-187` | No token flush, no `server.close()` drain on deploy. |
+| **149** | `playHouse` staticCall pins wrong `activeRoomId` | `app.js:1666-1683,4042-4077` | `staticCall` before tx sets room id; concurrent play desyncs → missed TV reveal. |
+| **150** | `setActiveGameManual` stale session | `app.js:1045-1057` | Registry updated on-chain but `deployment.address`/`contract` not rebound until reload. |
+| **151** | `deployRegistry` → treasury EOA brick | `app.js:1028-1031` | `activeGame` = treasury when no game deployed → `getCode` returns 0x, lobby broken. |
+| **152** | Bet-proposal accept without chain stake verify | `app.js:4020-4037` | Join uses local `myProposal.amount`; no `r.betAmount` check; WS impersonation (#45) amplifies. |
+| **153** | `paused` bypass for room ops | `CoinFlipBetting.sol:344-408,661` | `createRoom`/`createHostRoom` work while paused; funds escrow but can't play. |
+| **174** | `gasleft()` makes staticCall RNG ≠ real tx | `CoinFlipBetting.sol:555-572` | 25/25 probe pairs mismatched rolls; skip-on-loss still works; sim-win not guaranteed. |
+| **175** | Single-probe dice cherry-pick | `CoinFlipBetting.sol:768-812` | One `staticCall` leaks roll; attacker picks winning target post-hoc (refines #6). |
+| **177** | Registry flip doesn't rebind TokenMode | `app.js:5164-5173,1045` | Same class as #150/#91; token auth still signs old contract after registry change. |
+| **178** | Token buy-in: chain lock OK, server fails | `token-client.js:108-126` | `blackjackBuyIn` confirms then `/api/token/start` fails → stranded `bjLocked`. |
+| **179** | Coin flip vs house: no receipt parse | `app.js:1655-1690` | Relies on event listener + 12s poll; missed event = no reveal (up to 20s). |
+| **183** | Bridge + token double lock path | `app.js:3431-3485,3417` | `bjReload` still reachable while token session active before dock hides it. |
+| **194** | Sky Swoop balance reset inflation | `swoop3d.js`, `app.js` | Leave mid-climb + `setBalance(demoUsd)` → cash out with refunded stake + win. |
+| **195** | Reef auto-fire in background tab | `fishtable.js:698,858` | Unlike fishshooter, ticker keeps firing when `document.hidden`. |
+| **199** | Live v12.43 vs repo v12.39 drift | production probe | `?v=1243`, `ctf-v12.43`; unaudited deltas in `app.js`, `sw.js`, `token-mode.js`. |
+| **200** | WS chat impersonation **live confirmed** | `server.js:269-319` | Probe: fake `hello` + chat broadcast as arbitrary `0x` address on production. |
+
+## Pass 4 Medium (selected)
+
+| # | Title | Summary |
+|---|-------|---------|
+| **144** | `unhandledRejection` no BJ bank flush | Unlike `uncaughtException`; up to 800ms guest balance loss. |
+| **145** | `doRelease` ignores `bridge.session.settlement` | Missing `pendingSettle` → orphan even when settlement on disk. |
+| **146** | Render ops gaps | No `ENABLE_TOKEN_BRIDGE` in yaml; no shutdown hook; disk mount required. |
+| **154–168** | Host/PvP/lobby UX | Idle host close only creator tab; empty tables cap grief; earnings wrong/truncated; daily streak tamper; bet-proposal spam/stuck; sybil room DoS; join +4 slack; chat name spoof; referral poison; reconcile design. |
+| **176** | `doJoinRoom` zero receipt parsing | Worse than house path; stuck flip if event missed. |
+| **180–182** | Wallet flows | Silent receipt fail; chain switch reload; stranded lock hidden when ghost session. |
+| **196–198** | Canvas lifecycle | Plane/pressure token settle off-channel; slots WebGL context loss; pressure `setEnabled` strands pump. |
+| **201** | Missing security headers live | No HSTS, CSP, X-Frame-Options on wallet dApp. |
+| **202** | `house-state` exposure live | 1 open session, ~0.031 ETH locked visible without auth. |
+
+## Pass 4 Low (selected)
+
+| # | Title | Summary |
+|---|-------|---------|
+| **169–173** | PvP/host polish | 24 escrow cap per address; autoClose without wallet; host history timestamp estimate; referral link needs connect; cancelRoom no joiner notify. |
+| **184–192** | Wallet polish | Registry localStorage; silent balance refresh fail; cached buy-in check; tx.wait no timeout; gas/nonce errors; partial connect; disconnect during token session. |
+| **203** | `X-Powered-By: Express` exposed | Info leak on all responses. |
+
+## Pass 4 harness results
+
+**`concurrency-fuzzer.js`** (6 confirmed):
+- 201 interleaved `doPlay` during live crash round; 9 nonce desync hits
+- Settle during crash: `closed=true`, plane bet not recorded
+- Concurrent top-up: 1000→3000 tokens from one tx
+- 25/25 `doPlay` during simulated BJ hand
+- Over-balance `cr:start` (bet 100, balance 3): bust debited nothing
+
+**`pass4-exploits.test.js`**: V1 `bjLocked` cross-session, `_betGuard`, staticCall host/dice/crash PoCs (28/29 pass).
+
+**Live probe**: Token bridge **enabled** on production; durable disk at `/var/data/.token-bridge.json`; experimental bridge off; admin POSTs require signatures.
+
+---
+
+## Updated fix priority (includes Pass 4)
+
+| P | Findings | Action |
+|---|----------|--------|
+| **P0** | 1-5, 13, 139-142 | Single atomic persist; crash pin+reserve; `pendingBuyIns`; recover from `session.settlement` |
+| **P0** | 6, 8, 29, 174-176 | Remove staticCall previews; deploy V2; parse receipts on join/house |
+| **P0** | 147-148, 193 | PvP idle refund; validate `?contract=`; fix slots `setActive` spin abort |
+| **P0** | 9-12, 10 | BJ interleave block; credit failures; dealing leave |
+| **P1** | 149-153, 177-183, 194-195, 200 | Registry rebind; wallet stranded lock; host/PvP; canvas lifecycle; signed WS hello |
+| **P2** | 154-168, 196-202 | Host panel, headers, house-state gate, deploy sync to v12.43 |
+
+---
+
 ## Audit agents (all passes)
 
 **Pass 1–2:** Money paths, all games, server security, tests  
-**Pass 3:** Smart contracts, blackjack exhaustive, session restore, client/server math parity, WS/API edges, adversarial suite
+**Pass 3:** Contracts, blackjack, session restore, math parity, WS/API, adversarial suite  
+**Pass 4:** Chaos/persistence, concurrency fuzzer, fork PoCs, host/PvP/lobby, wallet/MetaMask, canvas/WebGL lifecycle, live production probes
 
-*138 findings catalogued; 97 in Critical–Medium tables above, 41 Low. Consolidated in this file for handoff.*
+*~200 findings in this file. Primary report: `CursorBugHunt/REPORT.md`.*
