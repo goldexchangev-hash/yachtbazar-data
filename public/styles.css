@@ -2217,6 +2217,16 @@ body.demo-mode #bankroll { display: none !important; }
 }
 .action-dock .dice-roll-hint { margin-top: 6px; text-align: center; }
 
+/* Compact auto cash-out strip, sits right under the action button in the dock so it can be
+   toggled + adjusted without scrolling up to the settings panel. */
+.dock-auto { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.dock-auto .pr-auto-toggle, .dock-auto .plane-auto-toggle { flex: 0 0 auto; white-space: nowrap; }
+.dock-auto .dock-auto-slider { flex: 1 1 auto; min-width: 80px; margin: 0; }
+.dock-auto .dock-auto-val { flex: 0 0 auto; font-size: 12px; color: var(--s-text-2, #9fb0cc); white-space: nowrap; }
+.dock-auto .dock-auto-val strong { color: var(--s-gold, #ffe08a); }
+/* a toggled-OFF auto control greys out (the game adds .off on the toggle) */
+.dock-auto.off { opacity: .62; }
+
 /* UNIFORM action button across every game: VERB on top, BET · WIN below */
 .act-btn {
   display: flex; flex-direction: column; align-items: center; gap: 3px;
@@ -2349,21 +2359,38 @@ body.rr-fs-on #layer-fishshooter, body.rr-fs-on #layer-fishshooter * { visibilit
 .swoop-go.dead { background: #cfd8e0; color: #6b7682; box-shadow: 0 5px 0 #9aa6b0; }
 
 .fish-dock { display: flex; flex-direction: column; gap: 8px; }
-.fish-betrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.fish-cost { font-weight: 800; color: var(--s-gold, #ffd23f); }
-.fish-fs { background: var(--s-gold, #ffd23f); color: #041326; border: 0; border-radius: 8px; padding: 7px 12px; font-weight: 800; cursor: pointer; }
+/* compact cost + fullscreen live inside .fish-row, smaller */
+.fish-cost { font-weight: 800; color: var(--s-gold, #ffd23f); font-size: .9rem; margin-left: auto; }
+.fish-fs { background: transparent; color: var(--s-gold, #ffd23f); border: 1px solid rgba(57,231,255,.30); border-radius: 8px; padding: 6px 9px; font-size: 1rem; line-height: 1; font-weight: 800; cursor: pointer; }
 .fish-fs:active { transform: translateY(1px); }
-.fish-ctrls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.fish-btn { background: var(--s-surface, #15203a); color: var(--s-text, #cfe2ff); border: 1px solid rgba(57,231,255,.35); border-radius: 8px; padding: 8px 12px; font-weight: 800; cursor: pointer; flex: 1 1 auto; min-width: 92px; }
-.fish-btn:active { transform: translateY(1px); }
-.fish-btn.on { background: #39e7ff; color: #041326; border-color: #39e7ff; }
-.fish-speed { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; }
-.fish-speed-lbl { font-family: var(--display, inherit); font-weight: 800; letter-spacing: .02em; color: var(--gold, #ffd23f); text-transform: uppercase; font-size: .72rem; margin-right: 4px; }
-.fish-speed-btn { background: var(--s-surface, #15203a); color: var(--s-text, #cfe2ff); border: 1px solid rgba(57,231,255,.25); border-radius: 8px; padding: 6px 10px; font-weight: 800; cursor: pointer; flex: 1 1 auto; min-width: 78px; font-size: .82rem; }
-.fish-speed-btn:active { transform: translateY(1px); }
-.fish-speed-btn.on { background: #39e7ff; color: #041326; border-color: #39e7ff; }
-.fish-pwr { flex: 0 0 auto; min-width: 64px; }
-.fish-power { font-weight: 800; color: var(--s-gold, #ffe08a); min-width: 70px; text-align: center; }
+
+/* one tidy row: power stepper | cost | fullscreen */
+.fish-row { display: flex; align-items: center; gap: 8px; }
+
+/* unified power stepper — [–][POWER / N][+] as a single pill */
+.fish-stepper { display: inline-flex; align-items: stretch; border: 1px solid rgba(57,231,255,.30); border-radius: 10px; overflow: hidden; background: var(--s-surface, #15203a); }
+.fish-step { background: transparent; color: var(--s-text, #cfe2ff); border: 0; width: 34px; font-size: 1.1rem; font-weight: 800; line-height: 1; cursor: pointer; }
+.fish-step:active { background: rgba(57,231,255,.18); }
+.fish-step:first-child { border-right: 1px solid rgba(57,231,255,.18); }
+.fish-step:last-child  { border-left:  1px solid rgba(57,231,255,.18); }
+.fish-step-val { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 56px; padding: 3px 4px; line-height: 1.05; }
+.fish-step-val small { font-size: .56rem; letter-spacing: .08em; color: var(--s-muted, #8fa3c8); font-weight: 800; }
+.fish-step-val strong { font-size: .9rem; color: var(--s-gold, #ffe08a); }
+
+/* toggle pills — small, ghost by default, fill cyan when .on */
+.fish-toggles { display: flex; gap: 8px; }
+.fish-pill { flex: 1 1 0; background: var(--s-surface, #15203a); color: var(--s-text, #cfe2ff); border: 1px solid rgba(57,231,255,.30); border-radius: 999px; padding: 7px 10px; font-size: .82rem; font-weight: 800; cursor: pointer; }
+.fish-pill:active { transform: translateY(1px); }
+.fish-pill.on { background: #39e7ff; color: #041326; border-color: #39e7ff; }
+
+/* speed — one labelled segmented control of small emoji buttons */
+.fish-seg { display: flex; align-items: center; gap: 8px; }
+.fish-seg-lbl { font-family: var(--display, inherit); font-weight: 800; letter-spacing: .04em; color: var(--gold, #ffd23f); text-transform: uppercase; font-size: .68rem; }
+.fish-seg-track { display: inline-flex; flex: 1 1 auto; border: 1px solid rgba(57,231,255,.25); border-radius: 10px; overflow: hidden; }
+.fish-seg-btn { flex: 1 1 0; background: var(--s-surface, #15203a); color: var(--s-text, #cfe2ff); border: 0; border-left: 1px solid rgba(57,231,255,.18); padding: 7px 0; font-size: 1rem; line-height: 1; cursor: pointer; }
+.fish-seg-btn:first-child { border-left: 0; }
+.fish-seg-btn:active { transform: translateY(1px); }
+.fish-seg-btn.on { background: #39e7ff; }
 .fish-winval { color: #45f0a6; }
 .fish-flow { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin: 8px 0; padding: 8px 10px; border-radius: 10px; background: rgba(57,231,255,.06); border: 1px solid rgba(57,231,255,.18); font-size: .86rem; }
 .fish-flow .ff-label { font-weight: 800; color: var(--s-gold, #ffd23f); }

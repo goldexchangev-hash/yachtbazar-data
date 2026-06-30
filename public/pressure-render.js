@@ -354,8 +354,12 @@
       this.winBanner.scale.set((w.mega ? 1.15 : 1) * (1 + 0.06 * Math.sin(this._t * 9)));
       this.winBanner.rotation = Math.sin(this._t * 5.5) * 0.035;
       if (k < 1) {
-        if (this._t - w.lastCoin > 0.05) { w.lastCoin = this._t; const n = w.mega ? 3 : w.big ? 2 : 1; for (let i = 0; i < n; i++) this._spawnCoin(); }
-        if (this._t - w.lastTick > 0.065) { w.lastTick = this._t; try { root.Chiptune && root.Chiptune.coin && root.Chiptune.coin(); } catch (e) {} }
+        // Drive the coin shower + "cha-ching" tick off the PER-WIN clock w.t, NOT the global this._t.
+        // The global clock keeps ticking across channel-switches / tab-backgrounding (ticker stop/start),
+        // so a stalled-then-resumed frame used to make `this._t - lastTick` huge and fire a STRAY beep
+        // during otherwise-idle play. w.t advances in lockstep with the count-up, so it never desyncs.
+        if (!w.done && w.t - w.lastCoin > 0.05) { w.lastCoin = w.t; const n = w.mega ? 3 : w.big ? 2 : 1; for (let i = 0; i < n; i++) this._spawnCoin(); }
+        if (!w.done && w.t - w.lastTick > 0.065) { w.lastTick = w.t; try { root.Chiptune && root.Chiptune.coin && root.Chiptune.coin(); } catch (e) {} }
       } else {
         if (!w.done) { w.done = true; w.holdT = this._t; this.winAmt.text = "+$" + (Math.round(w.total * 100) / 100).toFixed(2); }
         if (this._t - w.holdT > 1.5) {
@@ -424,7 +428,8 @@
     const big = mult >= 3 || profit >= 100;
     const mega = mult >= 8 || profit >= 500;
     // count-up state — slower, satisfying climb to the full amount
-    this._winFx = { t: 0, dur: mega ? 2.0 : big ? 1.7 : 1.35, total: payout, displayed: 0, profit, mult, big, mega, lastCoin: -1, lastTick: -1, done: false, holdT: 0 };
+    // total drives the count-up: show PROFIT (winnings), not the gross payout that bundles the stake back in.
+    this._winFx = { t: 0, dur: mega ? 2.0 : big ? 1.7 : 1.35, total: profit, displayed: 0, profit, mult, big, mega, lastCoin: -1, lastTick: -1, done: false, holdT: 0 };
     // banner + big amount
     this.winBanner.text = mega ? "MEGA WIN!" : big ? "BIG WIN!" : "BANKED!";
     this.winBanner.style.fill = mega ? 0xff4d9d : 0xffd23f;

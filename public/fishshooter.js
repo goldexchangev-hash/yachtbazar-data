@@ -928,8 +928,8 @@
     if (this.powText) this.powText.text = "PWR " + this.power + "  ·  " + this._usd(this.cost()) + "/shot";
     var e = this.els;
     if (e.betVal) e.betVal.textContent = this._usd(this.unitBet);
-    if (e.power) e.power.textContent = "Power " + this.power;
-    if (e.cost) e.cost.textContent = this._usd(this.cost()) + "/shot";
+    if (e.power) e.power.textContent = String(this.power); // compact stepper carries its own "POWER" label
+    if (e.cost) e.cost.textContent = this._usd(this.cost()) + " / shot";
     // Reef-style session tracker panel (#fishshooter-panel)
     if (e.balance) e.balance.textContent = this._usd(this.balance);
     if (e.win) e.win.textContent = this._usd(this._won || 0);

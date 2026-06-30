@@ -402,6 +402,9 @@
       winFx = {
         start: performance.now(),
         total: shown,
+        // display value for the on-canvas count-up: PROFIT in channel (token/demo) play — the stake is
+        // already yours. `total`/the share-card callback stay GROSS so app.js doesn't double-subtract.
+        disp: CHANNEL ? Math.max(0, shown - channelBetUsd) : shown,
         displayed: 0,
         cells: res.cells,
         lines: res.wins.map((w) => ({ line: LINES[w.lineIndex], count: w.count, color: LINE_COLORS[w.lineIndex % LINE_COLORS.length] })),
@@ -548,7 +551,8 @@
       drawWinFx(now);
       const DUR = 760; // count-up duration (ms) — quick + punchy
       const k = Math.min(1, (now - winFx.start) / DUR);
-      winFx.displayed = Math.round(winFx.total * easeOutCubic(k));
+      const _cap = (winFx.disp != null ? winFx.disp : winFx.total); // count up to PROFIT in channel play
+      winFx.displayed = Math.round(_cap * easeOutCubic(k));
       messageText.text = "YOU WON  " + (winFx.usd ? "$" : "") + fmt(winFx.displayed);
       // overshoot pop on entry, then a lively pulse while the number climbs
       const pop = easeOutBack(Math.min(1, (now - winFx.start) / 340));

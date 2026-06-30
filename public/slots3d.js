@@ -413,7 +413,10 @@
     const big = res.winUsd >= bet * 10, mega = res.winUsd >= bet * 40;
     if (this._bonus) this._punch(mega ? 0.5 : 0.34); else if (mega) this._punch(0.42); else if (big) this._punch(0.24);
     this.flash.material.opacity = mega ? 0.5 : big ? 0.34 : (this._bonus ? 0.28 : 0.2); this.flash.material.color.set(mega ? 0xffd23f : (this._bonus ? 0xff4d9d : 0x45f0a6));
-    this._winFx = { t: 0, total: res.winUsd, shown: 0, dur: this._bonus ? 0.7 : (mega ? 1.9 : big ? 1.5 : 1.0), big: big, mega: mega, lastCoin: -1 };
+    // Count-up shows PROFIT (winnings), not gross: a paid base spin subtracts its stake; a FREE bonus
+    // spin cost nothing, so its whole win IS profit.
+    const _winShow = this._bonus ? res.winUsd : Math.max(0, res.winUsd - bet);
+    this._winFx = { t: 0, total: _winShow, shown: 0, dur: this._bonus ? 0.7 : (mega ? 1.9 : big ? 1.5 : 1.0), big: big, mega: mega, lastCoin: -1 };
     const n = mega ? 46 : big ? 28 : 14; for (let i = 0; i < n; i++) this._spawnCoin();
     // GEMS thrown everywhere — every bonus win erupts with them; big/mega normal wins too.
     const gemN = this._bonus ? (mega ? 34 : big ? 26 : 18) : (mega ? 30 : big ? 16 : 0);

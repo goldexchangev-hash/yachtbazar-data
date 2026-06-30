@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#0c0d16" />
     <meta name="referrer" content="same-origin" />
-    <link rel="manifest" href="manifest.webmanifest?v=1234" />
+    <link rel="manifest" href="manifest.webmanifest?v=1235" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -28,7 +28,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=1234" />
+    <link rel="stylesheet" href="styles.css?v=1235" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -38,13 +38,13 @@
     <!-- ───────────────────────── Header ───────────────────────── -->
     <header class="topbar">
       <button id="rail-toggle" class="rail-toggle" aria-label="Open menu" title="Menu">☰</button>
-      <span class="build-tag-m" id="build-tag-m" title="Live build version — confirms the deploy is up to date">v12.34</span>
+      <span class="build-tag-m" id="build-tag-m" title="Live build version — confirms the deploy is up to date">v12.35</span>
       <div class="brand">
         <span class="brand-tv">📺</span>
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v12.34</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v12.35</span>
       </div>
       <div class="topbar-right">
         <div class="tb-tools">
@@ -436,7 +436,7 @@
 
                 <!-- Promo intro reel — autoplays once (muted) on first load, then fades
                      to black and hands off to the game. Replay button under the TV. -->
-                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=1234"></video>
+                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=1235"></video>
 
                 <!-- Shown while a bet tx is being signed + mined (esp. slow on mobile) -->
                 <div id="tv-pending" class="tv-pending hidden">⏳ SENDING BET…<br />confirm in your wallet, then hold tight</div>
@@ -509,6 +509,12 @@
              + action button are visible together. Only the active game's shows. -->
         <div class="action-dock" data-game="pressure">
           <button id="pr-hold" class="btn btn-primary btn-block act-btn"><span class="ab-verb">🎈 HOLD TO PUMP</span><span class="ab-amt">BET $<b id="pr-bet-hint">10</b> · WIN $<b id="pr-win-hint">10.00</b></span></button>
+          <!-- Auto cash-out, right under the action button for quick on/off + adjust -->
+          <div class="dock-auto">
+            <button type="button" class="qbet pr-auto-toggle active" id="pr-auto-toggle">AUTO ON</button>
+            <input id="pr-auto-slider" class="slider dock-auto-slider" type="range" min="1.2" max="20" step="0.05" value="2.0" />
+            <span class="dock-auto-val">@ <strong id="pr-auto-val">2.00x</strong></span>
+          </div>
           <div class="muted dice-roll-hint" id="pr-message">HOLD the balloon to pump</div>
         </div>
         <div class="action-dock" data-game="slots3d">
@@ -549,26 +555,30 @@
         </div>
         <!-- Fish Shooter (CH 19): top-down fish-table arcade — aim & shoot on the TV; these control bet/power/modes -->
         <div class="action-dock fishshooter-dock" data-game="fishshooter">
-          <div class="fish-betrow">
-            <span class="fish-cost" id="fsh-cost">$1.00 / shot</span>
-            <button type="button" class="fish-fs" id="fsh-fs" title="Fullscreen">⛶ Fullscreen</button>
-          </div>
           <div class="slider-wrap">
             <input id="fsh-bet" class="slider" type="range" min="1" max="50" step="1" value="1" />
             <div class="slider-val"><strong id="fsh-bet-val">$1</strong><span class="muted"> base bet</span></div>
           </div>
-          <div class="fish-ctrls">
-            <button type="button" class="fish-btn fish-pwr" id="fsh-pdn">– PWR</button>
-            <span class="fish-power" id="fsh-power">Power 1</span>
-            <button type="button" class="fish-btn fish-pwr" id="fsh-pup">PWR +</button>
-            <button type="button" class="fish-btn" id="fsh-auto">🔥 Auto-fire</button>
-            <button type="button" class="fish-btn" id="fsh-lock">🎯 Lock-on</button>
+          <div class="fish-row">
+            <div class="fish-stepper" role="group" aria-label="Shot power">
+              <button type="button" class="fish-step" id="fsh-pdn" aria-label="Lower power">–</button>
+              <span class="fish-step-val"><small>POWER</small><strong id="fsh-power">1</strong></span>
+              <button type="button" class="fish-step" id="fsh-pup" aria-label="Raise power">+</button>
+            </div>
+            <span class="fish-cost" id="fsh-cost">$1.00 / shot</span>
+            <button type="button" class="fish-fs" id="fsh-fs" title="Fullscreen" aria-label="Fullscreen">⛶</button>
           </div>
-          <div class="fish-speed" role="group" aria-label="Shooting speed">
-            <span class="fish-speed-lbl">Speed</span>
-            <button type="button" class="fish-speed-btn" id="fsh-spd-slow" title="Slow — ~3 shots/sec">🐢 Slow</button>
-            <button type="button" class="fish-speed-btn" id="fsh-spd-med"  title="Medium — ~5 shots/sec">🐠 Medium</button>
-            <button type="button" class="fish-speed-btn on" id="fsh-spd-fast" title="Fast — ~9 shots/sec, the cap">⚡ Fast</button>
+          <div class="fish-toggles" role="group" aria-label="Firing options">
+            <button type="button" class="fish-pill" id="fsh-auto" title="Hold fire automatically">🔥 Auto-fire</button>
+            <button type="button" class="fish-pill" id="fsh-lock" title="Aim at the nearest fish for you">🎯 Lock-on</button>
+          </div>
+          <div class="fish-seg" role="group" aria-label="Shooting speed">
+            <span class="fish-seg-lbl">Speed</span>
+            <div class="fish-seg-track">
+              <button type="button" class="fish-seg-btn" id="fsh-spd-slow" title="Slow — gentle pace">🐢</button>
+              <button type="button" class="fish-seg-btn" id="fsh-spd-med"  title="Medium pace">🐠</button>
+              <button type="button" class="fish-seg-btn on" id="fsh-spd-fast" title="Fast — the cap">⚡</button>
+            </div>
           </div>
           <div class="muted dice-roll-hint" id="fsh-message">Aim & tap the tank to shoot · bigger fish pay more · land the Jackpot meter for a frenzy</div>
         </div>
@@ -862,12 +872,7 @@
             </select>
           </div>
 
-          <label class="field-label">Auto cash-out @ <strong id="pr-auto-val">2.00x</strong>
-            <button type="button" class="qbet pr-auto-toggle active" id="pr-auto-toggle">AUTO ON</button>
-          </label>
-          <div class="slider-wrap">
-            <input id="pr-auto-slider" class="slider" type="range" min="1.2" max="20" step="0.05" value="2.0" />
-          </div>
+          <!-- Auto cash-out moved next to the HOLD button (in the action dock) for quick on/off + adjust. -->
 
           <details class="dropdown pr-fair">
             <summary class="card-title dd-summary"><span>🔒 Provably fair</span><span class="dd-arrow" aria-hidden="true">▾</span></summary>
@@ -1534,21 +1539,21 @@
       </div>
     </aside>
 
-    <script defer src="vendor/ethers.umd.min.js?v=1234"></script>
-    <script defer src="config.js?v=1234"></script>
-    <script defer src="contract.js?v=1234"></script>
-    <script defer src="chiptune.js?v=1234"></script>
-    <script defer src="scenes.js?v=1234"></script>
-    <script defer src="tv.js?v=1234"></script>
-    <script defer src="poker-engine.js?v=1234"></script>
-    <script defer src="poker-bots.js?v=1234"></script>
-    <script defer src="poker-ui.js?v=1234"></script>
-    <script defer src="crash-engine.js?v=1234"></script>
-    <script defer src="crash-render.js?v=1234"></script>
-    <script defer src="profile.js?v=1234"></script>
-    <script defer src="token-client.js?v=1234"></script>
-    <script defer src="token-mode.js?v=1234"></script>
-    <script defer src="crash-rounds-client.js?v=1234"></script>
-    <script defer src="app.js?v=1234"></script>
+    <script defer src="vendor/ethers.umd.min.js?v=1235"></script>
+    <script defer src="config.js?v=1235"></script>
+    <script defer src="contract.js?v=1235"></script>
+    <script defer src="chiptune.js?v=1235"></script>
+    <script defer src="scenes.js?v=1235"></script>
+    <script defer src="tv.js?v=1235"></script>
+    <script defer src="poker-engine.js?v=1235"></script>
+    <script defer src="poker-bots.js?v=1235"></script>
+    <script defer src="poker-ui.js?v=1235"></script>
+    <script defer src="crash-engine.js?v=1235"></script>
+    <script defer src="crash-render.js?v=1235"></script>
+    <script defer src="profile.js?v=1235"></script>
+    <script defer src="token-client.js?v=1235"></script>
+    <script defer src="token-mode.js?v=1235"></script>
+    <script defer src="crash-rounds-client.js?v=1235"></script>
+    <script defer src="app.js?v=1235"></script>
   </body>
 </html>
