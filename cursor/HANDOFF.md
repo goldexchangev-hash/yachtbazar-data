@@ -1,7 +1,7 @@
 # Crypto TV — Project Handoff for Cursor (new AI)
 
 > Written 2026-06-30 by the previous AI assistant (Claude). Read this top-to-bottom before touching anything.
-> **Live version: v12.43.** This is a real crypto-betting dApp on **Sepolia testnet** with real (testnet) ETH
+> **Live version: v12.44.** This is a real crypto-betting dApp on **Sepolia testnet** with real (testnet) ETH
 > flowing through it — treat every change to the money path as production code.
 
 ---
@@ -90,6 +90,7 @@ to the server). `public/app.js` is the giant (~5000-line) main controller that w
 
 | Ver | What |
 |---|---|
+| **v12.44** | **Balloon Pop + Plane are TOKEN plays when connected** (were stuck non-token). Plane no longer uses the retired on-chain "real" mode when a wallet is connected — connected = always token (`buildPlaneGame`/`ensurePlaneReady`/`exitDemo`); not-bought-in shows "Buy in with tokens to play". **Balloon Pop token mode is TAP-based, not hold** (a server-paced round banked the instant you lifted the pointer → "won't let me hold to pump"): tap launches, tap banks, pointer-up is a no-op (`pressure-ui.js` `_tokenTap`/`_wire`/mode-aware verb). **`syncTokenGameBalances` re-applies the per-game MODE on every buy-in/cash-out** so buying in *while already on the channel* flips it into token play (the core fix — channel entry already chose right, the live switch was missing). Cash-out guarded by `CrashRounds.active()`. Also: **coinflip betting card moved above the FLIP button** (`.stage` flex `order`), **max bet $500→$100** (`HARD_MAX_USD`), blackjack-dock buttons rebuild on re-entry (`!ctr.firstChild` + `bjBetSig` reset), and a **fresh deposit re-renders the buy-in bar** immediately (`refreshBalances`→`TokenMode._render`). |
 | **v12.43** | **Blackjack table segregation** — real-money (token/bridge) players never share a table/shoe with demo/guest players (they share one provably-fair shoe, so others' hit/stand changes your cards). Rooms tagged `kind` real/demo; `openRoom(kind)` + share-link redirect. Adversarially reviewed. |
 | **v12.40–12.42** | Blackjack felt self-heal (it loaded as a guest before the wallet connected → re-inits to the token session); "Lock credits" no longer hits the dead bridge for token players; top token bar live-syncs from the server while at a token table; hid the redundant `guest:… / $X tokens` row under the TV. |
 | **v12.39** | Fixed the CH16 bug below — the felt now reliably binds to the token session (the token session was in the iframe's #hash, which doesn't reload an iframe; added a `&r=<nonce>` query to force a real reload). Token-funded dock now reads "🪙 $X tokens". |
