@@ -1350,6 +1350,7 @@
     if (demoOn) { demoPaint(); return; }
     try {
       const [gb, wb] = await Promise.all([read.balances(account), provider.getBalance(account)]);
+      const gameWeiChanged = gb !== gameWei;
       gameWei = gb; // cached so "Max" can read the live in-game balance instantly
       if (!revealLock) $("game-balance").textContent = usdOf(gb); // hold until the result is revealed
       $("wallet-balance").textContent = usdOf(wb);
@@ -1358,6 +1359,12 @@
       paintBjConnectedBalance();
       syncDepositSlider();
       syncWithdrawSlider();
+      // BUG4 (deposit lag): a fresh deposit raises gameWei, but the TokenMode "Buy in" bar caches its
+      // slider max from the OLD balance until something re-renders it — so the just-deposited amount
+      // can't be added until a later cycle. Re-render the bar whenever the in-game balance actually
+      // changes. The guard means this only fires on deposit/withdraw/settle (never mid-drag, since the
+      // balance is static while the user drags the buy-in slider), so it can't interrupt a drag.
+      if (gameWeiChanged) { try { if (window.TokenMode && TokenMode._render) TokenMode._render(); } catch (e) {} }
     } catch {}
   }
 
@@ -2294,7 +2301,7 @@
     pressureLoadPromise = loadPixiOnce()
       .then(() => loadScriptOnce("pressure-engine.js?v=1243"))
       .then(() => loadScriptOnce("pressure-render.js?v=1243"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=1243"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=1244"))
       // optional 3D red balloon (Three.js) — falls back to the 2D balloon if it can't load
       .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1243")).catch(() => {}))
       .then(() => true)
@@ -2328,7 +2335,7 @@
         return CrashRounds.start({ sessionId: sess.sessionId, sessionToken: sess.sessionToken, game: "pressure", betUnits: stake, autoTarget: autoTarget || 0, onTick: onTick })
           .then((res) => { try { if (res && typeof res.tokens === "number") TokenMode.syncTokens(res.tokens); } catch (e) {} return res; });
       },
-      onTokenCashOut: () => { if (window.CrashRounds) CrashRounds.cashOut(); },
+      onTokenCashOut: () => { if (window.CrashRounds && CrashRounds.active && CrashRounds.active()) CrashRounds.cashOut(); }, // guard: a stale tap with no live round can't fire a spurious cashout
       els: {
         balance: el("pr-balance"),
         betSlider: el("pr-bet-slider"), betVal: el("pr-bet-val"), betEth: el("pr-bet-eth"),
@@ -2355,7 +2362,8 @@
         // Token mode: default auto OFF so HOLD/RELEASE is fully manual (owner rule).
         g.autoOn = false; if (g.els.autoToggle) { g.els.autoToggle.textContent = "AUTO OFF"; g.els.autoToggle.classList.remove("active"); }
         g.setBalance(TokenMode.tokens()); g.setEnabled(true);
-      } else { g.setBalance(demoUsd); g.setEnabled(true); }
+      } else if (demoOn) { g.setBalance(demoUsd); g.setEnabled(true); }
+      else { g.setBalance(0); g.setEnabled(true); } // connected but not bought in → token-only: 0 balance, buy in via the top bar
       // Now the canvas exists → reveal the layer (idle may have shown the ready
       // room while it was still loading, e.g. right after the promo ended).
       if (window.TV && currentGame === "pressure" && !TV._promoPlaying) try { TV.idle(); } catch (e) {}
@@ -2370,7 +2378,7 @@
       .then(() => loadScriptOnce("plane-engine.js?v=1243"))
       .then(() => loadScriptOnce("plane-render.js?v=1243"))
       .then(() => loadScriptOnce("plane-feed.js?v=1243"))
-      .then(() => loadScriptOnce("plane-ui.js?v=1243"))
+      .then(() => loadScriptOnce("plane-ui.js?v=1244"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2390,8 +2398,8 @@
     planeGame = new window.PlaneGame({
       mount, width: 800, height: 600,
       ethUsd: ethUsd, houseEdge: CRASH_EDGE, // 1% — identical to the on-chain crash it settles through
-      mode: (window.TokenMode && TokenMode.active()) ? "token" : (demoOn ? "demo" : "real"),
-      initialBalance: (window.TokenMode && TokenMode.active()) ? TokenMode.tokens() : (demoOn ? demoUsd : weiToUsd(gameWei)),
+      mode: demoOn ? "demo" : "token", // connected (non-demo) is ALWAYS token now — the legacy on-chain "real" plane is retired (token bridge replaces direct on-chain bets)
+      initialBalance: demoOn ? demoUsd : ((window.TokenMode && TokenMode.active()) ? TokenMode.tokens() : 0), // token-only: 0 until you buy in
       onBalance: (b) => { if (window.TokenMode && TokenMode.active()) return; demoUsd = Math.round(b * 100) / 100; demoSave(); demoPaint(); }, // demo only (token mode: balance owned by TokenMode)
       onWin: (i) => setLastResult({ won: true, game: "Plane", emoji: "✈️", amountUsd: i.profitUsd, detail: i.mult.toFixed(2) + "× cashed" }), // Plane shows its own in-canvas cash-out win — no result overlay (would collide)
       onRealBet: (betUsd, targetX100) => doPlanePlay(betUsd, targetX100),       // single on-chain round
@@ -2404,7 +2412,7 @@
         return CrashRounds.start({ sessionId: sess.sessionId, sessionToken: sess.sessionToken, game: "plane", betUnits: stake, autoTarget: autoTarget || 0, onTick: onTick })
           .then((res) => { try { if (res && typeof res.tokens === "number") TokenMode.syncTokens(res.tokens); } catch (e) {} return res; });
       },
-      onTokenCashOut: () => { if (window.CrashRounds) CrashRounds.cashOut(); },
+      onTokenCashOut: () => { if (window.CrashRounds && CrashRounds.active && CrashRounds.active()) CrashRounds.cashOut(); }, // guard: a stale tap with no live round can't fire a spurious cashout
       els: {
         balance: el("plane-balance"), message: el("plane-message"),
         history: el("plane-history"), feed: el("plane-feed"),
@@ -2431,7 +2439,10 @@
         g.setBalance(TokenMode.tokens()); g.setEnabled(true);
       }
       else if (demoOn) { g.setMode("demo"); g.setBalance(demoUsd); g.setEnabled(true); }
-      else { g.setMode("real"); g.setBalance(weiToUsd(gameWei)); g.setEnabled(!!(account && contract)); }
+      else { // connected but not bought in → token idle ("Buy in with tokens to play"), NOT legacy on-chain "real"
+        g.setMode("token"); g.setBalance(0); g.setEnabled(false);
+        if (g.bets && g.bets[0]) { g.bets[0].autoOn = false; try { g._syncPanel(g.bets[0]); } catch (e) {} }
+      }
       // Now the canvas exists → reveal the layer (idle may have shown the ready
       // room while it was still loading, e.g. right after the promo ended).
       if (window.TV && currentGame === "plane" && !TV._promoPlaying) try { TV.idle(); } catch (e) {}
@@ -3000,7 +3011,37 @@
   }
   function syncTokenGameBalances() {
     var bal = tokenStateBalanceUsd();
-    [pressureGame, planeGame, slots3dGame, fishGame, fishshooterGame].forEach(function (g) {
+    var tokOn = !!(window.TokenMode && TokenMode.active());
+    // Re-apply the per-game MODE on every session change. Channel ENTRY already picks the right mode
+    // (ensurePressure/PlaneReady), but if you BUY IN while already standing on Balloon Pop or Plane,
+    // nothing else flips the game into token play — plane would stay stuck in legacy "real" (on-chain)
+    // mode and refuse to bet, and pressure would keep showing demo. setMode() no-ops when already in
+    // the target mode (and won't disturb a round mid-flight), so this is safe on every onChange tick.
+    // pressure/plane are token-only when connected → balance 0 until buy-in (prevents accidental
+    // play-money rounds on a connected wallet).
+    var pbBal = tokOn ? TokenMode.tokens() : (demoOn ? demoUsd : 0);
+    if (planeGame) {
+      try {
+        var want = demoOn ? "demo" : "token"; // connected (non-demo) is ALWAYS token now
+        if (planeGame.mode !== want) {
+          planeGame.setMode(want);
+          if (want === "token" && planeGame.bets && planeGame.bets[0]) { planeGame.bets[0].autoOn = false; try { planeGame._syncPanel(planeGame.bets[0]); } catch (e) {} }
+        }
+        // don't toggle enabled mid-flight (would fight the live round UI)
+        if (planeGame.state !== "token-flying" && planeGame.state !== "flying" && planeGame.state !== "takeoff") planeGame.setEnabled(demoOn || tokOn);
+        planeGame.setEthUsd(ethUsd); planeGame.setBalance(pbBal);
+      } catch (e) {}
+    }
+    if (pressureGame) {
+      try {
+        if (!(pressureGame.pressing && pressureGame.state === "inflating")) {
+          pressureGame.setEnabled(true); // _tokenActive() keys off the live session, not this flag
+          if (tokOn) { pressureGame.autoOn = false; if (pressureGame.els && pressureGame.els.autoToggle) { pressureGame.els.autoToggle.textContent = "AUTO OFF"; pressureGame.els.autoToggle.classList.remove("active"); } }
+        }
+        pressureGame.setEthUsd(ethUsd); pressureGame.setBalance(pbBal);
+      } catch (e) {}
+    }
+    [slots3dGame, fishGame, fishshooterGame].forEach(function (g) {
       if (g) try { g.setEthUsd(ethUsd); g.setBalance(bal); } catch (e) {}
     });
     if (swoopGame && demoOn) try { swoopGame.setBalance(demoUsd); } catch (e) {} // swoop is demo-only
@@ -3067,14 +3108,26 @@
     { const pp = $("pressure-panel"); if (pp) pp.hidden = false; }
     { const pp = $("slots3d-panel"); if (pp) pp.hidden = false; }
     { const pp = $("fish-panel"); if (pp) pp.hidden = false; }
-    if (pressureGame) { pressureGame.setBalance(demoUsd); pressureGame.setEnabled(true); }
+    // Connected → Balloon Pop is a TOKEN game (not play-money): show the token balance (0 until you
+    // buy in) and let _tokenActive() route the TAP to the server round. setEnabled(true) lifts the
+    // legacy "play-money only" lock; syncTokenGameBalances re-applies this on every buy-in/cash-out.
+    if (pressureGame) {
+      pressureGame.setBalance((window.TokenMode && TokenMode.active()) ? TokenMode.tokens() : 0); pressureGame.setEnabled(true);
+      if (window.TokenMode && TokenMode.active()) { pressureGame.autoOn = false; if (pressureGame.els && pressureGame.els.autoToggle) { pressureGame.els.autoToggle.textContent = "AUTO OFF"; pressureGame.els.autoToggle.classList.remove("active"); } }
+    }
     if (slots3dGame) { slots3dGame.setBalance(demoUsd); slots3dGame.setEnabled(true); }
     if (fishGame) { fishGame.setBalance(demoUsd); fishGame.setEnabled(true); }
     if (swoopGame) { swoopGame.setBalance(demoUsd); swoopGame.setEnabled(true); }
     if (fishshooterGame) { fishshooterGame.setBalance(demoUsd); fishshooterGame.setEnabled(true); }
-    // Plane DOES have a real-money mode → keep it, switch to single-shot real.
+    // Connected → Plane is a TOKEN game (the legacy single-shot on-chain "real" mode is retired). The
+    // plane-real class still applies: it hides the demo-only 2nd bet / feed / autobet (token is single-bet).
     document.body.classList.add("plane-real");
-    if (planeGame) { planeGame.setMode("real"); planeGame.setBalance(weiToUsd(gameWei)); planeGame.setEnabled(!!(account && contract)); }
+    if (planeGame) {
+      planeGame.setMode("token");
+      planeGame.setBalance((window.TokenMode && TokenMode.active()) ? TokenMode.tokens() : 0);
+      planeGame.setEnabled(!!(window.TokenMode && TokenMode.active())); // disabled until buy-in → "Buy in with tokens to play"
+      if (planeGame.bets && planeGame.bets[0]) { planeGame.bets[0].autoOn = false; try { planeGame._syncPanel(planeGame.bets[0]); } catch (e) {} }
+    }
   }
   function demoReset() {
     // A Plane round mid-flight has already debited its stake; restart it cleanly so
@@ -3313,7 +3366,7 @@
     if (game !== "flip" && coinFlip3d) coinFlip3d.setActive(false);
     if (game !== "dice" && rail3d) rail3d.setActive(false);
     if (game !== "twodice" && d2_3d) d2_3d.setActive(false);
-    if (game !== "blackjack" && window.BJ_MUTE) { window.BJ_MUTE(true); bjStopCount(); } // hush blackjack + stop its countdown off-channel
+    if (game !== "blackjack" && window.BJ_MUTE) { window.BJ_MUTE(true); bjStopCount(); bjBetSig = ""; } // hush blackjack + stop its countdown off-channel; clear the dock sig so re-entry always repaints the BET controls
     // Blackjack uses its OWN standalone server balance — hide the demo credits on this channel.
     document.body.classList.toggle("bj-channel", game === "blackjack");
     if (game === "blackjack") { const wl = $("bj-wallet"); if (wl) wl.textContent = "🪪 " + short(account || bjGuestId()); }
@@ -3695,7 +3748,12 @@
     } else { bjStopCount(); const cEl = $("bj-count"); if (cEl) cEl.textContent = ""; }
     if (s.mode === "betting") {
       const sig = "bet|" + s.betMax + "|" + (s.showEth ? 1 : 0);
-      if (sig !== bjBetSig) { bjBetSig = sig; ctr.innerHTML = ""; buildBjBet(ctr, s); }
+      // Rebuild when the signature changed OR when the dock is empty. On channel RE-ENTRY the
+      // felt re-emits the SAME betting sig, but #bj-controls may have been cleared off-channel
+      // (the last on-channel emit was a non-betting mode → line below blanked it, or the felt
+      // iframe reloaded). Without the !ctr.firstChild check the sig-cache would skip the rebuild
+      // and the BET buttons would never come back until a felt reconnect coincidentally changed betMax.
+      if (sig !== bjBetSig || !ctr.firstChild) { bjBetSig = sig; ctr.innerHTML = ""; buildBjBet(ctr, s); }
       return;
     }
     bjBetSig = ""; ctr.innerHTML = ""; // turn/insurance rebuild every emit so a rejected action re-enables its buttons
@@ -3916,7 +3974,9 @@
   // Sliders run in USD; the ETH amount is computed from the live price. Bets are
   // capped at $500 (keeps house variance sane); deposits are bounded only by the
   // wallet balance.
-  const HARD_MAX_USD = 500;
+  const HARD_MAX_USD = 100; // per-game bet ceiling. betCapUsd() = min(read.maxBet≈$500, HARD_MAX_USD), so this
+                            // caps every bet slider at $100 client-side with no contract change (on-chain $500
+                            // limit becomes an unreachable no-op).
   const DEPOSIT_MAX_USD = 100000;
   function betCapUsd() {
     const m = (maxBet && maxBet > 0n) ? Math.floor(weiToUsd(maxBet)) : HARD_MAX_USD;

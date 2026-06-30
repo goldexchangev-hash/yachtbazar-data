@@ -76,7 +76,7 @@
     this._setAuto(this.autoMult);
     this.r.setState("armed");
     this.state = "armed";
-    this._msg("HOLD the balloon to pump");
+    this._msg(this._idlePrompt());
   }
 
   // ---------------- HUD / balance ----------------
@@ -119,35 +119,45 @@
   PressureGame.prototype._updateActBtn = function () {
     const b = document.getElementById("pr-bet-hint"); if (b) b.textContent = Math.max(0, Math.round(this.bet));
     const w = document.getElementById("pr-win-hint"); if (w) w.textContent = (this.bet * Math.max(0, this.autoMult - 1)).toFixed(2);
+    // Mode-aware verb: demo holds, token taps. (The HOLD button HTML defaults to "HOLD TO PUMP".)
+    const verb = document.querySelector("#pr-hold .ab-verb");
+    if (verb) verb.textContent = this._tokenActive()
+      ? ((this.pressing && this.state === "inflating") ? "💰 TAP TO BANK" : "🎈 TAP TO LAUNCH")
+      : "🎈 HOLD TO PUMP";
   };
 
   // ---------------- input wiring ----------------
   PressureGame.prototype._wire = function () {
     const els = this.els;
-    const press = (e) => { if (e && e.cancelable) e.preventDefault(); this._press(); };
-    const release = () => this._release();
+    // Two control models. DEMO = hold-to-pump: pointer-DOWN inflates, pointer-UP banks (you control
+    // the climb by how long you hold). TOKEN = server-paced rounds, which can't use hold — lifting
+    // the pointer would bank at ~1x the instant your finger leaves — so token mode is TAP-based: a
+    // tap LAUNCHES, a second tap BANKS, and pointer-UP does nothing. (THIS is the "won't let me hold
+    // to pump" bug: under the old wiring a token round banked the moment you released.)
+    const press = (e) => { if (e && e.cancelable) e.preventDefault(); if (this._tokenActive()) this._tokenTap(); else this._press(); };
+    const release = () => { if (this._tokenActive()) return; this._release(); }; // token: never bank on pointer-lift
 
     // ONLY the HOLD button starts a pump — tapping the TV screen/canvas must NOT
     // place a bet (the canvas is display-only; let touches there scroll normally).
     if (els.holdPad) { els.holdPad.style.touchAction = "none"; els.holdPad.addEventListener("pointerdown", press); }
-    // release on ANY of these — never a pop
+    // release on ANY of these — never a pop (demo only; token settles by the next tap / server clock)
     window.addEventListener("pointerup", release);
     window.addEventListener("pointercancel", release);
     window.addEventListener("blur", release);
     document.addEventListener("visibilitychange", () => { if (document.hidden) release(); });
 
-    // keyboard: SPACE hold, V valve, A toggle auto
+    // keyboard: SPACE = hold (demo) / tap (token), V valve, A toggle auto
     const modalUp = () => !!document.querySelector(".modal:not(.hidden)");
     window.addEventListener("keydown", (e) => {
       if (e.repeat || !this._active) return; // only when Balloon Pop is the active channel
       const tag = (e.target && e.target.tagName) || "";
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
       if (modalUp()) return; // don't pump behind an open dialog
-      if (e.code === "Space") { e.preventDefault(); this._press(); }
+      if (e.code === "Space") { e.preventDefault(); if (this._tokenActive()) this._tokenTap(); else this._press(); }
       else if (e.key === "a" || e.key === "A") this._toggleAuto();
       else if (e.key === "v" || e.key === "V") this._valve(); // lock a pop-proof floor at the current mult
     });
-    window.addEventListener("keyup", (e) => { if (this._active && e.code === "Space" && !modalUp()) this._release(); });
+    window.addEventListener("keyup", (e) => { if (this._active && e.code === "Space" && !modalUp() && !this._tokenActive()) this._release(); });
 
     // bet controls ($ value, $10 minimum)
     const betStep = (b) => (b < 100 ? 10 : b < 1000 ? 50 : 100);
@@ -200,6 +210,22 @@
     return !!(this.onTokenLaunch && root.TokenMode && root.TokenMode.active());
   };
 
+  // TOKEN mode is TAP-based (hold-to-pump can't work with a server-paced round — lifting the pointer
+  // would bank at ~1x the moment your finger leaves). A tap LAUNCHES a round; a second tap BANKS it.
+  PressureGame.prototype._tokenTap = function () {
+    if (!this._active) return;
+    if (document.querySelector(".modal:not(.hidden)")) return; // a dialog is open over the canvas
+    if (this.pressing && this.state === "inflating") { if (this.onTokenCashOut) this.onTokenCashOut(); return; } // climbing → this tap banks it
+    if (this.state !== "armed" && this.state !== "idle") return; // mid-resolve / showing a result → ignore taps
+    this._pressToken();
+  };
+
+  // The "ready to play" prompt, worded for the active mode (token taps; demo holds).
+  PressureGame.prototype._idlePrompt = function () {
+    if (this._tokenActive()) return (root.TokenMode.tokens() < this.bet) ? "Tap 🪙 Buy in above to play" : "Tap to launch — then tap to bank";
+    return this._idlePrompt();
+  };
+
   // ---------------- round lifecycle ----------------
   PressureGame.prototype._press = function () {
     if (!this._active) return; // off-channel: ignore global SPACE / pointer input
@@ -241,7 +267,7 @@
     if (this.r.setAutoLine) this.r.setAutoLine(autoTarget || 0);
     this.balance = Math.round((TM.tokens() - stake) * 100) / 100; // anchor to tokens, debit the stake
     this._renderHud();
-    this._msg(autoTarget ? "Pumping… auto-banks at " + autoTarget.toFixed(2) + "x" : "Pumping… release to bank before it pops!");
+    this._msg(autoTarget ? "Pumping… auto-banks at " + autoTarget.toFixed(2) + "x" : "Pumping… tap to bank before it pops!");
     if (root.Chiptune && Chiptune.blip) try { Chiptune.blip(); } catch (e) {}
     var self = this, epoch = (this._tokenEpoch = (this._tokenEpoch || 0) + 1);
     var onTick = function (m, elapsed, result) {
@@ -386,7 +412,7 @@
     this.r.reset();
     if (this._b3d) this._b3d.reset();
     this.state = "armed";
-    this._msg(this.balance < this.bet ? "Add funds to keep playing" : "HOLD the balloon to pump");
+    this._msg(this._idlePrompt());
     this._renderHud();
   };
 
@@ -413,14 +439,14 @@
   PressureGame.prototype.setBalance = function (b) {
     if (!isFinite(b) || this.state === "inflating") return;
     this.balance = Math.round(b * 100) / 100;
-    if (this.state === "armed" || this.state === "result") this._msg(this.balance < this.bet ? "Add funds to keep playing" : "HOLD the balloon to pump");
+    if (this.state === "armed" || this.state === "result") this._msg(this._idlePrompt());
     this._renderHud();
   };
   PressureGame.prototype.restartDemo = function () {
     clearTimeout(this._resetTimer); this._resetTimer = null;
     this.pressing = false; this.state = "armed"; this.floors = []; this.heldSec = 0; this.burst = 0;
     this.r.clearValveRings(); this.r.reset(); if (this._b3d) this._b3d.reset();
-    this._msg(this.balance < this.bet ? "Add funds to keep playing" : "HOLD the balloon to pump");
+    this._msg(this._idlePrompt());
     this._renderHud();
   };
   PressureGame.prototype.setEthUsd = function (p) { if (p > 0) { this.ethUsd = p; this._renderHud(); } };
@@ -436,7 +462,7 @@
   PressureGame.prototype.setEnabled = function (on) {
     this._disabled = !on;
     if (this._disabled) { this.pressing = false; this._msg("🎈 Pressure is play-money only — disconnect to play it in demo."); }
-    else { this._msg(this.balance < this.bet ? "Add funds to keep playing" : "HOLD the balloon to pump"); }
+    else { this._msg(this._idlePrompt()); }
   };
 
   root.PressureGame = PressureGame;
