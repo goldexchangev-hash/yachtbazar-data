@@ -11,7 +11,7 @@
 (function (root) {
   "use strict";
   const THREE = root.THREE, E = root.Slots3DEngine;
-  const REELS = 5, ROWS = 3, MIN_BET = 10, MAX_BET = 500;
+  const REELS = 5, ROWS = 3, MIN_BET = 10, MAX_BET = 100; // $100 ceiling, matching the site-wide HARD_MAX_USD
   const PANY = 0.55; // shift the reels UP in frame, leaving a black shelf at the bottom for the win/bonus banners
 
   /* palette per symbol id (0..7) */
@@ -287,27 +287,49 @@
     this._save(); this._renderHud();
     this._clearWinFx(); this._hideOverlay();
     this._betThisSpin = bet; this.state = "spinning"; this._spinning = true;
+    // The reels are launched ASYNCHRONOUSLY in the .then below, but until then they sit in
+    // mode:"stopped" (their state from the previous settle / initial build). Without this flag the
+    // per-frame loop would see reels.every(mode==="stopped")===true during the whole server
+    // round-trip and fire _settle() IMMEDIATELY — with a stale/undefined _result, which THROWS out
+    // of the RAF callback and freezes the round on "Spinning…" forever (THE Gem Vault stuck bug).
+    // Hold the loop's settle check off until the server grid has been launched onto the reels.
+    this._awaitingServer = true;
     this._msg("Spinning…", "");
     if (root.Chiptune && root.Chiptune.blip) try { root.Chiptune.blip(); } catch (e) {}
     this._renderSpinBtn();
     var self = this;
     TM.bet("slots3d", bet, {}).then(function (r) {
-      if (!self._spinning) return; // channel left mid-flight
-      var grid = (r.outcome && r.outcome.grid) || [[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]];
-      self.nonce += 1;
-      self._result = E.evaluate(grid, bet); // identical to the server's base result (same grid+paytable)
-      self._landedGrid = grid;
-      // stash the server's bonus plan so _beginBonus renders the SERVER free spins, not a
-      // locally-derived one (remap each result.win → the client's winUsd field name).
-      self._tokenBonusPlan = (r.outcome && r.outcome.bonus)
-        ? { spins: r.outcome.bonus.spins, mult: r.outcome.bonus.mult,
-            results: (r.outcome.bonus.results || []).map(function (x) {
-              return { grid: x.grid, lines: x.lines, scatter: x.scatter, winUsd: x.win };
-            }) }
-        : null;
-      self._launchReels(grid, false);
-      self._renderSpinBtn();
+      self._awaitingServer = false;
+      if (!self._spinning) return; // already settled/cleared elsewhere
+      if (!self._active) { // left the channel while the bet was in flight (resolved late, off-screen)
+        self._spinning = false; self.state = "idle";
+        self.balance = TM.tokens(); self._renderHud(); self._renderSpinBtn();
+        return;
+      }
+      try {
+        var grid = (r && r.outcome && r.outcome.grid) || [[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]];
+        self.nonce += 1;
+        self._result = E.evaluate(grid, bet); // identical to the server's base result (same grid+paytable)
+        self._landedGrid = grid;
+        // stash the server's bonus plan so _beginBonus renders the SERVER free spins, not a
+        // locally-derived one (remap each result.win → the client's winUsd field name).
+        self._tokenBonusPlan = (r && r.outcome && r.outcome.bonus)
+          ? { spins: r.outcome.bonus.spins, mult: r.outcome.bonus.mult,
+              results: (r.outcome.bonus.results || []).map(function (x) {
+                return { grid: x.grid, lines: x.lines, scatter: x.scatter, winUsd: x.win };
+              }) }
+          : null;
+        self._launchReels(grid, false);
+        self._renderSpinBtn();
+      } catch (err) {
+        // A malformed grid/result must NEVER strand the round: a throw inside this .then is NOT
+        // caught by the sibling .catch, so recover here exactly as the .catch does.
+        self._spinning = false; self.state = "idle";
+        self.balance = TM.tokens(); self._renderHud();
+        self._msg("Spin failed — try again", "lose"); self._renderSpinBtn();
+      }
     }).catch(function (e) {
+      self._awaitingServer = false;
       self._spinning = false; self.state = "idle";
       self.balance = TM.tokens(); self._renderHud(); // re-sync to the untouched ledger (TRANSACTIONAL: a failed bet costs nothing)
       self._msg("Spin failed — try again", "lose"); self._renderSpinBtn();
@@ -379,7 +401,8 @@
   Slots3D.prototype._anticMiss = function (r) { this.reels[r].glowTarget = 0; }; // tension releases
 
   Slots3D.prototype._settle = function () {
-    this._spinning = false; this.state = "win";
+    this._spinning = false; this.state = "win"; this._awaitingServer = false;
+    if (!this._result) { this.state = "idle"; this._renderSpinBtn(); return; } // defensive: a missing result must never throw out of the RAF loop and freeze "Spinning…"
     for (const rr of this.reels) rr.glowTarget = 0; // let any anticipation glows fade out
     const res = this._result, bet = this._betThisSpin;
     if (res.winUsd > 0) {
@@ -392,6 +415,10 @@
     }
     this.lastRound = { nonce: this.nonce, win: res.winUsd };
     this._updatePf(); this._renderHud();
+    // Token mode: reconcile the top "🪙 tokens" bar to the authoritative ledger WITH the reveal
+    // (the bet already credited base+bonus into client.tokens). pressure/plane do this; slots3d
+    // historically didn't, so the bar sat stale at the pre-spin value.
+    if (root.TokenMode && root.TokenMode.active() && root.TokenMode.syncBalance) try { root.TokenMode.syncBalance(); } catch (e) {}
 
     // During a free-spins round each settle accumulates toward the grand total.
     if (this._bonus) { this._afterBonusSpin(res); return; }
@@ -575,7 +602,7 @@
         if (k >= 1) { reel.pos = reel.land; reel.mode = "stopped"; this._onReelStopped(r); }
       }
       this._paintReels();
-      if (this.reels.every((rr) => rr.mode === "stopped")) { this._paintReels(); this._settle(); }
+      if (!this._awaitingServer && this.reels.every((rr) => rr.mode === "stopped")) { this._paintReels(); this._settle(); } // never settle while a token spin's grid is still en route
     } else { this._paintReels(); }
 
     // trim neon pulse
@@ -689,10 +716,18 @@
   /* ---------- host bridge API (mirrors PressureGame) ---------- */
   Slots3D.prototype.setActive = function (on) {
     on = !!on; if (on === this._active) return; this._active = on;
-    if (on) { this._last = performance.now(); this._raf = requestAnimationFrame(this._loop); }
+    if (on) { this._last = performance.now(); this._raf = requestAnimationFrame(this._loop); this._renderSpinBtn(); } // repaint in case a spin was stranded off-channel
     else {
       if (this._raf) cancelAnimationFrame(this._raf); this._raf = 0;
       if (this._bonus) this._finishBonusNow(); // leaving mid-bonus → bank the rest, don't strand it
+      else if (this._awaitingServer) {
+        // A token spin whose grid hasn't landed yet: cancel it so the late .then can't launch reels
+        // into a paused loop (the .then bails on !_spinning; balance is re-anchored from the ledger
+        // by ensureSlots3dReady on re-entry, and the server settles the bet independently).
+        this._awaitingServer = false; this._spinning = false; this.state = "idle";
+      }
+      // Demo / already-launched spins keep _spinning=true: their reels are already easing toward a
+      // land, so the loop resumes and settles them cleanly when the channel comes back.
     }
   };
   Slots3D.prototype.setEnabled = function (on) { this._enabled = !!on; this._renderSpinBtn(); };

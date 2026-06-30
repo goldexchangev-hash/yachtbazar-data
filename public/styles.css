@@ -194,17 +194,19 @@ kbd { font-family: ui-monospace, monospace; font-size: 11px; background: rgba(25
   max-width: 1500px; margin: 0 auto;
 }
 .stage { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
-/* Coinflip layout: the #play-house stake card (the "drag to choose your stake" slider + Heads/Tails)
-   sits LAST in source order, so by default it renders below the 🪙 FLIP action button — leaving the
-   betting controls stranded at the bottom. Reorder the flex column so the betting card sits right
-   under the TV and the FLIP button drops to the bottom (matches every other game + the mobile
-   fixed bet-bar). mobile-hint/demo-bar keep default order 0 (banners above the TV). Hidden cards
-   (display:none) and mobile's position:fixed action-dock both ignore `order`, so non-flip games and
-   mobile layout are unaffected. */
-.stage > .tv { order: 1; }
-.stage > #demo-below { order: 2; }
-.stage > .play-house { order: 3; }       /* #play-house and #play-table (betting controls) */
-.stage > .action-dock { order: 4; }      /* the per-game action button → bottom */
+/* Layout: every game's BET PANEL (.dice-panel = slots3d/pressure/dice/… , and #play-house for
+   coinflip) lives in `.stage` AFTER the #bankroll deposit/withdraw card in source order, so by
+   default the bet controls render BELOW the deposit box. Players want the bet panel right under the
+   TV. The ONLY safe way to do that with a flex column is to PUSH the deposit + host cards DOWN —
+   never to raise the TV's order, which would drop every default-order-0 child (incl. the bet
+   panels) ABOVE the TV. So: leave the TV, token bar, session strips, action docks and bet panels
+   at the natural order 0 (source order keeps them in place, TV stays at the top under the thin
+   banners), and send only the deposit/wallet + host cards to the bottom. */
+.stage > #bankroll { order: 1; }                                   /* deposit/withdraw → below the bet panel */
+.stage > #host-tools,
+.stage > #host-stats-card,
+.stage > #host-setup,
+.stage > #theme-switch { order: 2; }                               /* host/owner cards → very bottom */
 .sidebar { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 
 .card { background: var(--panel); backdrop-filter: blur(10px); border: 1px solid var(--panel-line); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow); }

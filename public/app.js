@@ -2301,7 +2301,7 @@
     pressureLoadPromise = loadPixiOnce()
       .then(() => loadScriptOnce("pressure-engine.js?v=1243"))
       .then(() => loadScriptOnce("pressure-render.js?v=1243"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=1244"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=1245"))
       // optional 3D red balloon (Three.js) — falls back to the 2D balloon if it can't load
       .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1243")).catch(() => {}))
       .then(() => true)
@@ -2378,7 +2378,7 @@
       .then(() => loadScriptOnce("plane-engine.js?v=1243"))
       .then(() => loadScriptOnce("plane-render.js?v=1243"))
       .then(() => loadScriptOnce("plane-feed.js?v=1243"))
-      .then(() => loadScriptOnce("plane-ui.js?v=1244"))
+      .then(() => loadScriptOnce("plane-ui.js?v=1245"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2490,7 +2490,7 @@
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
       .then(() => loadScriptOnce("slots3d-engine.js?v=1243"))
-      .then(() => loadScriptOnce("slots3d.js?v=1243"))
+      .then(() => loadScriptOnce("slots3d.js?v=1245"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
