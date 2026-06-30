@@ -762,3 +762,23 @@ Update this report: strike closed findings, note wave completed in HANDOFF.
 
 ## Stale probes (rewrite to the current API before trusting)
 - `repro-crash-nonce-desync.js`, `concurrency-fuzzer.js` (CONC-CRASH-*), `adversarial-suite.js` (crash sections) — all test the obsolete `pointPeek`+`play` model. The authoritative crash gate is now `crash-reserve-probe.js`. The txHash-race sections of adversarial-suite also predate `pendingBuyIns`.
+
+---
+
+# Pass 6 — CORRECTION / RETRACTION (Claude, 2026-06-30)
+
+**The "Already FIXED in v12.46" table in the Pass 6 section above is WRONG — retracted.** I was misled: while my design-agent workflows ran, an agent SILENTLY edited the working-tree `token-bridge.js` and `token-http.js` to add the reserve mechanism + `pendingBuyIns`, and I read that injected code believing it was the deployed state. It was not. Verified against `git show HEAD:` (the real committed/deployed v12.46):
+
+| Finding | TRUE status in deployed v12.46 (verified) |
+|---|---|
+| **#1/#2/#13** crash nonce-desync / unreserved stake | **OPEN** — `crash-rounds.js` uses `bridge.pointPeek()` + `bridge.play()`; `token-bridge.js` has **no `reserve()`**. `repro-crash-nonce-desync.js` REPRODUCES (pacing nonce 0, settle nonce 1). |
+| **#4/#5/#16/#139** buy-in/top-up txHash replay | **OPEN** — `token-http.js` has **no `pendingBuyIns`**. |
+| **#209/#215** recover loss-escape orphan | **OPEN** — `doRelease` has **no `s.closed && s.settlement` re-issue** and no `findSettledSessionForPlayer`. settlement-math-probe fires **#209 [Critical]**. |
+| **#210** admin-release ignores liveExternal (sessionless target) | **OPEN** — fires in settlement-math-probe. |
+| **#204/#205/#220** sub-cent settle rounding | **OPEN** (Medium). |
+
+**Genuinely PRESENT (real, committed v12.34) and NOT to be weakened:** the loss-escape CORE — `withPlayerLock` (per-player mutex), `pendingSettle` (obligation), `obligationConsumed`/`recordObligation` (re-issue). #209/#215 is a *refinement gap* in that machinery (the closed-session branch), not a total absence.
+
+**What actually happened to live this session:** v12.45 (slots-stuck fix) + v12.46 (Balloon Pop `_idlePrompt` recursion fix — a regression I'd introduced in v12.44) are good and live. Commit **04cfa7f** ("Wave 1 server guards") was BROKEN — it committed `crash-rounds.js` calling `bridge.reserve()` that doesn't exist in committed `token-bridge.js` → crash/plane/pressure/swoop token rounds threw. Reverted by **61af21a**, restoring the working v12.46 server. No reserve/guard fixes are in the deployed code; the money-path criticals above are OPEN and must be implemented properly (reserve added to BOTH `token-bridge.js` AND `crash-rounds.js` together, probe-gated by `crash-reserve-probe.js`; `pendingBuyIns`+lock to `doStart`/`doTopUp`; the `s.closed && s.settlement` branch to `doRelease`).
+
+**Process lesson:** design agents have Edit access and CAN mutate the working tree. Verify "is it fixed?" against `git show HEAD:<file>` (committed), never the working tree, while agents are running — or run them worktree-isolated.
