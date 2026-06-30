@@ -48,18 +48,6 @@ function clientTokenBalanceAfter(startTokens, bet, playResult) {
   return { balance, baseWinUsd: base.winUsd, base };
 }
 
-/** Demo-path full payout: client evaluate + deriveBonus (locally derived grids). */
-function clientDemoPayout(serverSeed, clientSeed, nonce, bet, scatterCount) {
-  const grid = S.deriveGrid(serverSeed, clientSeed, nonce);
-  const base = C.evaluate(grid, bet);
-  let total = base.winUsd;
-  if (scatterCount >= 3 && C.freeSpinsFor(scatterCount) > 0) {
-    const bonus = C.deriveBonus(serverSeed, clientSeed, nonce, bet, scatterCount);
-    total = round2(total + bonus.totalUsd);
-  }
-  return { total, baseWinUsd: base.winUsd, grid };
-}
-
 console.log("=".repeat(72));
 console.log("Gem Vault 3D — client/server parity probe (Pass 5)");
 console.log("=".repeat(72));
