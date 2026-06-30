@@ -286,6 +286,10 @@
     }).catch(function (e) {
       if (epoch !== self._tokenEpoch) return;
       self.pressing = false;
+      // CRITICAL: clear the "inflating" state BEFORE _toArmed() — _toArmed early-returns while state is
+      // "inflating", so without this the button stays stuck on "TAP TO BANK" after a rejected cr:start
+      // (e.g. the server refused because a blackjack hand is live) and the player can never tap LAUNCH again.
+      self.state = "armed";
       var msg = (e && e.message) || "Round failed — try again";
       if (msg === "CR_ROUND_TIMEOUT") {
         // Round started (stake reserved server-side) but the result timed out. Don't show TM.tokens()

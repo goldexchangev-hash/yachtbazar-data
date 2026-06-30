@@ -253,6 +253,9 @@ const tokenSvc = attachTokenBridge(app, {
   // Token-funded blackjack: refuse a token cash-out / recover while the player has a live blackjack hand
   // (else the settle would lock in a debited stake before the hand resolves). blackjack exists already.
   hasLiveExternal: (player) => { try { return blackjack.hasLiveHand(player); } catch (e) { return false; } },
+  // STRICTER: only a DEALT, in-play hand (not a bet placed in the betting phase). The token top-up guard uses
+  // this so adding funds between hands / during betting credits immediately, while mid-hand top-up still refuses.
+  hasDealtExternal: (player) => { try { return blackjack.hasDealtHand(player); } catch (e) { return false; } },
 });
 
 // TOKEN-FUNDED BLACKJACK wiring: a real wallet's blackjack chips ARE their token session. Hand bets/wins

@@ -432,7 +432,7 @@ function makeTokenService(opts) {
     if (s.player.toLowerCase() !== player.toLowerCase()) throw new Error("session does not belong to player");
     // #10: don't change the funding pool mid-blackjack-hand — topping up would alter the affordance of a
     // double/split already in progress. Mirror the cash-out/recover liveExternal guard. (Crash too, for symmetry.)
-    if (liveExternal(player)) throw new Error("finish your blackjack hand before topping up");
+    if (liveExternalDealt(player)) throw new Error("finish your blackjack hand before topping up");
     if (liveCrashSession(sessionId)) throw new Error("finish your live round before topping up");
     const contract = address(s.contract, "contract");
     const chainId = Number(s.chainId);
@@ -457,7 +457,7 @@ function makeTokenService(opts) {
     // cr:start reserved (or a BJ hand that started) during the ~verifyBuyIn window — applying the top-up then
     // would change the funding pool mid-round. Throwing here just defers the credit: the txHash isn't marked
     // used (we're before usedBuyIns.add), so the player re-tops-up once the round ends. (recover still covers it.)
-    if (liveExternal(player)) throw new Error("finish your blackjack hand before topping up");
+    if (liveExternalDealt(player)) throw new Error("finish your blackjack hand before topping up");
     if (liveCrashSession(sessionId)) throw new Error("finish your live round before topping up");
     return batchWrite(() => { // bridge.topUp save + saveHttp commit atomically (one write, no crash split)
     const r = bridge.topUp({ sessionId, addUnits, addLockedWei: addLockedWei.toString() });
@@ -864,6 +864,11 @@ function makeTokenService(opts) {
   // True if the player has a blackjack hand/bet in flight against their token session — used to REFUSE a
   // cash-out / recover mid-hand (else the settle would lock in a debited stake before the hand resolves).
   function liveExternal(player) { try { return !!(opts.hasLiveExternal && opts.hasLiveExternal(player)); } catch (e) { return false; } }
+  // STRICTER guard for TOP-UP only: a DEALT, in-play blackjack hand (not merely a bet placed in the betting
+  // phase). A top-up between hands / during betting is additive — it can't disturb a double/split affordance
+  // that doesn't exist yet — so it should credit; only a top-up MID-dealt-hand stays refused. Falls back to
+  // liveExternal if the host didn't inject the stricter predicate (so behavior is never LESS strict by accident).
+  function liveExternalDealt(player) { try { return opts.hasDealtExternal ? !!opts.hasDealtExternal(player) : liveExternal(player); } catch (e) { return liveExternal(player); } }
 
   // CRASH-ROUND LIVENESS — late-bound predicate(sessionId)->bool injected by the ws crash round-runner
   // (server.js wires it after both are built). A server-paced crash/plane/swoop/pressure round has PINNED

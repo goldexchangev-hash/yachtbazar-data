@@ -148,6 +148,16 @@
       for (const r of rooms.values()) for (const s of r.seats) if (s && norm(s.wallet) === w && !s.settled && seatStake(s) > 0) return true;
       return false;
     };
+    // STRICTER predicate: true only once cards are DEALT and a hand is still in play (not merely a bet placed
+    // in the betting phase). Used by the TOKEN top-up guard so a player can add funds BETWEEN hands / during
+    // betting (the funding pool isn't frozen yet — no double/split affordance to disturb), while a top-up
+    // mid-dealt-hand is still refused. hasLiveHand (bet-placed) is kept for the binding freeze + settle/recover.
+    const hasDealtHand = (wallet) => {
+      const w = norm(wallet);
+      for (const r of rooms.values()) for (const s of r.seats)
+        if (s && norm(s.wallet) === w && !s.settled && s.hands && s.hands.length > 0 && s.hands.some((h) => !h.done)) return true;
+      return false;
+    };
     const draw = (r) => {
       // Shoe exhausted mid-hand (rare: many splits + a long dealer draw) → reshuffle a fresh shoe so
       // draw() NEVER returns undefined (an undefined card → Rules.handValue crash → process crash).
@@ -793,7 +803,7 @@
       // Token-funded tables (the new real-money path): bind a wallet to its token session, route its chips
       // to the token ledger, and report a live hand so the token bridge can refuse a mid-hand cash-out.
       setTokenLedger: (tl) => { TL = tl || null; },
-      bindToken, unbindToken, hasLiveHand, isTokenWallet,
+      bindToken, unbindToken, hasLiveHand, hasDealtHand, isTokenWallet,
       bridge: {
         fund: bridgeFund, setBalance: bridgeSetBalance, balance: bridgeBalance, clear: bridgeClear, hasOpenExposure, openExposure,
         authorize: (wallet, token) => { if (realWallet(wallet) && token) bridgeAuth.set(norm(wallet), String(token)); },

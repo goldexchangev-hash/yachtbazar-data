@@ -31,8 +31,12 @@
     try { this.ws = new WebSocket(this.url); } catch (e) { this._scheduleReconnect(); return; }
     this.ws.onopen = function () {
       self._open = true; self._backoff = 600; self._lastRx = Date.now(); self._startHeartbeat();
-      // identify to the hub so the live "players" count includes us (best-effort).
-      if (self.wallet) { try { self.ws.send(JSON.stringify({ type: "hello", address: self.wallet, bjToken: self.bjToken || undefined, bjSession: self.bjSession || undefined })); } catch (e) {} }
+      // Identify to the hub UNCONDITIONALLY (was: only when a wallet was loaded). The server gates all bj:*
+      // intents (room list / join) behind a seen `hello`, so a guest — or a player whose wallet/token hasn't
+      // loaded yet when the felt's socket opens (common on a phone) — was silently blocked from SEEING or
+      // JOINING any room. Sending hello with an empty address marks the socket identified; the server binds the
+      // token session when bjToken/bjSession are present, else treats it as a guest (play-money). No guard weakened.
+      try { self.ws.send(JSON.stringify({ type: "hello", address: self.wallet || "", bjToken: self.bjToken || undefined, bjSession: self.bjSession || undefined })); } catch (e) {}
       var q = self.queue; self.queue = [];
       for (var i = 0; i < q.length; i++) self._raw(q[i]);
       self._emit({ type: "bj:net", state: "open" });
