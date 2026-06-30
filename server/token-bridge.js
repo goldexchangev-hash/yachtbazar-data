@@ -80,8 +80,18 @@ function makeTokenBridge(opts) {
     let dropped = 0;
     for (const s of sessions.values()) {
       if (!s || !((Number(s.createdAt) || 0) > 0) || !(Number(s.createdAt) < cutoff)) continue;
-      // (a) normal: a settled session past its TTL — safe to prune (on-chain bjNonceUsed + txHash guard a re-claim).
-      if (s.settlement) { sessions.delete(s.id); dropped++; continue; }
+      // (a) a settled session past its TTL. Prune a WIN or PUSH (net>=0) — on-chain bjNonceUsed + txHash guard a
+      // re-claim. But KEEP a LOSS (net<0): it is the durable in-memory evidence the loss-escape guards read —
+      // recover's branch (2b) findSettledSessionForPlayer AND the doStart stranded-lock auto-claim — to refuse
+      // forgiving a WITHHELD loss. Pruning it (the prior behaviour) let a recover/auto-claim 24h+ after a loss
+      // fall through to a net=0 reclaim of the still-locked principal, ESCAPING the loss (reopens #13). pendingSettle
+      // is the primary persisted guard; keeping the losing session is belt-and-suspenders against a crash-window
+      // loss of that obligation (#209/#215). Losses are bounded per player, so memory stays bounded.
+      if (s.settlement) {
+        let winOrPush = true; try { winOrPush = BigInt(String(s.settlement.netWei || "0")) >= 0n; } catch (e) {}
+        if (winOrPush) { sessions.delete(s.id); dropped++; }
+        continue;
+      }
       // (b) v4 #16: a LIMBO session (closed, no settlement — the #13 signer-outage path) past its TTL. ONLY prune
       // it when it's net=ZERO (tokens == buyInUnits): pruning a LOSING limbo would let a later recover() fall
       // through to the net=0 orphan branch and FORGIVE the loss (reopening the loss-escape #13 closed); pruning a

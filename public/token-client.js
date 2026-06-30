@@ -116,12 +116,12 @@
     const d = this.d;
     const player = d.account, contract = d.contractAddr, chainId = Number(d.chainId);
     const buyInWei = (typeof amountWei === "bigint" ? amountWei : BigInt(amountWei)).toString();
-    // PRE-FLIGHT (prevents fund-stranding): price ready, and NO prior on-chain lock — a buy-in on top
-    // of a stranded/other lock is rejected by the server AFTER the lock, stranding the funds.
+    // PRE-FLIGHT: price ready. A PRIOR on-chain lock NO LONGER blocks the buy-in — the server now AUTO-CLAIMS a
+    // stranded lock (orphaned principal, no withheld loss) into this session, so a buy-in over your own stranded
+    // funds just reclaims them instead of stranding the new lock on top (the $710→$1420 compounding trap). If a
+    // withheld LOSS is on record the server still rejects with "tap Recover first" and the Recover button shows.
     const pre = await this._preflight(false);
     if (!pre.ok) throw new Error(pre.error);
-    try { const prior = await d.contract.bjLocked(player); if (prior != null && BigInt(prior) > 0n) throw new Error("You have funds locked on-chain from a past session — tap Recover first, then buy in."); }
-    catch (e) { if (/locked on-chain from a past/.test((e && e.message) || "")) throw e; /* read failed: the lock tx would fail too, so proceed */ }
     // 1) player authorizes the buy-in (off-chain signature — no gas)
     const signature = await d.signer.signMessage(tokenAuthMessage("start", { player, contract, chainId, buyInWei }, d.ethers.getAddress));
     // 2) lock the funds on-chain (the ONE popup) and wait for it to confirm

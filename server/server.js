@@ -252,6 +252,9 @@ const tokenSvc = attachTokenBridge(app, {
   minConfirmations: Number(process.env.TOKEN_MIN_CONFIRMATIONS || 1),
   // Token-funded blackjack: refuse a token cash-out / recover while the player has a live blackjack hand
   // (else the settle would lock in a debited stake before the hand resolves). blackjack exists already.
+  // Stranded-lock auto-claim is only safe when the legacy on-chain blackjack bridge is OFF (else a prior
+  // bjLocked could be a live on-chain hand). It is OFF by default and the owner keeps it 0.
+  experimentalBridgeOn: () => process.env.ENABLE_EXPERIMENTAL_BRIDGE === "1",
   hasLiveExternal: (player) => { try { return blackjack.hasLiveHand(player); } catch (e) { return false; } },
   // STRICTER: only a DEALT, in-play hand (not a bet placed in the betting phase). The token top-up guard uses
   // this so adding funds between hands / during betting credits immediately, while mid-hand top-up still refuses.

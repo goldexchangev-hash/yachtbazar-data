@@ -359,20 +359,43 @@ function makeTokenService(opts) {
     verifyWalletSignature("start", body, { player, contract, chainId, buyInWei: buyInWei.toString() });
     const proof = await verifyBuyIn({ txHash, player, contract, chainId, buyInWei });
     const lockedWei = BigInt(proof.lockedWei);
-    // CROSS-SESSION-DRAIN GUARD: the contract's bjLocked is ONE per-player accumulator shared with
-    // the on-chain blackjack bridge. If anything was already locked BEFORE this buy-in, the player
-    // has another open session (blackjack, or a stranded one) — opening a 2nd would let a single
-    // settlement claim the COMBINED lock. A token session always starts clean (openByPlayer already
-    // guarantees no other token session), so require a FRESH lock here. (Top-up: see doTopUp.)
-    if (proof.eventLocked != null && (BigInt(proof.eventLocked) - lockedWei) > 0n)
-      throw new Error("you have funds locked in another session — cash out / finish it before buying in");
-    const buyInUnits = weiToUsd(lockedWei, ethUsdFn());
+    // CROSS-SESSION-DRAIN GUARD + STRANDED-LOCK AUTO-CLAIM. bjLocked is ONE per-player accumulator. openByPlayer
+    // (checked at the top of doStart) already guarantees NO open token session here, so any PRIOR lock
+    // (eventLocked > this buy-in's lockedWei) is one of two things:
+    //   (a) the player's OWN STRANDED principal — a previous buy-in whose doStart failed AFTER the on-chain lock
+    //       (price-sync/RPC blip, or this very guard rejecting). Harmless to reclaim.
+    //   (b) the lock behind a WITHHELD LOSS — a settlement the server already signed (recorded in pendingSettle,
+    //       or a closed+settled losing bridge session) that the player never broadcast. Reclaiming THAT would let
+    //       them escape the loss → must NOT auto-claim; force Recover (which re-issues the loss settlement).
+    // So: prior lock + a LIVE loss obligation → REJECT. Prior lock + NO live loss → AUTO-CLAIM the FULL on-chain
+    // lock into this session (the stranded principal funds it) instead of stranding the new buy-in too — the trap
+    // that compounded $710 → $1420 → … . Checked inside withPlayerLock, so the loss-record read can't race a settle.
+    let claimWei = lockedWei;
+    if (proof.eventLocked != null && (BigInt(proof.eventLocked) - lockedWei) > 0n) {
+      const ob = pendingSettle.get(String(player).toLowerCase());
+      let lossLive = !!(ob && !(await obligationConsumed(ob)));
+      if (!lossLive) {
+        try {
+          const settled = findSettledSessionForPlayer(player, contract);
+          if (settled && settled.settlement && settled.settlement.nonce != null)
+            lossLive = !(await obligationConsumed({ netWei: settled.settlement.netWei, nonce: settled.settlement.nonce, signature: settled.settlement.signature, chainId: settled.chainId || chainId, contract: settled.contract || contract }));
+        } catch (e) { lossLive = true; } // can't VERIFY the settled-loss state (e.g. RPC error) → FAIL CLOSED: never auto-claim over a loss we couldn't rule out; force Recover instead
+      }
+      // DEFENSE-IN-DEPTH: only auto-claim when the LEGACY on-chain blackjack bridge is OFF. If it were enabled,
+      // a prior bjLocked could be a LIVE on-chain blackjack hand (NOT tracked by openByPlayer), and reclaiming
+      // it into a token session would let both claim the lock. The owner runs ENABLE_EXPERIMENTAL_BRIDGE=0, so
+      // it's moot, but the gate means enabling that bridge later can never open a drain via auto-claim.
+      const expOn = !!(opts.experimentalBridgeOn && opts.experimentalBridgeOn());
+      if (lossLive || expOn) throw new Error("you have funds locked in another session — tap Recover first, then buy in");
+      claimWei = BigInt(proof.eventLocked); // safe: orphaned principal, no withheld loss, no legacy bridge → reclaim the full lock
+    }
+    const buyInUnits = weiToUsd(claimWei, ethUsdFn());
     if (!(buyInUnits > 0)) throw new Error("buy-in USD value is invalid");
 
     // ATOMIC COMMIT: bridge.start persists the session AND saveHttp persists the txHash/bearer/open-slot
     // in ONE physical write (batchWrite) — no kill-9 window where a durable session lacks its replay guard (#139).
     return batchWrite(() => {
-    const started = bridge.start({ player, chainId, contract, buyInUnits, lockedWei: lockedWei.toString(), now: (opts.now && opts.now()) || 0 });
+    const started = bridge.start({ player, chainId, contract, buyInUnits, lockedWei: claimWei.toString(), now: (opts.now && opts.now()) || 0 });
     usedBuyIns.add(txKey);
     openByPlayer.set(player, started.sessionId);
     // NOTE: we deliberately do NOT clear pendingSettle here. A stale obligation is harmless — recover's
@@ -991,14 +1014,25 @@ if (require.main === module) {
     let reused = 0; try { await svc.doStart(startBody); } catch (e) { reused++; }
     eq("reused buy-in txHash rejected", reused === 1);
 
-    // CROSS-SESSION-DRAIN GUARD: a buy-in landing on a player who ALREADY has a prior on-chain lock
-    // (eventLocked > this buy-in) is rejected — else a single settle could claim the combined lock.
+    // STRANDED-LOCK AUTO-CLAIM: a buy-in landing on a player with a PRIOR on-chain lock (eventLocked > this
+    // buy-in) but NO open session, NO obligation and NO settled loss is the ORPHANED-PRINCIPAL case (a previous
+    // buy-in whose doStart failed after the lock). doStart now AUTO-CLAIMS the FULL lock into the new session —
+    // reclaiming the stranded funds — instead of rejecting + stranding the new lock too (the compounding trap).
     const svcG = makeTokenService({ signer, ethUsd: () => 4000, verifyBuyIn: async (o) => ({ lockedWei: o.buyInWei, eventLocked: (BigInt(o.buyInWei) * 2n).toString() }) });
     const gw = ethers.Wallet.createRandom(); const gp = gw.address;
     const gBody = { player: gp, contract, chainId, txHash: "0x" + "9".repeat(64), buyInWei: lockedWei.toString() };
     gBody.signature = await gw.signMessage(tokenAuthMessage("start", { player: gp, contract, chainId, buyInWei: lockedWei.toString() }));
-    let drainGuard = 0; try { await svcG.doStart(gBody); } catch (e) { drainGuard = 1; }
-    eq("cross-session guard: rejects a buy-in stacked on a prior lock", drainGuard === 1);
+    const gStarted = await svcG.doStart(gBody); // no loss on record → reclaim the orphaned lock
+    eq("stranded auto-claim: a buy-in over an orphaned lock opens a session for the FULL lock (2× = $2000)", gStarted.tokens === 2000);
+
+    // DEFENSE-IN-DEPTH: with the legacy on-chain blackjack bridge ON, a prior lock could be a live on-chain hand,
+    // so auto-claim is DISABLED and the stacked buy-in is rejected (the player must Recover) — no drain.
+    const svcGx = makeTokenService({ signer, ethUsd: () => 4000, experimentalBridgeOn: () => true, verifyBuyIn: async (o) => ({ lockedWei: o.buyInWei, eventLocked: (BigInt(o.buyInWei) * 2n).toString() }) });
+    const gx = ethers.Wallet.createRandom(); const gxp = gx.address;
+    const gxBody = { player: gxp, contract, chainId, txHash: "0x" + "a".repeat(64), buyInWei: lockedWei.toString() };
+    gxBody.signature = await gx.signMessage(tokenAuthMessage("start", { player: gxp, contract, chainId, buyInWei: lockedWei.toString() }));
+    let drainGuard = 0; try { await svcGx.doStart(gxBody); } catch (e) { drainGuard = 1; }
+    eq("cross-session guard: rejects a stacked buy-in when the legacy bridge is on (no auto-claim)", drainGuard === 1);
 
     // play requires the session token
     let badtok = 0; try { svc.doPlay({ sessionId: started.sessionId, sessionToken: "nope", game: "coinflip", betUnits: 1 }); } catch (e) { badtok++; }
