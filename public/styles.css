@@ -2408,7 +2408,27 @@ body.rr-fs-on #layer-fishshooter, body.rr-fs-on #layer-fishshooter * { visibilit
 .fish-seg-btn:first-child { border-left: 0; }
 .fish-seg-btn:active { transform: translateY(1px); }
 .fish-seg-btn.on { background: #39e7ff; }
-.fish-winval { color: #45f0a6; }
+/* ── Mobile: COMPACT the Fish Shooter dock. Biggest win = drop the redundant floating betbar stake strip
+   (the dock already has its own #fsh-bet slider), then tighten every row + drop the help sentence. Puts the
+   Auto-fire/Lock-on pills and the Speed segment on ONE row, and the bet slider + power + cost on another. ── */
+@media (max-width: 900px) {
+  body.game-fishshooter #betbar-stake { display: none !important; } /* kill the duplicate bet slider */
+  /* 3-row grid: (1) bet slider full-width, (2) power+cost+fullscreen full-width, (3) Auto-fire+Lock-on (2/3)
+     beside a compact Speed segment (1/3). Drops from ~5 stacked rows to 3 → roughly half the height. */
+  .fishshooter-dock { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; align-items: center; }
+  .fishshooter-dock #fsh-message { display: none; }               /* help text off on mobile */
+  .fishshooter-dock .slider-wrap { grid-column: 1 / -1; margin: 0; gap: 8px; }
+  .fishshooter-dock .slider-val { font-size: .78rem; white-space: nowrap; }
+  .fishshooter-dock .fish-row { grid-column: 1 / -1; gap: 6px; }
+  .fishshooter-dock .fish-step { width: 30px; }
+  .fishshooter-dock .fish-cost { font-size: .82rem; }
+  .fishshooter-dock .fish-toggles { grid-column: 1 / 3; gap: 6px; align-items: stretch; }
+  .fishshooter-dock .fish-pill { padding: 7px 6px; font-size: .8rem; }
+  .fishshooter-dock .fish-seg { grid-column: 3 / 4; gap: 0; }
+  .fishshooter-dock .fish-seg-lbl { display: none; }              /* the 🐢/🐠/⚡ icons are self-explanatory */
+  .fishshooter-dock .fish-seg-track { width: 100%; }
+  .fishshooter-dock .fish-seg-btn { padding: 6px 0; }
+}
 .fish-flow { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin: 8px 0; padding: 8px 10px; border-radius: 10px; background: rgba(57,231,255,.06); border: 1px solid rgba(57,231,255,.18); font-size: .86rem; }
 .fish-flow .ff-label { font-weight: 800; color: var(--s-gold, #ffd23f); }
 .fish-flow .ff-item { color: var(--s-muted, #8fa3c8); }
@@ -2459,6 +2479,20 @@ body.rr-fs-on #layer-fishshooter, body.rr-fs-on #layer-fishshooter * { visibilit
 .bj-status b { color: var(--s-text); }
 .bj-controls:empty { display: none; }
 .bj-dock:has(.bj-controls:empty) .bj-statusrow { margin-bottom: 0; }
+/* ── Mobile: PIN the blackjack dock (bet + HIT/STAND/etc.) to the bottom so the play controls are always
+   reachable without scrolling past the buy-in/deposit panel. The site-wide floating betbar explicitly skips
+   .bj-dock (it has its own postMessage-driven controls), so blackjack needs its own float here. ── */
+@media (max-width: 900px) {
+  body.game-blackjack .stage > .action-dock.bj-dock {
+    position: fixed; left: 0; right: 0; bottom: calc(58px + env(safe-area-inset-bottom)); /* just above the bottom-nav */
+    z-index: 62; margin: 0; max-width: none; max-height: 56vh; overflow-y: auto;
+    background: var(--s-panel); border-top: 1px solid var(--s-border);
+    box-shadow: 0 -8px 24px rgba(0,0,0,.45);
+    padding: 10px max(12px, env(safe-area-inset-left)) calc(10px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-right));
+  }
+  /* keep the buy-in/deposit content above the pinned dock from being hidden behind it + the nav */
+  body.game-blackjack { padding-bottom: calc(58px + 168px + env(safe-area-inset-bottom)); }
+}
 .bj-bet { display: flex; flex-direction: column; gap: 10px; }
 .bj-bet-val { display: flex; align-items: baseline; justify-content: center; gap: 10px; }
 .bj-bet-money { display: inline-flex; align-items: baseline; gap: 10px; }
