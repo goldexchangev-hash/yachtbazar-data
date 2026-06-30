@@ -2301,7 +2301,7 @@
     pressureLoadPromise = loadPixiOnce()
       .then(() => loadScriptOnce("pressure-engine.js?v=1243"))
       .then(() => loadScriptOnce("pressure-render.js?v=1243"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=1246"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=1247"))
       // optional 3D red balloon (Three.js) — falls back to the 2D balloon if it can't load
       .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1243")).catch(() => {}))
       .then(() => true)
@@ -2378,7 +2378,7 @@
       .then(() => loadScriptOnce("plane-engine.js?v=1243"))
       .then(() => loadScriptOnce("plane-render.js?v=1243"))
       .then(() => loadScriptOnce("plane-feed.js?v=1243"))
-      .then(() => loadScriptOnce("plane-ui.js?v=1246"))
+      .then(() => loadScriptOnce("plane-ui.js?v=1247"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -3359,6 +3359,10 @@
     if (game !== "slots" && window.CryptoReels && CryptoReels.setActive) CryptoReels.setActive(false);
     if (game !== "pressure" && pressureGame) pressureGame.setActive(false);
     if (game !== "plane" && planeGame) planeGame.setActive(false);
+    // Leaving every crash-family channel? Free the shared CrashRounds singleton so a stuck/in-flight
+    // round can't wedge the next channel for up to 120s (#22). The per-game setActive(false) above
+    // already requested the server cash-out; cancel() only tears down the local promise/timers.
+    if (game !== "plane" && game !== "pressure" && game !== "crash" && game !== "swoop" && CrashRounds && CrashRounds.cancel && CrashRounds.active && CrashRounds.active()) CrashRounds.cancel("left the crash channels");
     if (game !== "slots3d" && slots3dGame) slots3dGame.setActive(false);
     if (game !== "fish" && fishGame) fishGame.setActive(false);
     if (game !== "swoop" && swoopGame) swoopGame.setActive(false);
@@ -4539,6 +4543,19 @@
 
   // ---------------------------------------------------------- websocket (active players)
   let wsTries = 0;
+  let wsHbTimer = 0, wsLastRx = 0; // app-level heartbeat: detect a half-open (silently dead) hub socket (#85)
+  function stopWsHeartbeat() { if (wsHbTimer) { clearInterval(wsHbTimer); wsHbTimer = 0; } }
+  // Mirror the BJNet pattern (blackjack-net.js): ping every 15s; if no inbound traffic for 35s the socket
+  // is half-open (mobile OS froze it / a proxy stopped forwarding without a FIN) → force-close so onclose
+  // reconnects and we pull a fresh snapshot, instead of a frozen roster + dead cr:* rounds.
+  function startWsHeartbeat(sock) {
+    stopWsHeartbeat();
+    wsHbTimer = setInterval(() => {
+      if (!ws || ws !== sock || ws.readyState !== 1) return;
+      if (Date.now() - wsLastRx > 35000) { try { ws.close(); } catch {} return; } // stale → drop → reconnect
+      try { ws.send(JSON.stringify({ type: "bj:ping" })); } catch {}
+    }, 15000);
+  }
   function connectWS() {
     // Already connecting/open? Just re-identify (e.g. a wallet connected after the
     // guest session started) instead of opening a second socket.
@@ -4546,11 +4563,14 @@
     try {
       const proto = location.protocol === "https:" ? "wss" : "ws";
       ws = new WebSocket(`${proto}://${location.host}`);
+      const sock = ws; // capture so a later reconnect's heartbeat can't fire against this socket
       // Identify with the real wallet, or a persistent guest id so demo players can
       // still chat at a shared blackjack table.
-      ws.onopen = () => { wsTries = 0; wsSend({ type: "hello", address: account || bjGuestId() }); };
+      ws.onopen = () => { wsTries = 0; wsLastRx = Date.now(); startWsHeartbeat(sock); wsSend({ type: "hello", address: account || bjGuestId() }); };
       ws.onmessage = (ev) => {
+        wsLastRx = Date.now(); // any inbound traffic (incl. bj:pong) proves the socket is alive
         let d; try { d = JSON.parse(ev.data); } catch { return; }
+        if (d.type === "bj:pong") return; // heartbeat ack — liveness only
         if (d.type === "players") { wsPlayers = d.players || []; renderRoster(); }
         else if (d.type === "rooms-updated" || d.type === "flip") { refreshRooms(); refreshPlayers(); reconcile(); }
         else if (d.type === "chat") { renderChatLine(d.from, d.text, undefined, d.name); const me = String(account || bjGuestId()).toLowerCase(); if (d.from && String(d.from).toLowerCase() !== me) bumpChatUnread(); }
@@ -4560,18 +4580,22 @@
         else if (d.type && d.type.indexOf("cr:") === 0 && CrashRounds) CrashRounds.handle(d); // live token crash rounds
       };
       // Retry a few times, then give up (e.g. static host with no chat server).
-      ws.onclose = () => { if (wsTries++ < 5) setTimeout(connectWS, 2500); };
+      ws.onclose = () => { stopWsHeartbeat(); if (wsTries++ < 5) setTimeout(connectWS, 2500); };
       ws.onerror = () => { try { ws.close(); } catch {} };
     } catch (e) { console.warn("ws unavailable", e); }
   }
-  function wsSend(obj) { try { ws && ws.readyState === 1 && ws.send(JSON.stringify(obj)); } catch {} }
+  function wsSend(obj) { try { if (ws && ws.readyState === 1) { ws.send(JSON.stringify(obj)); return true; } } catch {} return false; } // #86: report whether the frame actually went out
 
   // Client seam for the server-paced crash rounds (token mode). Created once; every cr:*
   // frame from the ws is piped into CrashRounds.handle (above). A crash-family channel
   // (crash/plane/swoop/pressure) calls CrashRounds.start({...}) to run a MANUAL-default
   // round. Inert until a channel uses it — see TOKEN-CRASH-ROUNDS.md for the wiring steps.
   const CrashRounds = (window.CrashRoundsClient && window.CrashRoundsClient.make)
-    ? window.CrashRoundsClient.make({ send: function (o) { wsSend(o); } })
+    ? window.CrashRoundsClient.make({ send: function (o) {
+        var ok = wsSend(o);
+        if (!ok) { try { connectWS(); } catch (e) {} } // socket down → kick a reconnect so the retry can land (#86)
+        return ok;
+      } })
     : null;
 
   // Build the per-wallet history + presence roster straight from on-chain rooms,

@@ -382,9 +382,19 @@
       this.state = "token-end"; this._pause = CRASH_PAUSE; Riser.stop();
       this._renderHud(); this._renderButtons();
     }).catch((e) => {
-      if (epoch !== this._realEpoch) return;
-      this._realBusy = false; this.balance = Math.round((this.balance + stake) * 100) / 100; // failed start costs nothing
-      this._startTokenIdle(); this._msg((e && e.message) || "Round failed — try again", "lose"); this._renderHud();
+      if (epoch !== this._realEpoch || !this._active) return; // superseded OR left the channel — drop a stale resolve
+      this._realBusy = false;
+      var msg = (e && e.message) || "Round failed — try again";
+      if (msg === "CR_ROUND_TIMEOUT") {
+        // The round DID start (stake taken) and may have settled on the server — NEVER optimistically
+        // refund. Reconcile the displayed balance from the authoritative token ledger instead (#108/#21).
+        this.balance = (root.TokenMode && root.TokenMode.active()) ? root.TokenMode.tokens() : this.balance;
+        this._startTokenIdle(); this._msg("Lost the connection mid-round — your balance will reconcile to the server.", "lose"); this._renderHud();
+        return;
+      }
+      // Start/connection failure: the stake was provably NOT taken → restore it.
+      this.balance = Math.round((this.balance + stake) * 100) / 100;
+      this._startTokenIdle(); this._msg(msg, "lose"); this._renderHud();
     });
   };
 
@@ -466,6 +476,9 @@
     // instead of riding it to a bust they can't see. The server validates against its clock
     // (already-busted → it settles as a bust), and the .then resolves regardless of the ticker.
     if (!on && this.state === "token-flying" && this.onTokenCashOut) { try { this.onTokenCashOut(); } catch (e) {} }
+    // Leaving the channel supersedes any in-flight token round: bump the epoch AFTER requesting the
+    // cash-out so a late cr:result .then/.catch + onTick are dropped — no off-channel sound/win/flicker (#48).
+    if (!on) this._realEpoch = (this._realEpoch || 0) + 1;
     try { if (on) this.r.resume(); else this.r.pause(); } catch (e) {}
     // Resume the climb audio if we're returning to a frozen-mid-flight round
     // (the ticker was paused on leave); silence it when leaving.

@@ -455,6 +455,9 @@
   PressureGame.prototype.setActive = function (on) {
     this._active = !!on;
     if (!on && this.pressing) this._release(); // never strand a held round when leaving
+    // Leaving supersedes any in-flight token round: bump the epoch (after _release requested the
+    // cash-out) so a late cr:result .then/.catch + onTick are dropped — no off-channel pop/win/sound (#48).
+    if (!on) this._tokenEpoch = (this._tokenEpoch || 0) + 1;
     try { on ? this.r.app.ticker.start() : this.r.app.ticker.stop(); } catch (e) {}
     if (this._b3d) try { this._b3d.setActive(on); } catch (e) {}
   };

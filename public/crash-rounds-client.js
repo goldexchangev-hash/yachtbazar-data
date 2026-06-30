@@ -82,14 +82,18 @@
       };
       var p = new Promise(function (res, rej) { pending.resolve = res; pending.reject = rej; });
       live = pending;
-      pending.ackT = arm(ackMs, function () { failRound("Round didn't start — connection lost. Your stake was not taken."); });
-      send({
+      var sent = send({
         type: "cr:start",
         sessionId: o.sessionId, sessionToken: o.sessionToken,
         gameKey: pending.game, betUnits: o.betUnits,
         autoTarget: o.autoTarget || 0,            // 0/absent ⇒ MANUAL (default)
         clientSeed: o.clientSeed || randSeed(),
       });
+      // send() returns false ONLY when the socket is closed and the frame was dropped. Fail fast with a
+      // clear message + (the host's send wrapper) reconnect, instead of the misleading 12s ack hang (#86).
+      // (undefined ⇒ a legacy transport that doesn't report ⇒ treat as sent and rely on the ack timeout.)
+      if (sent === false) { failRound("Couldn't reach the table — connection lost. Reconnecting… tap LAUNCH again in a moment. (Your stake was not taken.)"); return p; }
+      pending.ackT = arm(ackMs, function () { failRound("Round didn't start — connection lost. Your stake was not taken."); });
       return p;
     }
 
@@ -105,7 +109,7 @@
     function onStarted(msg) {
       if (!live || live.roundId) return;          // ignore a stray/duplicate start
       if (live.ackT) { clearTo(live.ackT); live.ackT = 0; }
-      live.resT = arm(roundMs, function () { failRound("Round timed out — connection lost."); });
+      live.resT = arm(roundMs, function () { failRound("CR_ROUND_TIMEOUT"); }); // #108: sentinel — the UI reconciles from the ledger (the round DID start; stake was taken)
       live.roundId = msg.roundId;
       live.startedAt = msg.startedAt;
       live.k = msg.k;
@@ -144,7 +148,18 @@
 
     function randSeed() { var s = ""; for (var i = 0; i < 8; i++) s += (Math.random() * 16 | 0).toString(16); return s; }
 
-    return { handle: handle, start: start, cashOut: cashOut, active: function () { return !!live; } };
+    // Tear down the current round locally (timers + promise) without touching the ledger. Called on a
+    // crash-family channel LEAVE so a stuck/in-flight round on one channel can't wedge the shared
+    // singleton for the next channel (#22). The server cash-out is requested by the channel first; the
+    // authoritative balance is reconciled by the host. No-op if nothing is live.
+    function cancel(reason) {
+      if (!live) return;
+      var l = live; live = null;
+      if (l.rafH) caf(l.rafH);
+      clearTimers(l);
+      try { l.reject(new Error(reason || "round cancelled — left the channel")); } catch (e) {}
+    }
+    return { handle: handle, start: start, cashOut: cashOut, cancel: cancel, active: function () { return !!live; } };
   }
 
   root.CrashRoundsClient = { make: make };
