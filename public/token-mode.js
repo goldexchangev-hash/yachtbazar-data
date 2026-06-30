@@ -228,6 +228,23 @@
     // (no fetch / on-chain read per shot). Lets the top bar track the in-game balance in real time.
     paintTokens: function () { try { var m = $("token-mount"); var el = m && m.querySelector(".token-bal strong"); if (el) el.textContent = fmt(TokenMode.tokens()); } catch (e) {} },
 
+    // Token-funded BLACKJACK drives the token session from the felt (server-side), so client.tokens would
+    // otherwise stay stale until cash-out — the top bar wouldn't show a hand's win/loss live. The felt
+    // reports its authoritative server balance here so the bar (and the next discrete game) stay in sync.
+    // The on-chain settle is unaffected (it reads the server session, never this display value).
+    syncTokensFromFelt: function (usd) {
+      if (!client || !client.session) return;
+      var v = +usd; if (!isFinite(v) || v < 0) return;
+      v = Math.round(v * 100) / 100;
+      if (client.tokens === v) return;
+      client.tokens = v; try { client.session.tokens = v; } catch (e) {}
+      TokenMode.paintTokens();
+    },
+    // Authoritative refresh from the server session (used on leaving blackjack) so client.tokens can't drift.
+    refreshTokens: function () {
+      try { if (client && client.session && client.resume) return client.resume(client.session).then(function () { try { TokenMode.paintTokens(); } catch (e) {} }).catch(function () {}); } catch (e) {}
+    },
+
     _render: render,
   };
 
