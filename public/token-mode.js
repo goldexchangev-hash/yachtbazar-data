@@ -130,7 +130,7 @@
 
     // Games call this AFTER their reveal/blow-up animation completes to update the balance display
     // (token bar + game HUDs) — so the number syncs with the visual instead of spoiling it.
-    syncBalance: function () { changed(); },
+    syncBalance: function () { _barHoldVal = null; changed(); }, // reveal finished → drop any top-bar hold + show the real balance
 
     // Let games push a one-off message through the same toast pipe.
     notify: function (msg, kind) { note(msg, kind); },
@@ -231,7 +231,10 @@
     // LIGHT live-sync for fast games (fish shooter): update JUST the token-balance number in the bar from
     // the authoritative client.tokens — no full re-render (won't disturb a slider) and no heavy onChange
     // (no fetch / on-chain read per shot). Lets the top bar track the in-game balance in real time.
-    paintTokens: function () { try { var m = $("token-mount"); var el = m && m.querySelector(".token-bal strong"); if (el) el.textContent = fmt(TokenMode.tokens()); } catch (e) {} },
+    paintTokens: function () { try { var m = $("token-mount"); var el = m && m.querySelector(".token-bal strong"); if (el) el.textContent = fmt(barBal()); } catch (e) {} },
+    // Freeze the top-bar balance at its current value through a reveal; the game clears it via syncBalance().
+    holdBar: function () { try { if (TokenMode.active()) _barHoldVal = TokenMode.tokens(); } catch (e) {} },
+    releaseBar: function () { _barHoldVal = null; try { TokenMode.paintTokens(); } catch (e) {} },
 
     // Token-funded BLACKJACK drives the token session from the felt (server-side), so client.tokens would
     // otherwise stay stale until cash-out — the top bar wouldn't show a hand's win/loss live. The felt
@@ -320,6 +323,13 @@
     window.addEventListener("touchcancel", _endDrag, true);
   }
 
+  // The top token-bar balance is HELD at its pre-bet value during a game's win/loss reveal so it can't spoil
+  // the animation (the "I hear the beep and look at my balance before the coin lands" report). holdBar()
+  // captures the current tokens; the game clears it via syncBalance() when its reveal finishes (or unlockReveal
+  // does on a safety timeout). While held, both paintTokens() and render() show the held value, not the live one.
+  var _barHoldVal = null;
+  function barBal() { return _barHoldVal != null ? _barHoldVal : TokenMode.tokens(); }
+
   // ── UI: a compact panel that lives in #token-mount (added to index.html). ──
   function render() {
     var mount = $("token-mount"); if (!mount) return;
@@ -333,7 +343,7 @@
       var topDflt = amt.topup != null ? Math.min(maxTop, Math.max(1, Math.round(amt.topup))) : Math.min(50, Math.max(1, maxTop));
       mount.innerHTML =
         '<div class="token-bar">' +
-        '<span class="token-bal">🪙 <strong>' + fmt(TokenMode.tokens()) + '</strong> tokens</span>' +
+        '<span class="token-bal">🪙 <strong>' + fmt(barBal()) + '</strong> tokens</span>' +
         (maxTop >= 1
           ? '<input id="token-topup-slider" class="token-slider" type="range" min="1" max="' + maxTop + '" step="1" value="' + topDflt + '" aria-label="Top-up amount in dollars" />' +
             '<button id="token-topup-btn" class="btn btn-primary token-btn"' + (busy ? " disabled" : "") + '>' + (busy ? "…" : '+ Add <span id="token-topup-val">' + fmt(topDflt) + '</span>') + '</button>'
