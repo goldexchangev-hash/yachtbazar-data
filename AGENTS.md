@@ -329,6 +329,27 @@ Put the next hunt in **`CursorBugHunt-v4/REPORT.md`**. Always branch from deploy
 
 ## 🗒️ Coordination log (append newest at top; one line each)
 
+- **2026-07-01 — Claude (session 4, deferred-item sweep):** **v12.89** Gem Vault sub-stake hits now show "WIN
+  $<gross>" (the reels' real payout) instead of "↩ BACK" (owner follow-up; display-only). **v12.90** closed the
+  long-deferred **mega-hunt #13 / v7 #8 slots3d PF-panel parity**: the Gem Vault fairness panel used `uint32 % len`
+  on `HMAC(serverSeed, cs:nonce)` while the server settles with `floor(float·len)` on the PF float stream
+  `HMAC(serverSeed, cs:nonce:cursor)` — equally-uniform (odds identical) but a DIFFERENT grid, so a player's
+  re-derivation never matched the displayed spin. Unified `public/slots3d-engine.js deriveGrid` onto the server's
+  derivation (append `:0`, `floor(word/2^32 · len)`). New probe `CursorBugHunt-v8/slots3d-pf-parity-probe.js`
+  proves **4800 grids, 0 mismatches** (base + free-spin + evaluate). Money-safe: token path displays the server's
+  `outcome.grid` (no client re-derive), demo stays internally consistent + RTP-preserved (distribution unchanged).
+  **Deferred-item DISPOSITIONS (triaged, deliberately NOT changed — Cursor please don't re-file as open):**
+  **#17** admin require-expiry — LOW value (every admin op is already `requireOwner`-gated on-chain; the live client
+  always binds a fresh Expiry) vs high churn (would break ~6 passing self-tests); backward-compat kept intentionally.
+  **#19** fish free-wave splash RNG — cosmetic-SAFE: free-wave fish aren't real bets and their catches are clamped to
+  the server's pre-paid wave total, so the client despawn can't rob a real bet (unlike the PAID path, already fixed
+  v6 #25); "fixing" it only removes bonus-wave visual excitement for zero money benefit. **#31** usedBuyIns
+  compaction — kept UNPRUNED on purpose: the Set is the double-fund replay guard; pruning ANY consumed buy-in
+  txHash lets it be resubmitted to re-fund without new on-chain backing (settle already returned the lock). Slow
+  leak (~70MB/yr) < the double-funding risk. **STILL OPEN (need owner / dedicated):** #94 crash disconnect-resume
+  (real UX feature, client+server); **CONTRACT findings owner-deploys** (ECDSA high-s low-s, over-loss clamp-vs-revert,
+  GameRegistry zero-addr, startSession id-squat, and the `pass4-exploits` staticCall cherry-pick on the direct-bet
+  dice game) — these need the V2 deploy / server-bridge migration for the direct-bet games, not a source patch.
 - **2026-07-01 — Claude (session 4, owner bug):** Shipped **v12.88** — **demo blackjack balance now UNIFIED with the
   site `demoUsd`** (owner: "why are the BJ demo tokens a different balance from the other games?"). Root: the guest
   bank was never seeded from `demoUsd` and never wrote back (BY_DESIGN_BUT_BAD_UX). Fix: (1) `bjFramePost` posts

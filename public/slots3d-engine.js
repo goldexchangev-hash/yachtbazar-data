@@ -139,19 +139,25 @@
   });
 
   /* ---------------- grid derivation ---------------- */
-  // 5 reel stops from the 32 HMAC bytes (4 bytes per reel → uint32 → index).
+  // 5 reel stops from the HMAC digest — ONE per reel, from the SAME PF float stream the SERVER settles with, so
+  // the fairness/verify panel re-derives the EXACT grid the server paid (mega-hunt #13 / v7 #8: was `uint32 % len`
+  // on `serverSeed·(cs:nonce)`, a DIFFERENT — though equally-uniform — grid than the server's `floor(float·len)`
+  // on `serverSeed·(cs:nonce:cursor)`, so a user's re-derivation never matched the displayed spin). Now byte-mirror
+  // of server/games/slots3d.js `deriveGrid` + provablyfair.js `floats`: HMAC(serverSeed, cs:nonce:<cursor>) → each
+  // big-endian 32-bit word / 2^32 = a float in [0,1) → floor(f·len). 32 bytes = 8 words → 8 reels' worth (we use 5).
   function gridFromBytes(bytes) {
     const grid = [[], [], [], [], []];
     for (let r = 0; r < 5; r++) {
       const o = r * 4;
       const v = ((bytes[o] << 24) | (bytes[o + 1] << 16) | (bytes[o + 2] << 8) | bytes[o + 3]) >>> 0;
-      const strip = STRIPS[r], stop = v % strip.length;
+      const strip = STRIPS[r], stop = Math.floor((v / 0x100000000) * strip.length) % strip.length; // float→stop, matches server PF.floats
       for (let row = 0; row < 3; row++) grid[r][row] = strip[(stop + row) % strip.length];
     }
     return grid; // grid[reel][row]
   }
   function deriveGrid(serverSeed, clientSeed, nonce) {
-    return gridFromBytes(hmac(serverSeed, String(clientSeed) + ":" + String(nonce)));
+    // PF.floats' first block is HMAC(serverSeed, clientSeed:nonce:cursor) with cursor=0 → append ":0" to match.
+    return gridFromBytes(hmac(serverSeed, String(clientSeed) + ":" + String(nonce) + ":0"));
   }
 
   /* ---------------- evaluation ---------------- */
