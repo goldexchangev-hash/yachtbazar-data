@@ -204,6 +204,13 @@ function tokenRpcUrl(chainId) {
 // env still wins (manual override); otherwise we use the live feed, falling back to 3400 only before
 // the first fetch.
 let _ethUsdLive = 0;
+// v6 #3: sanity-bound the live feed + expire it. A glitched provider returning e.g. $50 or $500k/ETH would
+// otherwise directly over/under-mint token grants (weiToUsd at doStart/doTopUp), and a good price would live
+// FOREVER if both providers later fail (no staleness gate) — valuing new buy-ins off an arbitrarily old price.
+const ETH_USD_MIN = Number(process.env.ETH_USD_MIN) || 200;      // reject clearly-broken feed values
+const ETH_USD_MAX = Number(process.env.ETH_USD_MAX) || 100000;
+const ETH_USD_STALE_MS = Number(process.env.ETH_USD_STALE_MS) || 15 * 60 * 1000; // grants blocked if the live feed is older than this (poll is 60s, so this tolerates ~15 missed refreshes)
+let _ethUsdLiveAt = 0; // when _ethUsdLive was last refreshed from a VALID in-range fetch
 // #37/#38: poll TWO sources so a single-provider outage can't block buy-ins (the cold-start window where
 // ethUsdReady() is false), and so the server's primary source MATCHES the client's (Coinbase spot first,
 // then CoinGecko) — no grant discrepancy under provider divergence. We deliberately do NOT pin a fixed
@@ -220,8 +227,11 @@ async function fetchCoinGeckoEthUsd() {
 }
 async function refreshTokenEthUsd() {
   // Coinbase first (matches the client's primary), CoinGecko as fallback. Either landing keeps buy-ins open.
-  try { const u = await fetchCoinbaseEthUsd(); if (u > 0) { _ethUsdLive = u; return; } } catch (e) {}
-  try { const u = await fetchCoinGeckoEthUsd(); if (u > 0) { _ethUsdLive = u; return; } } catch (e) {}
+  // v6 #3: only ACCEPT an in-range price [ETH_USD_MIN, ETH_USD_MAX] and stamp when it landed. An out-of-range
+  // value from a glitched provider is dropped (the last good price stays, and staleness eventually gates grants).
+  const okRange = (u) => Number.isFinite(u) && u >= ETH_USD_MIN && u <= ETH_USD_MAX;
+  try { const u = await fetchCoinbaseEthUsd(); if (okRange(u)) { _ethUsdLive = u; _ethUsdLiveAt = Date.now(); return; } } catch (e) {}
+  try { const u = await fetchCoinGeckoEthUsd(); if (okRange(u)) { _ethUsdLive = u; _ethUsdLiveAt = Date.now(); return; } } catch (e) {}
 }
 refreshTokenEthUsd();
 { const t = setInterval(refreshTokenEthUsd, 60000); if (t && t.unref) t.unref(); }
@@ -247,7 +257,11 @@ const tokenSvc = attachTokenBridge(app, {
   // fallback — otherwise a deposit made in the first seconds after a restart would be valued at
   // $3,400/ETH and grant ~2x inflated tokens (the "$49 → 101 tokens" bug). Play/settle are
   // unaffected (net is pinned to the locked wei); this only gates the initial grant.
-  ethUsdReady: () => (Number(process.env.BRIDGE_ETH_USD || process.env.ETH_USD || 0) > 0) || _ethUsdLive > 0,
+  // v6 #3: an explicit BRIDGE_ETH_USD/ETH_USD manual pin is ALWAYS ready (intentional override, never expires).
+  // Otherwise require a live price that is BOTH in-range AND fresh (< ETH_USD_STALE_MS) — a prolonged dual-
+  // provider outage then blocks NEW grants (doStart/doTopUp) rather than valuing buy-ins off a stale price.
+  // Play/settle are unaffected (net is pinned to the locked wei); this only gates the initial grant.
+  ethUsdReady: () => (Number(process.env.BRIDGE_ETH_USD || process.env.ETH_USD || 0) > 0) || (_ethUsdLive > 0 && (Date.now() - _ethUsdLiveAt) < ETH_USD_STALE_MS),
   persist: tokenPersist,
   minConfirmations: Number(process.env.TOKEN_MIN_CONFIRMATIONS || 1),
   // Token-funded blackjack: refuse a token cash-out / recover while the player has a live blackjack hand
