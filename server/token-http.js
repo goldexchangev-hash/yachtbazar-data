@@ -62,7 +62,9 @@ function tokenAuthMessage(intent, o) {
   else if (intent === "release") { if (o.expiry != null && o.expiry !== "") lines.push("Expiry: " + String(o.expiry)); }
   // admin-release / admin-player: the OWNER signs (Player: = the owner's own address) and names a
   // TARGET player whose stranded lock to release / inspect. The server re-checks Player == on-chain owner.
-  else if (intent === "admin-release" || intent === "admin-player") lines.push("Target: " + address(o.target, "target"));
+  // v6 #19: bind an Expiry (like release/house-state) so a CAPTURED owner admin signature can't be replayed
+  // indefinitely. Backward-compatible byte-mirror: the line is only added when an expiry is supplied.
+  else if (intent === "admin-release" || intent === "admin-player") { lines.push("Target: " + address(o.target, "target")); if (o.expiry != null && o.expiry !== "") lines.push("Expiry: " + String(o.expiry)); }
   // house-state: the OWNER signs to read the aggregate house exposure. Bound by an Expiry so the client
   // can sign ONCE and reuse the payload across polls (no per-poll wallet prompt) without it being valid forever (#20).
   else if (intent === "house-state") lines.push("Expiry: " + String(o.expiry || "0"));
@@ -689,13 +691,26 @@ function makeTokenService(opts) {
   // is safe even though no player signature is involved. Refused while the player has an ACTIVE
   // session (that's theirs to cash out — force-settling would yank a live game), so this only ever
   // unwinds a truly orphaned lock.
+  // v6 #19: validate a fresh Expiry on an owner ADMIN signature (mirrors doRelease's anti-replay) and return the
+  // extra sig field so a CAPTURED admin-release/admin-player signature can't be replayed past its short window.
+  // Backward-compatible: a request with no expiry verifies the legacy message (a captured expiry-bearing signature
+  // still can't be downgraded — it wouldn't verify without the Expiry line).
+  function adminExpiryFields(body, label) {
+    const x = body && body.expiry;
+    if (x == null || x === "") return {};
+    const e = Number(x), nowSec = Math.floor(Date.now() / 1000);
+    if (!Number.isFinite(e) || e <= 0) throw new Error(label + " authorization is invalid");
+    if (e < nowSec - 60) throw new Error(label + " authorization expired — retry");
+    if (e > nowSec + 900) throw new Error(label + " authorization is not valid yet");
+    return { expiry: String(e) };
+  }
   function doAdminRelease(body) {
     const owner = address(body && body.owner, "owner");
     const contract = address(body && body.contract, "contract");
     const chainId = Number(body && body.chainId);
     if (!Number.isSafeInteger(chainId) || chainId <= 0) throw new Error("chain id is invalid");
     const player = address(body && body.player, "player");
-    verifyWalletSignature("admin-release", body, { player: owner, contract, chainId, target: player });
+    verifyWalletSignature("admin-release", body, { player: owner, contract, chainId, target: player, ...adminExpiryFields(body, "admin-release") });
     if (!opts.signer || !opts.signer.sign) throw new Error("signer not configured");
     const key = player.toLowerCase();
     return withPlayerLock(player, async () => {
@@ -781,7 +796,7 @@ function makeTokenService(opts) {
     const chainId = Number(body && body.chainId);
     if (!Number.isSafeInteger(chainId) || chainId <= 0) throw new Error("chain id is invalid");
     const player = address(body && body.player, "player");
-    verifyWalletSignature("admin-player", body, { player: owner, contract, chainId, target: player });
+    verifyWalletSignature("admin-player", body, { player: owner, contract, chainId, target: player, ...adminExpiryFields(body, "admin-player") });
     await requireOwner(owner, contract, chainId);
     let lockedWei = 0n; try { lockedWei = await readBjLocked(contract, chainId, player); } catch (e) {}
     const ethUsd = ethUsdFn();

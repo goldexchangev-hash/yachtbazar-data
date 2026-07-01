@@ -27,7 +27,7 @@
     else if (intent === "settle") lines.push("Session: " + String(o.sessionId || ""));
     else if (intent === "topup") { lines.push("Session: " + String(o.sessionId || "")); lines.push("Buy-in wei: " + String(o.buyInWei || "0")); }
     else if (intent === "release") { if (o.expiry != null && o.expiry !== "") lines.push("Expiry: " + String(o.expiry)); } // #10 anti-replay
-    else if (intent === "admin-release" || intent === "admin-player") lines.push("Target: " + getAddress(o.target));
+    else if (intent === "admin-release" || intent === "admin-player") { lines.push("Target: " + getAddress(o.target)); if (o.expiry != null && o.expiry !== "") lines.push("Expiry: " + String(o.expiry)); } // v6 #19 anti-replay (byte-mirror of server)
     else if (intent === "house-state") lines.push("Expiry: " + String(o.expiry || "0")); // #20 owner-authed house-state
     return lines.join("\n");
   }
@@ -206,8 +206,9 @@
   TokenBridgeClient.prototype.adminRelease = async function (targetPlayer) {
     const d = this.d, owner = d.account, contract = d.contractAddr, chainId = Number(d.chainId);
     const player = d.ethers.getAddress(targetPlayer);
-    const signature = await d.signer.signMessage(tokenAuthMessage("admin-release", { player: owner, contract, chainId, target: player }, d.ethers.getAddress));
-    const r = await this._post("/api/token/admin-release", { owner, contract, chainId, player, signature });
+    const expiry = Math.floor(Date.now() / 1000) + 600; // v6 #19: 10-min anti-replay window on the owner admin signature
+    const signature = await d.signer.signMessage(tokenAuthMessage("admin-release", { player: owner, contract, chainId, target: player, expiry }, d.ethers.getAddress));
+    const r = await this._post("/api/token/admin-release", { owner, contract, chainId, player, signature, expiry });
     const tx = await d.contract.settleBlackjack(player, BigInt(r.netWei), BigInt(r.nonce), r.signature, { gasLimit: 200000n });
     const receipt = await tx.wait();
     return { ...r, claimTx: receipt.hash };
@@ -231,8 +232,9 @@
   TokenBridgeClient.prototype.adminPlayerInfo = async function (targetPlayer) {
     const d = this.d, owner = d.account, contract = d.contractAddr, chainId = Number(d.chainId);
     const player = d.ethers.getAddress(targetPlayer);
-    const signature = await d.signer.signMessage(tokenAuthMessage("admin-player", { player: owner, contract, chainId, target: player }, d.ethers.getAddress));
-    return await this._post("/api/token/admin-player", { owner, contract, chainId, player, signature });
+    const expiry = Math.floor(Date.now() / 1000) + 600; // v6 #19: 10-min anti-replay window on the owner admin signature
+    const signature = await d.signer.signMessage(tokenAuthMessage("admin-player", { player: owner, contract, chainId, target: player, expiry }, d.ethers.getAddress));
+    return await this._post("/api/token/admin-player", { owner, contract, chainId, player, signature, expiry });
   };
 
   const API = { TokenBridgeClient: TokenBridgeClient, tokenAuthMessage: tokenAuthMessage };
@@ -258,6 +260,9 @@ if (typeof require !== "undefined" && require.main === module) {
   eq("topup message matches server byte-for-byte", client.tokenAuthMessage("topup", topupO, ethers.getAddress) === server.tokenAuthMessage("topup", topupO));
   const admO = { player, contract, chainId: 11155111, target: player };
   eq("admin-release message matches server byte-for-byte", client.tokenAuthMessage("admin-release", admO, ethers.getAddress) === server.tokenAuthMessage("admin-release", admO));
+  const admExpO = { player, contract, chainId: 11155111, target: player, expiry: 1782000000 }; // v6 #19: admin sig with an Expiry must byte-match too
+  eq("admin-release message (with expiry) matches server byte-for-byte", client.tokenAuthMessage("admin-release", admExpO, ethers.getAddress) === server.tokenAuthMessage("admin-release", admExpO));
+  eq("admin-player message (with expiry) matches server byte-for-byte", client.tokenAuthMessage("admin-player", admExpO, ethers.getAddress) === server.tokenAuthMessage("admin-player", admExpO));
   const relO = { player, contract, chainId: 11155111, expiry: 1782000000 };
   eq("release message (with expiry) matches server byte-for-byte", client.tokenAuthMessage("release", relO, ethers.getAddress) === server.tokenAuthMessage("release", relO));
   eq("release message (no expiry, legacy) matches server byte-for-byte", client.tokenAuthMessage("release", { player, contract, chainId: 11155111 }, ethers.getAddress) === server.tokenAuthMessage("release", { player, contract, chainId: 11155111 }));
