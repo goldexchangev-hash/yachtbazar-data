@@ -480,6 +480,25 @@
     // Leaving supersedes any in-flight token round: bump the epoch (after _release requested the
     // cash-out) so a late cr:result .then/.catch + onTick are dropped — no off-channel pop/win/sound (#48).
     if (!on) this._tokenEpoch = (this._tokenEpoch || 0) + 1;
+    // v8 #1: the superseded token .then bails on the epoch guard BEFORE it clears pressing/state, so a token
+    // round left mid-flight stays latched (pressing=true, state="inflating") → on return LAUNCH is dead and the
+    // verb is stuck on "TAP TO BANK" until reload. Re-arm the client here (mirrors plane-ui _startTokenIdle).
+    // The server round already settled on its own clock via the onTokenCashOut _release just requested; the
+    // authoritative balance re-syncs from TokenMode on re-entry (setBalance) — this reset is display-only.
+    // MUST run AFTER _release() (so the cash-out fired while pressing was still true) and AFTER the epoch bump.
+    if (!on && (this.pressing || this.state === "inflating")) {
+      this.pressing = false;
+      this.state = "armed";
+      this._roundToken = false;
+      this.floors = [];
+      clearTimeout(this._resetTimer); this._resetTimer = null;
+      try { this.r.clearValveRings(); } catch (e) {}
+      try { this.r.reset(); } catch (e) {}
+      if (this._b3d) try { this._b3d.reset(); } catch (e) {}
+      this._msg(this._idlePrompt());
+      this._renderHud();
+      try { if (root.TokenMode && root.TokenMode.active && root.TokenMode.active() && root.TokenMode.refreshTokens) root.TokenMode.refreshTokens(); } catch (e) {}
+    }
     try { on ? this.r.app.ticker.start() : this.r.app.ticker.stop(); } catch (e) {}
     if (this._b3d) try { this._b3d.setActive(on); } catch (e) {}
   };

@@ -329,6 +329,27 @@ Put the next hunt in **`CursorBugHunt-v4/REPORT.md`**. Always branch from deploy
 
 ## 🗒️ Coordination log (append newest at top; one line each)
 
+- **2026-07-01 — Claude (session 4):** Processed **Cursor Pass 11 (Bug Hunt v8, `CursorBugHunt-v8/REPORT.md`, 4
+  High findings; money verdict CLEAN)** → shipped **v12.86**. Verified each vs committed code + adversarially
+  vetted every suggested fix via a Workflow FIRST (caught two "apply-Cursor-verbatim-would-add-a-bug" cases).
+  **#1** Balloon Pop stuck on "TAP TO BANK" after leaving mid-token-round — `pressure-ui.js setActive(false)` now
+  re-arms the client (mirrors plane `_startTokenIdle`) after `_release()`+epoch-bump, since the superseded `.then`
+  bails before cleanup (probe `pressure-leave-stuck-probe.js` rewritten as a real regression guard, now PASSES).
+  **#2** token bar stale after leaving a live crash round — `switchGame` now `TokenMode.refreshTokens()` after
+  `CrashRounds.cancel()` (the rejected round promise never fires `syncTokens`); refresh SETS not adds → no
+  double-credit. **#3** Gem Vault stale HUD on leave during `_awaitingServer` — re-anchor `this.balance =
+  root.TokenMode.tokens()` (⚠️ NOT Cursor's `tokens()+refreshTokens()` — that's `number+Promise`=NaN → $0 HUD +
+  re-enabled SPIN). **#4 (MONEY, edge-case): DOUBLE-DEBIT** — a SIGKILL crashRound orphan the boot drain missed
+  could stack a 2nd reserve() because the guard was RAM-only (`activeBySession`, empty after restart). Fixed with
+  **drain-on-detect** in `reserve()`+`play()` (`finalizeOrphanRounds` busts the orphan first) — ⚠️ NOT Cursor's
+  hard-throw (that permanently STRANDS the session if the orphan never drains); soft-throws a RETRYABLE error
+  instead. Guarded O(1) by a `_noOpenCrashRound` flag (naïve scan was O(n²) → hung the 300k-bet RTP self-test).
+  New self-test (double-debit / no-false-block / retryable-not-strand) + full probe gate GREEN (bridge/http/
+  crash/BJ self-tests + v2/v3/v4/v5/v6/v8 probes). **⚠️ PRE-EXISTING (NOT from this batch, owner-deploys):**
+  `npm test` `pass4-exploits.test.js:53` FAILS — the on-chain **staticCall cherry-pick** exploit on the direct-bet
+  dice contract (simulate → only submit the tx if it wins). Contracts are byte-identical to HEAD (my v8 changes are
+  off-chain JS only); this is the known direct-bet contract-drain that the server-bridge migration / V2 deploy
+  fixes. Cursor: don't re-file as a v8 regression. **Money verdict stands: 0 new Critical/High on the ledger.**
 - **2026-07-01 — Claude (session 3, cont.):** Shipped **v12.85** — the remaining SAFE Pass-10 LOWs (finishing "fix
   them all"): **#7** Gem Vault (slots3d) HUD now held during spin/await/bonus in `syncTokenGameBalances` so a
   mid-round poll can't spoil the finale (safe: slots3d self-reconciles via `syncBalance` at settle/_endBonus, hold

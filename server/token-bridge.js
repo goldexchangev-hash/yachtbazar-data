@@ -168,6 +168,7 @@ function makeTokenBridge(opts) {
     if (!s) throw new Error("no such session");
     if (s.closed) throw new Error("session is closed");
     if (!hasGame(o.game)) throw new Error("game not token-enabled: " + o.game);
+    finalizeOrphanRounds(s, s.betNonce); // v8 #4: self-heal an orphaned crashRound (bust) so it can't linger blocking BJ or stack a reservation
     const bet = round2(o.betUnits);
     if (!(bet > 0)) throw new Error("bet must be positive");
     // #41: integer-cent overbet check (no float-epsilon tolerance) — mirrors reserve()'s hardened test so
@@ -406,6 +407,7 @@ function makeTokenBridge(opts) {
     if (s.closed) throw new Error("session is closed");
     const game = String((o && o.game) || "crash");
     if (!hasGame(game)) throw new Error("game not token-enabled: " + game);
+    finalizeOrphanRounds(s, s.betNonce); // v8 #4: bust any orphaned open crashRound BEFORE debiting a new one → no double-debit after a SIGKILL the boot drain missed
     const bet = round2(o.betUnits);
     if (!(bet > 0)) throw new Error("bet must be positive");
     if (Math.round(bet * 100) > Math.round(s.tokens * 100)) throw new Error("insufficient tokens"); // integer-cent (no float-epsilon overbet)
@@ -418,6 +420,7 @@ function makeTokenBridge(opts) {
     s.tokens = round2(s.tokens - bet);         // DEBIT the stake up front
     const rec = { nonce: nonce, kind: "crashRound", game: game, betUnits: bet, params: {}, clientSeed: clientSeed, payoutUnits: 0, win: false, multiplier: 0, open: true };
     s.bets.push(rec);
+    s._noOpenCrashRound = false; // v8 #4: a live open round now exists → the next reserve/play must re-check for an orphan
     save();
     return { sessionId: s.id, nonce: nonce, point: point, crashPoint: point, betUnits: bet, tokens: s.tokens };
   }
@@ -447,6 +450,32 @@ function makeTokenBridge(opts) {
     rec.outcome = res.outcome;                // persist {crashPoint,...} so the ledger entry exposes the settled point (audit + paced==ledger check)
     save();
     return { sessionId: s.id, nonce: nonce, game: rec.game, win: rec.win, multiplier: rec.multiplier, payoutUnits: payout, outcome: res.outcome, tokens: s.tokens };
+  }
+
+  // v8 #4: DRAIN-ON-DETECT backstop. A durable open:true crashRound means a prior round was interrupted (SIGKILL)
+  // with its stake already debited at reserve() — and the RAM activeBySession guard that normally blocks a 2nd live
+  // round is EMPTY after a restart. If the boot drainOrphanReservations() couldn't clear it (e.g. a resolveReserved
+  // throw across a deploy), a fresh reserve()/play() must NOT stack a second live round (that DOUBLE-DEBITS). Finalize
+  // the orphan as a BUST here (deterministic + re-derivable; the stake stays gone as the interrupted loss — identical
+  // semantics to drainOrphanReservations, and house-safe: a SIGKILL can't refund a losing round) BEFORE proceeding.
+  // This SELF-HEALS — unlike a hard throw, which would refuse the session FOREVER if the orphan never drains (a
+  // permanent strand). Only soft-throws a RETRYABLE error if an orphan genuinely can't finalize. `exceptNonce` skips
+  // the entry a caller is about to create (defensive). Single-threaded bridge (/play + WS serialize) → no async here.
+  function finalizeOrphanRounds(s, exceptNonce) {
+    // O(1) HOT PATH: once a session has no open crashRound we set _noOpenCrashRound; only reserve() (which opens
+    // a round) clears it. This keeps play()/reserve() O(1) on the hot path — a heavy session accumulates tens of
+    // thousands of bets, and re-scanning bets[] on EVERY call would be O(n²). The scan runs only when an open round
+    // might actually exist: the FIRST call after a load (the boot-orphan case — the flag is absent on the rehydrated
+    // session) or right after a reserve() (a live round that the RAM activeBySession guard already knows about; if
+    // reserve/play is even reached, RAM says no round is live, so any open ledger round is a genuine orphan).
+    if (!s || !s.bets || s._noOpenCrashRound) return;
+    for (const b of s.bets) {
+      if (b && b.kind === "crashRound" && b.open && Number(b.nonce) !== Number(exceptNonce)) {
+        try { resolveReserved({ sessionId: s.id, nonce: b.nonce, cashOutAt: 1e9 }); }
+        catch (e) { throw new Error("a previous crash round is still finalizing — try again in a moment"); } // leaves the flag unset → next retry re-scans
+      }
+    }
+    s._noOpenCrashRound = true; // every open crashRound (bar the guarded nonce) is finalized → skip the scan until the next reserve()
   }
 
   // v4 #5: a SIGKILL (not the graceful SIGTERM crash-rounds drain) can leave a crashRound RESERVED on disk
@@ -648,6 +677,35 @@ if (require.main === module) {
     eq("max-win cap never touches the loss side", cap.session(cs2.sessionId).tokens === 550);
     const cstl = await cap.settle({ sessionId: cs2.sessionId });
     eq("capped session settles (net bounded to the cap)", cstl.netUnits === 450); // 550 − 100 buyIn
+
+    // ── v8 #4: DRAIN-ON-DETECT — an orphaned open crashRound (SIGKILL that the boot drain missed) must NOT let a
+    //    fresh reserve()/play() stack a 2nd live round (double-debit); it is bust-finalized first. A NORMAL
+    //    sequential round is NOT falsely blocked, and an un-finalizable orphan soft-throws a RETRYABLE error
+    //    (self-heals) rather than permanently stranding the session. ──
+    const ob = makeTokenBridge({ signer: signer2, toWei: (u) => BigInt(Math.round(u * 1e6)) });
+    const os = ob.start({ player, chainId: 1, contract, buyInUnits: 1000 }).sessionId;
+    const oTok0 = ob.session(os).tokens;
+    ob.reserve({ sessionId: os, game: "crash", betUnits: 40, clientSeed: "a" }); // stake debited, open:true
+    eq("reserve debits the stake", ob.session(os).tokens === round2(oTok0 - 40));
+    eq("orphan crashRound is still open (SIGKILL: never resolved, boot drain skipped)", ob.session(os).bets.filter((b) => b.kind === "crashRound" && b.open).length === 1);
+    const oTokBefore2 = ob.session(os).tokens;
+    const r2 = ob.reserve({ sessionId: os, game: "crash", betUnits: 40, clientSeed: "b" }); // must bust the orphan FIRST
+    eq("second reserve leaves only ONE open round (the new one) — no stacked live round", ob.session(os).bets.filter((b) => b.kind === "crashRound" && b.open).length === 1);
+    eq("second reserve debits ONE new stake only (no double-debit; orphan stake stays a loss)", ob.session(os).tokens === round2(oTokBefore2 - 40));
+    eq("the orphan was finalized to a BUST (open:false, payout 0)", ob.session(os).bets.filter((b) => b.kind === "crashRound" && !b.open && b.payoutUnits === 0).length === 1);
+    ob.resolveReserved({ sessionId: os, nonce: r2.nonce, cashOutAt: 1e9 }); // settle r2 normally (bust)
+    let seqOk = 1; try { ob.reserve({ sessionId: os, game: "crash", betUnits: 40, clientSeed: "c" }); } catch (e) { seqOk = 0; }
+    eq("a normally-settled round does NOT block the next reserve", seqOk === 1);
+    ob.play({ sessionId: os, game: "coinflip", betUnits: 5, params: { side: 0 }, clientSeed: "d" }); // play() self-heals the lingering orphan (round c) too
+    eq("play() also drains a lingering orphan (no open crashRound remains)", ob.session(os).bets.filter((b) => b.kind === "crashRound" && b.open).length === 0);
+    // Un-finalizable orphan (unknown engine) → RETRYABLE soft-throw, session NOT closed (no permanent strand).
+    const fb = makeTokenBridge({ signer: signer2, toWei: (u) => BigInt(Math.round(u * 1e6)) });
+    const fs = fb.start({ player, chainId: 1, contract, buyInUnits: 100 }).sessionId;
+    fb.reserve({ sessionId: fs, game: "crash", betUnits: 10, clientSeed: "x" });
+    fb.session(fs).bets.find((b) => b.kind === "crashRound" && b.open).game = "___nope___"; // corrupt → resolveReserved throws
+    let ftMsg = ""; try { fb.reserve({ sessionId: fs, game: "crash", betUnits: 10, clientSeed: "y" }); } catch (e) { ftMsg = e.message; }
+    eq("un-finalizable orphan → RETRYABLE error (not a permanent 'already live' strand)", /try again in a moment/.test(ftMsg));
+    eq("session is NOT closed after the retryable throw (self-heals on retry)", !fb.session(fs).closed);
 
     console.log(ok ? "\nSELF-TEST OK — token bridge: buy-in → provably-fair play → signed, verifiable settle." : "\nSELF-TEST FAILED");
     process.exit(ok ? 0 : 1);

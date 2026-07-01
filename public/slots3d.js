@@ -739,6 +739,12 @@
         // into a paused loop (the .then bails on !_spinning; balance is re-anchored from the ledger
         // by ensureSlots3dReady on re-entry, and the server settles the bet independently).
         this._awaitingServer = false; this._spinning = false; this.state = "idle";
+        // v8 #3: also re-anchor the HUD to the ledger now so it doesn't sit at the pre-settle debited mirror
+        // while off-channel (mirrors the .then's own !_active branch). NOTE: do NOT do Cursor's suggested
+        // `= tokens() + refreshTokens()` — refreshTokens() returns a Promise, so that yields NaN → a wrong
+        // $0.00 HUD that also (NaN < bet === false) re-enables SPIN. Just read the authoritative token balance.
+        try { this.balance = root.TokenMode.tokens(); } catch (e) {}
+        this._renderHud(); this._renderSpinBtn();
       }
       // Demo / already-launched spins keep _spinning=true: their reels are already easing toward a
       // land, so the loop resumes and settles them cleanly when the channel comes back.

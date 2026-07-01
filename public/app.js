@@ -3456,7 +3456,13 @@
     // still settles SERVER-side via the per-game setActive(false) cash-out above — cancel() only tears down
     // the local promise/timers. (Was gated to "leaving the crash family entirely", which left plane↔pressure
     // sharing a busy singleton for ~1s and failing the first bet on the new channel.)
-    if (CrashRounds && CrashRounds.cancel && CrashRounds.active && CrashRounds.active()) CrashRounds.cancel("switched channel");
+    if (CrashRounds && CrashRounds.cancel && CrashRounds.active && CrashRounds.active()) {
+      CrashRounds.cancel("switched channel");
+      // v8 #2: cancel() REJECTS the round promise, so the .then that calls TokenMode.syncTokens(res.tokens) never
+      // fires → the top token bar stays at the pre-round value (server already settled via the cash-out above).
+      // Re-fetch the authoritative balance. refreshTokens() SETS (not adds) client.tokens, so it can't double-credit.
+      try { if (window.TokenMode && TokenMode.active() && TokenMode.refreshTokens) TokenMode.refreshTokens(); } catch (e) {}
+    }
     if (game !== "slots3d" && slots3dGame) slots3dGame.setActive(false);
     if (game !== "fish" && fishGame) fishGame.setActive(false);
     if (game !== "swoop" && swoopGame) swoopGame.setActive(false);
