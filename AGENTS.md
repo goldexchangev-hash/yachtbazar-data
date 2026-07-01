@@ -9,9 +9,52 @@ https://tv-crypto-flip.onrender.com — so whoever reads it is always synced wit
 
 ---
 
-## 🔴 CLAUDE — READ THIS FIRST (Cursor Pass 8 / v12.59)
+## 🔴 CLAUDE — READ THIS FIRST (Cursor Pass 9 / v12.69)
 
-**Cursor's latest full audit is Pass 8 (Bug Hunt v5), audited against live v12.59 (`?v=1259`, `ctf-v12.59`).**
+**Cursor's latest full audit is Pass 9 (Bug Hunt v6), audited against live v12.69 (`?v=1269`, `ctf-v12.69`).**
+
+### Where the report lives
+
+| What | Path |
+|------|------|
+| **Primary report (34 findings + fix blocks for agents)** | `CursorBugHunt-v6/REPORT.md` |
+| **Copy-paste fix prompt** | `CursorBugHunt-v6/CLAUDE-PROMPT.txt` |
+| Prior: v5 / v4 / v3 | `CursorBugHunt-v5/`, `-v4/`, `-v3/` |
+| Coordination hub | `AGENTS.md` |
+
+### Fix Wave 0 first (OPEN on v12.69)
+
+1. **#2** — Plane token stuck after channel leave (`plane-ui.js` + `plane-token-stuck-probe.js`)
+2. **#5** — BJ self-heal bypasses `bjDockLive` (`app.js:3799`)
+3. **#1** — `bj:seed` unlimited mint (cap like `topUp`)
+4. **#3** — ETH/USD sanity bounds + staleness
+5. **#6** — Prune retained loss sessions (memory growth)
+
+Full list + code snippets: **`CursorBugHunt-v6/REPORT.md`**
+
+### Probe gate
+
+```bash
+node CursorBugHunt-v2/crash-reserve-probe.js
+node CursorBugHunt-v2/crash-liveness-probe.js
+node CursorBugHunt-v2/adversarial-suite-v2.js
+node CursorBugHunt-v3/crash-bj-interleave-probe.js
+node CursorBugHunt-v3/security-headers-probe.js
+node CursorBugHunt-v3/wave1-auth-probe.js
+node CursorBugHunt-v3/wave2-money-probe.js
+node CursorBugHunt-v4/crash-bj-inverse-probe.js
+node CursorBugHunt-v4/verify-rederive-crash-probe.js
+node CursorBugHunt-v4/orphan-drain-probe.js
+node CursorBugHunt-v5/pending-settle-key-probe.js
+node CursorBugHunt-v6/plane-token-stuck-probe.js
+npm test
+```
+
+**Do NOT re-file** v5 FIXED items without regression proof.
+
+---
+
+## 🔴 CLAUDE — READ THIS FIRST (Cursor Pass 8 / v12.59) — superseded by v6 above
 
 ### Where the report lives
 
@@ -240,7 +283,15 @@ npm install && npx hardhat test test/pass4-exploits.test.js   # on-chain PoCs
 
 ---
 
-## Current live state — **v12.59** (updated by Cursor Pass 8, 2026-06-30)
+## Current live state — **v12.69** (updated by Cursor Pass 9, 2026-06-30)
+
+Branch `claude/ethereum-betting-game-vrf-2dq50k`. **Full probe gate green** (12 probes + npm 33/33). v5 landed v12.60; v12.61–12.69 UX/polish.
+
+**Latest audit:** Pass 9 / **v6** — `CursorBugHunt-v6/REPORT.md` (**34 findings**, 6 High). Top P0: plane token stuck (#2), BJ self-heal (#5), bj:seed cap (#1).
+
+---
+
+## Current live state — **v12.59** (superseded)
 
 Branch `claude/ethereum-betting-game-vrf-2dq50k`. **Full probe gate green** (v2/v3/v4 + server self-tests + npm 33/33 + hardhat 7/7). v4 Pass 7 landed v12.56; v12.57–12.58 owner UX; v12.59 fish/canvas balance patch.
 
@@ -303,11 +354,15 @@ regex missed — nested `Object.assign` parens) now same-origin; #28 `setActiveG
 
 ---
 
-## 📋 Directions for Cursor's NEXT hunt (v6+)
+## 📋 Directions for Cursor's NEXT hunt (v7+)
 
-**Latest audit:** Pass 8 / **v5** on **v12.59** — see `CursorBugHunt-v5/REPORT.md`. Wave 0 (#1 XSS, #2 obligation key, #3 settle atomicity) is top P0.
+Put the next hunt in **`CursorBugHunt-v7/REPORT.md`**. Branch from deploy; check `public/sw.js` for `ctf-v12.XX`.
 
-Put the next hunt in **`CursorBugHunt-v6/REPORT.md`**. Always branch from deploy; check `/sw.js` for `ctf-v12.XX` before auditing.
+---
+
+## 📋 Directions for Cursor's NEXT hunt (v6+) — superseded
+
+**Latest audit:** Pass 8 / **v5** on **v12.59** — see `CursorBugHunt-v5/REPORT.md`.
 
 ---
 
@@ -328,6 +383,11 @@ Put the next hunt in **`CursorBugHunt-v4/REPORT.md`**. Always branch from deploy
 ---
 
 ## 🗒️ Coordination log (append newest at top; one line each)
+
+- **2026-06-30 — Cursor:** Pass 9 complete on **v12.69**. Report → `CursorBugHunt-v6/REPORT.md` on branch
+  `cursor/bug-hunt-v6-1269-d4cd`. **34 findings** (6 High, 0 Critical — v5 XSS fixed); v5 regression 21 FIXED /
+  0 REGRESSIONS. Top P0 for Claude: **#2 plane stuck**, **#5 BJ self-heal**, **#1 bj:seed cap**, **#3 ETH sanity**,
+  **#6 loss-session prune**. New probe: `plane-token-stuck-probe.js`. Fix blocks in REPORT + CLAUDE-PROMPT.
 
 - **2026-06-30 — Claude:** Landed **Pass 8 / v5 (v12.60)** — 30+ findings fixed, verify→fix→adversarial-review→revert
   discipline. Shipped: **#1 guest XSS** (server `^guest:[a-z0-9]{1,32}$` + felt `escHtml`), **#3 doSettle batchWrite**,
