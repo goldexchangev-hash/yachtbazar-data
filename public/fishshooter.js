@@ -923,27 +923,34 @@
   FishShooter.prototype._drawHud = function () {
     if (!this.jpBar) return; var W = this.W, H = this.H, g = this.jpBar; g.clear();
     var bw = Math.min(260, W * 0.5), bh = 12, x = W / 2 - bw / 2, y = 14;
-    g.beginFill(0x041326, 0.7); g.drawRoundedRect(x - 3, y - 3, bw + 6, bh + 6, 6); g.endFill();
-    g.beginFill(0x0c2840); g.drawRoundedRect(x, y, bw, bh, 5); g.endFill();
     var inBoss = !!this._boss;
     var counting = !!(this._bonus && !this._bonus.started); // bonus-world 3-2-1 pre-wave
     var finale = !!this._bonusFinale; // end-of-round reveal + deposit
-    var bth = finale ? (this._bonusFinale.th || BONUS_THEME.frenzy) : (BONUS_THEME[this._frenzyKind] || BONUS_THEME.frenzy);
-    // bonus wave = TIME bar (constant); countdown fills the bar; finale = full; else boss HP or the jackpot meter.
-    var fr = this._frenzy > 0 ? (this._tokenActive() // TOKEN: fill by REAL collected/total (climbs as you pop); DEMO: fill toward the pre-paid expected budget
-        ? clamp((this._tokenWavePaid || 0) / (this._tokenWaveTotal || 1), 0, 1)
-        : clamp((this._frenzyExpected || 0) / (this._frenzyBudget || 1), 0, 1))
-      : counting ? clamp(this._bonus.countT / 3, 0, 1)
-      : finale ? 1
-      : (inBoss && this._boss.hpMax ? Math.max(0, this._boss.hp / this._boss.hpMax) : this._jackpot);
-    var barCol = (this._frenzy > 0 || counting || finale) ? bth.color : (inBoss ? 0xff4d6a : 0xffd23f);
-    g.beginFill(barCol); g.drawRoundedRect(x, y, bw * fr, bh, 5); g.endFill();
-    this.jpText.x = W / 2; this.jpText.y = y + bh + 2;
-    this.jpText.text = this._frenzy > 0 ? (bth.name + "  +$" + (this._frenzyWon || 0).toFixed(0))
-      : counting ? (bth.name + " INCOMING…")
-      : finale ? (bth.name + " COMPLETE   YOU WON $" + (this._bonusFinale.won || 0).toFixed(2))
-      : (inBoss ? (this._boss.started ? ("BOSS  " + Math.max(0, Math.ceil(this._boss.hp)) + " HP   ·   BONUS +$" + (this._boss.won || 0).toFixed(2)) : "JACKPOT ROUND")
-                : ("JACKPOT ROUND  " + Math.floor(this._jackpot * 100) + "%"));
+    // TOKEN: there is NO self-funded jackpot/boss meter in token play (the pool is a client-side rake, gated
+    // off in _catch). So a token player in NORMAL play (no bonus wave / countdown / finale) sees NOTHING here
+    // rather than a permanently-stuck "JACKPOT ROUND 0%" meter. The bonus-WAVE meter still renders normally.
+    var tokenIdle = this._tokenActive() && this._frenzy <= 0 && !counting && !finale && !inBoss;
+    if (tokenIdle) { this.jpText.text = ""; }
+    else {
+      g.beginFill(0x041326, 0.7); g.drawRoundedRect(x - 3, y - 3, bw + 6, bh + 6, 6); g.endFill();
+      g.beginFill(0x0c2840); g.drawRoundedRect(x, y, bw, bh, 5); g.endFill();
+      var bth = finale ? (this._bonusFinale.th || BONUS_THEME.frenzy) : (BONUS_THEME[this._frenzyKind] || BONUS_THEME.frenzy);
+      // bonus wave = TIME bar (constant); countdown fills the bar; finale = full; else boss HP or the jackpot meter.
+      var fr = this._frenzy > 0 ? (this._tokenActive() // TOKEN: fill by REAL collected/total (climbs as you pop); DEMO: fill toward the pre-paid expected budget
+          ? clamp((this._tokenWavePaid || 0) / (this._tokenWaveTotal || 1), 0, 1)
+          : clamp((this._frenzyExpected || 0) / (this._frenzyBudget || 1), 0, 1))
+        : counting ? clamp(this._bonus.countT / 3, 0, 1)
+        : finale ? 1
+        : (inBoss && this._boss.hpMax ? Math.max(0, this._boss.hp / this._boss.hpMax) : this._jackpot);
+      var barCol = (this._frenzy > 0 || counting || finale) ? bth.color : (inBoss ? 0xff4d6a : 0xffd23f);
+      g.beginFill(barCol); g.drawRoundedRect(x, y, bw * fr, bh, 5); g.endFill();
+      this.jpText.x = W / 2; this.jpText.y = y + bh + 2;
+      this.jpText.text = this._frenzy > 0 ? (bth.name + "  +$" + (this._frenzyWon || 0).toFixed(0))
+        : counting ? (bth.name + " INCOMING…")
+        : finale ? (bth.name + " COMPLETE   YOU WON $" + (this._bonusFinale.won || 0).toFixed(2))
+        : (inBoss ? (this._boss.started ? ("BOSS  " + Math.max(0, Math.ceil(this._boss.hp)) + " HP   ·   BONUS +$" + (this._boss.won || 0).toFixed(2)) : "JACKPOT ROUND")
+                  : ("JACKPOT ROUND  " + Math.floor(this._jackpot * 100) + "%"));
+    }
     // POWER bottom-LEFT, BALANCE bottom-RIGHT (replaced the old WIN readout), bottom
     // CENTER stays clear for the half-circle turret. Per-catch wins show as the floating
     // "+$" pop and the banner, so a persistent WIN number is redundant.
