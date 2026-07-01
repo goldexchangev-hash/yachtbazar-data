@@ -9,33 +9,39 @@ https://tv-crypto-flip.onrender.com — so whoever reads it is always synced wit
 
 ---
 
-## 🔴 CLAUDE — READ THIS FIRST (Cursor Pass 13 / v12.91)
+## 🔴 CLAUDE — READ THIS FIRST (Cursor Pass 14 / v12.91)
 
-**Cursor's latest full audit is Pass 13 (Bug Hunt v10 — HARDER SCAN), audited against live v12.91 (`?v=1291`, `ctf-v12.91`).**
+**Cursor's latest full audit is Pass 14 (Bug Hunt v11 — HARDER SCAN II), audited against live v12.91 (`?v=1291`, `ctf-v12.91`).**
 
-**Verdict: Money ledger still CLEAN (0 Critical/High house-drain). Pass 13 found 3 new High client/liveness bugs** — #94 cold-resume gap, launch ack race, Reef splash regression.
+**Verdict: Money ledger still CLEAN (0 Critical/High house-drain). Pass 14 found 1 new High + 5 Medium** — fish epoch guard gap, slots3d off-channel bar sync, pressure HTTP void (verified open).
 
 ### Where the report lives
 
 | What | Exact path / link |
 |------|-------------------|
-| **Primary report (17 findings, Wave 0–2 fix plan)** | `CursorBugHunt-v10/REPORT.md` |
-| **Copy-paste fix prompt** | `CursorBugHunt-v10/CLAUDE-PROMPT.txt` |
-| **Prior audit (v9 / v12.91)** | `CursorBugHunt-v9/REPORT.md` |
+| **Primary report (17 findings, Wave 0–2 fix plan)** | `CursorBugHunt-v11/REPORT.md` |
+| **Copy-paste fix prompt** | `CursorBugHunt-v11/CLAUDE-PROMPT.txt` |
+| **Prior audit (v10 / v12.91)** | `CursorBugHunt-v10/REPORT.md` |
 
 ### How to load it
 
 ```bash
-git fetch origin cursor/bug-hunt-v10-1291-d4cd
+git fetch origin cursor/bug-hunt-v11-1291-d4cd
 git checkout claude/ethereum-betting-game-vrf-2dq50k
-git merge origin/cursor/bug-hunt-v10-1291-d4cd
+git merge origin/cursor/bug-hunt-v11-1291-d4cd
 ```
 
-### Fix these first (Wave 0 — Pass 13) — OPEN on v12.91
+### Fix these first (Wave 0 — v10 still open) — then Wave 1 (Pass 14)
 
-1. **#1 — Cold crash resume** — page refresh during live token round traps player (false plane refund). Probe: `CursorBugHunt-v10/crash-cold-resume-probe.js`.
-2. **#2 — Launch ack window channel switch** — defer `token-flying` until `cr:started`.
-3. **#3 — Reef token splash** — port fishshooter visual-only guard. Probe: `CursorBugHunt-v10/reef-splash-token-probe.js`.
+**v10 Wave 0 (ship first if not done):**
+1. **Cold crash resume** — `CursorBugHunt-v10/crash-cold-resume-probe.js`
+2. **Launch ack window** — defer `token-flying` until `cr:started`
+3. **Reef token splash** — `CursorBugHunt-v10/reef-splash-token-probe.js`
+
+**Pass 14 Wave 1 (new):**
+1. **Fish/Reef `_tokenEpoch` guard** — `CursorBugHunt-v11/fish-token-epoch-probe.js`
+2. **Gem Vault off-channel top bar** — `CursorBugHunt-v11/slots3d-offchannel-bar-probe.js`
+3. **Pressure HTTP void + clientSeed cap** — see v11 REPORT #3, #5
 
 ### Probe gate
 
@@ -55,12 +61,20 @@ node CursorBugHunt-v8/pressure-leave-stuck-probe.js
 node CursorBugHunt-v9/bj-reload-demo-probe.js
 node CursorBugHunt-v10/crash-cold-resume-probe.js
 node CursorBugHunt-v10/reef-splash-token-probe.js
+node CursorBugHunt-v11/fish-token-epoch-probe.js
+node CursorBugHunt-v11/slots3d-offchannel-bar-probe.js
 npm test
 ```
 
 ---
 
-## 🔴 CLAUDE — READ THIS FIRST (Cursor Pass 12 / v12.91) — superseded by v10 above
+## 🔴 CLAUDE — READ THIS FIRST (Cursor Pass 13 / v12.91) — superseded by v11 above
+
+**Pass 13 report:** `CursorBugHunt-v10/REPORT.md`. 3 High client/liveness; money CLEAN.
+
+---
+
+## 🔴 CLAUDE — READ THIS FIRST (Cursor Pass 12 / v12.91) — superseded by v11 above
 
 **Pass 12 report:** `CursorBugHunt-v9/REPORT.md`. Money CLEAN; 6 Med + 4 Low.
 
