@@ -47,6 +47,11 @@ const PF = require("../provablyfair.js");
 const RTP   = 0.85;
 const P_MIN = 0.0025;
 const P_MAX = 0.9;
+// mega-hunt CRITICAL: the real in-game gun fires INTEGER power 1..MAX (client fishtable.js: MAX_POWER=7,
+// setPower clamps `p|0` to [1,7]). The server MUST clamp identically — a fractional/out-of-range `power`
+// makes unitBet = betUnits/power blow up (1/power) while killProb floors at P_MIN, exploding RTP to ~750x
+// (house drain). fishshooter.js already clamps; reef did not. POWER>=1 integer ⇒ unitBet <= betUnits.
+const POWER_MIN = 1, POWER_MAX = 7;
 const BONUS_BUDGET         = { chest: 25, frenzy: 25, storm: 25 };
 // #17: removed the dead `chain: 3` — no FISH below has `special: "chain"`, so that budget was never read
 // (never added to any fish's mult, never disbursed). Only `bomb` is an active splash special.
@@ -134,7 +139,13 @@ function play(a) {
   const betUnits   = Number(a.betUnits) || 0;
   const params     = a.params || {};
 
-  const power     = Number(params.power) || 1;
+  // mega-hunt CRITICAL: clamp power to the real in-game INTEGER range [POWER_MIN, POWER_MAX] BEFORE it feeds
+  // unitBet/killProb — mirrors fishshooter.js:168-170. A fractional (0<power<1) or out-of-range value would
+  // otherwise inflate unitBet = betUnits/power while killProb floors at P_MIN → RTP explodes ~750x (house drain).
+  // Applied at the top of play() so both the live path AND the settle-time verifyRederive re-run clamp identically.
+  let power = Math.trunc(Number(params.power));
+  if (!Number.isFinite(power)) power = POWER_MIN;
+  power = Math.max(POWER_MIN, Math.min(POWER_MAX, power));
   const targetKey = String(params.targetKey == null ? "" : params.targetKey);
   const def       = BY_KEY[targetKey];
 
