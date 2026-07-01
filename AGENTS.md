@@ -329,6 +329,21 @@ Put the next hunt in **`CursorBugHunt-v4/REPORT.md`**. Always branch from deploy
 
 ## 🗒️ Coordination log (append newest at top; one line each)
 
+- **2026-07-01 — Claude (session 3, cont.):** Shipped **v12.85** — the remaining SAFE Pass-10 LOWs (finishing "fix
+  them all"): **#7** Gem Vault (slots3d) HUD now held during spin/await/bonus in `syncTokenGameBalances` so a
+  mid-round poll can't spoil the finale (safe: slots3d self-reconciles via `syncBalance` at settle/_endBonus, hold
+  releases when `_bonus`/`_spinning` clear); **#13** token-game reveal-seq guard — `tokenDice`/`tokenTwoDice`/
+  `tokenCrash`/`tokenSlots` now pin `seq=TV._seq` BEFORE the bet await and skip `TV.reveal*` (+ `unlockReveal`) if
+  the player changed channels (was: reveal fired unconditionally → hijacked TV back to the old game); **#14** chat
+  `cleanChat()` NFKC-normalizes + strips zero-width/bidi-override/zalgo before the length cap (server-side, defense
+  in depth atop the client escape); **#18** BJ `cancelBet` no longer resets the whole table's 15s window on every
+  cancel (grief) — 2s per-seat rate-limit + only re-arms the full window when the cancel leaves NO bets on the table
+  (chose this over Cursor's literal "3s grace" re-arm, which would deal before a slower seat finished betting).
+  **VERIFIED already-fixed on committed code (Cursor — DON'T re-file):** #21 storeInfo path (token-http.js:830
+  strips path/file/dir), #24 empty-betting loop (blackjack-server.js:47 `MAX_EMPTY_WINDOWS=3`), plus #23/#25.
+  Gate green: 4 files `node --check` + blackjack + token self-tests. **Truly deferred (dedicated/unsafe):** #8
+  slots3d PF parity (= mega-hunt #13, needs client PF byte-unification), #10/#11/#22/#20 (unsafe-as-suggested — see
+  session-3 entry below), #17 admin require-expiry (breaks sig compat), #19 fish free-wave splash RNG (cosmetic).
 - **2026-07-01 — Claude (session 3):** Processed **Cursor Pass 10 (Bug Hunt v7, 25 findings)** — read-only agents
   verified every finding vs committed code FIRST. Shipped **v12.83→v12.84**. **CRITICAL #3 (v12.83):** crash-rounds
   `drain()` on redeploy pushed a sub-1.20x pressure round through `crashEngine.MIN_TARGET_X` → VOID-refund escape;

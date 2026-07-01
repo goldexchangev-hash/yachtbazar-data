@@ -368,6 +368,15 @@ function pruneChat() {
   while (chatHistory.length && chatHistory[0].ts < cutoff) chatHistory.shift();
   if (chatHistory.length > CHAT_MAX) chatHistory.splice(0, chatHistory.length - CHAT_MAX);
 }
+// v7 #14: normalize chat text/names BEFORE the length cap so Unicode abuse can't slip past it or
+// spoof/deface the feed — NFKC folds compatibility variants (homoglyphs), then strip C0/C1 controls,
+// zero-width joiners/spaces, bidi overrides (RTL spoof), and collapse zalgo (long combining-mark runs).
+function cleanChat(s) {
+  s = String(s == null ? "" : s).normalize("NFKC");
+  s = s.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/g, "");
+  s = s.replace(/[\u0300-\u036F]{3,}/g, ""); // drop stacked combining marks (3+ in a row = zalgo)
+  return s;
+}
 
 function activePlayers() {
   const seen = new Set();
@@ -535,8 +544,8 @@ wss.on("connection", (ws, req) => {
       // Relay a chat line. Trust the connection's stored address, not the
       // client-supplied one, and cap the length.
       const from = clients.get(ws)?.address || null;
-      const text = String(data.text || "").slice(0, 240);
-      const name = String(data.name || "").slice(0, 24).trim() || null; // chosen display name
+      const text = cleanChat(data.text).slice(0, 240);            // v7 #14: NFKC + strip zero-width/bidi/zalgo
+      const name = cleanChat(data.name).slice(0, 24).trim() || null; // chosen display name (same cleaning)
       if (from && text.trim()) {
         const line = { type: "chat", from, name, text, ts: Date.now() };
         chatHistory.push({ from, name, text, ts: line.ts });

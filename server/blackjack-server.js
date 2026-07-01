@@ -676,12 +676,22 @@
       for (const r of rooms.values()) { const i = seatOf(r, sock); if (i < 0) continue;
         if (r.phase !== "betting") return err(sock, "not_betting", "Too late to remove the bet", "bet");
         const s = r.seats[i];
+        // v7 #18: rate-limit cancel per seat (2s) so a player can't spam cancel/re-bet to churn the table.
+        if (s._lastCancel && now() - s._lastCancel < 2000) return;
         if (s.baseBet > 0) {
           const ok = bank.credit(s.wallet, s.baseBet); // #9: surface a failed refund instead of silently zeroing the bet
           if (ok === false) { try { err(sock, "credit_failed", "Couldn't refund your bet right now — try again in a moment.", "bet"); } catch (e) {} return; }
           s.baseBet = 0;
+          s._lastCancel = now();
           notifyBalance(s.wallet);
-          r.deadline = now() + T.betting; armBetting(r, T.betting); // fresh window (epoch-guarded)
+          // v7 #18: don't hand the WHOLE table a fresh 15s window on every cancel — that let one player grief the
+          // deal indefinitely (each cancel reset everyone's clock). If OTHER seated players still have bets in, the
+          // table is still heading to a deal, so leave the running deadline alone. Only when the cancel leaves NO
+          // bets on the table do we re-arm the full betting window (so re-bets / newcomers get their time back).
+          // (Deliberately NOT Cursor's literal "3s grace" re-arm: shortening a still-open 15s window would deal
+          //  before a slower seat finished betting.)
+          const othersIn = r.seats.some((x, j) => x && j !== i && x.baseBet > 0);
+          if (!othersIn) { r.deadline = now() + T.betting; armBetting(r, T.betting); } // fresh window (epoch-guarded)
           touch(r); pushWallet(s.sock, s.wallet); broadcastState(r);
         }
         return;

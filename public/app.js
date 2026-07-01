@@ -3099,11 +3099,19 @@
       // NOT unconditionally: a buy-in / top-up / connect must update the HUD immediately (else the balance stays
       // stuck on the old value until the next shot — the "$110 tokens but HUD shows $4 / $9k on connect" bug).
       var onFishChan = (g === fishGame && currentGame === "fish") || (g === fishshooterGame && currentGame === "fishshooter");
+      // v7 #7: Gem Vault (slots3d) runs its OWN free-spins bonus in this SAME poll but the hold used to apply only
+      // on the fish channels, so a mid-round poll could reveal the full base+bonus total early (spoiling the finale)
+      // or flash the win before the reels land. Hold the HUD while slots3d is spinning / awaiting the server / in a
+      // bonus too. Safe from stuck-HUD: slots3d self-reconciles via TokenMode.syncBalance at settle (line ~430) and
+      // at _endBonus/_finishBonusNow (~515/534) once _bonus/_spinning clear, so the hold always releases cleanly.
+      var onS3d = (g === slots3dGame && currentGame === "slots3d");
       // Hold the HUD during a BONUS round (its win must reveal at the finale, not when a poll lands) and during
       // the brief per-shot reveal window. A buy-in/top-up/cash-out (force) bypasses the per-shot hold — but NOT
       // the bonus hold, so the finale stays the single moment the bonus total drops onto the balance.
-      var inBonus = onFishChan && !!(g._bonus || g._bonusFinale || g._boss || g._chest || (g._frenzy > 0)); // _chest/_frenzy: Reef treasure + frenzy reveals (climb the win one prize at a time, then snap)
-      var holdingReveal = onFishChan && (inBonus || (g._tokenRevealUntil && Date.now() < g._tokenRevealUntil));
+      var inBonus = (onFishChan && !!(g._bonus || g._bonusFinale || g._boss || g._chest || (g._frenzy > 0))) // _chest/_frenzy: Reef treasure + frenzy reveals (climb the win one prize at a time, then snap)
+                 || (onS3d && !!(g._bonus || g._spinning || g._awaitingServer));
+      var holdingReveal = (onFishChan && (inBonus || (g._tokenRevealUntil && Date.now() < g._tokenRevealUntil)))
+                       || (onS3d && inBonus);
       if ((force && !inBonus) || !holdingReveal) { try { g.setBalance(pbBal); } catch (e) {} } // #19 + bonus-reveal timing
     });
     if (swoopGame && demoOn) try { swoopGame.setBalance(demoUsd); } catch (e) {} // swoop is demo-only
@@ -3343,12 +3351,14 @@
     const T = clampDiceTarget($("dice-target").value, over ? "over" : "under");
     $("dice-target").value = String(T);
     rememberBet(v); lockReveal();
+    const seq = TV._seq; // v7 #13: pin the channel seq BEFORE the await — a channel change during the bet bumps it
     let r; try { r = await TokenMode.bet("dice", v, { target: T, over: over }); }
     catch (e) { unlockReveal(); return txErr ? txErr(e) : toast("Bet failed", "err"); }
+    if (TV._seq !== seq) { unlockReveal(); return; } // v7 #13: tuned away mid round-trip → don't hijack the TV back to dice (and clear the reveal lock)
     const won = !!r.win, roll = (r.outcome && r.outcome.roll) || 0, mult = r.multiplier || 0;
     const profitUsd = won ? Math.max(0, (r.payoutUnits || 0) - v) : 0;
     TV.revealDice({ roll: roll / 100, target: T / 100, mode: over ? "over" : "under", youWon: won, mult, amountUsd: won ? profitUsd : v, tier: demoTier(profitUsd) });
-    var _sq = TV._seq; setTimeout(function () { if (TV._seq === _sq && window.TokenMode && TokenMode.syncBalance) TokenMode.syncBalance(); }, 2800); // v6 #23: update balance AFTER the dice reveal — skip if the player tuned away (stale sync would drop the new channel's hold)
+    setTimeout(function () { if (TV._seq === seq && window.TokenMode && TokenMode.syncBalance) TokenMode.syncBalance(); }, 2800); // v6 #23: update balance AFTER the dice reveal — skip if the player tuned away (stale sync would drop the new channel's hold)
   }
   async function tokenTwoDice() {
     if (revealLock) return;
@@ -3357,26 +3367,30 @@
     const over = tdMode === "over";
     if (tdWinCombos(T, over) <= 0) return toast("Pick a different target for this bet type", "err");
     rememberBet(v); lockReveal();
+    const seq = TV._seq; // v7 #13: pin the channel seq BEFORE the await
     let r; try { r = await TokenMode.bet("dice2", v, { target: T, over: over }); }
     catch (e) { unlockReveal(); return txErr ? txErr(e) : toast("Bet failed", "err"); }
+    if (TV._seq !== seq) { unlockReveal(); return; } // v7 #13: tuned away mid round-trip → don't hijack the TV
     const won = !!r.win, mult = r.multiplier || 0;
     const d1 = (r.outcome && r.outcome.d1) || 1, d2 = (r.outcome && r.outcome.d2) || 1;
     const profitUsd = won ? Math.max(0, (r.payoutUnits || 0) - v) : 0;
     TV.revealTwoDice({ d1, d2, target: T, mode: over ? "over" : "under", youWon: won, mult, amountUsd: won ? profitUsd : v, tier: demoTier(profitUsd) });
-    var _sq = TV._seq; setTimeout(function () { if (TV._seq === _sq && window.TokenMode && TokenMode.syncBalance) TokenMode.syncBalance(); }, 2800); // v6 #23: update balance AFTER the two-dice reveal — skip if the player tuned away
+    setTimeout(function () { if (TV._seq === seq && window.TokenMode && TokenMode.syncBalance) TokenMode.syncBalance(); }, 2800); // v6 #23: update balance AFTER the two-dice reveal — skip if the player tuned away
   }
   async function tokenCrash() {
     if (revealLock) return;
     const v = tokenStake("crash-stake"); if (!v) return;
     const targetX = crashTargetVal();
     rememberBet(v); lockReveal();
+    const seq = TV._seq; // v7 #13: pin the channel seq BEFORE the await
     let r; try { r = await TokenMode.bet("crash", v, { cashOutAt: targetX }); }
     catch (e) { unlockReveal(); return txErr ? txErr(e) : toast("Bet failed", "err"); }
+    if (TV._seq !== seq) { unlockReveal(); return; } // v7 #13: tuned away mid round-trip → don't hijack the TV
     const won = !!r.win;
     const crashX = (r.outcome && r.outcome.crashPoint) || targetX;
     const profitUsd = won ? Math.max(0, (r.payoutUnits || 0) - v) : 0;
     TV.revealCrash({ crashX, targetX, won, amountUsd: won ? profitUsd : v, mult: targetX, tier: demoTier(profitUsd) });
-    var _sq = TV._seq; setTimeout(function () { if (TV._seq === _sq && window.TokenMode && TokenMode.syncBalance) TokenMode.syncBalance(); }, 2800); // v6 #23: update balance AFTER the crash reveal — skip if the player tuned away
+    setTimeout(function () { if (TV._seq === seq && window.TokenMode && TokenMode.syncBalance) TokenMode.syncBalance(); }, 2800); // v6 #23: update balance AFTER the crash reveal — skip if the player tuned away
   }
   async function tokenSlots() {
     if (revealLock) return;
@@ -3386,12 +3400,14 @@
     // tokenDice2/tokenCrash. Both await paths unlockReveal() on failure so a load/bet error
     // doesn't freeze the channel; the success path is unlocked by the reveal, as elsewhere.
     rememberBet(v); lockReveal();
+    const seq = TV._seq; // v7 #13: pin the channel seq BEFORE the awaits (load + bet)
     try { await ensureSlotsLoaded(); } catch (e) { unlockReveal(); return toast("Couldn't load the slots engine — check your connection", "err"); }
     let r; try { r = await TokenMode.bet("slots", v, { bet: v }); }
     catch (e) { unlockReveal(); return txErr ? txErr(e) : toast("Bet failed", "err"); }
+    if (TV._seq !== seq) { unlockReveal(); return; } // v7 #13: tuned away mid round-trip → don't hijack the TV
     const won = !!r.win, grid = (r.outcome && r.outcome.grid) || [], winUsd = won ? (r.payoutUnits || 0) : 0;
     TV.revealSlots({ grid, winUsd, betUsd: v, won });
-    var _sq = TV._seq; setTimeout(function () { if (TV._seq === _sq && window.TokenMode && TokenMode.syncBalance) TokenMode.syncBalance(); }, 2800); // v6 #23: update balance AFTER the slots reveal — skip if the player tuned away
+    setTimeout(function () { if (TV._seq === seq && window.TokenMode && TokenMode.syncBalance) TokenMode.syncBalance(); }, 2800); // v6 #23: update balance AFTER the slots reveal — skip if the player tuned away
   }
 
   // ── Game switcher ("change the channel") ──
