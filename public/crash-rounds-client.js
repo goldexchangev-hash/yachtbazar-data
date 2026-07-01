@@ -65,6 +65,7 @@
       if (!msg || !msg.type) return;
       if (msg.type === "cr:started") onStarted(msg);
       else if (msg.type === "cr:result") onResult(msg);
+      else if (msg.type === "cr:noround") onNoRound(msg); // #94: a resumed round already settled while we were offline
       else if (msg.type === "cr:error") onError(msg);
       // cr:pong etc. — ignored
     }
@@ -76,6 +77,7 @@
       o = o || {};
       var pending = {
         game: o.game || "crash",
+        sessionId: o.sessionId, sessionToken: o.sessionToken, // #94: retained so we can cr:resume on reconnect
         onTick: typeof o.onTick === "function" ? o.onTick : function () {},
         roundId: null, startedAt: 0, k: 0, localBase: 0, rafH: 0, ackT: 0, resT: 0,
         resolve: null, reject: null,
@@ -107,13 +109,23 @@
     }
 
     function onStarted(msg) {
-      if (!live || live.roundId) return;          // ignore a stray/duplicate start
+      if (!live) return;
+      if (live.roundId && !msg.resumed) return;   // ignore a stray/duplicate FRESH start (a resume re-anchors below)
       if (live.ackT) { clearTo(live.ackT); live.ackT = 0; }
-      live.resT = arm(roundMs, function () { failRound("CR_ROUND_TIMEOUT"); }); // #108: sentinel — the UI reconciles from the ledger (the round DID start; stake was taken)
+      if (!live.resT) live.resT = arm(roundMs, function () { failRound("CR_ROUND_TIMEOUT"); }); // #108: sentinel — the UI reconciles from the ledger (the round DID start; stake was taken)
+      if (live.rafH) { caf(live.rafH); live.rafH = 0; } // stop any stale local loop before (re)anchoring (#94)
       live.roundId = msg.roundId;
       live.startedAt = msg.startedAt;
       live.k = msg.k;
-      live.localBase = nowMs();                   // treat receipt as t≈0 (safe lag, never lead)
+      if (msg.resumed && typeof msg.serverNow === "number") {
+        // #94: the round started earlier — anchor localBase so the animation RESUMES at the current multiplier
+        // (elapsed = serverNow − startedAt), never restarting from 1.0x. Cash-out is re-enabled on the fresh socket.
+        var elapsed = Math.max(0, msg.serverNow - msg.startedAt);
+        live.localBase = nowMs() - elapsed;
+        live.cashoutRequested = false;
+      } else {
+        live.localBase = nowMs();                 // fresh start: treat receipt as t≈0 (safe lag, never lead)
+      }
       tick();
     }
 
@@ -150,6 +162,26 @@
       l.reject(new Error((msg && msg.message) || "round error"));
     }
 
+    // #94: on WS reconnect (or returning to the tab), ask the server to re-bind us to our STILL-LIVE round so a
+    // manual round we'd have cashed out doesn't silently ride to a bust. No-op if nothing is live (left the
+    // channel / already settled). The server replies cr:started{resumed} (→ onStarted re-anchors) or cr:noround.
+    function resume() {
+      if (!live || !live.sessionId) return;
+      live.cashoutRequested = false;
+      send({ type: "cr:resume", sessionId: live.sessionId, sessionToken: live.sessionToken });
+    }
+    // The server has no live round for us — it settled while we were offline (a MANUAL round busts). Resolve the
+    // local round as a completed BUST so the channel's .then reconciles + unlocks; NEVER fabricate a win. The host
+    // refreshes the authoritative balance after resume, so even a rare auto-settled outcome shows the real tokens.
+    function onNoRound() {
+      if (!live) return;
+      var l = live; live = null;
+      if (l.rafH) caf(l.rafH);
+      clearTimers(l);
+      try { l.onTick(0, null, { busted: true, resumedGone: true }); } catch (e) {}
+      l.resolve({ busted: true, win: false, resumedGone: true, roundId: l.roundId });
+    }
+
     function randSeed() { var s = ""; for (var i = 0; i < 8; i++) s += (Math.random() * 16 | 0).toString(16); return s; }
 
     // Tear down the current round locally (timers + promise) without touching the ledger. Called on a
@@ -163,7 +195,7 @@
       clearTimers(l);
       try { l.reject(new Error(reason || "round cancelled — left the channel")); } catch (e) {}
     }
-    return { handle: handle, start: start, cashOut: cashOut, cancel: cancel, active: function () { return !!live; } };
+    return { handle: handle, start: start, cashOut: cashOut, cancel: cancel, resume: resume, active: function () { return !!live; } };
   }
 
   root.CrashRoundsClient = { make: make };
@@ -226,9 +258,37 @@
         CR.handle({ type: "cr:error", code: "auth", message: "buy in with tokens first" });
         setTimeout(function () {
           eq("cr:error rejects the start promise", err3 && /buy in/.test(err3.message));
-          console.log(ok ? "\nSELF-TEST OK — crash rounds client: manual-default, curve animation, cash-out, bust, auth error."
-                         : "\nSELF-TEST FAILED");
-          process.exit(ok ? 0 : 1);
+
+          // #94 T7 — RESUME: live round, socket drop (no result), reconnect → cr:resume; a resumed cr:started
+          // re-anchors the animation to the CURRENT multiplier (not 1.0x) and cash-out still works on one promise.
+          var done7 = null; clock = 0; outbox.length = 0; var t7 = [];
+          CR.start({ sessionId: "s7", sessionToken: "t7", game: "plane", betUnits: 10, onTick: function (m) { t7.push(m); } }).then(function (r) { done7 = r; });
+          CR.handle({ type: "cr:started", roundId: "cr7", startedAt: 0, k: CE.DEFAULT_K });
+          clock = 3000; pump(); var preM = t7[t7.length - 1];
+          outbox.length = 0; CR.resume();
+          eq("resume/T7: cr:resume carries the retained session", outbox[0] && outbox[0].type === "cr:resume" && outbox[0].sessionId === "s7" && outbox[0].sessionToken === "t7");
+          clock = 4000; CR.handle({ type: "cr:started", roundId: "cr7", startedAt: 0, k: CE.DEFAULT_K, serverNow: 4000, resumed: true }); pump();
+          var postM = t7[t7.length - 1], expPost = Math.floor(CE.multiplierAtMs(4000, CE.DEFAULT_K) * 100) / 100;
+          eq("resume/T7: animation RESUMES at the current multiplier (not restarted at 1.0x)", postM >= preM && Math.abs(postM - expPost) < 0.05);
+          eq("resume/T7: still the same round + active", CR.active() === true);
+          outbox.length = 0; CR.cashOut();
+          eq("resume/T7: cash-out works after resume", outbox[0] && outbox[0].type === "cr:cashout" && outbox[0].roundId === "cr7");
+          CR.handle({ type: "cr:result", roundId: "cr7", busted: false, win: true, cashOutAt: expPost, crashPoint: 9.0, payoutUnits: 10 * expPost, tokens: 1050 });
+          setTimeout(function () {
+            eq("resume/T7: the ORIGINAL promise resolves once (resume created no 2nd promise)", done7 && done7.win === true);
+
+            // #94 T8 — cr:noround: settled while offline → resolves as busted (no fabricated win, not a rejection).
+            var done8 = null, err8 = null;
+            CR.start({ sessionId: "s8", sessionToken: "t8", betUnits: 5, onTick: function () {} }).then(function (r) { done8 = r; }, function (e) { err8 = e; });
+            CR.handle({ type: "cr:started", roundId: "cr8", startedAt: 0, k: CE.DEFAULT_K });
+            CR.resume(); CR.handle({ type: "cr:noround" });
+            setTimeout(function () {
+              eq("resume/T8: cr:noround resolves as busted (no fabricated win, not a rejection)", done8 && done8.busted === true && done8.win === false && !err8);
+              console.log(ok ? "\nSELF-TEST OK — crash rounds client: manual-default, curve animation, cash-out, bust, auth error, RESUME."
+                             : "\nSELF-TEST FAILED");
+              process.exit(ok ? 0 : 1);
+            }, 0);
+          }, 0);
         }, 0);
       }, 0);
     }, 0);

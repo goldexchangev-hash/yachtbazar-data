@@ -4716,7 +4716,7 @@
       const sock = ws; // capture so a later reconnect's heartbeat can't fire against this socket
       // Identify with the real wallet, or a persistent guest id so demo players can
       // still chat at a shared blackjack table.
-      ws.onopen = () => { wsTries = 0; wsLastRx = Date.now(); startWsHeartbeat(sock); wsSend({ type: "hello", address: account || bjGuestId() }); };
+      ws.onopen = () => { wsTries = 0; wsLastRx = Date.now(); startWsHeartbeat(sock); wsSend({ type: "hello", address: account || bjGuestId() }); try { if (CrashRounds && CrashRounds.resume) CrashRounds.resume(); } catch (e) {} }; // #94: after a reconnect, re-bind a still-live crash round (no-op if none) so a manual round isn't silently rode to a bust
       ws.onmessage = (ev) => {
         wsLastRx = Date.now(); // any inbound traffic (incl. bj:pong) proves the socket is alive
         let d; try { d = JSON.parse(ev.data); } catch { return; }
@@ -5490,6 +5490,12 @@
     // Back in view: a real-money settle event can drop while the tab is hidden (and the
     // poll is paused), leaving an in-flight round without its TV reveal. Catch it up.
     try { if (activeRoomId && read && chainOK) reconcile(); } catch (e) {}
+    // #94: re-bind a still-live token crash round (Balloon Pop / Plane) so a manual round we'd have cashed out
+    // isn't silently rode to a bust while backgrounded. resume() is a no-op if nothing is live; if the socket went
+    // stale it returns false and kicks a reconnect (which re-binds on ws.onopen). Then refresh the authoritative
+    // token balance so the top bar reflects anything that settled while we were away.
+    try { if (CrashRounds && CrashRounds.resume) CrashRounds.resume(); } catch (e) {}
+    try { if (window.TokenMode && TokenMode.active && TokenMode.active() && TokenMode.refreshTokens) TokenMode.refreshTokens(); } catch (e) {}
   });
 
   window.addEventListener("DOMContentLoaded", () => {

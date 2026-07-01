@@ -159,6 +159,15 @@ function makeCrashRounds(opts) {
   // Is a live (unsettled) round running for this session? Used by the token-http liveness guard to
   // refuse settle/recover/play while a server-paced round is in flight (#3/#15).
   function hasActive(sessionId) { const r = active(sessionId); return !!(r && !r.settled); }
+  // #94 RESUME: a SAFE, crashPoint-FREE snapshot of the session's live round, for re-binding a reconnecting
+  // socket after a mobile app-switch / network blip so the player can resume the animation and still cash out
+  // (the round keeps ticking on the server after a drop — onClose only detaches the dead socket). NEVER exposes
+  // crashPoint (same guarantee as cr:started at :98). Returns null if no live round (already settled / none).
+  function liveView(sessionId) {
+    const r = active(sessionId);
+    if (!r || r.settled) return null;
+    return { roundId: r.id, gameKey: r.gameKey, bet: r.bet, startedAt: r.startedAt, k: K, autoTarget: r.autoTarget || 0 };
+  }
   // GRACEFUL-SHUTDOWN DRAIN (#141): settle every in-flight round NOW (at its current server multiplier) so a
   // SIGTERM/redeploy never destroys a live round's timer with the stake un-debited (the house would otherwise
   // eat every in-flight losing bet — the stake was reserved but the win/loss never booked). _resolve is
@@ -183,7 +192,7 @@ function makeCrashRounds(opts) {
     }
     return outs;
   }
-  return { startRound: startRound, cashOut: cashOut, active: active, hasActive: hasActive, drain: drain, K: K, _rounds: rounds };
+  return { startRound: startRound, cashOut: cashOut, active: active, hasActive: hasActive, liveView: liveView, drain: drain, K: K, _rounds: rounds };
 }
 
 module.exports = { makeCrashRounds: makeCrashRounds, K: K };

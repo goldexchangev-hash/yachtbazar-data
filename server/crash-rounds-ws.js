@@ -80,6 +80,7 @@ function makeCrashWs(opts) {
     const t = data && data.type;
     if (t === "cr:ping") { send(ws, { type: "cr:pong" }); return; }
     if (t === "cr:start") { start(ws, data); return; }
+    if (t === "cr:resume") { resume(ws, data); return; } // #94: re-bind a reconnecting socket to its live round
     if (t === "cr:cashout") { cashout(ws, data); return; }
     // any other cr:* — ignore quietly (forward-compat for new message types)
   }
@@ -129,6 +130,24 @@ function makeCrashWs(opts) {
     } catch (e) {
       send(ws, { type: "cr:error", code: "cashout", message: (e && e.message) || "already crashed", roundId: roundId });
     }
+  }
+
+  // #94 RESUME: a reconnecting client (mobile app-switch / network blip) re-binds to its session's STILL-LIVE
+  // round instead of silently riding it to a bust. onClose (below) keeps the round alive + detaches the dead
+  // socket; this re-points the push target to the new socket and replays cr:started so the client resumes the
+  // animation from startedAt. crashPoint is never leaked (liveView omits it); cashOut stays server-clock-validated
+  // (m ≤ crashPoint), so a resumed tap can never pay above the crash and can't double-settle. Auth-gated like cr:start.
+  function resume(ws, data) {
+    const sess = verifySession(data && data.sessionId, data && data.sessionToken);
+    if (!sess) { send(ws, { type: "cr:error", code: "auth", message: "buy in with tokens first" }); return; }
+    const v = rounds.liveView ? rounds.liveView(sess.id) : null;
+    if (!v) { send(ws, { type: "cr:noround" }); return; } // nothing live to resume (already settled while offline / none)
+    wsByRound.set(v.roundId, ws);
+    (ws._crRounds || (ws._crRounds = new Set())).add(v.roundId);
+    send(ws, {
+      type: "cr:started", roundId: v.roundId, startedAt: v.startedAt, k: v.k,
+      gameKey: v.gameKey, bet: v.bet, autoTarget: v.autoTarget, serverNow: nowOf(), resumed: true,
+    });
   }
 
   // A dropped socket can't cash out — the server timer still fires and settles the bet
@@ -231,8 +250,61 @@ if (require.main === module) {
   const ridA = wsA.last().roundId;
   cr.handle(wsB, { type: "cr:cashout", roundId: ridA });
   eq("a different socket can't cash out the round → cr:error owner", wsB.last().type === "cr:error" && wsB.last().code === "owner");
+  cr.handle(wsA, { type: "cr:cashout", roundId: ridA }); // settle case 8's leftover round so s1 is free for the resume tests
 
-  console.log(ok ? "\nSELF-TEST OK — cr:* ws protocol: auth, manual cash-out, bust, auto-target, disconnect-safe, ownership."
+  // 9) #94 RESUME — a reconnecting socket re-binds to its still-live round and can cash out safely.
+  // T1: the round survives a socket drop (server keeps it live; there's something to re-bind to)
+  CRASH = 4.0; tokens = 1000; clock = 0;
+  let ws1 = mkWs();
+  cr.handle(ws1, { type: "cr:start", sessionId: "s1", sessionToken: "good", betUnits: 10 });
+  const rrid = ws1.last().roundId;
+  cr.onClose(ws1); // drop
+  eq("resume/T1: round still live server-side after a drop", cr._rounds.hasActive("s1") === true);
+  eq("resume/T1: dead socket detached, stake still reserved (not refunded)", cr._wsByRound.get(rrid) === null && tokens === 990);
+  // T2: cr:resume re-binds + replays cr:started (never leaks crashPoint)
+  let ws2 = mkWs();
+  cr.handle(ws2, { type: "cr:resume", sessionId: "s1", sessionToken: "good" });
+  const rs = ws2.last();
+  eq("resume/T2: cr:resume → cr:started{resumed:true} for the same round", rs.type === "cr:started" && rs.roundId === rrid && rs.resumed === true && rs.startedAt === 0 && rs.k === cr._rounds.K);
+  eq("resume/T2: the resumed cr:started never leaks crashPoint", rs.crashPoint === undefined);
+  eq("resume/T2: push target re-bound to the reconnected socket", cr._wsByRound.get(rrid) === ws2);
+  // T3: a resumed cash-out BEFORE the crash pays at the server multiplier
+  advance(3000); // ~1.35x, below 4.0
+  cr.handle(ws2, { type: "cr:cashout", roundId: rrid });
+  const r3 = ws2.last();
+  const m3 = Math.floor(CE.multiplierAtMs(3000, cr._rounds.K) * 100) / 100;
+  const expTokens3 = Math.round((990 + Math.round(10 * m3 * 100) / 100) * 100) / 100;
+  eq("resume/T3: resumed cash-out before crash → win at server multiplier", r3.type === "cr:result" && r3.win && r3.cashOutAt === m3 && r3.crashPoint === 4.0);
+  eq("resume/T3: paid exactly once at the server multiplier, round pruned", tokens === expTokens3 && cr._rounds.hasActive("s1") === false);
+  // T4: a round that BUSTS while offline → resume finds nothing (cr:noround); stake lost, never paid above crash
+  CRASH = 2.0; tokens = 1000; clock = 0;
+  ws1 = mkWs();
+  cr.handle(ws1, { type: "cr:start", sessionId: "s1", sessionToken: "good", betUnits: 10 });
+  cr.onClose(ws1);
+  advance(CE.msToReach(2.0, cr._rounds.K) + 5); // server timer busts it while detached
+  ws2 = mkWs();
+  cr.handle(ws2, { type: "cr:resume", sessionId: "s1", sessionToken: "good" });
+  eq("resume/T4: a round busted while offline → cr:noround", ws2.last().type === "cr:noround");
+  eq("resume/T4: stake lost on the offline bust (never refunded / paid above crash)", tokens === 990);
+  // T5: no double-settle — a resumed cash-out that RACES the bust timer settles exactly once
+  CRASH = 2.0; tokens = 1000; clock = 0;
+  ws1 = mkWs();
+  cr.handle(ws1, { type: "cr:start", sessionId: "s1", sessionToken: "good", betUnits: 10 });
+  const rid5 = ws1.last().roundId;
+  cr.onClose(ws1);
+  ws2 = mkWs();
+  cr.handle(ws2, { type: "cr:resume", sessionId: "s1", sessionToken: "good" });
+  advance(CE.msToReach(2.0, cr._rounds.K) + 5);          // bust timer fires → settles once
+  cr.handle(ws2, { type: "cr:cashout", roundId: rid5 }); // late tap → rejected, no second settle
+  eq("resume/T5: no double-settle — stake moved once (bust), late tap rejected", tokens === 990 && ws2.last().type === "cr:error");
+  // T6: cr:resume is auth-gated like cr:start
+  ws2 = mkWs();
+  cr.handle(ws2, { type: "cr:resume", sessionId: "s1", sessionToken: "WRONG" });
+  eq("resume/T6: bad token → cr:error auth", ws2.last().type === "cr:error" && ws2.last().code === "auth");
+  cr.handle(ws2, { type: "cr:resume", sessionId: "nope", sessionToken: "good" });
+  eq("resume/T6: unknown session → cr:error auth", ws2.last().type === "cr:error" && ws2.last().code === "auth");
+
+  console.log(ok ? "\nSELF-TEST OK — cr:* ws protocol: auth, manual cash-out, bust, auto-target, disconnect-safe, ownership, RESUME."
                  : "\nSELF-TEST FAILED");
   process.exit(ok ? 0 : 1);
 }

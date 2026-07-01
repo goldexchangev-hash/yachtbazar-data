@@ -329,6 +329,24 @@ Put the next hunt in **`CursorBugHunt-v4/REPORT.md`**. Always branch from deploy
 
 ## 🗒️ Coordination log (append newest at top; one line each)
 
+- **2026-07-01 — Claude (session 4, finish-remaining):** **v12.91 — #94 CRASH DISCONNECT-RESUME shipped** (the last
+  open feature). Manual token crash rounds (Balloon Pop CH13 / Plane CH14 on the cr:* round-runner) used to ride to
+  a BUST if the WS dropped mid-round (you couldn't cash out). Now: server keeps the round live after a drop
+  (`onClose` only detaches the dead socket), and a new **`cr:resume`** intent re-binds a reconnecting socket to its
+  session's live round + replays `cr:started{resumed:true}` (server `crash-rounds.js liveView()` — crashPoint NEVER
+  leaked). Client (`crash-rounds-client.js`) retains the session, `resume()`s on WS-reconnect + visibility-return,
+  and re-anchors the animation to the CURRENT multiplier (elapsed = serverNow−startedAt, not a restart); `cr:noround`
+  → resolves as a bust (never fabricates a win) + the host refreshes the authoritative balance. **SAFETY (unchanged
+  invariants):** cashOut still validates `m ≤ crashPoint` on the server clock, `_resolve` is idempotent on
+  `round.settled`, resume adds NO settlement path → can't pay above the crash or double-settle. Self-tests:
+  server T1–T6 (survive drop / re-bind no-leak / resumed cash-out pays / busted-offline→cr:noround / no
+  double-settle / auth-gated) + client T7–T8, all GREEN. **CONTRACT findings (owner-deploys, source prep next):**
+  F1 ECDSA low-s (EIP-2, both contracts — LOW hardening, land now), F2 over-loss docstring lie (code is CORRECT:
+  revert is right; the signer floors net at −locked — comment-only fix), F3 GameRegistry zero-addr ALREADY-OK, F4
+  startSession id-squat (clean Solidity but changes the on-chain storage-KEY → needs server-mapping coordination,
+  don't deploy blind), F5 staticCall cherry-pick = **owner architecture decision** (only real fix is migrating the
+  direct-bet dice/crash games onto the existing server commit-reveal bridge; the deployed `_betGuard`+gasleft
+  mitigation already closed the GUARANTEED drain; `pass4-exploits` is gasleft-FLAKY, not a hard fail).
 - **2026-07-01 — Claude (session 4, deferred-item sweep):** **v12.89** Gem Vault sub-stake hits now show "WIN
   $<gross>" (the reels' real payout) instead of "↩ BACK" (owner follow-up; display-only). **v12.90** closed the
   long-deferred **mega-hunt #13 / v7 #8 slots3d PF-panel parity**: the Gem Vault fairness panel used `uint32 % len`
