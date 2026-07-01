@@ -170,7 +170,13 @@ function makeCrashRounds(opts) {
       try {
         let m = CE.multiplierAtMs(now() - round.startedAt, K);
         m = Math.floor(m * 100) / 100;
-        if (m < crashEngine.MIN_TARGET_X) m = crashEngine.MIN_TARGET_X;
+        const floor = gameFloor(round.gameKey);
+        // v7 #3 (CRITICAL): below the game floor, a PRESSURE round must drain as a LOSS — settling it at 1.01x
+        // lands in pressure.play's VOID window (< 1.20x) → the stake is REFUNDED on a redeploy = house drain.
+        // (cashOut/_resolve already use gameFloor; drain() was missed.) crash-type games floor to 1.01x as before.
+        if (round.gameKey === "pressure") {
+          if (m < floor) { outs.push(_resolve(round, 0, true)); continue; } // sub-1.20x pressure drain → BUST (loss, payout 0)
+        } else if (m < floor) { m = floor; }
         if (m > round.crashPoint) outs.push(_resolve(round, 0, true));   // already past the crash → bust
         else outs.push(_resolve(round, m, false));                       // still climbing → cash out where it is
       } catch (e) { try { _resolve(round, 0, true); } catch (e2) {} }
