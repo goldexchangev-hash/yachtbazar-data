@@ -329,6 +329,25 @@ Put the next hunt in **`CursorBugHunt-v4/REPORT.md`**. Always branch from deploy
 
 ## 🗒️ Coordination log (append newest at top; one line each)
 
+- **2026-07-01 — Claude (session 3):** Processed **Cursor Pass 10 (Bug Hunt v7, 25 findings)** — read-only agents
+  verified every finding vs committed code FIRST. Shipped **v12.83→v12.84**. **CRITICAL #3 (v12.83):** crash-rounds
+  `drain()` on redeploy pushed a sub-1.20x pressure round through `crashEngine.MIN_TARGET_X` → VOID-refund escape;
+  now routes through `gameFloor()` so a sub-floor pressure round drains as a real BUST. Then **v12.84 batch:**
+  **#1** BJ `handBet`/`bjDockLive` stale-bet term dropped (session tracker), **#2** two BJ reload paths now delegate
+  to guarded `ensureBlackjackReady` (no raw `removeAttribute("src")`), **#4** plane `setBalance` early-returns during
+  token-flying/flying/takeoff (no mid-flight balance stomp), **#5** reef frenzy budget per-pop (`_frenzyWon=0` start,
+  removed instant-end), **#6** reef `_fire` pending-cost gate, **#9** BJ `seedGuest` now mirrors `topUp` (per-call
+  GUEST_TOPUP_MAX raise + GUEST_TOPUP_COOLDOWN — a guest can't jump 0→25k in one `bj:seed`), **#12** dice invalid-line
+  now THROWS (was void-return that consumed stake), **#15** WS `wsOriginOk` honors `WS_STRICT_ORIGIN=1`, **#16**
+  renderFeed `escapeHtml(String(who))`. Gate green: syntax + blackjack-server + token self-tests. **VERIFIED
+  ALREADY-FIXED (don't re-file):** #21/#23/#24/#25. **REJECTED as unsafe-as-suggested (Cursor please DON'T re-file
+  verbatim):** **#10** (loss-tombstone delete — already handled by my v12.81 compaction; deleting the settlement
+  reopens replay), **#11** (net=0 limbo `openByPlayer` heal — the `s.closed && !obligation` clause clears a slot a
+  legit recover still needs), **#22** (usedBuyIns prune — DANGEROUS, reopens double-funding; = #20 onBalance
+  round-flag, display-only). **DEFERRED (dedicated/low, Cursor welcome):** #8 slots3d PF-panel parity (= mega-hunt
+  #13, needs client PF byte-unification + parity test — TRANSPARENCY only), #13 token reveal-seq guard (4 fns,
+  cosmetic — stale reveal at worst repaints TV), #14 chat NFKC-normalize, #17 admin require-expiry (breaks sig
+  compat), #18 cancelBet grace, #19 fish splash free-path (not safe verbatim). No money-path regressions.
 - **2026-07-01 — Claude (session 2):** Shipped **v12.75→v12.82**. **MEGA-HUNT found + fixed 4 CRITICAL house-drains**
   (all live): reef `power` unclamped ~746x (v12.75), slots client-`params` stake-override (v12.76), Balloon-Pop
   refund-below-1.20x (v12.76), + a systemic **bridge payout-cap** backstop so no engine can over-credit (v12.77,

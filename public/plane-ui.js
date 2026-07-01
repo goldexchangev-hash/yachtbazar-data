@@ -513,6 +513,10 @@
     this._startBetting();
   };
   PlaneGame.prototype.setBalance = function (usd) {
+    // v7 #4: don't overwrite the HUD balance mid-flight. The stake is debited LOCALLY at launch and reconciled
+    // from res.tokens on settle; a stale server-cache token count arriving via onChange would visually "refund"
+    // the still-in-flight stake until settle. Mirror pressure-ui's `state === "inflating"` guard. Display-only.
+    if (this.state === "token-flying" || this.state === "flying" || this.state === "takeoff" || this.state === "real-flying") return;
     if (!(usd >= 0)) usd = 0;
     this.balance = Math.round(usd * 100) / 100;
     this._renderHud(); this._renderButtons();

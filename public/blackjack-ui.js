@@ -225,7 +225,7 @@
   BlackjackClient.prototype.sendInsurance = function (take) { this._insuranceDone = true; this.net.send({ type: "bj:insurance", take: !!take }); this._renderDock(); };
 
   /* ---------------- snapshot render ---------------- */
-  BlackjackClient.prototype._resetRoundVis = function () { this.seen = {}; this.holeShown = false; this._insuranceDone = false; this._mySettle = null; };
+  BlackjackClient.prototype._resetRoundVis = function () { this.seen = {}; this.holeShown = false; this._insuranceDone = false; this._mySettle = null; this.handBet = 0; this.legal = []; this.needFunds = []; }; // v7 #1: clear handBet/legal/needFunds between rounds — a stale handBet>0 pinned the parent's bjDockLive=true forever, blocking the token felt from re-binding a buy-in
   BlackjackClient.prototype._onSnapshot = function (m) {
     this._clearActWatch(); // a fresh server state arrived → our last action was processed
     if (this.view !== "table") this.showTable();

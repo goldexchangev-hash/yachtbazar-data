@@ -700,10 +700,17 @@
       // Top-up only: a re-seed (e.g. the ⟳ Reload button) may RAISE an idle guest to the
       // floor but must never DESTROY winnings by lowering them. Otherwise a guest who ground
       // up to $16k and clicked Reload would be wiped back to $1,000.
-      // v6 #1: clamp the requested seed to the SAME standing cap topUp enforces — a guest could otherwise
-      // {type:"bj:seed", balance:1e12} and persist an arbitrary balance to .bj-bank.json.
-      const capped = Math.min(GUEST_BAL_CAP, amount);
-      bank.all.set(w, r2(Math.max(capped, bank.get(w))));
+      // v6 #1 + v7 #9: match topUp's guards — clamp to the standing GUEST_BAL_CAP, cap the per-call RAISE to
+      // GUEST_TOPUP_MAX (so a guest can't jump 0→25k in one bj:seed), and cooldown so it can't spam the persist.
+      // Only ever RAISE toward the requested amount (a reload restores the ~$1,000 floor; never lowers winnings).
+      const nowMsS = now();
+      if (sock._lastGuestSeed && nowMsS - sock._lastGuestSeed < GUEST_TOPUP_COOLDOWN) return;
+      const curBal = bank.get(w);
+      const want = Math.min(GUEST_BAL_CAP, amount);
+      const raised = r2(Math.min(want, curBal + GUEST_TOPUP_MAX));
+      if (raised <= curBal) return; // nothing to raise (already at/above the request) — don't touch winnings or persist
+      sock._lastGuestSeed = nowMsS;
+      bank.all.set(w, raised);
       pushWallet(sock, w);
       for (const r of rooms.values()) { if (seatOf(r, sock) >= 0) { broadcastState(r); break; } } // refresh betMax
     }

@@ -328,6 +328,15 @@
     const paidCost = Math.round(shotUnitBet * shotPower * 100) / 100;
     const cost = free ? 0 : paidCost;
     if (!free && this.balance < cost) { this._flashBanner("INSUFFICIENT", "add funds 👇", 0xff5d72); return; }
+    // v7 #6: TOKEN mode debits on the SERVER at HIT (not at fire), so rapid taps could queue more paid shots than
+    // the balance covers → server rejects the extras. Require balance >= cost + stakes of paid shots still in
+    // flight. Derived from the bullets array (not a running counter) so it can never leak/soft-lock. (Ports the
+    // fishshooter guard.) Demo debits at fire, so its balance already reflects this.
+    if (!free && this._tokenActive()) {
+      var pend = 0;
+      for (var pi = 0; pi < this.bullets.length; pi++) { var pb = this.bullets[pi]; if (pb && !pb.free && !pb.hit && (pb.cost || 0) > 0) pend += pb.cost; }
+      if (this.balance < cost + pend) { this._flashBanner("EASY!", "let your shots land", 0xffd23f); return; }
+    }
     if (cost > 0) {
       this._sesSpent = Math.round((this._sesSpent + cost) * 100) / 100;
       // TOKEN: the server debits each per-shot bet (in _resolveBulletFish); no client rake. DEMO: as before.
@@ -404,7 +413,7 @@
     // TOKEN: balance is the authoritative server ledger (set in _resolveBulletFish's .then); never credit locally.
     if (!this._tokenActive()) this.balance = Math.round((this.balance + payout) * 100) / 100;
     this._won = payout; this._sesWon = Math.round((this._sesWon + payout) * 100) / 100; this._save(); this._renderHud();
-    if (shot.free && !this._tokenActive()) this._frenzyWon = Math.round((this._frenzyWon + payout) * 100) / 100;
+    if (shot.free) this._frenzyWon = Math.round((this._frenzyWon + payout) * 100) / 100; // v7 #5: token accumulates the collected total per-pop too (drives the HUD/meter + the end-check); the BALANCE credit stays server-authoritative (gated at line above), so no double-credit
     // combo
     this._combo++; this._comboT = 1.2;
     // FX: net catch ring + coin burst toward balance HUD + floating payout
@@ -620,8 +629,11 @@
     if (this._frenzy > 0) return; // never re-arm an active frenzy (would chain free shots)
     shot = shot || { unitBet: this.unitBet, power: this.power };
     this._frenzyId++;
-    this._frenzy = dur; this._frenzyMax = dur; this._frenzyWon = 0; this._frenzyUnitBet = shot.unitBet; this._frenzyPower = shot.power; this._frenzyBudget = Math.round(shot.unitBet * 25 * 100) / 100;
-    if (this._tokenActive()) this._frenzyWon = Math.round((this._tokenWaveTotal || 0) * 100) / 100; // token: HUD shows the server-disbursed total
+    this._frenzy = dur; this._frenzyMax = dur; this._frenzyWon = 0; this._frenzyUnitBet = shot.unitBet; this._frenzyPower = shot.power;
+    // v7 #5: the "budget" the wave fills toward is the SERVER-disbursed total in TOKEN mode (climb from 0 pop-by-pop,
+    // like Fish Shooter), else the demo 25x pre-paid budget. (Was: token pre-set _frenzyWon = the full total, so
+    // _frenzyWon >= _frenzyBudget was true on frame 1 → the frenzy ENDED INSTANTLY, a flash then nothing.)
+    this._frenzyBudget = this._tokenActive() ? Math.round((this._tokenWaveTotal || 0) * 100) / 100 : Math.round(shot.unitBet * 25 * 100) / 100;
     this._flashBanner("🌊 FEEDING FRENZY!", "FREE SHOTS — catch everything!", 0x45f0a6);
     // flood the tank with a formation of catchable fish
     const small = E.FISH.filter((f) => f.tier !== "boss" && !f.bonus);

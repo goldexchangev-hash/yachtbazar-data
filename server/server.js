@@ -426,14 +426,14 @@ function wsClientIp(req) {
 function wsOriginOk(req) {
   try {
     const origin = String((req && req.headers && req.headers.origin) || "");
-    if (!origin) return true; // non-browser client (native/tests) sends no Origin — allow
+    if (!origin) return process.env.WS_STRICT_ORIGIN !== "1"; // v7 #15: a missing Origin (non-browser/native) is allowed by default; set WS_STRICT_ORIGIN=1 in prod to REJECT it (anti-CSWSH)
     const oh = new URL(origin).host;
     const host = String((req && req.headers && req.headers.host) || "");
     if (host && oh === host) return true;                                  // same-origin: the served page → its own WS (the live case)
     if (PUBLIC_HOST && (oh === PUBLIC_HOST || origin === PUBLIC_HOST)) return true;
     if (/^(localhost|127\.0\.0\.1)(:\d+)?$/.test(oh)) return true;          // local dev
     return false;
-  } catch (e) { return true; } // any parse failure → don't lock anyone out
+  } catch (e) { return process.env.WS_STRICT_ORIGIN !== "1"; } // v7 #15: a malformed Origin fails OPEN in dev, CLOSED in strict prod
 }
 wss.on("connection", (ws, req) => {
   // v6 #4: reject cross-origin browser hijack attempts before we allocate anything.

@@ -912,7 +912,7 @@
     chip.classList.remove("hidden");
     $("wallet-addr").textContent = short(account);
     blockies(account, 8, 4, $("wallet-avatar"));
-    { const f = $("bj-frame"); if (f && !bjFrameMatchesWallet(f, account)) { f.removeAttribute("src"); if (currentGame === "blackjack") ensureBlackjackReady(); } }
+    { const f = $("bj-frame"); if (f && f.getAttribute("src") && !bjFrameMatchesWallet(f, account) && currentGame === "blackjack") ensureBlackjackReady(); } // v7 #2: delegate to the GUARDED ensureBlackjackReady (don't pre-strip src here — that bypassed its bjDockLive mid-hand guard → felt socket drop → auto-stand)
     const nb = $("net-badge");
     nb.classList.remove("hidden");
     nb.classList.toggle("wrong", !chainOK);
@@ -3112,7 +3112,7 @@
     // now flags a felt that isn't carrying the live #bjsession; reload it (throttled). A hash change alone won't
     // reload an iframe, so we drop+restore the src.
     if (currentGame === "blackjack" && account) {
-      try { const f = $("bj-frame"); if (f && f.getAttribute("src") && !bjFrameMatchesWallet(f, account) && Date.now() - bjHealAt > 1500) { bjHealAt = Date.now(); f.removeAttribute("src"); ensureBlackjackReady(); } } catch (e) {}
+      try { const f = $("bj-frame"); if (f && f.getAttribute("src") && !bjFrameMatchesWallet(f, account) && Date.now() - bjHealAt > 1500) { bjHealAt = Date.now(); ensureBlackjackReady(); } } catch (e) {} // v7 #2: delegate to the GUARDED ensureBlackjackReady (don't pre-strip src → its bjDockLive guard would be bypassed → mid-hand teardown/auto-stand)
     }
   }
   // Surface a STRANDED on-chain lock to ANY connected player (not just the owner host panel): read
@@ -3804,7 +3804,7 @@
     const status = $("bj-status"), ctr = $("bj-controls"); if (!ctr) return;
     // #25: track whether money is committed to the current/next hand (a placed bet, an active hand bet, or
     // the player's turn) so the ⟳ Reload can refuse to tear down the iframe mid-hand (which would disconnect).
-    try { bjDockLive = !!(s && ((s.placed > 0) || (s.handBet > 0) || s.mode === "turn")); } catch (e) { bjDockLive = false; }
+    try { bjDockLive = !!(s && ((s.placed > 0) || s.mode === "turn")); } catch (e) { bjDockLive = false; } // v7 #1: dropped the `s.handBet > 0` term — handBet wasn't cleared between hands (now it is, felt-side) and it pinned bjDockLive=true forever → the token felt couldn't re-bind a buy-in. placed>0 (locked bet) + mode==="turn" (live action) fully cover a live hand.
     // SELF-HEAL: if the wallet is connected but the felt is still on a GUEST / old connection (e.g. it
     // loaded on a page-reload BEFORE the wallet connected, the cause of the stuck "guest:…" + LOCK CREDITS
     // + dead-bridge screen), re-init it so it binds to the account + token session. Throttled so it can't loop.
@@ -4563,7 +4563,7 @@
     }
     if (!rows.length) { list.innerHTML = '<li class="empty">Recent flips will scroll here.</li>'; return; }
     list.innerHTML = rows.map((x) =>
-      `<li class="feed-item ${x.won ? "win" : "loss"}"><span class="feed-who">${x.who}</span>` +
+      `<li class="feed-item ${x.won ? "win" : "loss"}"><span class="feed-who">${escapeHtml(String(x.who))}</span>` + /* v7 #16: escape the handle (hex-derived today, but keep the innerHTML sink consistent with textContent elsewhere) */
       `<span class="feed-res">${x.won ? "won" : "lost"}</span>` +
       `<span class="feed-amt ${x.won ? "up" : "down"}">${x.won ? "+" : "−"}${usdOf(x.amt)}</span></li>`
     ).join("");

@@ -110,19 +110,13 @@ function play(a) {
     winOutcomes <= MAX_WIN_OUTCOMES;
 
   if (!validLine) {
-    // Out-of-window bet would revert on-chain (DiceBadTarget). Treat as a void
-    // loss here: no payout, multiplier 0. The bridge should reject before
-    // calling play(), but we never pay out an invalid line.
-    return {
-      win: false,
-      payoutUnits: 0,
-      multiplier: 0,
-      outcome: { roll: roll, rollDisplay: roll / 100, target: target, over: over, winOutcomes: winOutcomes },
-      detail:
-        "invalid dice line (target=" + target + ", over=" + over +
-        ", winOutcomes=" + winOutcomes + " outside [" + MIN_WIN_OUTCOMES + "," +
-        MAX_WIN_OUTCOMES + "]) — no payout",
-    };
+    // v7 #12: an out-of-window line would revert on-chain (DiceBadTarget). THROW (matching dice2.js) so the token
+    // bridge rejects the bet TRANSACTIONALLY — no stake debited, no nonce burned — mirroring an on-chain revert.
+    // (Was: return a VOID loss, which CONSUMED the stake on a raw-API bad line — a self-inflicted loss. dice2
+    // already throws; this makes the two engines' invalid-line contract identical so no game voids the stake.)
+    throw new Error(
+      "invalid dice line (target=" + target + ", over=" + over +
+      ", winOutcomes=" + winOutcomes + " outside [" + MIN_WIN_OUTCOMES + "," + MAX_WIN_OUTCOMES + "])");
   }
 
   // ---- multiplier + win test (mirror sol:752,762) -------------------------
