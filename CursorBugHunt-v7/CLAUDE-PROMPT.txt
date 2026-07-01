@@ -1,0 +1,40 @@
+You are fixing Crypto TV v12.82 from Pass 10 / Bug Hunt v7.
+
+READ: CursorBugHunt-v7/REPORT.md (25 findings with Fix for Claude blocks)
+READ: AGENTS.md, cursor/AUDIT-NOTES.md
+
+WAVE 0 (ship first — money + stuck gameplay):
+#3 crash-rounds.js drain() — use gameFloor(round.gameKey) for pressure; probe must PASS
+#1 blackjack-ui.js — clear handBet on settle/resetRoundVis; app.js bjDockLive = placed || turn only
+#2 app.js ~915,3115 — never removeAttribute("src") directly; delegate to ensureBlackjackReady()
+#5 fishtable.js — token frenzy _frenzyWon starts at 0 (match fish-shooter)
+#6 fishtable.js — pending-cost guard before _fire (port from fishshooter.js)
+
+WAVE 1:
+#4 plane-ui.js setBalance in-flight guard + app.js conditional sync
+#7 app.js syncTokenGameBalances — Gem Vault bonus reveal hold
+#13 app.js tokenDice/Crash/Slots/TwoDice — TV._seq guard before reveal (mirror tokenFlip)
+#8 slots3d PF parity — align deriveGrid with server PF.floats
+
+WAVE 2:
+#10-12 tombstone prune, openByPlayer heal in doStart, dice.js throw on invalid line
+#14-15 chat name normalization, WS_STRICT_ORIGIN prod flag
+#9 seedGuest cooldown + per-call cap
+
+PROBE GATE (all green after fixes):
+node CursorBugHunt-v2/crash-reserve-probe.js
+node CursorBugHunt-v2/crash-liveness-probe.js
+node CursorBugHunt-v2/adversarial-suite-v2.js
+node CursorBugHunt-v3/crash-bj-interleave-probe.js
+node CursorBugHunt-v3/security-headers-probe.js
+node CursorBugHunt-v3/wave1-auth-probe.js
+node CursorBugHunt-v3/wave2-money-probe.js
+node CursorBugHunt-v4/crash-bj-inverse-probe.js
+node CursorBugHunt-v4/verify-rederive-crash-probe.js
+node CursorBugHunt-v4/orphan-drain-probe.js
+node CursorBugHunt-v5/pending-settle-key-probe.js
+node CursorBugHunt-v6/plane-token-stuck-probe.js
+node CursorBugHunt-v7/pressure-drain-probe.js
+npm test
+
+Bump ?v=1283 / ctf-v12.83 on public changes. Log in AGENTS.md.

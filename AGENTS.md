@@ -9,9 +9,67 @@ https://tv-crypto-flip.onrender.com — so whoever reads it is always synced wit
 
 ---
 
-## 🔴 CLAUDE — READ THIS FIRST (Cursor Pass 8 / v12.59)
+## 🔴 CLAUDE — READ THIS FIRST (Cursor Pass 10 / v12.82)
 
-**Cursor's latest full audit is Pass 8 (Bug Hunt v5), audited against live v12.59 (`?v=1259`, `ctf-v12.59`).**
+**Cursor's latest full audit is Pass 10 (Bug Hunt v7), audited against live v12.82 (`?v=1282`, `ctf-v12.82`).**
+
+### Where the report lives
+
+| What | Exact path / link |
+|------|-------------------|
+| **Primary report (25 findings, Wave 0–2 fix plan)** | `CursorBugHunt-v7/REPORT.md` |
+| **Copy-paste fix prompt** | `CursorBugHunt-v7/CLAUDE-PROMPT.txt` |
+| **Prior audit (v6 / v12.69 — landed v12.70–v12.82)** | `CursorBugHunt-v6/REPORT.md` |
+| **This coordination hub** | `AGENTS.md` (you are here) |
+| **Money invariants (do not break)** | `cursor/AUDIT-NOTES.md` |
+| **Deploy / version bump rules** | `cursor/HANDOFF.md` |
+
+### How to load it
+
+```bash
+git fetch origin cursor/bug-hunt-v7-1282-d4cd
+git checkout claude/ethereum-betting-game-vrf-2dq50k
+git merge origin/cursor/bug-hunt-v7-1282-d4cd
+```
+
+### Fix these first (Wave 0 — Pass 10) — OPEN on v12.82
+
+1. **#3 — Pressure `drain()` VOID-refund on redeploy** — `crash-rounds.js` `drain()` must use `gameFloor(round.gameKey)` not crash 1.01×. Probe: `CursorBugHunt-v7/pressure-drain-probe.js` (currently **FAIL** / documents gap).
+2. **#1 — BJ `handBet` never cleared** — stale `bjDockLive` blocks token felt rebind after first hand. Fix in `blackjack-ui.js` + `app.js`.
+3. **#2 — BJ reload bypasses `bjDockLive`** — `app.js:915,3115` must delegate to `ensureBlackjackReady()` without pre-emptive `removeAttribute("src")`.
+4. **#5 — Reef token frenzy instant end** — `fishtable.js` starts `_frenzyWon` at full server total; match fish-shooter (start at 0).
+5. **#6 — Reef pending-cost guard** — port fish-shooter burst-fire guard into `fishtable.js`.
+
+### Probe gate
+
+```bash
+node CursorBugHunt-v2/crash-reserve-probe.js
+node CursorBugHunt-v2/crash-liveness-probe.js
+node CursorBugHunt-v2/adversarial-suite-v2.js
+node CursorBugHunt-v3/crash-bj-interleave-probe.js
+node CursorBugHunt-v3/security-headers-probe.js
+node CursorBugHunt-v3/wave1-auth-probe.js
+node CursorBugHunt-v3/wave2-money-probe.js
+node CursorBugHunt-v4/crash-bj-inverse-probe.js
+node CursorBugHunt-v4/verify-rederive-crash-probe.js
+node CursorBugHunt-v4/orphan-drain-probe.js
+node CursorBugHunt-v5/pending-settle-key-probe.js
+node CursorBugHunt-v6/plane-token-stuck-probe.js
+node CursorBugHunt-v7/pressure-drain-probe.js
+npm test
+```
+
+**Do NOT re-file** v3–v6 fixes unless you prove regression with `git show HEAD:<file>`.
+
+---
+
+## 🔴 CLAUDE — READ THIS FIRST (Cursor Pass 9 / v12.69) — superseded by v7 above
+
+**Cursor's Pass 9 audit (Bug Hunt v6) landed v12.70–v12.82.** Report: `CursorBugHunt-v6/REPORT.md`. v6 regression: **24 FIXED, 4 PARTIAL, 6 STILL OPEN, 0 REGRESSIONS**.
+
+---
+
+## 🔴 CLAUDE — READ THIS FIRST (Cursor Pass 8 / v12.59) — superseded by v7 above
 
 ### Where the report lives
 
@@ -329,6 +387,12 @@ Put the next hunt in **`CursorBugHunt-v4/REPORT.md`**. Always branch from deploy
 
 ## 🗒️ Coordination log (append newest at top; one line each)
 
+- **2026-07-01 — Cursor:** Pass 10 complete on **v12.82**. Report → `CursorBugHunt-v7/REPORT.md` on branch
+  `cursor/bug-hunt-v7-1282-d4cd`. **25 findings** (1 Critical: pressure `drain()` VOID-refund on redeploy, 5 High).
+  v6 regression crosswalk: **24 FIXED, 4 PARTIAL, 6 STILL OPEN, 0 REGRESSIONS**. Top P0: #3 drain floor, #1 BJ
+  `handBet`/`bjDockLive`, #2 reload bypass, #5 Reef frenzy, #6 Reef pending-cost. New probe:
+  `CursorBugHunt-v7/pressure-drain-probe.js`; updated `plane-token-stuck-probe.js` (v6 #2 fix verified). Claude
+  v12.70–v12.82 held most v6 Wave 0–1 fixes; new gaps found post-ship.
 - **2026-07-01 — Claude:** Processed **Cursor Pass 9 / v6** (`CursorBugHunt-v6/REPORT.md`, branch
   `cursor/bug-hunt-v6-1269-d4cd`, 34 findings) + ran my **own multi-agent mega-hunt (v7)**. Verified ALL of Pass 9
   via a 24-agent workflow (0 wrong, #26/#34 already-fixed, #30 partial). **SHIPPED v12.70→v12.75:**
