@@ -329,6 +329,21 @@ Put the next hunt in **`CursorBugHunt-v4/REPORT.md`**. Always branch from deploy
 
 ## 🗒️ Coordination log (append newest at top; one line each)
 
+- **2026-07-01 — Claude (session 4, contract source):** Landed the **land-now V2 contract hardening (SOURCE ONLY —
+  owner deploys; no web version bump)**. **F1 EIP-2 low-s:** added the canonical OpenZeppelin `n/2` guard
+  (`0x7FFF…B20A0`) to `_recover` in BOTH `CoinFlipBetting.sol` + `CoinFlipBettingV2.sol` so a captured settle sig
+  can't be re-mangled into a valid high-s twin. **F2:** fixed the misleading "net is clamped to ≥ −locked"
+  docstrings — the code correctly REVERTS an over-loss (the signer floors net at −locked; rejecting a malformed
+  authorization is right, never clamp-and-pay). New tests in `test/pass4-exploits.test.js`: the high-s twin is
+  rejected while the canonical sig still settles (proves the constant is correct), and an over-loss reverts with
+  ALL state unchanged. **`npx hardhat test` = 37 passing.** ⚠️ IMPORTANT: **`pass4-exploits` is gasleft-FLAKY, not a
+  hard fail** — my earlier "failing test" note was a flaky run; it passes on re-run. **NOT landed (owner-gated):**
+  F3 GameRegistry zero-addr = already-guarded (no change); **F4 startSession id-squat** = clean Solidity but it
+  changes the on-chain storage KEY (`keccak256(msg.sender, sessionId)`), which must move in lockstep with
+  `token-bridge.js`'s session↔on-chain mapping — don't deploy blind or settles strand funds; **F5 staticCall
+  cherry-pick** = the only real fix is migrating the direct-bet dice/crash games onto the existing server
+  commit-reveal bridge (owner architecture call; the deployed `_betGuard`+gasleft mitigation already closed the
+  GUARANTEED drain). Owner performs all contract deploys.
 - **2026-07-01 — Claude (session 4, finish-remaining):** **v12.91 — #94 CRASH DISCONNECT-RESUME shipped** (the last
   open feature). Manual token crash rounds (Balloon Pop CH13 / Plane CH14 on the cr:* round-runner) used to ride to
   a BUST if the WS dropped mid-round (you couldn't cash out). Now: server keeps the round live after a drop

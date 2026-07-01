@@ -535,7 +535,11 @@ contract CoinFlipBettingV2 {
     ///         over (sessionId, player, net, nonce, chainId, contract) — binding
     ///         the sessionId is what prevents one session's signature from being
     ///         replayed to drain another's principal. A player can never lose more
-    ///         than they locked in this session (net is clamped to >= -locked).
+    ///         than they locked in this session: a signed net below -locked is
+    ///         REJECTED (revert InsufficientBalance). The house signer is
+    ///         responsible for flooring net at -locked before signing; the contract
+    ///         enforces it as a hard invariant (reject a malformed authorization
+    ///         outright rather than silently clamp-and-pay).
     function settleSession(bytes32 sessionId, int256 net, uint256 nonce, bytes calldata signature) external {
         if (blackjackSigner == address(0)) revert NotOwner();
         if (bjNonceUsed[nonce]) revert NonceUsed();
@@ -596,6 +600,10 @@ contract CoinFlipBettingV2 {
             s := calldataload(add(sig.offset, 32))
             v := byte(0, calldataload(add(sig.offset, 64)))
         }
+        // EIP-2: reject the upper-half (malleable) `s`. Without this, a captured signature can be re-mangled into
+        // a SECOND valid (r, s', v') for the same digest (s' = n - s, v' = v^1). The honest house signer (ethers)
+        // always emits canonical low-s sigs, so this only rejects adversarial twins and never a legitimate settle.
+        if (uint256(s) > 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0) return address(0);
         if (v < 27) v += 27;
         if (v != 27 && v != 28) return address(0);
         return ecrecover(hash, v, r, s);

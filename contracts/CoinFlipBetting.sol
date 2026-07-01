@@ -468,7 +468,10 @@ contract CoinFlipBetting {
     ///         buy-in against the house bankroll and returns the remainder to the
     ///         player's withdrawable balance. Requires a signature from
     ///         `blackjackSigner` over (player, net, nonce, chainId, contract).
-    ///         A player can never lose more than they locked.
+    ///         A player can never lose more than they locked: a signed net below
+    ///         -locked is REJECTED (revert) — the signer floors net at -locked and
+    ///         the contract enforces it (reject a malformed authorization, never
+    ///         silently clamp-and-pay).
     function settleBlackjack(address player, int256 net, uint256 nonce, bytes calldata signature) external {
         if (blackjackSigner == address(0)) revert NotOwner();
         if (bjNonceUsed[nonce]) revert InsufficientBalance();
@@ -508,6 +511,10 @@ contract CoinFlipBetting {
             s := calldataload(add(sig.offset, 32))
             v := byte(0, calldataload(add(sig.offset, 64)))
         }
+        // EIP-2: reject the upper-half (malleable) `s`. Without this, a captured signature can be re-mangled into
+        // a SECOND valid (r, s', v') for the same digest (s' = n - s, v' = v^1). The honest house signer (ethers)
+        // always emits canonical low-s sigs, so this only rejects adversarial twins and never a legitimate settle.
+        if (uint256(s) > 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0) return address(0);
         if (v < 27) v += 27;
         if (v != 27 && v != 28) return address(0);
         return ecrecover(hash, v, r, s);
