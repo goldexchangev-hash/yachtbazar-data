@@ -485,7 +485,16 @@
     // Leaving mid-TOKEN-flight: request a cash-out so the player banks the live multiplier
     // instead of riding it to a bust they can't see. The server validates against its clock
     // (already-busted → it settles as a bust), and the .then resolves regardless of the ticker.
-    if (!on && this.state === "token-flying" && this.onTokenCashOut) { try { this.onTokenCashOut(); } catch (e) {} }
+    if (!on && this.state === "token-flying" && this.onTokenCashOut) {
+      try { this.onTokenCashOut(); } catch (e) {}
+      // v6 #2: reset to a fresh token idle NOW. The superseded cr:result .then/.catch bails on the epoch
+      // check below BEFORE clearing _realBusy, and re-entry's setMode("token") no-ops (same mode) — so
+      // without this the round stays latched (_realBusy=true / state="token-flying") and LAUNCH is dead
+      // until a page reload. _startTokenIdle clears _realBusy + state and re-arms the betting window.
+      // (Do NOT also clear _realBusy in the epoch-mismatch guards: _realBusy is one shared flag, so a
+      // superseded round's late resolve would wrongly clear a NEW round's busy flag on re-entry.)
+      this._realBusy = false; this._startTokenIdle();
+    }
     // Leaving the channel supersedes any in-flight token round: bump the epoch AFTER requesting the
     // cash-out so a late cr:result .then/.catch + onTick are dropped — no off-channel sound/win/flicker (#48).
     if (!on) this._realEpoch = (this._realEpoch || 0) + 1;

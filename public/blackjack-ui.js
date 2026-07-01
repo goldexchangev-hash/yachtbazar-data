@@ -93,7 +93,7 @@
       if (m.kind === "bust" && self.room) self._flashSeat(m.seat);
       // v5 #21: the server bounced us off a table we don't match (e.g. a guest opening a real-money table
       // link) — it silently sent us to the lobby with no explanation. Surface it so the redirect makes sense.
-      if (m.kind === "kindMismatch") { self.toast("That table is for " + (m.tableKind === "token" ? "token" : (m.tableKind || "different")) + " players — showing tables you can join"); self.showLobby(); }
+      if (m.kind === "kindMismatch") { self.toast("That table is for " + (m.tableKind === "real" ? "real-money (token)" : "demo") + " players — showing tables you can join"); self.showLobby(); } // v6 #17: server sends "real"/"demo", never "token" — the old check was dead
     });
     this.net.on("bj:error", function (m) {
       self._clearActWatch();

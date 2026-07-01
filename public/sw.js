@@ -3,7 +3,7 @@
    are picked up immediately and users never get a stale build online), caching
    each response, and falls back to cache only when offline. Cross-origin
    requests (RPC node, fonts, price API, MetaMask) are left untouched. */
-const CACHE = "ctf-v12.69";
+const CACHE = "ctf-v12.70";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 
 self.addEventListener("install", (e) => {
@@ -34,7 +34,7 @@ self.addEventListener("fetch", (e) => {
   // bumped, so a cache hit is always correct AND instant on refresh — this is what
   // makes the big Three.js bundle + lazy 3D modules load fast instead of being
   // re-fetched over the network every time.
-  const immutable = url.search.includes("v=") || url.pathname.includes("/vendor/");
+  const immutable = /[?&]v=/.test(url.search) || url.pathname.includes("/vendor/"); // v6 #15: anchor v= to a query-param boundary so ?nav=/?rev= don't false-match as immutable → stale-cache forever
   if (immutable) {
     e.respondWith(
       caches.match(req).then((hit) =>
