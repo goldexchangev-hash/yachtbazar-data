@@ -3,7 +3,10 @@ pragma solidity 0.8.24;
 
 import "./CoinFlipBetting.sol";
 
-/// @dev Minimal probe for Pass 4 — confirms _betGuard blocks contract callers.
+/// @dev Minimal probe kept from Pass 4. The on-chain settling games it used to
+///      poke were RETIRED in the F5 trim, so those wrappers are gone; only the
+///      escrow-funding helper remains so the contract still compiles against the
+///      trimmed CoinFlipBetting.
 contract RevertDrainProbe {
     CoinFlipBetting public game;
 
@@ -15,13 +18,5 @@ contract RevertDrainProbe {
 
     function fund() external payable {
         game.deposit{value: msg.value}();
-    }
-
-    function tryPlayHouse(uint256 bet, bool wantsHeads) external {
-        game.playHouse(bet, wantsHeads);
-    }
-
-    function tryPlayDice(uint256 bet, uint16 target, bool rollOver) external {
-        game.playDice(bet, target, rollOver);
     }
 }
