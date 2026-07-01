@@ -341,7 +341,20 @@ function makeTokenService(opts) {
     // txHash) can no longer both pass their checks and mint two sessions (#4 / #16 DUAL-SESSION). Shares
     // the settle/release per-player chain, so a buy-in can't race a settlement for the same wallet either.
     return withPlayerLock(player, async () => {
-    if (openByPlayer.has(player)) throw new Error("finish your open token session before buying in again");
+    // Only a GENUINELY-OPEN session may block a new buy-in. A GHOST slot — a prior session that closed/settled or
+    // was GC-pruned but whose openByPlayer entry was never swept (a net=0 limbo gcClosed pruned from `sessions`
+    // without touching this map, or a crash between close and saveHttp) — would otherwise reject EVERY future
+    // buy-in forever and strand each on-chain lock. THIS is the live "every buy-in locks the funds / $X stuck in a
+    // past session" trap (v7 #11 / the tail of the v12.66 stranded-lock trap). Sweep a dead slot and fall through
+    // to the guarded auto-claim below — which is STILL loss-escape-safe: a closed-loss session is found by
+    // findSettledSessionForPlayer (gcClosed KEEPS losing sessions), so a withheld loss still forces Recover, and a
+    // GC-pruned/vanished session can't be a loss. Mirrors the recover-path ghost-sweep in doRelease/doAdminRelease.
+    if (openByPlayer.has(player)) {
+      const _sid = openByPlayer.get(player);
+      const _s = bridge.session(_sid);
+      if (_s && !_s.closed) throw new Error("finish your open token session before buying in again"); // truly live → keep the single-session guard
+      openByPlayer.delete(player); // dead/ghost slot → clear it; the batchWrite commit (or the next attempt) persists
+    }
     const contract = address(body && body.contract, "contract");
     const chainId = Number(body && body.chainId);
     if (!Number.isSafeInteger(chainId) || chainId <= 0) throw new Error("chain id is invalid");
@@ -1316,6 +1329,47 @@ if (require.main === module) {
     // one-session-per-player frees after settle
     let again = 0; try { startBody.txHash = "0x" + "c".repeat(64); startBody.signature = await sign("start", { player, contract, chainId, buyInWei: lockedWei.toString() }); await svc.doStart(startBody); } catch (e) { again++; }
     eq("can open a new session after settling", again === 0);
+
+    // ── GHOST openByPlayer SLOT (the live "every buy-in locks the funds / $X stuck in a past session" trap) ──
+    // A prior session that was GC-pruned / closed but whose openByPlayer entry was never swept must NOT block a
+    // new buy-in forever (that stranded every on-chain lock). doStart now sweeps a dead slot; a GENUINELY-OPEN one
+    // still blocks; and a WITHHELD LOSS still forces Recover (the sweep is not a loss-escape).
+    // (1) a VANISHED session (GC-pruned) no longer strands the next buy-in:
+    const ghSvc = makeTokenService({ signer, ethUsd: () => 4000, verifyBuyIn: async (o) => ({ lockedWei: o.buyInWei }) });
+    const ghW = ethers.Wallet.createRandom(); const ghP = ghW.address; const ghSg = (i, o) => ghW.signMessage(tokenAuthMessage(i, o));
+    const ghB1 = { player: ghP, contract, chainId, txHash: "0x" + "a1".repeat(32), buyInWei: lockedWei.toString() };
+    ghB1.signature = await ghSg("start", { player: ghP, contract, chainId, buyInWei: lockedWei.toString() });
+    const ghStarted = await ghSvc.doStart(ghB1);
+    ghSvc._bridge._sessions.delete(ghStarted.sessionId); // GC-prune / vanished session WITHOUT clearing openByPlayer → GHOST
+    let ghostStranded = 0, ghB2res = null;
+    const ghB2 = { player: ghP, contract, chainId, txHash: "0x" + "a2".repeat(32), buyInWei: lockedWei.toString() };
+    ghB2.signature = await ghSg("start", { player: ghP, contract, chainId, buyInWei: lockedWei.toString() });
+    try { ghB2res = await ghSvc.doStart(ghB2); } catch (e) { ghostStranded = 1; }
+    eq("GHOST slot no longer strands a buy-in (fixes: every buy-in locks the funds)", ghostStranded === 0 && !!ghB2res && ghB2res.tokens === 1000);
+    // (2) MONEY-SAFETY: a CLOSED session with a WITHHELD LOSS (+ a prior on-chain lock) must STILL force Recover:
+    const lsSvc = makeTokenService({ signer, ethUsd: () => 4000, verifyBuyIn: async (o) => ({ lockedWei: o.buyInWei, eventLocked: (2n * lockedWei).toString() }), readBjLocked: async () => 2n * lockedWei, readNonceUsed: async () => false });
+    const lsW = ethers.Wallet.createRandom(); const lsP = lsW.address; const lsSg = (i, o) => lsW.signMessage(tokenAuthMessage(i, o));
+    const lsB1 = { player: lsP, contract, chainId, txHash: "0x" + "b1".repeat(32), buyInWei: lockedWei.toString() };
+    lsB1.signature = await lsSg("start", { player: lsP, contract, chainId, buyInWei: lockedWei.toString() });
+    const lsStarted = await lsSvc.doStart(lsB1);
+    lsSvc._bridge.session(lsStarted.sessionId).tokens = 500;                // a $500 loss
+    await lsSvc._bridge.settle({ sessionId: lsStarted.sessionId });         // close + record the losing settlement (openByPlayer still points at it → ghost)
+    let lossForced = 0;
+    const lsB2 = { player: lsP, contract, chainId, txHash: "0x" + "b2".repeat(32), buyInWei: lockedWei.toString() };
+    lsB2.signature = await lsSg("start", { player: lsP, contract, chainId, buyInWei: lockedWei.toString() });
+    try { await lsSvc.doStart(lsB2); } catch (e) { if (/Recover|locked in another session/i.test(e.message)) lossForced = 1; }
+    eq("ghost-sweep is loss-safe: a withheld loss still forces Recover (never auto-claims over it)", lossForced === 1);
+    // (3) a GENUINELY-OPEN session still blocks a second buy-in (single-session rule intact):
+    const oaSvc = makeTokenService({ signer, ethUsd: () => 4000, verifyBuyIn: async (o) => ({ lockedWei: o.buyInWei }) });
+    const oaW = ethers.Wallet.createRandom(); const oaP = oaW.address; const oaSg = (i, o) => oaW.signMessage(tokenAuthMessage(i, o));
+    const oaB1 = { player: oaP, contract, chainId, txHash: "0x" + "c1".repeat(32), buyInWei: lockedWei.toString() };
+    oaB1.signature = await oaSg("start", { player: oaP, contract, chainId, buyInWei: lockedWei.toString() });
+    await oaSvc.doStart(oaB1);
+    let openBlocks = 0;
+    const oaB2 = { player: oaP, contract, chainId, txHash: "0x" + "c2".repeat(32), buyInWei: lockedWei.toString() };
+    oaB2.signature = await oaSg("start", { player: oaP, contract, chainId, buyInWei: lockedWei.toString() });
+    try { await oaSvc.doStart(oaB2); } catch (e) { if (/finish your open/i.test(e.message)) openBlocks = 1; }
+    eq("a genuinely-open session still blocks a second buy-in (single-session rule intact)", openBlocks === 1);
 
     // ── PERSISTED replay guard survives a restart ───────────────────────────
     // A single in-memory store stands in for the durable persist sink (e.g. a JSON file).
