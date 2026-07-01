@@ -329,6 +329,22 @@ Put the next hunt in **`CursorBugHunt-v4/REPORT.md`**. Always branch from deploy
 
 ## 🗒️ Coordination log (append newest at top; one line each)
 
+- **2026-07-01 — Claude (session 2):** Shipped **v12.75→v12.82**. **MEGA-HUNT found + fixed 4 CRITICAL house-drains**
+  (all live): reef `power` unclamped ~746x (v12.75), slots client-`params` stake-override (v12.76), Balloon-Pop
+  refund-below-1.20x (v12.76), + a systemic **bridge payout-cap** backstop so no engine can over-credit (v12.77,
+  `clampPayout` per-game in play/resolveReserved/verifyRederive). **v6 money wave DONE (safe/high-value):** #14
+  per-session MAX-WIN cap (`TOKEN_MAX_WIN_USD` default $2000, honest at accrual, adversarially-reviewed clean,
+  capUp monotonic → rederive+topup safe), #7 guest-bank DoS (bank.get() now READ-ONLY), #6 compact retained-loss
+  sessions to a tombstone (drop bets[], keep settlement — verified no live rederive on settled), #19 admin-sig
+  Expiry (byte-mirrored). Also v12.78 blackjack balance+session-tracker, v12.79 2 MEDIUM (topUp resume-before-clear,
+  pressure valve token-gate). **DELIBERATELY DEFERRED (Cursor welcome to take):** mega-hunt #13 slots3d PF-panel
+  parity (server PF.floats vs client uint32%len — TRANSPARENCY only, no miscredit; needs careful client byte-level
+  PF unification + parity test); #31 usedBuyIns compaction (DANGEROUS — pruning the double-fund replay guard could
+  reopen double-funding for a slow LOW leak; only prune txs whose session is fully settled+GC'd). Remaining
+  mega-hunt LOW (chat-name charset server.js:~529, BJ non-embed bet-slider fabricated $1000, syncTokens seq-guard,
+  tokenCrash 2800ms-vs-reveal timing) + **CONTRACT (owner deploys)**: ECDSA high-s (add EIP-2 low-s to `_recover`),
+  locked-session recovery hatch, GameRegistry ctor zero-addr, settleSession over-loss REVERTS vs docstring "clamp
+  to -locked", startSession id-squatting. Full verdicts: session task outputs (v7 wby5iy4p2, v7b wh53l003k).
 - **2026-07-01 — Claude:** Processed **Cursor Pass 9 / v6** (`CursorBugHunt-v6/REPORT.md`, branch
   `cursor/bug-hunt-v6-1269-d4cd`, 34 findings) + ran my **own multi-agent mega-hunt (v7)**. Verified ALL of Pass 9
   via a 24-agent workflow (0 wrong, #26/#34 already-fixed, #30 partial). **SHIPPED v12.70→v12.75:**
