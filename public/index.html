@@ -1,0 +1,1564 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#0c0d16" />
+    <meta name="referrer" content="same-origin" />
+    <link rel="manifest" href="manifest.webmanifest?v=1285" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="TV Flip" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <title>📺 Crypto TV Flip — on-chain ETH coin flip (testnet)</title>
+    <meta name="description" content="A retro 16-bit ETH coin-flip game on the Sepolia testnet. Flip against the house or a friend — settled on-chain, play-money only." />
+    <!-- Social share cards -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="📺 Crypto TV Flip — on-chain ETH coin flip" />
+    <meta property="og:description" content="Flip an ETH coin against the house or a friend. Settled on-chain on the Sepolia testnet — play-money only." />
+    <meta property="og:url" content="https://tv-crypto-flip.onrender.com/" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="📺 Crypto TV Flip — on-chain ETH coin flip" />
+    <meta name="twitter:description" content="Flip an ETH coin against the house or a friend. Settled on-chain on the Sepolia testnet — play-money only." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bungee&family=Press+Start+2P&family=Space+Grotesk:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
+    <link rel="stylesheet" href="styles.css?v=1285" />
+  </head>
+  <body>
+    <!-- Animated backdrop -->
+    <div class="bg-grid" aria-hidden="true"></div>
+    <div class="bg-glow" aria-hidden="true"></div>
+
+    <!-- ───────────────────────── Header ───────────────────────── -->
+    <header class="topbar">
+      <button id="rail-toggle" class="rail-toggle" aria-label="Open menu" title="Menu">☰</button>
+      <span class="build-tag-m" id="build-tag-m" title="Live build version — confirms the deploy is up to date">v12.85</span>
+      <div class="brand">
+        <span class="brand-tv">📺</span>
+        <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
+        <span class="brand-live"><i></i>ON&nbsp;AIR</span>
+        <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v12.85</span>
+      </div>
+      <div class="topbar-right">
+        <div class="tb-tools">
+        <div class="music-wrap">
+          <button id="sound-btn" class="btn btn-icon" title="Music & tracks" aria-label="Music">🔇</button>
+          <div id="music-menu" class="music-menu hidden">
+            <div class="mm-transport">
+              <button id="music-prev" class="mm-ctrl" title="Previous track">⏮</button>
+              <button id="music-play" class="mm-ctrl mm-play" title="Play / pause">▶</button>
+              <button id="music-next" class="mm-ctrl" title="Next track">⏭</button>
+              <span id="music-now" class="mm-now">Pick a track</span>
+            </div>
+            <div id="music-tracks" class="mm-tracks"></div>
+          </div>
+        </div>
+        <button id="help-btn" class="btn btn-icon" title="How to play" aria-label="How to play">?</button>
+        <button id="chat-toggle" class="btn btn-icon has-badge" title="Open chat" aria-label="Open chat">💬<span id="chat-toggle-badge" class="chat-badge hidden" aria-hidden="true">0</span></button>
+        </div>
+        <div id="net-badge" class="net-badge hidden"><i></i><span id="net-name">—</span></div>
+        <button id="connect-btn" class="btn btn-primary">Connect Wallet</button>
+        <div class="wallet-cluster">
+          <div id="wallet-chip" class="wallet-chip hidden">
+            <canvas id="wallet-avatar" width="28" height="28"></canvas>
+            <span id="wallet-addr">0x…</span>
+          </div>
+          <button id="disconnect-btn" class="btn btn-ghost hidden" title="Disconnect wallet">Disconnect</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Wrong-network / not-deployed / hint banner (in normal flow) -->
+    <div id="setup-banner" class="setup-banner hidden"></div>
+
+
+    <!-- Shown when the connected wallet IS the house (treasury) -->
+    <div id="house-wallet-banner" class="house-banner hidden">
+      🏠 You're connected as the <strong>house wallet</strong> — you're on both sides of every flip, so you can't really win or lose. Switch to a different account in MetaMask to play as a challenger.
+    </div>
+
+    <!-- ───────── Left sidebar (Stake-style): brand + games + essentials ───────── -->
+    <section class="channels" aria-label="Navigation">
+      <a class="rail-brand" href="/" aria-label="Crypto TV home">
+        <span class="rail-brand-tv">📺</span>
+        <span class="rail-brand-name">CRYPTO<span class="rail-brand-accent"> TV</span></span>
+      </a>
+      <header class="channels-head">
+        <h2 class="channels-title">GAMES</h2>
+      </header>
+      <div class="channels-grid" id="game-nav" role="tablist" data-game="flip">
+
+        <button type="button" class="game-card flip active" id="ch-flip" role="tab" aria-selected="true" data-game="flip">
+          <span class="gc-tile">
+            <svg class="gc-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <ellipse cx="12" cy="12" rx="7" ry="8"/>
+              <path d="M12 8.4v7.2"/>
+              <path d="M9.6 10.4 12 8.2l2.4 2.2M9.6 13.6 12 15.8l2.4-2.2"/>
+            </svg>
+          </span>
+          <span class="gc-name">Coin Flip</span>
+        </button>
+
+        <button type="button" class="game-card dice" id="ch-dice" role="tab" aria-selected="false" data-game="dice">
+          <span class="gc-tile">
+            <svg class="gc-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true">
+              <rect x="4.5" y="4.5" width="15" height="15" rx="3.6"/>
+              <g fill="currentColor" stroke="none"><circle cx="9" cy="9" r="1.3"/><circle cx="15" cy="9" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="9" cy="15" r="1.3"/><circle cx="15" cy="15" r="1.3"/></g>
+            </svg>
+          </span>
+          <span class="gc-name">0-100</span>
+        </button>
+
+        <button type="button" class="game-card twodice" id="ch-twodice" role="tab" aria-selected="false" data-game="twodice">
+          <span class="gc-tile">
+            <svg class="gc-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
+              <rect x="2.6" y="7" width="11" height="11" rx="2.6" transform="rotate(-8 8 12.5)"/>
+              <rect x="11" y="4.6" width="10" height="10" rx="2.4" transform="rotate(8 16 9.6)"/>
+              <g fill="currentColor" stroke="none"><circle cx="6" cy="11" r="1.05"/><circle cx="10.2" cy="15" r="1.05"/><circle cx="16" cy="9.6" r="1.05"/></g>
+            </svg>
+          </span>
+          <span class="gc-name">Dice #2</span>
+        </button>
+
+        <button type="button" class="game-card crash" id="ch-crash" role="tab" aria-selected="false" data-game="crash">
+          <span class="gc-tile">
+            <svg class="gc-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 2.5c2.7 2.1 4 5.4 4 9.1L14.1 13.5H9.9L8 11.6c0-3.7 1.3-7 4-9.1z"/>
+              <circle cx="12" cy="9.3" r="1.5" fill="currentColor" stroke="none"/>
+              <path d="M9.9 13.7 7.9 17.2l2.3-.9M14.1 13.7 16.1 17.2l-2.3-.9"/>
+              <path d="M12 14.6v3.8"/>
+            </svg>
+          </span>
+          <span class="gc-name">Crash</span>
+        </button>
+
+        <button type="button" class="game-card pressure" id="ch-pressure" role="tab" aria-selected="false" data-game="pressure">
+          <span class="gc-tile">
+            <svg class="gc-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <ellipse cx="12" cy="9.5" rx="6" ry="7"/>
+              <path d="M12 16.5v2.2M10.8 18.7h2.4"/>
+              <path d="M9.6 7.2a3 3 0 0 1 2.4-1.6"/>
+            </svg>
+          </span>
+          <span class="gc-name">Balloon Pop</span>
+        </button>
+
+        <button type="button" class="game-card plane" id="ch-plane" role="tab" aria-selected="false" data-game="plane">
+          <span class="gc-tile">
+            <svg class="gc-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 15.5 13.5 13l-1-7.5a1.3 1.3 0 0 0-2.5 0l-1 7.5L3 15.5v1.7l6.5-1.5.5 3.3-2 1.5v1l3.5-1 3.5 1v-1l-2-1.5.5-3.3 6.5 1.5z"/>
+            </svg>
+          </span>
+          <span class="gc-name">Plane</span>
+        </button>
+
+        <button type="button" class="game-card slots3d" id="ch-slots3d" role="tab" aria-selected="false" data-game="slots3d">
+          <span class="gc-tile">
+            <svg class="gc-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 2 5.5 6v5c0 4.2 2.8 7.5 6.5 9 3.7-1.5 6.5-4.8 6.5-9V6z"/>
+              <path d="M12 7 9.3 9.2 12 13l2.7-3.8z"/>
+            </svg>
+          </span>
+          <span class="gc-name">Gem Vault</span>
+        </button>
+
+        <button type="button" class="game-card fish" id="ch-fish" role="tab" aria-selected="false" data-game="fish">
+          <span class="gc-tile">
+            <svg class="gc-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 12c3-4 7-6 11-6 3 0 5 2 6 6-1 4-3 6-6 6-4 0-8-2-11-6z"/>
+              <path d="M14 9.5h.01"/>
+              <path d="M3 12c-1-1-1.5-2.2-1.5-3.4M3 12c-1 1-1.5 2.2-1.5 3.4"/>
+            </svg>
+          </span>
+          <span class="gc-name">Reef Raiders</span>
+        </button>
+
+        <button type="button" class="game-card swoop" id="ch-swoop" role="tab" aria-selected="false" data-game="swoop" hidden>
+          <span class="gc-tile">
+            <svg class="gc-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z"/>
+            </svg>
+          </span>
+          <span class="gc-name">Sky Swoop</span>
+        </button>
+
+        <button type="button" class="game-card fishshooter" id="ch-fishshooter" role="tab" aria-selected="false" data-game="fishshooter">
+          <span class="gc-tile">
+            <svg class="gc-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 12c3-4 7-6 11-6 3 0 5 2 6 6-1 4-3 6-6 6-4 0-8-2-11-6z"/>
+              <circle cx="20" cy="12" r="2.4"/><path d="M20 8.6v-1.6M20 17v-1.6M23.4 12h1.2M15.4 12h1.2"/>
+            </svg>
+          </span>
+          <span class="gc-name">Fish Shooter</span>
+        </button>
+
+        <button type="button" class="game-card blackjack" id="ch-blackjack" role="tab" aria-selected="false" data-game="blackjack">
+          <span class="gc-tile">
+            <svg class="gc-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="4" y="5" width="10" height="14" rx="2"/>
+              <rect x="9.5" y="3.5" width="10" height="14" rx="2" fill="rgba(0,0,0,.25)"/>
+              <path d="M14.5 8.2c-1 .9-2 1.8-2 2.9a1.3 1.3 0 0 0 2.6 0c0-1.1-1-2-2.6-2.9zM14.5 13.8v1.4"/>
+            </svg>
+          </span>
+          <span class="gc-name">Blackjack</span>
+        </button>
+
+        <button type="button" class="game-card poker" id="ch-poker" role="tab" aria-selected="false" data-game="poker" hidden>
+          <span class="gc-tile">
+            <svg class="gc-glyph" viewBox="0 0 100 100" aria-hidden="true">
+              <rect x="20" y="22" width="38" height="54" rx="7" fill="#fff" transform="rotate(-10 39 49)"/>
+              <rect x="44" y="24" width="38" height="54" rx="7" fill="#fff" transform="rotate(9 63 51)"/>
+              <path d="M63 38 c-5 -7 -15 -2 -10 6 c2 4 8 9 10 11 c2 -2 8 -7 10 -11 c5 -8 -5 -13 -10 -6 Z" fill="#e0344e" transform="rotate(9 63 51)"/>
+              <path d="M37 40 l6 12 l-12 0 Z" fill="#16202e" transform="rotate(-10 39 49)"/>
+            </svg>
+          </span>
+          <span class="gc-name">Poker</span>
+        </button>
+
+      </div>
+
+      <!-- Essentials (real, working destinations) -->
+      <div class="rail-sep" aria-hidden="true"></div>
+      <nav class="rail-links" aria-label="Essentials">
+        <button type="button" class="rail-link" id="rail-wallet">💰 <span>Wallet</span></button>
+        <button type="button" class="rail-link" id="rail-howto">❓ <span>How to play</span></button>
+        <button type="button" class="rail-link" id="rail-profile" hidden>🧑 <span>Player profile</span></button>
+        <button type="button" class="rail-link" id="rail-host" hidden>⚙️ <span>Host tools</span></button>
+      </nav>
+      <div class="rail-foot">
+        <span class="rail-foot-net"><i></i> Sepolia testnet</span>
+        <span class="rail-foot-sub">Play money · provably fair</span>
+      </div>
+    </section>
+
+    <main class="layout">
+      <!-- ───────────────────── Left: the TV ───────────────────── -->
+      <section class="stage">
+        <!-- Mobile-only: nudge into the MetaMask browser. Sits directly above the
+             demo bar, aligned to the TV column. -->
+        <div id="mobile-hint" class="mobile-hint hidden">
+          📱 On a phone? Betting only works inside the <strong>MetaMask app's browser</strong>. Tap <strong>Connect Wallet</strong> to open it there — or in MetaMask, use 🌐 Browser and visit this site.
+          <button type="button" class="notice-x" data-dismiss="mobilehint" aria-label="Dismiss" title="Dismiss">✕</button>
+        </div>
+
+        <!-- Demo-mode bar: centered directly above the TV. Keeps the real-money CTA. -->
+        <div id="demo-bar" class="demo-bar hidden" role="status">
+          <span class="demo-chip">🎮 DEMO</span>
+          <span class="demo-text">You're playing with <strong>free demo credits</strong> — no wallet, no real money. Same games, same odds.</span>
+          <button id="demo-connect" class="btn btn-primary demo-cta">Connect wallet to play for real →</button>
+          <button type="button" class="notice-x" data-dismiss="demo" aria-label="Dismiss demo notice" title="Dismiss">✕</button>
+        </div>
+
+        <!-- Retro TV, redesigned to fit the neon theme -->
+        <div class="tv">
+          <div class="tv-antenna" aria-hidden="true"><span></span><span></span></div>
+          <div class="tv-body">
+            <div class="tv-screen-frame">
+              <div class="tv-screen" id="tv-screen">
+                <!-- canvas paints the static/noise -->
+                <canvas id="static-canvas" class="static-canvas"></canvas>
+                <div class="scanlines" aria-hidden="true"></div>
+                <div class="vignette" aria-hidden="true"></div>
+
+                <!-- Pixel scoreboard, shown during a match -->
+                <div class="scoreboard hidden" id="scoreboard">
+                  <div class="p p1"><span class="who" id="sb-p1-who">P1 ▲ HEADS</span><span class="addr" id="sb-p1">—</span></div>
+                  <div class="vs">VS</div>
+                  <div class="p p2"><span class="who" id="sb-p2-who">TAILS ▼ P2</span><span class="addr" id="sb-p2">—</span></div>
+                </div>
+
+                <!-- Screen content layers (one shown at a time) -->
+                <div class="screen-layer" id="layer-idle">
+                  <div class="idle-logo">📺</div>
+                  <div class="idle-title" id="idle-title">CRYPTO TV FLIP</div>
+                  <div class="idle-sub" id="idle-sub">Connect your wallet to tune in</div>
+                </div>
+
+                <div class="screen-layer hidden" id="layer-waiting">
+                  <div class="standby-badge">● STANDBY</div>
+                  <div class="waiting-text">WAITING FOR<br />CHALLENGER</div>
+                  <div class="waiting-dots"><span></span><span></span><span></span></div>
+                  <div class="waiting-sub" id="waiting-sub">Share your room link to start</div>
+                </div>
+
+                <div class="screen-layer hidden" id="layer-tuning">
+                  <div class="tuning-text">BETS&nbsp;ARE&nbsp;IN</div>
+                  <div class="tuning-sub">Tuning the signal…</div>
+                </div>
+
+                <!-- House/boss screen: shown over the TV whenever the connected wallet is the house
+                     (body.is-house). Green matrix text on black; the dots blink. -->
+                <div class="boss-screen" id="boss-screen" aria-hidden="true">
+                  <div class="boss-text">WELCOME&nbsp;BOSS<span class="boss-dots"><span>.</span><span>.</span><span>.</span></span></div>
+                </div>
+
+                <div class="screen-layer hidden" id="layer-countdown">
+                  <div class="count-num" id="count-num">3</div>
+                </div>
+
+                <div class="screen-layer hidden" id="layer-flip">
+                  <!-- 3D coin (Three.js) mounts here; the CSS coin below is the fallback -->
+                  <div id="flip3d-stage" class="flip3d-stage"></div>
+                  <div class="coin-shadow" id="coin-shadow" aria-hidden="true"></div>
+                  <div class="coin-toss" id="coin-toss">
+                    <div class="coin" id="coin">
+                      <div class="coin-face coin-heads">
+                        <svg class="eth-logo" viewBox="0 0 256 417" aria-hidden="true">
+                          <polygon class="e1" points="127.96 0 125.17 9.5 125.17 285.17 127.96 287.96 255.92 212.32"/>
+                          <polygon class="e2" points="127.96 0 0 212.32 127.96 287.96 127.96 154.16"/>
+                          <polygon class="e3" points="127.96 312.32 126.39 314.11 126.39 412.32 127.96 416.91 256 236.59"/>
+                          <polygon class="e4" points="127.96 416.91 127.96 312.32 0 236.59"/>
+                          <polygon class="e5" points="127.96 287.96 255.92 212.32 127.96 154.16"/>
+                          <polygon class="e6" points="0 212.32 127.96 287.96 127.96 154.16"/>
+                        </svg>
+                        <small>HEADS</small>
+                      </div>
+                      <div class="coin-face coin-tails">★<small>TAILS</small></div>
+                    </div>
+                  </div>
+                  <div class="flip-caption">FLIPPING…</div>
+                </div>
+
+                <div class="screen-layer hidden" id="layer-result">
+                  <div class="result-rays" id="result-rays" aria-hidden="true"></div>
+                  <div class="coin-shower" id="coin-shower" aria-hidden="true"></div>
+                  <div class="win-banner" id="win-banner"></div>
+                  <div class="result-emoji" id="result-emoji">😄</div>
+                  <div class="result-headline" id="result-headline">WINNER</div>
+                  <div class="result-money" id="result-money"></div>
+                  <div class="result-sub" id="result-sub"></div>
+                  <div class="result-coin" id="result-coin">HEADS</div>
+                </div>
+
+                <!-- Dice roll result (CH 09) -->
+                <div class="screen-layer hidden" id="layer-dice">
+                  <div id="dice3d-stage" class="dice3d-stage"></div><!-- 3D neon rail (behind); DOM number/verdict on top -->
+                  <div class="dice-tv-target" id="dice-tv-target">UNDER 50.00</div>
+                  <div class="dice-roll-num" id="dice-tv-num">00.00</div>
+                  <div class="dice-line" id="dice-tv-line">
+                    <div class="dl-win" id="dl-win"></div>
+                    <div class="dl-lose" id="dl-lose"></div>
+                    <div class="dl-targetmark" id="dl-targetmark"></div>
+                    <div class="dl-marker" id="dl-marker"><span class="dl-pip">▼</span></div>
+                    <div class="dl-scale"><span>0</span><span>25</span><span>50</span><span>75</span><span>100</span></div>
+                  </div>
+                  <div class="dice-bottom">
+                    <div class="dice-verdict" id="dice-tv-verdict"></div>
+                    <div class="dice-payout" id="dice-tv-payout"></div>
+                  </div>
+                </div>
+
+                <!-- Dice #2 result (CH 10): two physical d6 dice -->
+                <div class="screen-layer hidden" id="layer-twodice">
+                  <div id="dice2-3d-stage" class="dice2-3d-stage"></div><!-- two 3D tumbling dice (behind); DOM dice/verdict on top -->
+                  <div class="td-target" id="td-tv-target">UNDER 7</div>
+                  <div class="td-dice">
+                    <div class="die" id="td-die1" data-face="1"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+                    <div class="die" id="td-die2" data-face="1"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+                  </div>
+                  <div class="td-bottom">
+                    <div class="td-sum" id="td-tv-sum">SUM —</div>
+                    <div class="dice-verdict" id="td-tv-verdict"></div>
+                    <div class="dice-payout" id="td-tv-payout"></div>
+                  </div>
+                </div>
+
+                <!-- Crash rocket (CH 11): the multiplier climbs live on the TV -->
+                <div class="screen-layer hidden" id="layer-crash">
+                  <canvas id="crash-canvas" class="crash-canvas"></canvas>
+                  <div class="crash-hud">
+                    <div class="crash-mult" id="crash-mult">1.00×</div>
+                    <div class="crash-sub" id="crash-sub">Set a target &amp; launch 🚀</div>
+                  </div>
+                </div>
+
+                <!-- Pressure (CH 13): the hold-to-pump balloon plays on the TV -->
+                <div class="screen-layer hidden" id="layer-pressure">
+                  <div id="pressure3d-stage" class="pressure3d-stage"></div><!-- 3D red balloon (behind) -->
+                  <div id="pressure-stage" class="pressure-stage"></div><!-- Pixi HUD (front, transparent) -->
+                </div>
+
+                <!-- Plane (CH 14): the Aviator-style climb plays on the TV -->
+                <div class="screen-layer hidden" id="layer-plane">
+                  <div id="plane-stage" class="plane-stage"></div>
+                </div>
+
+                <!-- Gem Vault 3D (CH 15): the Three.js slot plays on the TV -->
+                <div class="screen-layer hidden" id="layer-slots3d">
+                  <div id="slots3d-stage" class="slots3d-stage"></div>
+                </div>
+
+                <!-- Reef Raiders (CH 17): PixiJS arcade fish-shooter plays on the TV -->
+                <div class="screen-layer hidden" id="layer-fish">
+                  <div id="fish-stage" class="fish-stage"></div>
+                  <button type="button" id="fish-fs-exit" class="fish-fs-exit">✕ Exit fullscreen</button>
+                </div>
+
+                <!-- Sky Swoop (CH 18): PlayCanvas 3D biplane crash game plays on the TV -->
+                <div class="screen-layer hidden" id="layer-swoop">
+                  <div id="swoop-stage" class="swoop-stage"></div>
+                  <button type="button" id="swoop-fs-exit" class="fish-fs-exit">✕ Exit fullscreen</button>
+                </div>
+
+                <!-- Fish Shooter (CH 19): PixiJS top-down fish-table arcade plays on the TV -->
+                <div class="screen-layer hidden" id="layer-fishshooter">
+                  <div id="fishshooter-stage" class="fishshooter-stage"></div>
+                  <button type="button" id="fsh-fs-exit" class="fish-fs-exit">✕ Exit fullscreen</button>
+                </div>
+
+                <!-- Blackjack (CH 16): live multiplayer felt runs in an isolated iframe
+                     (its own CSS/scripts can't collide with the site). The felt fills
+                     the 4:3 screen; the betting + action controls dock UNDER the TV. -->
+                <div class="screen-layer hidden" id="layer-blackjack">
+                  <iframe id="bj-frame" class="bj-frame" title="Blackjack felt" frameborder="0" scrolling="no"></iframe>
+                </div>
+
+                <!-- Universal "loading" screen shown while a lazy game module builds,
+                     so the correct game name is on-screen instead of looking like Flip -->
+                <div class="screen-layer hidden" id="layer-loading">
+                  <div class="tv-loading-spinner" aria-hidden="true"></div>
+                  <div class="tv-loading-title" id="tv-loading-title">LOADING…</div>
+                  <div class="tv-loading-sub">Tuning in your game</div>
+                </div>
+
+                <canvas id="confetti-canvas" class="confetti-canvas"></canvas>
+                <!-- Pixel "win scene" movie overlay (escalates with the amount) -->
+                <canvas id="scene-canvas" class="scene-canvas"></canvas>
+                <!-- Full-motion win/loss video reel (Scarfblade Films theme) -->
+                <video id="reveal-video" class="reveal-video" playsinline preload="auto"></video>
+
+                <!-- Promo intro reel — autoplays once (muted) on first load, then fades
+                     to black and hands off to the game. Replay button under the TV. -->
+                <video id="promo-video" class="promo-video hidden" playsinline preload="auto" muted src="promo.mp4?v=1285"></video>
+
+                <!-- Shown while a bet tx is being signed + mined (esp. slow on mobile) -->
+                <div id="tv-pending" class="tv-pending hidden">⏳ SENDING BET…<br />confirm in your wallet, then hold tight</div>
+
+                <!-- Demo watermark: makes it unmistakable the play money isn't real -->
+                <div id="demo-tv-badge" class="demo-tv-badge hidden" aria-hidden="true">DEMO</div>
+
+                <!-- Reflective-glass overlay: makes the screen read like real CRT glass -->
+                <div class="tv-glass tv-glass--subtle" aria-hidden="true"></div>
+              </div>
+            </div>
+            <!-- Speaker + channel dials (nod to the original red CRT) -->
+            <div class="tv-controls">
+              <div class="tv-knobs">
+                <div class="knob"></div>
+                <div class="knob"></div>
+              </div>
+              <div class="tv-speaker" aria-hidden="true">
+                <span></span><span></span><span></span><span></span><span></span><span></span>
+              </div>
+              <!-- right cluster: share-win (on a win) sits just left of the channel badge -->
+              <div class="tv-right">
+                <button id="share-result-btn" class="share-win-btn hidden" title="Share your win">📸 Share win</button>
+                <div class="tv-channel" id="tv-channel">CH&nbsp;<b id="tv-channel-num">03</b></div>
+              </div>
+            </div>
+          </div>
+          <div class="tv-stand" aria-hidden="true"></div>
+        </div>
+
+        <!-- Pops up under the TV on ANY game win — green + bubbly, taps to share a
+             win screenshot card. -->
+        <!-- Demo balance + reset, sitting right under the TV (play money) -->
+        <div id="demo-below" class="demo-below hidden">
+          <span class="demo-below-chip">🎮 DEMO</span>
+          <span class="demo-below-lbl">Play balance</span>
+          <strong class="demo-below-num" id="demo-balance">$0</strong>
+          <button id="demo-reset" class="btn btn-ghost demo-reset" title="Top demo credits back up">↻ Reset credits</button>
+        </div>
+        <!-- Site-wide session tracker (every channel, demo mode) — wagered / won / net P&L this session -->
+        <div id="demo-session" class="demo-session hidden" role="status" aria-label="Your session so far">
+          <span class="ds-label">This session</span>
+          <span class="ds-item">wagered <strong id="ds-wagered">$0.00</strong></span>
+          <span class="ds-item">won <strong id="ds-won">$0.00</strong></span>
+          <span class="ds-item">net <strong id="ds-net" class="ds-net">+$0.00</strong></span>
+        </div>
+        <!-- Token-mode bar (connected players, server bridge on): buy in once → play every game no-popup → cash out -->
+        <div id="token-mount" hidden></div>
+        <!-- Screen-reader live region: game outcomes are announced here (the result overlay is visual-only). -->
+        <div id="sr-live" role="status" aria-live="assertive" aria-atomic="true" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;"></div>
+
+        <!-- Floating quick-stake strip (phones): pinned to the bottom with the action
+             dock so you can change your bet without scrolling to the panel. JS points it
+             at the current game's real stake slider; desktop hides it. -->
+        <div id="betbar-stake" class="betbar-stake" hidden aria-label="Quick bet amount">
+          <div class="bbs-top">
+            <button type="button" class="bbs-step" data-dir="-1" aria-label="Lower bet">−</button>
+            <input type="range" class="slider bbs-slider" id="bbs-slider" min="10" max="500" step="5" value="25" aria-label="Slide to change bet" />
+            <button type="button" class="bbs-step" data-dir="1" aria-label="Raise bet">＋</button>
+          </div>
+          <div class="bbs-bot">
+            <span class="bbs-amt" id="bbs-amt">$25</span>
+            <button type="button" class="bbs-preset" data-mode="half">½</button>
+            <button type="button" class="bbs-preset" data-mode="double">2×</button>
+            <button type="button" class="bbs-preset" data-mode="max">Max</button>
+          </div>
+        </div>
+
+        <!-- Primary action buttons, docked right under the play balance so the TV
+             + action button are visible together. Only the active game's shows. -->
+        <div class="action-dock" data-game="pressure">
+          <button id="pr-hold" class="btn btn-primary btn-block act-btn"><span class="ab-verb">🎈 HOLD TO PUMP</span><span class="ab-amt">BET $<b id="pr-bet-hint">10</b> · WIN $<b id="pr-win-hint">10.00</b></span></button>
+          <!-- Auto cash-out, right under the action button for quick on/off + adjust -->
+          <div class="dock-auto">
+            <button type="button" class="qbet pr-auto-toggle active" id="pr-auto-toggle">AUTO ON</button>
+            <input id="pr-auto-slider" class="slider dock-auto-slider" type="range" min="1.2" max="20" step="0.05" value="2.0" />
+            <span class="dock-auto-val">@ <strong id="pr-auto-val">2.00x</strong></span>
+          </div>
+          <div class="muted dice-roll-hint" id="pr-message">HOLD the balloon to pump</div>
+        </div>
+        <div class="action-dock" data-game="slots3d">
+          <button id="s3d-spin" class="s3d-spin" data-kind="spin">🎰 SPIN $10.00</button>
+          <div class="muted dice-roll-hint s3d-msg" id="s3d-message">Tap SPIN</div>
+        </div>
+        <!-- Reef Raiders (CH 17): aim & shoot on the TV; these control bet/power/modes -->
+        <div class="action-dock fish-dock" data-game="fish">
+          <div class="fish-betrow">
+            <span class="fish-cost" id="fish-cost">$1.00 / shot</span>
+            <button type="button" class="fish-fs" id="fish-fs" title="Fullscreen">⛶ Fullscreen</button>
+          </div>
+          <div class="slider-wrap">
+            <input id="fish-bet" class="slider" type="range" min="1" max="50" step="1" value="1" />
+            <div class="slider-val"><strong id="fish-bet-val">$1</strong><span class="muted"> base bet</span></div>
+          </div>
+          <div class="fish-ctrls">
+            <button type="button" class="fish-btn fish-pwr" id="fish-pdn">– PWR</button>
+            <span class="fish-power" id="fish-power">Power 1</span>
+            <button type="button" class="fish-btn fish-pwr" id="fish-pup">PWR +</button>
+            <button type="button" class="fish-btn" id="fish-auto">🔥 Auto-fire</button>
+            <button type="button" class="fish-btn" id="fish-lock">🎯 Lock-on</button>
+          </div>
+          <div class="muted dice-roll-hint" id="fish-message">Aim & tap the tank to shoot · catch the Gold Crab or Treasure Clam for a bonus</div>
+        </div>
+        <!-- Sky Swoop (CH 18): biplane crash game — climb the multiplier, cash out before the engine cuts -->
+        <div class="action-dock swoop-dock" data-game="swoop">
+          <div class="swoop-toprow">
+            <span class="swoop-mult" id="swoop-mult"></span>
+            <button type="button" class="fish-fs" id="swoop-fs" title="Fullscreen">⛶ Fullscreen</button>
+          </div>
+          <div class="slider-wrap">
+            <input id="swoop-bet" class="slider" type="range" min="10" max="1000" step="10" value="10" />
+            <div class="slider-val"><strong id="swoop-bet-val">$10</strong><span class="muted"> bet</span></div>
+          </div>
+          <button type="button" class="swoop-go" id="swoop-go">LAUNCH</button>
+          <div class="muted dice-roll-hint" id="swoop-message">Tap LAUNCH, watch the multiplier climb as you swoop — CASH OUT before the engine cuts out and you crash.</div>
+        </div>
+        <!-- Fish Shooter (CH 19): top-down fish-table arcade — aim & shoot on the TV; these control bet/power/modes -->
+        <div class="action-dock fishshooter-dock" data-game="fishshooter">
+          <div class="slider-wrap">
+            <input id="fsh-bet" class="slider" type="range" min="1" max="50" step="1" value="1" />
+            <div class="slider-val"><strong id="fsh-bet-val">$1</strong><span class="muted"> base bet</span></div>
+          </div>
+          <div class="fish-row">
+            <div class="fish-stepper" role="group" aria-label="Shot power">
+              <button type="button" class="fish-step" id="fsh-pdn" aria-label="Lower power">–</button>
+              <span class="fish-step-val"><small>POWER</small><strong id="fsh-power">1</strong></span>
+              <button type="button" class="fish-step" id="fsh-pup" aria-label="Raise power">+</button>
+            </div>
+            <span class="fish-cost" id="fsh-cost">$1.00 / shot</span>
+            <button type="button" class="fish-fs" id="fsh-fs" title="Fullscreen" aria-label="Fullscreen">⛶</button>
+          </div>
+          <div class="fish-toggles" role="group" aria-label="Firing options">
+            <button type="button" class="fish-pill" id="fsh-auto" title="Hold fire automatically">🔥 Auto-fire</button>
+            <button type="button" class="fish-pill" id="fsh-lock" title="Aim at the nearest fish for you">🎯 Lock-on</button>
+          </div>
+          <div class="fish-seg" role="group" aria-label="Shooting speed">
+            <span class="fish-seg-lbl">Speed</span>
+            <div class="fish-seg-track">
+              <button type="button" class="fish-seg-btn" id="fsh-spd-slow" title="Slow — gentle pace">🐢</button>
+              <button type="button" class="fish-seg-btn" id="fsh-spd-med"  title="Medium pace">🐠</button>
+              <button type="button" class="fish-seg-btn on" id="fsh-spd-fast" title="Fast — the cap">⚡</button>
+            </div>
+          </div>
+          <div class="muted dice-roll-hint" id="fsh-message">Aim & tap the tank to shoot · bigger fish pay more · land the Jackpot meter for a frenzy</div>
+        </div>
+        <div class="action-dock" data-game="plane">
+          <div class="plane-actions">
+            <button id="plane-a-action" class="plane-act" data-kind="bet">BET A</button>
+            <button id="plane-b-action" class="plane-act plane-act-b" data-kind="bet">BET B</button>
+          </div>
+          <!-- Auto cash-out, right by the BET buttons for quick toggle + adjust (A safe, B risky) -->
+          <div class="plane-dock-auto">
+            <div class="dock-auto" data-bet="a">
+              <span class="dock-auto-lbl" title="Bet A · safe">A</span>
+              <button type="button" class="qbet plane-auto-toggle active" id="plane-a-auto-toggle">AUTO ✓</button>
+              <input id="plane-a-auto-slider" class="slider dock-auto-slider" type="range" min="1.2" max="20" step="0.05" value="1.5" />
+              <span class="dock-auto-val">@ <strong id="plane-a-autoval">1.50x</strong></span>
+            </div>
+            <div class="dock-auto plane-demo-only" data-bet="b">
+              <span class="dock-auto-lbl" title="Bet B · risky">B</span>
+              <button type="button" class="qbet plane-auto-toggle active" id="plane-b-auto-toggle">AUTO ✓</button>
+              <input id="plane-b-auto-slider" class="slider dock-auto-slider" type="range" min="1.2" max="50" step="0.5" value="10" />
+              <span class="dock-auto-val">@ <strong id="plane-b-autoval">10.00x</strong></span>
+            </div>
+          </div>
+          <div class="muted dice-roll-hint plane-msg" id="plane-message">Place your bets — plane departs soon</div>
+        </div>
+        <div class="action-dock" data-game="crash">
+          <button id="crash-launch" class="btn btn-primary btn-block act-btn"><span class="ab-verb">🚀 LAUNCH</span><span class="ab-amt">BET $<b id="crash-bet-hint">25</b> · WIN $<b id="crash-payout-hint">0.00</b></span></button>
+          <div class="muted dice-roll-hint" id="crash-roll-hint"></div>
+        </div>
+        <div class="action-dock" data-game="flip">
+          <button id="play-house-btn" class="btn btn-primary btn-block act-btn"><span class="ab-verb">🪙 FLIP</span><span class="ab-amt">BET $<b id="house-bet-hint">25</b> · WIN $<b id="house-win-hint">23.50</b></span></button>
+        </div>
+        <div class="action-dock" data-game="dice">
+          <button id="dice-roll-btn" class="btn btn-primary btn-block act-btn"><span class="ab-verb">🎲 ROLL</span><span class="ab-amt">BET $<b id="dice-bet-hint">25</b> · WIN $<b id="dice-payout-hint">0.00</b></span></button>
+          <div class="muted dice-roll-hint" id="dice-roll-hint"></div>
+        </div>
+        <div class="action-dock" data-game="twodice">
+          <button id="td-roll-btn" class="btn btn-primary btn-block act-btn"><span class="ab-verb">🎲 ROLL</span><span class="ab-amt">BET $<b id="td-bet-hint">25</b> · WIN $<b id="td-payout-hint">0.00</b></span></button>
+          <div class="muted dice-roll-hint" id="td-roll-hint"></div>
+        </div>
+        <!-- Blackjack (CH 16): felt is the iframe in the TV; these controls drive it via postMessage. -->
+        <div class="action-dock bj-dock" data-game="blackjack">
+          <div class="bj-walletrow">
+            <span class="bj-wallet" id="bj-wallet" title="Your table wallet on the blackjack server (play-money, independent of demo credits)">🪪 —</span>
+            <span class="bj-bal" id="bj-bal" title="Your blackjack chips on the server (separate from demo credits)"></span>
+          </div>
+          <div class="bj-toprow">
+            <button type="button" class="bj-reload" id="bj-reload" title="Top your table chips back up to $1,000">⟳ Reload balance</button>
+            <button type="button" class="bj-reload" id="bj-cashout" title="Settle your real blackjack table credits back to your wallet">Cash out</button>
+            <span class="bj-count" id="bj-count"></span>
+          </div>
+          <div class="bj-statusrow">
+            <span class="bj-status" id="bj-status">Taking a seat at a live table…</span>
+          </div>
+          <div class="bj-controls" id="bj-controls"></div>
+          <button type="button" class="btn btn-ghost bj-share" id="bj-share" disabled title="Copy a link to this exact table so a friend can sit down with you">🔗 Share this table</button>
+        </div>
+
+        <!-- Win-animation theme switcher (hidden for now — locked to Scarfblade Films) -->
+        <div class="theme-switch card" id="theme-switch" hidden>
+          <span class="theme-switch-label">🎬 Win animations</span>
+          <div class="theme-toggle" id="theme-toggle">
+            <button type="button" class="theme-btn" data-theme="neon">Neon Nights</button>
+            <button type="button" class="theme-btn" data-theme="world">Magic Cliffs</button>
+            <button type="button" class="theme-btn" data-theme="cinematic">Scarfblade Films</button>
+          </div>
+          <button type="button" class="theme-preview-btn" id="theme-preview-btn" title="Preview the win animation">▶ Preview</button>
+          <span class="theme-credit" id="theme-credit"></span>
+        </div>
+
+        <!-- Bankroll controls under the TV -->
+        <div class="bankroll card" id="bankroll" hidden>
+          <div class="bankroll-bal">
+            <div>
+              <span class="muted">In-game balance</span>
+              <strong id="game-balance">0 ETH</strong>
+            </div>
+            <div>
+              <span class="muted">Wallet</span>
+              <strong id="wallet-balance">0 ETH</strong>
+            </div>
+          </div>
+          <div class="bankroll-actions">
+            <div class="ba-row">
+              <div class="slider-wrap deposit-slider">
+                <input id="deposit-input" class="slider" type="range" min="10" max="500" step="5" value="50" />
+                <div class="slider-val"><strong id="deposit-input-val">$50</strong><span class="eth-sub" id="deposit-input-eth"></span></div>
+              </div>
+              <button id="deposit-btn" class="btn btn-primary ba-btn">Deposit</button>
+            </div>
+            <span class="muted deposit-max-hint" id="deposit-max-hint">Slide all the way to deposit your wallet max</span>
+            <div class="ba-row">
+              <div class="slider-wrap withdraw-slider">
+                <input id="withdraw-input" class="slider" type="range" min="0" max="100" step="1" value="100" />
+                <div class="slider-val"><strong id="withdraw-input-val">$0</strong><span class="eth-sub" id="withdraw-input-eth"></span></div>
+              </div>
+              <button id="withdraw-btn" class="btn btn-ghost ba-btn">Withdraw all</button>
+            </div>
+            <span class="muted deposit-max-hint">Slide the bottom bar to choose how much to cash out — full = everything</span>
+          </div>
+        </div>
+
+        <!-- One-tap play vs the house -->
+        <div class="card play-house" id="play-house" data-game="flip" hidden>
+          <div class="ph-head">
+            <h2 class="card-title">⚡ Quick play vs House</h2>
+            <span class="ph-bankroll muted">House: <strong id="house-bankroll">—</strong> · edge 3%</span>
+          </div>
+          <p class="muted ph-note">Drag to choose your stake. You're HEADS. Win pays <strong>1.94×</strong> (3% house edge).</p>
+          <div class="slider-wrap">
+            <input id="house-bet" class="slider" type="range" min="10" max="100" step="5" value="25" />
+            <div class="slider-val"><strong id="house-bet-val">$25</strong><span class="eth-sub" id="house-bet-eth"></span></div>
+          </div>
+          <div class="quickbet-row" data-target="house-bet">
+            <button type="button" class="qbet" data-mode="half">½ Last</button>
+            <button type="button" class="qbet" data-mode="double">2× Last</button>
+            <button type="button" class="qbet" data-mode="max">Max</button>
+          </div>
+          <div class="side-row">
+            <span class="side-label">Your side</span>
+            <div class="side-toggle" id="house-side">
+              <button type="button" class="side-btn active" data-heads="1"><svg class="eth-mini" viewBox="0 0 256 417" aria-hidden="true"><polygon points="128 0 0 212 128 288 256 212"/><polygon class="b" points="128 312 0 237 128 417 256 237"/></svg>&nbsp;Heads</button>
+              <button type="button" class="side-btn" data-heads="0">★&nbsp;Tails</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Play against a specific host table (shown when you open a table link) -->
+        <div class="card play-house" id="play-table" data-game="flip" hidden>
+          <div class="ph-head">
+            <h2 class="card-title">🏦 <span id="pt-name">Host table</span></h2>
+            <span class="ph-bankroll muted">Bank: <strong id="pt-bank">—</strong></span>
+          </div>
+          <p class="muted ph-note" id="pt-sub">Flip against this table — you're HEADS. The host keeps half of the 3% fee.</p>
+          <div class="slider-wrap">
+            <input id="table-bet" class="slider" type="range" min="10" max="500" step="5" value="25" />
+            <div class="slider-val"><strong id="table-bet-val">$25</strong><span class="eth-sub" id="table-bet-eth"></span></div>
+          </div>
+          <div class="quickbet-row" data-target="table-bet">
+            <button type="button" class="qbet" data-mode="half">½ Last</button>
+            <button type="button" class="qbet" data-mode="double">2× Last</button>
+            <button type="button" class="qbet" data-mode="max">Max</button>
+          </div>
+          <div class="side-row">
+            <span class="side-label">Your side</span>
+            <div class="side-toggle" id="table-side">
+              <button type="button" class="side-btn active" data-heads="1"><svg class="eth-mini" viewBox="0 0 256 417" aria-hidden="true"><polygon points="128 0 0 212 128 288 256 212"/><polygon class="b" points="128 312 0 237 128 417 256 237"/></svg>&nbsp;Heads</button>
+              <button type="button" class="side-btn" data-heads="0">★&nbsp;Tails</button>
+            </div>
+          </div>
+          <button id="play-table-btn" class="btn btn-primary btn-block">🪙 Flip vs this table</button>
+        </div>
+
+        <!-- Dice game (CH 09) -->
+        <div class="card dice-panel" id="dice-panel" data-game="dice" hidden>
+          <div class="ph-head">
+            <h2 class="card-title">🎲 0-100 <span class="ch-tag">CH 09</span></h2>
+            <span class="ph-bankroll muted">House: <strong id="dice-house-bankroll">—</strong> · edge 2%</span>
+          </div>
+
+          <label class="field-label">Target <span class="muted" id="dice-mode-hint">— roll under to win</span> <span class="muted ob-draghint">· drag the bar to set</span></label>
+          <div class="dice-oddsbar is-draggable" id="dice-oddsbar" data-mode="under" role="slider" aria-label="Target" tabindex="0">
+            <div class="ob-zone ob-win" id="ob-win"></div>
+            <div class="ob-zone ob-lose" id="ob-lose"></div>
+            <div class="ob-target" id="ob-target"><span class="ob-flag" id="ob-flag">50.00</span><span class="ob-grip" aria-hidden="true"></span></div>
+            <div class="ob-ticks"><i style="left:0"></i><i style="left:25%"></i><i style="left:50%"></i><i style="left:75%"></i><i style="left:100%"></i></div>
+          </div>
+          <!-- value source for the game logic; the visible control is the draggable bar above -->
+          <input id="dice-target" type="range" min="100" max="9899" step="1" value="5000" hidden />
+          <strong id="dice-target-val" hidden>50.00</strong>
+
+          <div class="side-row">
+            <span class="side-label">Bet type</span>
+            <div class="side-toggle" id="dice-mode">
+              <button type="button" class="side-btn active" data-mode="under">▼ Roll Under</button>
+              <button type="button" class="side-btn" data-mode="over">▲ Roll Over</button>
+            </div>
+          </div>
+
+          <div class="dice-readouts">
+            <div class="ro-cell"><span class="ro-k muted">Win Chance</span><strong class="ro-v" id="dice-chance">50.00%</strong></div>
+            <div class="ro-cell ro-mult"><span class="ro-k muted">Multiplier</span><strong class="ro-v" id="dice-mult">1.96×</strong></div>
+            <div class="ro-cell ro-profit"><span class="ro-k muted">Profit on Win</span><strong class="ro-v" id="dice-profit">+$24.00</strong></div>
+          </div>
+
+          <label class="field-label">Stake</label>
+          <div class="slider-wrap">
+            <input id="dice-stake" class="slider" type="range" min="10" max="500" step="5" value="25" />
+            <div class="slider-val"><strong id="dice-stake-val">$25</strong><span class="eth-sub" id="dice-stake-eth"></span></div>
+          </div>
+          <div class="quickbet-row" data-target="dice-stake">
+            <button type="button" class="qbet" data-mode="half">½ Last</button>
+            <button type="button" class="qbet" data-mode="double">2× Last</button>
+            <button type="button" class="qbet" data-mode="max">Max</button>
+          </div>
+
+        </div>
+
+        <!-- Dice #2 game (CH 10) — two d6 dice, bet the total -->
+        <div class="card dice-panel" id="twodice-panel" data-game="twodice" hidden>
+          <div class="ph-head">
+            <h2 class="card-title">🎲🎲 Dice #2 <span class="ch-tag">CH 10</span></h2>
+            <span class="ph-bankroll muted">House: <strong id="td-house-bankroll">—</strong> · edge 2%</span>
+          </div>
+
+          <p class="muted td-intro">Two dice are thrown (each 1–6). Pick a target total and bet whether the sum lands <strong>under</strong> or <strong>over</strong> it. Odds follow the real 2-dice distribution (7 is the most common).</p>
+
+          <label class="field-label">Target total <strong id="td-target-val">7</strong> <span class="muted" id="td-mode-hint">— roll under to win</span></label>
+          <div class="td-slider-wrap">
+            <input id="td-target" class="slider slider-dice" type="range" min="2" max="12" step="1" value="7" />
+          </div>
+          <div class="td-scale" id="td-scale" aria-hidden="true"><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span>12</span></div>
+
+          <div class="side-row">
+            <span class="side-label">Bet type</span>
+            <div class="side-toggle" id="td-mode">
+              <button type="button" class="side-btn active" data-mode="under">▼ Under</button>
+              <button type="button" class="side-btn" data-mode="over">▲ Over</button>
+            </div>
+          </div>
+
+          <div class="dice-readouts">
+            <div class="ro-cell"><span class="ro-k muted">Win Chance</span><strong class="ro-v" id="td-chance">41.67%</strong></div>
+            <div class="ro-cell ro-mult"><span class="ro-k muted">Multiplier</span><strong class="ro-v" id="td-mult">2.35×</strong></div>
+            <div class="ro-cell ro-profit"><span class="ro-k muted">Profit on Win</span><strong class="ro-v" id="td-profit">+$0.00</strong></div>
+          </div>
+
+          <label class="field-label">Stake</label>
+          <div class="slider-wrap">
+            <input id="td-stake" class="slider" type="range" min="10" max="500" step="5" value="25" />
+            <div class="slider-val"><strong id="td-stake-val">$25</strong><span class="eth-sub" id="td-stake-eth"></span></div>
+          </div>
+          <div class="quickbet-row" data-target="td-stake">
+            <button type="button" class="qbet" data-mode="half">½ Last</button>
+            <button type="button" class="qbet" data-mode="double">2× Last</button>
+            <button type="button" class="qbet" data-mode="max">Max</button>
+          </div>
+
+        </div>
+
+        <!-- Crash game (CH 11) — provably-fair rocket; auto cash out before the bust -->
+        <div class="card dice-panel" id="crash-panel" data-game="crash" hidden>
+          <div class="ph-head">
+            <h2 class="card-title">🚀 Crash <span class="ch-tag">CH 11</span></h2>
+            <span class="ph-bankroll muted">House: <strong id="crash-house-bankroll">—</strong> · edge 1%</span>
+          </div>
+
+          <p class="muted td-intro">The rocket lifts off and the multiplier climbs. It busts at a secret, provably-fair point. You <strong>auto cash out</strong> at your target — win if the rocket gets there before it blows.</p>
+
+          <label class="field-label">Auto cash-out <strong id="crash-target-val">2.00×</strong></label>
+          <div class="slider-wrap">
+            <input id="crash-target" class="slider slider-dice" type="number" min="1.01" max="1000" step="0.01" value="2.00" inputmode="decimal" />
+          </div>
+          <div class="quickbet-row" id="crash-target-presets">
+            <button type="button" class="qbet" data-target="1.5">1.5×</button>
+            <button type="button" class="qbet" data-target="2">2×</button>
+            <button type="button" class="qbet" data-target="5">5×</button>
+            <button type="button" class="qbet" data-target="10">10×</button>
+          </div>
+
+          <div class="dice-readouts">
+            <div class="ro-cell"><span class="ro-k muted">Win Chance</span><strong class="ro-v" id="crash-chance">49.50%</strong></div>
+            <div class="ro-cell ro-mult"><span class="ro-k muted">Payout</span><strong class="ro-v" id="crash-mult-ro">2.00×</strong></div>
+            <div class="ro-cell ro-profit"><span class="ro-k muted">Profit on Win</span><strong class="ro-v" id="crash-profit">+$0.00</strong></div>
+          </div>
+
+          <label class="field-label">Stake</label>
+          <div class="slider-wrap">
+            <input id="crash-stake" class="slider" type="range" min="10" max="500" step="5" value="25" />
+            <div class="slider-val"><strong id="crash-stake-val">$25</strong><span class="eth-sub" id="crash-stake-eth"></span></div>
+          </div>
+          <div class="quickbet-row" data-target="crash-stake">
+            <button type="button" class="qbet" data-mode="half">½ Last</button>
+            <button type="button" class="qbet" data-mode="double">2× Last</button>
+            <button type="button" class="qbet" data-mode="max">Max</button>
+          </div>
+
+        </div>
+
+        <!-- Balloon Pop (CH 13): hold-to-pump play-money channel -->
+        <div class="card dice-panel pressure-panel" id="pressure-panel" data-game="pressure" hidden>
+          <div class="ph-head">
+            <h2 class="card-title">🎈 Balloon Pop <span class="ch-tag">CH 13</span></h2>
+            <span class="ph-bankroll muted">Balance: <strong id="pr-balance">$0</strong></span>
+          </div>
+
+          <p class="muted td-intro pr-intro"><strong>Hold</strong> to pump, <strong>release</strong> to bank before it pops. Reach <strong>1.20×</strong> to win · provably fair.</p>
+
+          <label class="field-label">Bet <span class="muted">— USD, $10 min</span></label>
+          <div class="slider-wrap">
+            <input id="pr-bet-slider" class="slider" type="range" min="10" max="500" step="5" value="10" />
+            <div class="slider-val"><strong id="pr-bet-val">$10</strong><span class="eth-sub" id="pr-bet-eth"></span></div>
+          </div>
+          <div class="quickbet-row pr-quickbet">
+            <button type="button" class="qbet" id="pr-bet-half">½</button>
+            <button type="button" class="qbet" id="pr-bet-double">2×</button>
+            <button type="button" class="qbet" id="pr-bet-max">Max</button>
+          </div>
+
+          <div class="side-row">
+            <span class="side-label">Speed / risk</span>
+            <select id="pr-risk" class="pr-select">
+              <option value="calm">Calm</option>
+              <option value="normal" selected>Normal</option>
+              <option value="frantic">Frantic</option>
+            </select>
+          </div>
+
+          <!-- Auto cash-out moved next to the HOLD button (in the action dock) for quick on/off + adjust. -->
+
+          <details class="dropdown pr-fair">
+            <summary class="card-title dd-summary"><span>🔒 Provably fair</span><span class="dd-arrow" aria-hidden="true">▾</span></summary>
+            <div class="ht-body pr-fair-body">
+              <div class="pr-fair-row muted">server hash <code id="pr-pf-hash">—</code> · nonce <code id="pr-pf-nonce">0</code></div>
+              <div class="pr-fair-row">
+                <input id="pr-pf-client" class="input" type="text" placeholder="client seed (auto)" />
+                <button id="pr-pf-verify" class="btn btn-ghost">Verify last round</button>
+              </div>
+              <div class="pr-fair-reveal" id="pr-pf-reveal"></div>
+              <div class="muted" id="pr-pf-last"></div>
+            </div>
+          </details>
+        </div>
+
+        <!-- Plane (CH 14): Aviator-style live crash. Demo = fully live tap-to-cash-out
+             with two bets; connected = single-shot real round (one on-chain tx). -->
+        <div class="card dice-panel plane-panel" id="plane-panel" data-game="plane" hidden>
+          <div class="ph-head">
+            <h2 class="card-title">✈️ Plane <span class="ch-tag">CH 14</span></h2>
+            <span class="ph-bankroll muted">Balance: <strong id="plane-balance">$0</strong> · edge 1%</span>
+          </div>
+
+          <p class="muted td-intro plane-intro">The plane climbs from <strong>1.00×</strong> — cash out before it <strong>flies away</strong>.
+            <span class="plane-demo-only">Two live bets (safe A + risky B) — tap CASH OUT anytime, or let AUTO bank it.</span>
+            <span class="plane-real-only">Set your auto-cash-out target, hit LAUNCH for one real on-chain round.</span>
+            · <strong>1% house edge</strong> · provably fair.</p>
+
+          <div class="plane-bets">
+            <!-- BET A (safe) -->
+            <div class="plane-bp a">
+              <div class="plane-bp-head">BET A <span class="muted plane-tag">· safe</span></div>
+              <div class="slider-wrap">
+                <input id="plane-a-bet" class="slider plane-bet" type="range" min="10" max="500" step="5" value="10" />
+                <div class="slider-val"><strong id="plane-a-betval">$10</strong><span class="eth-sub" id="plane-a-eth"></span></div>
+              </div>
+              <div class="quickbet-row">
+                <button type="button" class="qbet" id="plane-a-half">½</button>
+                <button type="button" class="qbet" id="plane-a-double">2×</button>
+                <button type="button" class="qbet" id="plane-a-max">Max</button>
+              </div>
+              <!-- Auto cash-out moved to the action dock (by the BET buttons) for quick toggle. -->
+              <div class="quickbet-row plane-demo-only">
+                <button type="button" class="qbet" id="plane-a-autobet">⟳ AUTOBET</button>
+                <button type="button" class="qbet" id="plane-a-mart" title="double the stake after a loss">×2 LOSS</button>
+              </div>
+            </div>
+            <!-- BET B (risky) -->
+            <div class="plane-bp b plane-demo-only">
+              <div class="plane-bp-head">BET B <span class="muted plane-tag">· risky</span></div>
+              <div class="slider-wrap">
+                <input id="plane-b-bet" class="slider plane-bet" type="range" min="10" max="500" step="5" value="10" />
+                <div class="slider-val"><strong id="plane-b-betval">$10</strong><span class="eth-sub" id="plane-b-eth"></span></div>
+              </div>
+              <div class="quickbet-row">
+                <button type="button" class="qbet" id="plane-b-half">½</button>
+                <button type="button" class="qbet" id="plane-b-double">2×</button>
+                <button type="button" class="qbet" id="plane-b-max">Max</button>
+              </div>
+              <!-- Auto cash-out moved to the action dock (by the BET buttons) for quick toggle. -->
+              <div class="quickbet-row">
+                <button type="button" class="qbet" id="plane-b-autobet">⟳ AUTOBET</button>
+                <button type="button" class="qbet" id="plane-b-mart" title="double the stake after a loss">×2 LOSS</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="plane-history-row">
+            <span class="muted plane-hist-label">Recent</span>
+            <div class="plane-history" id="plane-history"></div>
+          </div>
+
+          <div class="plane-feed-wrap plane-demo-only">
+            <div class="feed-tabs plane-feed-tabs">
+              <div class="ftab active" data-tab="all">ALL</div>
+              <div class="ftab" data-tab="top">TOP</div>
+              <div class="ftab" data-tab="mine">MINE</div>
+            </div>
+            <div class="plane-feed" id="plane-feed"></div>
+          </div>
+
+          <details class="dropdown pr-fair">
+            <summary class="card-title dd-summary"><span>🔒 Provably fair</span><span class="dd-arrow" aria-hidden="true">▾</span></summary>
+            <div class="ht-body pr-fair-body">
+              <div class="pr-fair-row muted">server hash <code id="plane-pf-hash">—</code> · nonce <code id="plane-pf-nonce">0</code></div>
+              <div class="pr-fair-row">
+                <input id="plane-pf-client" class="input" type="text" placeholder="client seed (auto)" />
+                <button id="plane-pf-verify" class="btn btn-ghost">Verify last round</button>
+              </div>
+              <div class="pr-fair-reveal" id="plane-pf-reveal"></div>
+              <div class="muted" id="plane-pf-last"></div>
+            </div>
+          </details>
+        </div>
+
+        <!-- Gem Vault 3D (CH 15): premium Three.js slot, play-money / demo only -->
+        <div class="card dice-panel slots3d-panel" id="slots3d-panel" data-game="slots3d" hidden>
+          <div class="ph-head">
+            <h2 class="card-title">💎 Gem Vault <span class="ch-tag">CH 15</span></h2>
+            <span class="ph-bankroll muted">Balance: <strong id="s3d-balance">$0</strong> · edge ~5%</span>
+          </div>
+          <p class="muted td-intro">A 5×3, 20-line slot — match symbols left-to-right; <strong>WILD</strong> substitutes and 3+ <strong>Vault</strong> scatters pay anywhere. <strong>95% RTP</strong> · provably fair.</p>
+          <button type="button" id="s3d-help-btn" class="btn btn-ghost s3d-help-btn">🎁 How free spins &amp; payouts work →</button>
+
+          <label class="field-label">Bet <span class="muted">— USD, $10 min</span></label>
+          <div class="slider-wrap">
+            <input id="s3d-bet-slider" class="slider" type="range" min="10" max="100" step="10" value="10" />
+            <div class="slider-val"><strong id="s3d-bet-val">$10</strong><span class="eth-sub" id="s3d-bet-eth"></span></div>
+          </div>
+          <div class="quickbet-row">
+            <button type="button" class="qbet" id="s3d-bet-half">½</button>
+            <button type="button" class="qbet" id="s3d-bet-double">2×</button>
+            <button type="button" class="qbet" id="s3d-bet-max">Max</button>
+          </div>
+          <div class="side-row"><span class="side-label">Last win</span><strong class="s3d-winval" id="s3d-win">$0.00</strong></div>
+
+          <details class="dropdown pr-fair">
+            <summary class="card-title dd-summary"><span>🔒 Provably fair</span><span class="dd-arrow" aria-hidden="true">▾</span></summary>
+            <div class="ht-body pr-fair-body">
+              <div class="pr-fair-row muted">server hash <code id="s3d-pf-hash">—</code> · nonce <code id="s3d-pf-nonce">0</code></div>
+              <div class="pr-fair-row">
+                <input id="s3d-pf-client" class="input" type="text" placeholder="client seed (auto)" />
+                <button id="s3d-pf-verify" class="btn btn-ghost">Verify last spin</button>
+              </div>
+              <div class="pr-fair-reveal" id="s3d-pf-reveal"></div>
+              <div class="muted" id="s3d-pf-last"></div>
+            </div>
+          </details>
+        </div>
+
+        <!-- Reef Raiders (CH 17): arcade fish-shooter, play-money / demo only -->
+        <div class="card dice-panel fish-panel" id="fish-panel" data-game="fish" hidden>
+          <div class="ph-head">
+            <h2 class="card-title">🐟 Reef Raiders <span class="ch-tag">CH 17</span></h2>
+            <span class="ph-bankroll muted">Balance: <strong id="fish-balance">$0</strong> · ~90% RTP</span>
+          </div>
+          <p class="muted td-intro">Aim the cannon and <strong>shoot fish to catch them for coins</strong>. Each shot costs <em>power × bet</em>; bigger fish pay more but are harder to land. Catch the <strong>Gold Crab</strong> for a Treasure Chest, or the <strong>Treasure Clam</strong> for a Feeding Frenzy. <strong>~90% RTP</strong> · provably fair.</p>
+          <div class="side-row"><span class="side-label">Last catch</span><strong class="fish-winval" id="fish-win">$0.00</strong></div>
+          <div class="fish-flow" id="fish-flow">
+            <span class="ff-label">This session</span>
+            <span class="ff-item">shots <strong id="fish-ses-spent">$0.00</strong></span>
+            <span class="ff-item">caught <strong id="fish-ses-won">$0.00</strong></span>
+            <span class="ff-item">net <strong id="fish-ses-net" class="ff-net">+$0.00</strong></span>
+          </div>
+          <p class="muted" style="font-size:.82rem">Tip: ⛶ Fullscreen for the full arcade feel · 🔥 Auto-fire holds the trigger · 🎯 Lock-on tracks the best target.</p>
+        </div>
+
+        <!-- Fish Shooter (CH 19): session tracker + how-to-play / bonus-round help -->
+        <div class="card dice-panel fish-panel" id="fishshooter-panel" data-game="fishshooter">
+          <div class="ph-head">
+            <h2 class="card-title">🎣 Fish Shooter <span class="ch-tag">CH 19</span></h2>
+            <span class="ph-bankroll muted">Balance: <strong id="fsh-balance">$0</strong> · ~95% RTP</span>
+          </div>
+          <p class="muted td-intro">Aim the cannon and <strong>shoot fish to catch them for coins</strong>. Each shot costs <em>power × base bet</em>; bigger fish pay more but take more shots to land. Catch a glowing <strong>BONUS creature</strong> to launch a bonus round. <strong>~95% RTP</strong> · provably fair.</p>
+          <div class="side-row"><span class="side-label">Last catch</span><strong class="fish-winval" id="fsh-win">$0.00</strong></div>
+          <div class="fish-flow" id="fsh-flow">
+            <span class="ff-label">This session</span>
+            <span class="ff-item">shots <strong id="fsh-ses-spent">$0.00</strong></span>
+            <span class="ff-item">caught <strong id="fsh-ses-won">$0.00</strong></span>
+            <span class="ff-item">net <strong id="fsh-ses-net" class="ff-net">+$0.00</strong></span>
+          </div>
+          <details class="fish-help">
+            <summary>❔ How to play · Power · Bonus rounds</summary>
+            <div class="fish-help-body">
+              <p><strong>🎯 Goal.</strong> Land fish to win coins. Tap the tank to aim &amp; fire, or use <strong>🔥 Auto-fire</strong> + <strong>🎯 Lock-on</strong>. Overall the game returns <strong>~95%</strong> no matter which fish you shoot — most of it straight from your catches, plus a little through the bonus + jackpot rounds.</p>
+              <p><strong>⚡ Power (×1–×2) is a MULTIPLIER, not your bet.</strong> It does <em>not</em> change your base bet. It multiplies <em>both</em> the cost and the payout of each shot by the same amount, so a power-2 shot costs 2× and pays 2× — your % return is essentially the same at every power. Higher power just lands big fish faster. (Capped at ×2 to keep the odds fair and consistent.)</p>
+              <p><strong>💵 Base bet</strong> (the slider) sets your stake. Cost per shot = <em>power × base bet</em>. <strong>Bigger base bet → bigger bonus rounds</strong> (a bonus pays around 25× your base bet on average).</p>
+              <p><strong>🎚 Shooting speed</strong> (Slow / Medium / Fast) sets your <em>hold-to-fire</em> pace. You can always click faster than that by tapping rapidly — go for it, it's fun and totally RTP-neutral (every shot still returns the same ~95%, you just spend faster). During <strong>bonus &amp; boss rounds</strong> the free shots fire at your chosen pace so the round always plays out fairly — tapping won't speed those up.</p>
+              <p><strong>🎁 Bonus rounds</strong> — rare, and they <em>pay when you land the bonus creature</em>:</p>
+              <ul>
+                <li><strong>⚡ Feeding Frenzy</strong> — a burst of free shots.</li>
+                <li><strong>💰 Treasure Vault</strong> — free shots + a treasure chest.</li>
+                <li><strong>🌩 Lightning Storm</strong> — free shots where every kill chains lightning to nearby fish.</li>
+                <li><strong>🐉 Dragon Boss</strong> — fill the Jackpot meter (or land the Sea Dragon) to blast the dragon for the whole jackpot pool.</li>
+              </ul>
+              <p>Bonus payouts are <strong>variable</strong> — you keep what you catch, so a lucky big fish pays big and a cold run pays small. They're pre-funded, so the odds stay fair.</p>
+            </div>
+          </details>
+          <p class="muted" style="font-size:.82rem">Tip: ⛶ Fullscreen for the full arcade feel · 🔥 Auto-fire holds the trigger · 🎯 Lock-on tracks the best target.</p>
+        </div>
+
+        <!-- Host tools (owner only): adjust limits, fund house, redeploy -->
+        <div class="card host-tools" id="host-tools" hidden>
+          <details class="dropdown">
+            <summary class="card-title dd-summary"><span>⚙️ Host tools</span><span class="dd-arrow" aria-hidden="true">▾</span></summary>
+            <div class="ht-body">
+              <button id="raise-max-btn" class="btn btn-ghost btn-block">⬆️ Raise max bet (allow up to $500)</button>
+              <div class="bankroll-actions ht-fund">
+                <input id="fund-house-input" class="input" type="number" min="0" step="1" placeholder="Fund house $ (e.g. 1000)" />
+                <button id="fund-house-btn" class="btn btn-ghost">Fund house</button>
+              </div>
+              <div class="bankroll-actions ht-fund">
+                <input id="bj-signer-input" class="input" type="text" placeholder="0x… token signer address (from --genkey)" />
+                <button id="bj-signer-btn" class="btn btn-ghost">Set token signer</button>
+              </div>
+              <button id="new-game-btn" class="btn btn-ghost btn-block">🔄 Start a fresh game (redeploy)</button>
+              <button id="deploy-registry-btn" class="btn btn-ghost btn-block">🛰️ Deploy site registry (one-time)</button>
+              <div class="bankroll-actions ht-fund">
+                <input id="registry-target" class="input" type="text" placeholder="0x… contract to make active" />
+                <button id="set-active-btn" class="btn btn-ghost">📡 Point site here</button>
+              </div>
+              <p class="muted ph-note">Only you (the host) can do these. "Fresh game" deploys a new contract — withdraw your balance first if you want it back. The one-time registry lets future redeploys flip the whole site automatically.</p>
+            </div>
+          </details>
+        </div>
+
+        <!-- Host earnings dashboard — only the locked house wallet sees this -->
+        <div class="card host-stats hidden" id="host-stats-card">
+          <h2 class="card-title">💼 Host earnings <span class="hs-private">private</span></h2>
+          <div class="hs-tabs">
+            <button type="button" class="hs-tab active" data-period="today">24h</button>
+            <button type="button" class="hs-tab" data-period="week">Week</button>
+            <button type="button" class="hs-tab" data-period="month">Month</button>
+            <button type="button" class="hs-tab" data-period="year">Year</button>
+            <button type="button" class="hs-tab" data-period="all">All</button>
+          </div>
+          <!-- Per-game earnings filter — injected from the HOST_GAMES registry,
+               so any future game shows up here automatically. -->
+          <div class="hs-tabs hs-gtabs" id="hs-game-tabs"></div>
+          <div class="hs-hero">
+            <span class="muted" id="hs-period-label">Grand total · last 24h</span>
+            <strong id="hs-profit-today" class="hs-big">+$0</strong>
+            <span class="muted hs-sub" id="hs-profit-sub">0 games · $0 wagered</span>
+          </div>
+          <div class="hs-grid" style="margin-bottom: 8px;">
+            <div class="hs-cell"><span class="muted">Fees / rake (period)</span><strong id="hs-period-fees">+$0</strong></div>
+            <div class="hs-cell"><span class="muted">Won at table (period)</span><strong id="hs-period-table">+$0</strong></div>
+          </div>
+          <div class="hs-grid">
+            <div class="hs-cell"><span class="muted">Fees all-time</span><strong id="hs-fees-total">$0</strong></div>
+            <div class="hs-cell"><span class="muted">Games all-time</span><strong id="hs-games-total">0</strong></div>
+            <div class="hs-cell"><span class="muted">Volume all-time</span><strong id="hs-volume-total">$0</strong></div>
+            <div class="hs-cell"><span class="muted">Net margin</span><strong id="hs-take">0%</strong></div>
+            <div class="hs-cell"><span class="muted">Avg bet</span><strong id="hs-avg">$0</strong></div>
+            <div class="hs-cell"><span class="muted">Bankroll (in play)</span><strong id="hs-bankroll">$0</strong></div>
+            <div class="hs-cell hs-cash"><span class="muted">💰 House funds total (bankroll + balance)</span><strong id="hs-balance">$0</strong></div>
+          </div>
+          <!-- Live token-mode exposure: principal players have locked (you can't withdraw it until
+               they cash out) + unrealized P&L that only hits the bankroll at cash-out. -->
+          <div class="hs-grid" id="hs-token-row" style="margin-top:8px" hidden>
+            <div class="hs-cell"><span class="muted">🎟️ Open token sessions</span><strong id="hs-tok-open">0</strong></div>
+            <div class="hs-cell"><span class="muted">🔒 Locked in play</span><strong id="hs-tok-locked">$0</strong></div>
+            <div class="hs-cell"><span class="muted">📊 Unrealized P&amp;L (settles at cash-out)</span><strong id="hs-tok-pnl">$0</strong></div>
+          </div>
+          <!-- Stranded-lock recovery: funds the CONNECTED wallet has locked on-chain but with no
+               open session (e.g. lost before the disk was mounted). Releasing returns them at net=0. -->
+          <div class="hs-grid" id="hs-stuck-row" style="margin-top:8px" hidden>
+            <div class="hs-cell" style="grid-column:1/-1; display:flex; align-items:center; gap:10px; flex-wrap:wrap">
+              <span class="muted">🔓 Locked on this wallet <span id="hs-stuck-acct" class="muted"></span></span>
+              <strong id="hs-stuck-amt">$0</strong>
+              <button id="release-stuck-btn" class="btn btn-primary" type="button">Release back to credits</button>
+            </div>
+          </div>
+          <!-- Help a stuck player: paste any wallet → open their profile to see locked funds + release. -->
+          <div class="hs-grid" id="hs-player-lookup" style="margin-top:8px" hidden>
+            <div class="hs-cell" style="grid-column:1/-1; display:flex; align-items:center; gap:8px; flex-wrap:wrap">
+              <span class="muted">🔎 Look up a player</span>
+              <input id="hs-player-addr" class="input" type="text" spellcheck="false" placeholder="0x… player wallet" style="flex:1 1 220px; min-width:180px" />
+              <button id="hs-player-btn" class="btn btn-ghost" type="button">Open profile</button>
+            </div>
+          </div>
+          <div class="bankroll-actions" style="margin-top: 10px;">
+            <input id="cashout-input" class="input" type="number" min="0" step="1" placeholder="Cash out $ (e.g. 100)" />
+            <button id="cashout-amount-btn" class="btn btn-ghost">💸 Cash out</button>
+          </div>
+          <button id="cashout-house-btn" class="btn btn-ghost btn-block" style="margin-top: 6px;">Cash out everything to my wallet</button>
+          <p class="muted" style="font-size: 11px; margin-top: 8px;">Use the <strong>game tabs</strong> (All · Coin Flip · Dice) to break earnings down per game — any new game we add shows up here automatically. <strong>Grand total</strong> = fees/rake <strong>+</strong> what you won (or lost) at the table, for the chosen game and period — computed from real game results, so deposits, withdrawals, and cash-outs never distort it. <strong>Dice</strong> has no separate rake: the house edge is realized straight as the bankroll swing (you win the roller's stake on a loss, pay their profit on a win), so it shows under “Won at table.” <strong>Net margin</strong> = grand total ÷ volume. “House funds total” is the live pool plus any in-game balance (one bankroll backs every game). Cash-out releases the contract funds to your real MetaMask wallet (empties the house until you fund it again). Only your house wallet can see this.</p>
+        </div>
+
+        <!-- In-browser hosting: deploy the game contract with one click -->
+        <div class="card host-setup" id="host-setup" hidden>
+          <h2 class="card-title">🎬 Host a game</h2>
+          <p class="muted ph-note">
+            No game is set up on this network yet. Deploy one to start it. The house
+            (3% fee recipient + who players bet against) is <strong>locked to the main
+            wallet 0x2F4B…aB39</strong> — deploying never changes that. Make sure you're
+            on a test network with some test ETH.
+          </p>
+          <button id="deploy-btn" class="btn btn-primary btn-block">🚀 Deploy game contract</button>
+          <div id="host-share" class="share-box hidden">
+            <span class="muted">✅ Live! Send this game link to players:</span>
+            <div class="share-row">
+              <input id="host-share-link" class="input share-input" readonly />
+              <button id="host-copy" class="btn btn-ghost">Copy</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ───────────────── Right: lobby / players ───────────────── -->
+      <aside class="sidebar">
+        <!-- Live ETH price ticker (Matrix style) -->
+        <div class="eth-ticker" aria-label="Live ETH price">
+          <span class="eth-ticker-tag">● LIVE</span>
+          <div class="eth-ticker-win"><div class="eth-ticker-track" id="eth-ticker-track">ETH/USD  LOADING…</div></div>
+        </div>
+
+        <!-- Trash-talk chat now lives in the slide-in right drawer (#chat-drawer) -->
+
+        <!-- Create room (collapsible) -->
+        <div class="card">
+          <details class="dropdown">
+            <summary class="card-title dd-summary"><span>Create a room</span><span class="dd-arrow" aria-hidden="true">▾</span></summary>
+            <p class="muted ph-note">A 1-v-1 flip with a friend. You both wager the <strong>same</strong> amount — set it here, then share your link.</p>
+            <label class="field-label" for="room-name">Room name</label>
+            <input id="room-name" class="input" type="text" maxlength="24" placeholder="High Rollers" />
+            <label class="field-label">Stake each player puts in <span class="muted" id="maxbet-hint">· $10–$100</span></label>
+            <div class="slider-wrap">
+              <input id="bet-input" class="slider" type="range" min="10" max="100" step="5" value="25" />
+              <div class="slider-val"><strong id="bet-input-val">$25</strong><span class="eth-sub" id="bet-input-eth"></span></div>
+            </div>
+            <p class="muted create-breakdown" id="create-breakdown"></p>
+            <div class="side-row">
+              <span class="side-label">Pick your side (challenger gets the other)</span>
+              <div class="side-toggle" id="create-side">
+                <button type="button" class="side-btn active" data-heads="1"><svg class="eth-mini" viewBox="0 0 256 417" aria-hidden="true"><polygon points="128 0 0 212 128 288 256 212"/><polygon class="b" points="128 312 0 237 128 417 256 237"/></svg>&nbsp;Heads</button>
+                <button type="button" class="side-btn" data-heads="0">★&nbsp;Tails</button>
+              </div>
+            </div>
+            <button id="create-room-btn" class="btn btn-primary btn-block">Create & get share link</button>
+            <div id="share-box" class="share-box hidden">
+              <span class="muted">Share this link — unique to your room:</span>
+              <div class="share-row">
+                <input id="share-link" class="input share-input" readonly />
+                <button id="copy-link-btn" class="btn btn-ghost">Copy</button>
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <!-- Host your own table (collapsible) -->
+        <div class="card">
+          <details class="dropdown">
+            <summary class="card-title dd-summary"><span>🏦 Host your own table</span><span class="dd-arrow" aria-hidden="true">▾</span></summary>
+            <p class="muted ph-note">Share one link — <strong>many players</strong> can flip against <strong>your</strong> bank at once, each for any amount they pick (no wait line). You're the house: you keep <strong>half</strong> the 3% rake (1.5%), the platform takes the other 1.5%. Auto-refunds you if idle for 5 minutes.</p>
+            <label class="field-label" for="host-table-name">Table name</label>
+            <input id="host-table-name" class="input" type="text" maxlength="24" placeholder="My Casino" />
+            <label class="field-label">Bank you put up <span class="muted">· $10–$500</span></label>
+            <div class="slider-wrap">
+              <input id="host-bank" class="slider" type="range" min="10" max="500" step="5" value="100" />
+              <div class="slider-val"><strong id="host-bank-val">$100</strong><span class="eth-sub" id="host-bank-eth"></span></div>
+            </div>
+            <button id="create-host-btn" class="btn btn-primary btn-block">Create host game link</button>
+            <div id="host-table-share" class="share-box hidden">
+              <span class="muted">Share this link — players flip against your bank:</span>
+              <div class="share-row">
+                <input id="host-table-link" class="input share-input" readonly />
+                <button id="host-table-copy" class="btn btn-ghost">Copy</button>
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <!-- Your open tables (manage / close — auto-closes after 5 min idle) -->
+        <div class="card hidden" id="my-tables-card">
+          <h2 class="card-title">🏦 Your tables <span class="pill" id="my-tables-count">0</span></h2>
+          <p class="muted" style="margin: 2px 0 8px; font-size: 12px;">Auto-closes &amp; refunds your bank after 5 min with no plays (keep this tab open). Or close one yourself anytime.</p>
+          <ul id="my-tables-list" class="rooms-list"></ul>
+        </div>
+
+        <!-- Players + win/loss records (derived from on-chain history) -->
+        <div class="card">
+          <details class="dropdown" open>
+            <summary class="card-title dd-summary">
+              <span>Players &amp; records <span class="pill" id="players-count">0</span></span>
+              <span class="dd-arrow" aria-hidden="true">▾</span>
+            </summary>
+            <p class="muted" style="margin: 2px 0 8px; font-size: 12px;">Last 10 games (newest right) · full W–L record · 🔥 best win streak</p>
+            <ul id="players-list" class="players-list">
+              <li class="empty">No one tuned in yet.</li>
+            </ul>
+          </details>
+        </div>
+
+        <!-- HIGH SCORES leaderboard (derived from recent on-chain results) -->
+        <div class="card">
+          <details class="dropdown" open>
+            <summary class="card-title dd-summary">
+              <span>🏆 High scores</span>
+              <span class="dd-arrow" aria-hidden="true">▾</span>
+            </summary>
+            <p class="muted" style="margin: 2px 0 8px; font-size: 12px;">Ranked by net record (wins − losses) from on-chain history.</p>
+            <ul id="leaderboard-list" class="leaderboard-list">
+              <li class="empty">No games yet — top the board first!</li>
+            </ul>
+          </details>
+        </div>
+
+        <!-- Live wins feed (recent on-chain results scrolling) -->
+        <div class="card">
+          <details class="dropdown" open>
+            <summary class="card-title dd-summary"><span>📡 Live wins</span><span class="dd-arrow" aria-hidden="true">▾</span></summary>
+            <ul id="feed-list" class="feed-list"><li class="empty">Recent flips will scroll here.</li></ul>
+          </details>
+        </div>
+
+        <!-- Your progress: daily streak + achievements -->
+        <div class="card" id="progress-card" hidden>
+          <h2 class="card-title">🎖️ Your progress <span class="pill" id="daily-streak-pill">Day 1 🔥</span></h2>
+          <p class="muted" id="daily-streak-note" style="font-size: 12px; margin: 2px 0 8px;">Check in daily — your streak grows each day you play.</p>
+          <div id="achievements-grid" class="ach-grid"></div>
+        </div>
+
+        <!-- Invite friends (referral link) -->
+        <div class="card">
+          <h2 class="card-title">🎟️ Invite friends</h2>
+          <p class="muted" id="invited-by" style="font-size: 12px; margin: 2px 0 8px;"></p>
+          <div class="share-row">
+            <input id="invite-link" class="input share-input" readonly />
+            <button id="invite-copy" class="btn btn-ghost">Copy</button>
+          </div>
+          <p class="muted" style="font-size: 11px; margin-top: 6px;">Share your link — friends land straight into your game.</p>
+        </div>
+
+        <!-- Your money in/out per game (clearer than MetaMask's contract activity) -->
+        <div class="card">
+          <details class="dropdown" open>
+            <summary class="card-title dd-summary">
+              <span>🧾 Your games <span class="pill" id="my-history-count">0</span> <span id="my-history-net" class="hist-net"></span></span>
+              <span class="dd-arrow" aria-hidden="true">▾</span>
+            </summary>
+            <p class="muted" style="margin: 2px 0 8px; font-size: 12px;">Each row = <span style="color:#34e39b">pot won</span> / <span style="color:#ff7a7a">stake lost</span>. The “profit” tag up top is your true bottom line after stakes.</p>
+            <ul id="my-history-list" class="hist-list">
+              <li class="empty">No games yet — your wins &amp; losses show here.</li>
+            </ul>
+          </details>
+        </div>
+
+        <!-- Open rooms -->
+        <div class="card">
+          <h2 class="card-title">
+            Open rooms <span class="pill" id="rooms-count">0</span>
+            <button id="refresh-rooms" class="btn btn-mini" title="Refresh rooms" aria-label="Refresh open rooms">↻</button>
+          </h2>
+          <ul id="rooms-list" class="rooms-list">
+            <li class="empty">No open rooms. Create one!</li>
+          </ul>
+        </div>
+
+        <!-- House info -->
+        <div class="card house-card">
+          <div class="house-row"><span class="muted">House fee</span><strong>10%</strong></div>
+          <div class="house-row"><span class="muted">Games played</span><strong id="stat-games">0</strong></div>
+          <div class="house-row"><span class="muted">Total wagered</span><strong id="stat-wagered">0 ETH</strong></div>
+          <div class="house-row"><span class="muted">Fees to treasury</span><strong id="stat-fees">0 ETH</strong></div>
+          <div class="house-row tiny"><span class="muted">Contract</span><a id="contract-link" class="mono" target="_blank" rel="noopener">—</a></div>
+        </div>
+      </aside>
+    </main>
+
+    <!-- ───────────── Poker room (CH 11) — full-width, no TV ───────────── -->
+    <section class="poker-view" id="poker-view" hidden>
+      <div class="poker-topline">
+        <div><span class="pk-title">♠ POKER ROOM</span> <span class="pk-sub">No-Limit Texas Hold'em · vs the house</span></div>
+        <div class="pk-house">Your chips: <b id="poker-chips">$0</b> &nbsp;·&nbsp; <button id="poker-leave" class="btn btn-ghost" hidden>Leave table</button></div>
+      </div>
+      <div class="poker-table" id="poker-table">
+        <div class="poker-rail">
+          <div class="poker-center">
+            <div class="poker-pot" id="poker-pot">POT $0</div>
+            <ol class="poker-board" id="poker-board"></ol>
+            <div class="poker-status" id="poker-status">Take a seat to start playing.</div>
+          </div>
+          <!-- seats injected by poker-ui.js -->
+        </div>
+      </div>
+      <div class="poker-herozone">
+        <div class="poker-hole" id="poker-hole"></div>
+        <div class="poker-hint" id="poker-hint"></div>
+        <div class="poker-actions" id="poker-actions"></div>
+      </div>
+
+      <!-- buy-in modal -->
+      <div class="poker-modal hidden" id="poker-buyin">
+        <div class="poker-card-modal">
+          <h3>Sit down</h3>
+          <p>Buy in with your in-game balance. Play No-Limit Hold'em against the house bots — stand up any time and your chips settle back to your balance.</p>
+          <div class="pm-row">
+            <input id="poker-buyin-range" type="range" min="0" max="100" step="1" value="50" />
+            <span class="pm-amt" id="poker-buyin-amt">$0</span>
+          </div>
+          <div class="bankroll-actions" style="justify-content:center;">
+            <button id="poker-buyin-cancel" class="btn btn-ghost">Cancel</button>
+            <button id="poker-buyin-go" class="btn btn-primary">Sit &amp; deal</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Toast -->
+    <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
+    <!-- ─────────────────── Help / how-to-play modal ─────────────────── -->
+    <div id="help-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="How to play">
+      <div class="modal-card">
+        <button id="help-close" class="modal-close" aria-label="Close">✕</button>
+        <h2>📺 How to play Crypto TV Flip</h2>
+        <ol class="help-steps">
+          <li><b>Install MetaMask</b> (browser extension or app) and create a wallet.</li>
+          <li><b>Switch to the test network.</b> Click <i>Connect Wallet</i> — the site
+            offers to add/switch to the right network automatically.</li>
+          <li><b>Get free test ETH.</b> On Sepolia, the easiest faucet (gives the most) is
+            <a href="https://sepolia-faucet.pk910.de/#/" target="_blank" rel="noopener">sepolia-faucet.pk910.de ↗</a> —
+            mine some Sepolia ETH to your address in the browser. (Alternatives:
+            <span class="mono">sepoliafaucet.com</span>,
+            <span class="mono">cloud.google.com/application/web3/faucet/ethereum/sepolia</span>.)
+            On a local chain, test ETH is pre-funded — import a test key into MetaMask.</li>
+          <li><b>Deposit ETH</b> into the game from the panel under the TV.</li>
+          <li><b>Create or join a room.</b> Two players, equal bet. Max bet is shown by the
+            form. Everything is pure ETH — no tokens, no swaps.</li>
+          <li><b>Watch the TV.</b> When both bets are in: 3‑2‑1‑FLIP — the coin is
+            decided on‑chain by the block's randomness (<span class="mono">prevrandao</span>),
+            settled instantly inside your transaction, and your screen shows WINNER 😄 or LOSER 😢.</li>
+          <li><b>Winner takes the pot minus the 3% house fee.</b> Withdraw your balance
+            to your wallet anytime.</li>
+        </ol>
+        <p class="help-foot muted">
+          <b>Hotkeys:</b> <kbd>Space</kbd> flip vs house / confirm bet · <kbd>H</kbd>/<kbd>T</kbd> pick side ·
+          <kbd>+</kbd>/<kbd>−</kbd> adjust stake · <kbd>Esc</kbd> close.
+        </p>
+        <p class="help-foot muted">
+          The result is computed on‑chain and visible in the transaction on Etherscan.
+          This is play‑money on a test network — never use real funds.
+          (A Chainlink VRF randomness upgrade is planned for mainnet.)
+        </p>
+      </div>
+    </div>
+
+    <!-- ─────────── Gem Vault 3D: payouts + free-spins explainer ─────────── -->
+    <div id="s3d-help-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Gem Vault payouts and free spins">
+      <div class="modal-card s3d-help-card">
+        <button id="s3d-help-close" class="modal-close" aria-label="Close">✕</button>
+        <div id="s3d-help-body"><!-- built from the engine by slots3d --></div>
+      </div>
+    </div>
+
+    <!-- ─────────────────── Player profile modal ─────────────────── -->
+    <div id="profile-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Your profile">
+      <div class="modal-card profile-card">
+        <button id="profile-close" class="modal-close" aria-label="Close">✕</button>
+        <div class="profile-head">
+          <canvas id="profile-avatar" width="64" height="64"></canvas>
+          <div class="profile-head-main">
+            <input id="profile-name" maxlength="24" placeholder="Display name" class="profile-name-input" />
+            <div class="profile-addr">
+              <span id="profile-addr-short" class="mono">—</span>
+              <button id="profile-addr-reveal" class="btn btn-mini" title="Show / copy your address">👁 reveal</button>
+            </div>
+          </div>
+        </div>
+        <textarea id="profile-bio" maxlength="160" rows="2" placeholder="Short bio (saved in this browser only)"></textarea>
+        <div class="profile-stats" id="profile-stats"></div>
+        <div class="profile-house hidden" id="profile-house"></div>
+        <h3 class="profile-h3">Recent games</h3>
+        <div class="profile-history" id="profile-history"><p class="muted">No games yet — go play a channel!</p></div>
+        <button id="profile-save" class="btn btn-primary btn-block">💾 Save profile</button>
+        <p class="muted profile-note">Your <strong>name</strong> shows in chat for everyone. Bio &amp; avatar are saved in this browser only. Stats are read live from your on-chain games.</p>
+      </div>
+    </div>
+
+    <!-- Bet confirmation: lock in the bet + see the pot / 10% cut / winnings -->
+    <div id="bet-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Confirm your bet">
+      <div class="modal-card bet-card">
+        <button id="bet-close" class="modal-close" aria-label="Close">✕</button>
+        <h2 id="bet-modal-title">Lock in your bet</h2>
+        <div id="bet-side" class="bet-side hidden"></div>
+
+        <!-- Custom-room joiners may raise the stake with this slider -->
+        <div id="bet-raise" class="bet-raise hidden">
+          <label class="field-label">Your bet (drag to raise — the host must approve a higher amount)</label>
+          <div class="slider-wrap">
+            <input id="join-bet" class="slider" type="range" min="10" max="500" step="5" value="10" />
+            <div class="slider-val"><strong id="join-bet-val">$10</strong></div>
+          </div>
+        </div>
+
+        <div class="bet-breakdown">
+          <div class="bd-row"><span>Your bet</span><strong id="bd-yourbet">—</strong></div>
+          <div class="bd-row"><span id="bd-opplabel">Opponent bet</span><strong id="bd-oppbet">—</strong></div>
+          <div class="bd-row total"><span>Total pot</span><strong id="bd-pot">—</strong></div>
+          <div class="bd-row fee"><span>House cut (10%) → host pot</span><strong id="bd-fee">—</strong></div>
+          <div class="bd-row win"><span>🏆 Winner takes home</span><strong id="bd-win">—</strong></div>
+        </div>
+        <button id="bet-accept" class="btn btn-primary btn-block">✓ Accept bet &amp; flip</button>
+        <p id="bet-hint" class="muted bet-hint"></p>
+      </div>
+    </div>
+
+    <!-- Confirm moving money between wallet and in-game credits -->
+    <div id="xfer-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Confirm transfer">
+      <div class="modal-card xfer-card">
+        <button id="xfer-close" class="modal-close" aria-label="Close">✕</button>
+        <h2 id="xfer-title">Add game credits</h2>
+        <p id="xfer-sub" class="muted xfer-sub">Move money from your wallet into the game so you can play.</p>
+        <div class="xfer-amount">
+          <strong id="xfer-usd">$0</strong>
+          <span id="xfer-eth" class="xfer-eth">≈ 0 ETH</span>
+        </div>
+        <div class="xfer-flow">
+          <div class="xfer-end"><span class="muted">From</span><strong id="xfer-from">Your wallet</strong></div>
+          <span class="xfer-arrow">→</span>
+          <div class="xfer-end"><span class="muted">To</span><strong id="xfer-to">Game credits</strong></div>
+        </div>
+        <button id="xfer-confirm" class="btn btn-primary btn-block">✓ Confirm</button>
+        <button id="xfer-cancel" class="btn btn-ghost btn-block">Cancel</button>
+        <p class="muted xfer-note" id="xfer-note">You'll still approve the transaction in your wallet on the next step.</p>
+      </div>
+    </div>
+
+    <!-- Host approval of a raised bet proposed by a joiner -->
+    <div id="nego-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Bet proposal">
+      <div class="modal-card">
+        <h2>🤝 Bet proposal</h2>
+        <p id="nego-text" class="nego-text">A player wants to raise the bet.</p>
+        <div class="nego-actions">
+          <button id="nego-accept" class="btn btn-primary">✓ Accept new bet</button>
+          <button id="nego-deny" class="btn btn-ghost">✕ Deny</button>
+        </div>
+        <p class="muted bet-hint">Deny and they'll pick again — keep going until you both agree.</p>
+      </div>
+    </div>
+
+    <!-- Mobile bottom tab bar -->
+    <nav class="bottom-nav" aria-label="Quick navigation">
+      <button type="button" class="bn-item" id="bn-games"><span class="bn-ic">🎮</span><span>Games</span></button>
+      <button type="button" class="bn-item" id="bn-wallet"><span class="bn-ic">💰</span><span>Wallet</span></button>
+      <button type="button" class="bn-item" id="bn-chat"><span class="bn-ic">💬<span id="bn-chat-badge" class="chat-badge hidden" aria-hidden="true">0</span></span><span>Chat</span></button>
+      <button type="button" class="bn-item" id="bn-help"><span class="bn-ic">❓</span><span>Help</span></button>
+    </nav>
+
+    <!-- Tappable scrim + right-edge pull tab for the slide-out chat -->
+    <div id="chat-scrim" class="chat-scrim" aria-hidden="true"></div>
+    <button id="chat-tab" class="chat-tab" aria-label="Open chat" aria-controls="chat-drawer" aria-expanded="false">
+      <span class="chat-tab-glyph">💬</span>
+      <span id="chat-tab-badge" class="chat-badge hidden" aria-hidden="true">0</span>
+    </button>
+    <!-- Slide-in chat drawer (Stake-style, toggled from the top bar) -->
+    <aside id="chat-drawer" class="chat-drawer" aria-label="Chat">
+      <div class="chat-drawer-head">
+        <span class="chat-drawer-title">💬 Trash talk <span class="chat-dot">▮</span></span>
+        <span class="chat-online" id="chat-online"><i></i> live</span>
+        <button id="chat-close" class="chat-drawer-close" aria-label="Close chat">✕</button>
+      </div>
+      <div class="card chat-card">
+        <div id="chat-log" class="chat-log">
+          <div class="chat-sys">// say hi — demo guests &amp; wallets can chat · host is green, visitors red</div>
+        </div>
+        <div class="chat-input-row">
+          <span class="chat-prompt">&gt;</span>
+          <input id="chat-input" class="chat-input" maxlength="240" placeholder="type a message…" autocomplete="off" />
+          <button id="chat-send" class="btn btn-mini">SEND</button>
+        </div>
+        <p class="chat-note muted">Live community chat — every connected player sees your messages. Your name shows; tap 👁 to reveal an address. Be cool. 😎</p>
+      </div>
+    </aside>
+
+    <script defer src="vendor/ethers.umd.min.js?v=1285"></script>
+    <script defer src="config.js?v=1285"></script>
+    <script defer src="contract.js?v=1285"></script>
+    <script defer src="chiptune.js?v=1285"></script>
+    <script defer src="scenes.js?v=1285"></script>
+    <script defer src="tv.js?v=1285"></script>
+    <script defer src="poker-engine.js?v=1285"></script>
+    <script defer src="poker-bots.js?v=1285"></script>
+    <script defer src="poker-ui.js?v=1285"></script>
+    <script defer src="crash-engine.js?v=1285"></script>
+    <script defer src="crash-render.js?v=1285"></script>
+    <script defer src="profile.js?v=1285"></script>
+    <script defer src="token-client.js?v=1285"></script>
+    <script defer src="token-mode.js?v=1285"></script>
+    <script defer src="crash-rounds-client.js?v=1285"></script>
+    <script defer src="app.js?v=1285"></script>
+  </body>
+</html>

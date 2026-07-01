@@ -1,0 +1,208 @@
+/* ============================================================
+   slots.css — Crypto Reels (PixiJS slot machine)
+   Reuses the shared design tokens from styles.css; only adds the
+   slot-cabinet, CRT canvas wrapper and controls.
+   ============================================================ */
+
+/* The page centers a single slot cabinet instead of the 2-col layout. */
+.slot-layout {
+  position: relative;
+  z-index: 2;
+  max-width: 940px;
+  margin: 0 auto;
+  padding: 4px clamp(12px, 4vw, 36px) 70px;
+}
+
+/* Little nav row under the topbar */
+.slot-subnav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 2px 0 14px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.slot-subnav .dot { opacity: 0.5; }
+
+/* ───────────────── The cabinet ───────────────── */
+.cabinet {
+  position: relative;
+  border-radius: 26px;
+  padding: 18px clamp(14px, 3vw, 26px) 22px;
+  background:
+    linear-gradient(180deg, rgba(40, 18, 60, 0.65), rgba(12, 10, 26, 0.85)),
+    var(--panel);
+  border: 1px solid rgba(255, 77, 157, 0.32);
+  box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 0 60px rgba(255, 77, 157, 0.12);
+  backdrop-filter: blur(8px);
+}
+
+/* Marquee header */
+.marquee {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin: 2px 0 14px;
+  text-align: center;
+}
+.marquee .m-coin { font-size: clamp(26px, 6vw, 40px); filter: drop-shadow(0 0 14px rgba(255, 210, 63, 0.6)); animation: floaty 3s ease-in-out infinite; }
+.marquee-title {
+  font-family: var(--display);
+  font-size: clamp(20px, 5vw, 36px);
+  letter-spacing: 1px;
+  line-height: 1;
+  background: linear-gradient(90deg, var(--gold), var(--magenta) 55%, var(--cyan));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 0 22px rgba(255, 77, 157, 0.25);
+}
+.marquee-sub { font-size: 11px; letter-spacing: 2px; color: var(--cyan); font-weight: 700; margin-top: 4px; }
+
+/* ───────────────── CRT screen wrapper around the Pixi canvas ───────────────── */
+.screen-shell {
+  position: relative;
+  border-radius: 16px;
+  padding: 12px;
+  background: #050308;
+  box-shadow: inset 0 0 0 5px #160a1d, inset 0 0 40px rgba(0, 0, 0, 0.9),
+    0 0 0 1px rgba(255, 77, 157, 0.25);
+}
+.screen-crt {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #05060a;
+  isolation: isolate;
+  aspect-ratio: 16 / 10;
+}
+/* The Pixi canvas fills the CRT */
+.screen-crt canvas { display: block; width: 100% !important; height: 100% !important; }
+
+/* CRT overlays (scanlines + vignette + faint flicker), same vibe as the TV */
+.screen-crt .scanlines {
+  position: absolute; inset: 0; z-index: 6; pointer-events: none;
+  background: repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.18) 0 1px, transparent 1px 3px);
+  animation: slotRoll 9s linear infinite;
+}
+@keyframes slotRoll { to { background-position: 0 12px; } }
+.screen-crt .vignette {
+  position: absolute; inset: 0; z-index: 6; pointer-events: none; border-radius: 12px;
+  box-shadow: inset 0 0 130px rgba(0, 0, 0, 0.8);
+}
+.screen-crt .flicker {
+  position: absolute; inset: 0; z-index: 7; pointer-events: none; background: #6cf0ff;
+  mix-blend-mode: overlay; opacity: 0; animation: slotFlicker 6s steps(2) infinite;
+}
+@keyframes slotFlicker { 0%, 96%, 100% { opacity: 0; } 97% { opacity: 0.05; } 98% { opacity: 0; } 99% { opacity: 0.04; } }
+
+/* Loading veil while Pixi spins up */
+.screen-loading {
+  position: absolute; inset: 0; z-index: 8; display: flex; align-items: center; justify-content: center;
+  flex-direction: column; gap: 12px; background: #05060a; color: var(--cyan);
+  font-family: "Press Start 2P", var(--display); font-size: 11px; letter-spacing: 1px; text-align: center;
+}
+.screen-loading.gone { opacity: 0; pointer-events: none; transition: opacity 0.4s; }
+
+/* ───────────────── HUD: credits / bet / win ───────────────── */
+.slot-hud {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 14px 0 12px;
+}
+.hud-cell {
+  background: rgba(8, 10, 20, 0.6);
+  border: 1px solid var(--panel-line);
+  border-radius: 14px;
+  padding: 10px 12px;
+  text-align: center;
+}
+.hud-cell .hud-label { display: block; font-size: 10px; letter-spacing: 1.5px; color: var(--muted); text-transform: uppercase; }
+.hud-cell .hud-val { font-family: var(--display); font-size: clamp(18px, 4vw, 26px); line-height: 1.2; }
+.hud-cell.credits .hud-val { color: var(--gold); }
+.hud-cell.bet .hud-val { color: var(--cyan); }
+.hud-cell.win .hud-val { color: var(--green); }
+.hud-cell.win.flash { animation: hudFlash 0.5s ease-out; }
+@keyframes hudFlash { 0% { transform: scale(1); } 40% { transform: scale(1.16); } 100% { transform: scale(1); } }
+
+/* ───────────────── Controls ───────────────── */
+.slot-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.bet-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  background: rgba(8, 10, 20, 0.6);
+  border: 1px solid var(--panel-line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.bet-stepper button {
+  font-family: var(--display); font-size: 18px; line-height: 1; color: var(--ink);
+  background: rgba(255, 255, 255, 0.05); border: none; cursor: pointer; width: 42px; height: 46px;
+  transition: background 0.15s;
+}
+.bet-stepper button:hover { background: rgba(57, 231, 255, 0.18); }
+.bet-stepper button:active { transform: translateY(1px); }
+.bet-stepper button:disabled { opacity: 0.4; cursor: not-allowed; }
+.bet-stepper .bet-amount {
+  min-width: 92px; text-align: center; padding: 0 8px;
+  font-family: var(--display); font-size: 17px; color: var(--cyan);
+}
+.bet-stepper .bet-amount small { display: block; font-family: var(--font); font-size: 9px; letter-spacing: 1px; color: var(--muted); }
+
+.btn-spin {
+  position: relative;
+  font-family: var(--display); font-size: clamp(17px, 4vw, 22px); letter-spacing: 1px;
+  color: #1a0712; padding: 14px 30px; border: none; border-radius: 16px; cursor: pointer;
+  background: linear-gradient(135deg, var(--gold), #ff8a3d 50%, var(--magenta));
+  box-shadow: 0 10px 26px rgba(255, 77, 157, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  transition: transform 0.08s ease, filter 0.2s;
+}
+.btn-spin:hover { filter: brightness(1.08); }
+.btn-spin:active { transform: translateY(2px) scale(0.99); }
+.btn-spin:disabled { filter: grayscale(0.5) brightness(0.8); cursor: not-allowed; }
+.btn-spin.spinning { animation: spinPulse 0.7s ease-in-out infinite; }
+@keyframes spinPulse { 0%, 100% { box-shadow: 0 10px 26px rgba(255, 77, 157, 0.35); } 50% { box-shadow: 0 0 0 6px rgba(255, 210, 63, 0.18), 0 10px 30px rgba(255, 210, 63, 0.6); } }
+
+.btn-tool {
+  font-family: var(--font); font-weight: 700; font-size: 13px; cursor: pointer; white-space: nowrap;
+  color: var(--ink); background: rgba(255, 255, 255, 0.06); border: 1px solid var(--panel-line);
+  border-radius: 12px; padding: 11px 14px; transition: background 0.15s, filter 0.2s;
+}
+.btn-tool:hover { filter: brightness(1.12); }
+.btn-tool:active { transform: translateY(1px); }
+.btn-tool.active { background: linear-gradient(135deg, rgba(57, 231, 255, 0.25), rgba(255, 77, 157, 0.25)); border-color: var(--cyan); color: #fff; }
+.btn-tool:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.slot-footnote { text-align: center; font-size: 12px; color: var(--muted); margin-top: 16px; line-height: 1.6; }
+.slot-footnote a { color: var(--cyan); }
+
+/* ───────────────── Paytable modal ───────────────── */
+.paytable { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 18px; margin: 8px 0 4px; }
+.pt-row { display: flex; align-items: center; gap: 10px; padding: 7px 9px; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--panel-line); border-radius: 10px; }
+.pt-sym { font-size: 26px; line-height: 1; width: 34px; text-align: center; flex: none; }
+.pt-pays { font-size: 12px; line-height: 1.5; color: var(--ink); }
+.pt-pays b { font-family: var(--display); color: var(--gold); }
+.pt-name { display: block; font-size: 11px; color: var(--muted); letter-spacing: 0.5px; }
+.pt-note { font-size: 12px; color: var(--muted); margin-top: 12px; line-height: 1.6; }
+.pt-note b { color: var(--cyan); }
+
+@media (max-width: 560px) {
+  .paytable { grid-template-columns: 1fr; }
+  .slot-hud { grid-template-columns: 1fr; }
+  .bet-stepper button { width: 38px; height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .marquee .m-coin, .screen-crt .scanlines, .screen-crt .flicker, .btn-spin.spinning { animation: none !important; }
+}

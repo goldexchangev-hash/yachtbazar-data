@@ -1,0 +1,94 @@
+# Prompt for Claude — Crypto TV bug fix & deep audit
+
+**How to use:** Open `CLAUDE-PROMPT.txt` at the **repo root** (easiest), or copy everything below the `---` line from this file.
+
+---
+
+You are taking over the **Crypto TV** betting dApp bug hunt and fix work. Read this fully, then execute.
+
+## Your mission
+
+1. **Read** all existing audit findings and the fix plan (locations below).
+2. **Launch your own agents** to investigate further — dig into money paths, every game, client/server, contracts, and live behavior. Find **additional bugs** we may have missed.
+3. **Fix everything carefully** — prioritize money-loss and exploit paths first. Follow the remediation waves in the report unless you find something more urgent.
+4. **Update** `CursorBugHunt/REPORT.md` with any new findings and mark what you fixed.
+5. **Run all probe scripts** after each wave of fixes until they pass.
+
+Hi Claude 😀 — the previous audit did 5 passes (~230 findings). Build on it; don't start from zero.
+
+---
+
+## Where important information is stored
+
+| What | Exact path |
+|------|------------|
+| **Main bug report (~230 findings + fix plan)** | `CursorBugHunt/REPORT.md` |
+| **This prompt** | `CursorBugHunt/CLAUDE-PROMPT.md` |
+| **Repro & probe scripts** | `CursorBugHunt/*.js` (run from repo root) |
+| **On-chain exploit tests** | `test/pass4-exploits.test.js` |
+| **Project handoff (deploy, channels, rules)** | `cursor/HANDOFF.md` |
+| **Money-path security invariants (do not break)** | `cursor/AUDIT-NOTES.md` |
+
+### Probe scripts (run from repo root)
+
+```bash
+node CursorBugHunt/repro-crash-nonce-desync.js
+node CursorBugHunt/adversarial-suite.js
+node CursorBugHunt/concurrency-fuzzer.js
+node CursorBugHunt/settlement-math-probe.js
+node CursorBugHunt/slots3d-parity-probe.js
+node CursorBugHunt/crash-rtp-probe.js
+node CursorBugHunt/fork-staticCall-poc.js
+npm test
+node server/token-bridge.js && node server/token-http.js && node server/blackjack-server.js
+```
+
+---
+
+## Repo & branches
+
+- **GitHub:** https://github.com/goldexchangev-hash/yachtbazar-data
+- **Deploy branch (Render auto-deploy):** `claude/ethereum-betting-game-vrf-2dq50k`
+- **Bug hunt branch (audit + probes):** `cursor/bug-hunt-report-d4cd`
+- **Audit PR:** https://github.com/goldexchangev-hash/yachtbazar-data/pull/3
+- **Live site:** https://tv-crypto-flip.onrender.com
+
+**Version note:** Repo was audited at **v12.39**; live production was **v12.44** at audit time — production may have fixes and regressions not in repo. Diff live vs repo before assuming something is still broken.
+
+---
+
+## Fix order (in REPORT.md → "Master remediation plan")
+
+Do **not skip** these before polish work:
+
+- **Wave 0** — Live hotfix (Balloon `#204`, slots spin stuck `#193`)
+- **Wave 1** — Crash rounds token path (#1–3, #13–15) — pin nonce, reserve stake
+- **Wave 2** — Persist + recover (#4–5, #139–#140, **#215**) — atomic writes, no loss escape
+- **Waves 3–10** — Blackjack, token UX, canvas, contracts, PvP, wallet, ops, polish
+
+Highest-risk files:
+
+- `server/token-bridge.js`, `server/token-http.js`, `server/crash-rounds.js`, `server/crash-rounds-ws.js`, `server/blackjack-server.js`
+- `public/app.js`, `public/token-mode.js`, `public/token-client.js`
+
+---
+
+## Rules
+
+- Treat **token bridge / crash rounds / settle / recover** as production money code.
+- Do **not** weaken the recover loss-escape guard (`cursor/AUDIT-NOTES.md`).
+- Bump `?v=`, `v12.XX`, `ctf-v12.XX` on user-facing changes; note in `cursor/HANDOFF.md`.
+- Add self-tests when you fix money-path bugs.
+- Use finding **# numbers** from `REPORT.md` when referring to bugs.
+
+---
+
+## What to do now
+
+1. Checkout `cursor/bug-hunt-report-d4cd` (or branch from deploy branch with audit files).
+2. Read `CursorBugHunt/REPORT.md` end-to-end, especially **Master remediation plan**.
+3. Launch parallel agents to audit areas we may have missed and find new bugs.
+4. Fix in wave order; commit and push each wave; update `REPORT.md`.
+5. Run all probe scripts; confirm live deploy when owner is ready.
+
+Go.
