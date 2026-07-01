@@ -20,8 +20,16 @@
 
 const CE = require("../public/crash-engine.js");   // multiplierAtMs / msToReach (cosmetic curve)
 const crashEngine = require("./games/crash.js");    // MIN_TARGET_X / MAX_CRASH_X
+const pressureEngine = require("./games/pressure.js"); // pressure (Balloon Pop) runs on this round-runner too — but with a HIGHER cash-out floor
 
 const K = CE.DEFAULT_K; // curve constant — the CLIENT animates with the identical k
+
+// mega-hunt CRITICAL: the minimum bankable multiplier is PER-GAME. Pressure VOID-REFUNDS the full stake for any
+// settle below its 1.20x MIN_CASHOUT, so the round-runner MUST use pressure's floor (not crash's 1.01x) at EVERY
+// clamp — auto target, manual cash-out, and the bust target. Using 1.01 let a pressure loss/bust land in the
+// 1.01–1.19 VOID window and get the stake REFUNDED (net 0 on a loss) = systematic house drain. crash/plane/swoop
+// keep the 1.01x floor. (For a bust we also floor the target to gameFloor so a low pop can't VOID-refund.)
+function gameFloor(gameKey) { return gameKey === "pressure" ? pressureEngine.MIN_CASHOUT : crashEngine.MIN_TARGET_X; }
 
 function makeCrashRounds(opts) {
   opts = opts || {};
@@ -63,7 +71,7 @@ function makeCrashRounds(opts) {
     // non-finite target (#126) — the resolve engine clamps too, this keeps the timer sane.
     let autoTarget = o.autoTarget != null ? Number(o.autoTarget) : 0;
     if (!Number.isFinite(autoTarget) || autoTarget < 0) autoTarget = 0;
-    if (autoTarget && autoTarget < crashEngine.MIN_TARGET_X) autoTarget = crashEngine.MIN_TARGET_X;
+    if (autoTarget && autoTarget < gameFloor(gameKey)) autoTarget = gameFloor(gameKey); // per-game floor (pressure 1.20, else 1.01) — below pressure's floor an auto-target would VOID-refund
     if (autoTarget > crashEngine.MAX_CRASH_X) autoTarget = crashEngine.MAX_CRASH_X;
 
     const id = "cr" + (++_seq);
@@ -98,7 +106,12 @@ function makeCrashRounds(opts) {
     if (!round || round.settled) throw new Error("no live round");
     let m = CE.multiplierAtMs(now() - round.startedAt, K);
     m = Math.floor(m * 100) / 100;
-    if (m < crashEngine.MIN_TARGET_X) m = crashEngine.MIN_TARGET_X;
+    const floor = gameFloor(round.gameKey);
+    // Below the game's floor: pressure can't bank yet (banking below 1.20x would VOID-REFUND the stake — the
+    // drain) → REJECT so the round stays live and the player keeps holding. crash-type games floor an ultra-early
+    // tap up to 1.01x (a tiny legit win) as before.
+    if (round.gameKey === "pressure") { if (m < floor) throw new Error("hold longer — Balloon Pop banks from " + floor.toFixed(2) + "x"); }
+    else if (m < floor) m = floor;
     if (m > round.crashPoint) throw new Error("already crashed"); // raced past the bust
     return _resolve(round, m, false);
   }
@@ -112,8 +125,12 @@ function makeCrashRounds(opts) {
   // TIMER callback can never crash the process (which would wipe the in-memory bank).
   function _resolve(round, cashOutAt, busted) {
     if (round.settled) return null;
-    // bust loses by resolving a target just ABOVE the crash point (crashPoint < target -> 0 payout).
-    const target = busted ? round.crashPoint + 0.01 : cashOutAt;
+    // bust loses by resolving a target just ABOVE the crash point (crashPoint < target -> 0 payout). mega-hunt
+    // CRITICAL: floor the bust target to the game's own floor too — for pressure a low pop (burst < 1.19) made
+    // crashPoint+0.01 land BELOW 1.20x, where pressure.play VOID-REFUNDS the stake on what must be a LOSS. Flooring
+    // to gameFloor (1.20) keeps target > burst (loss, payout 0) AND out of the void window. crash: crashPoint+0.01
+    // is already >= 1.01 so this is a no-op. Stored as cashOutAt in the ledger → verifyRederive replays to the same 0.
+    const target = busted ? Math.max(round.crashPoint + 0.01, gameFloor(round.gameKey)) : cashOutAt;
     let res;
     try {
       // LEDGER FIRST — credit the gross payout at the PINNED nonce (stake was debited at reserve).

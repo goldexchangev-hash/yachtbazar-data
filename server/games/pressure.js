@@ -140,7 +140,7 @@ function play({ serverSeed, clientSeed, nonce, betUnits, params }) {
   };
 }
 
-module.exports = { play: play, RTP: RTP, deriveBurst: deriveBurst, deriveFloat: deriveFloat };
+module.exports = { play: play, RTP: RTP, deriveBurst: deriveBurst, deriveFloat: deriveFloat, MIN_CASHOUT: MIN_CASHOUT, CAP: CAP };
 
 /* ---------------- CLI self-test: node server/games/pressure.js ---------------- */
 if (require.main === module) {

@@ -158,13 +158,12 @@ function play(args) {
   const nonce = args.nonce;
   const params = args.params || {};
 
-  // Resolve the stake (betUnits) — accept either the raw stake or {lines,betPerLine}/{bet}.
+  // mega-hunt CRITICAL (house drain): the stake is ONLY the bridge-DEBITED betUnits — NEVER re-derived from
+  // client params. The bridge debits/balance-checks o.betUnits then passes it here as args.betUnits; letting
+  // params.bet / params.lines*params.betPerLine override it let a player debit 1 unit but be paid as if the
+  // stake were arbitrary (line/scatter payouts scale off betUnits below), and the settle net floor bounds only
+  // LOSSES → the inflated positive net is signed and drains the house. Mirror slots3d.js which never overrides.
   let betUnits = Number(args.betUnits);
-  if (params && params.lines != null && params.betPerLine != null) {
-    betUnits = Number(params.lines) * Number(params.betPerLine);
-  } else if (params && params.bet != null) {
-    betUnits = Number(params.bet);
-  }
   if (!(betUnits > 0)) betUnits = 0;
 
   // lineBet always = stake / 9 (client model: totalBet = lineBet × 9 lines).
@@ -251,21 +250,22 @@ if (require.main === module) {
   const deterministic = JSON.stringify(a) === JSON.stringify(b);
   console.log("deterministic     =", deterministic);
 
-  // params equivalence: {lines,betPerLine} and {bet} must equal the raw stake form.
+  // mega-hunt: client params must NEVER override the bridge-debited stake (the fixed house-drain). A shot with
+  // the SAME betUnits pays IDENTICALLY regardless of any stake-bearing params attached, and betUnits:0 pays 0.
   const g1 = play({ serverSeed: serverSeed, clientSeed: "eq", nonce: 7, betUnits: 9 });
-  const g2 = play({ serverSeed: serverSeed, clientSeed: "eq", nonce: 7, betUnits: 0, params: { lines: 9, betPerLine: 1 } });
-  const g3 = play({ serverSeed: serverSeed, clientSeed: "eq", nonce: 7, betUnits: 0, params: { bet: 9 } });
-  const paramsEq = JSON.stringify(g1) === JSON.stringify(g2) && JSON.stringify(g1) === JSON.stringify(g3);
-  console.log("params equivalent =", paramsEq);
+  const g2 = play({ serverSeed: serverSeed, clientSeed: "eq", nonce: 7, betUnits: 9, params: { lines: 9, betPerLine: 1111, bet: 99999 } });
+  const g3 = play({ serverSeed: serverSeed, clientSeed: "eq", nonce: 7, betUnits: 0, params: { bet: 99999 } });
+  const paramsCantOverride = JSON.stringify(g1) === JSON.stringify(g2) && g3.payoutUnits === 0;
+  console.log("params can't override stake =", paramsCantOverride);
 
   const within = Math.abs(measured - CLIENT_RTP) <= TOL;
-  const ok = within && deterministic && paramsEq && totalW === 100;
+  const ok = within && deterministic && paramsCantOverride && totalW === 100;
   console.log(ok
-    ? "\nSELF-TEST OK — server RTP within ±0.8% of client, deterministic + verifiable."
+    ? "\nSELF-TEST OK — server RTP within ±0.8% of client, deterministic, params can't inflate the stake."
     : "\nSELF-TEST FAILED" +
       (!within ? " (RTP off by " + (Math.abs(measured - CLIENT_RTP) * 100).toFixed(3) + "%)" : "") +
       (!deterministic ? " (not deterministic)" : "") +
-      (!paramsEq ? " (params not equivalent)" : "") +
+      (!paramsCantOverride ? " (params can override stake — house drain!)" : "") +
       (totalW !== 100 ? " (weight sum != 100)" : ""));
   process.exit(ok ? 0 : 1);
 }
