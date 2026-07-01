@@ -52,6 +52,22 @@ function hasGame(g) { return Object.prototype.hasOwnProperty.call(ENGINES, g); }
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
+// mega-hunt: BRIDGE-LEVEL payout cap (defense-in-depth against the reef/slots/pressure class — an engine that
+// over-credits vs the DEBITED stake). Every engine payout is bounded to a GENEROUS per-game multiple of the
+// stake, set well ABOVE each game's real sampled max (coinflip 1.9x, dice 98x, dice2 35x, slots 126x, slots3d
+// 188x, crash/pressure ≤1000x, fish/reef ~760x with the bonus tail) so it can NEVER clip a legit win — but a
+// mispriced/exploited engine can never drain past the ceiling. Applied identically in play + resolveReserved +
+// verifyRederive so the ledger stays re-derivable. Firing this is an exceptional event = a bug/exploit → log loud.
+const PAYOUT_CAP = { coinflip: 10, dice: 300, dice2: 150, slots: 600, slots3d: 600, crash: 1100, plane: 1100, swoop: 1100, pressure: 1100, fishshooter: 2500, reef: 2500 };
+const PAYOUT_CAP_DEFAULT = 2500;
+function clampPayout(game, betUnits, payout) {
+  const b = Number(betUnits) || 0;
+  if (!(b > 0) || !Number.isFinite(payout)) return payout; // no stake to scale / non-finite handled by caller
+  const cap = (PAYOUT_CAP[game] || PAYOUT_CAP_DEFAULT) * b;
+  if (payout > cap) { try { console.error("PAYOUT_CAP_HIT game=" + game + " bet=" + b + " payout=" + payout + " -> capped " + cap + " (engine bug/exploit?)"); } catch (e) {} return round2(cap); }
+  return payout;
+}
+
 /**
  * @param {object} opts
  *   signer: { sign(player,netWei,nonce,chainId,contract)->Promise<string>,
@@ -147,8 +163,9 @@ function makeTokenBridge(opts) {
     let res;
     try { res = ENGINES[o.game].play({ serverSeed: s.serverSeed, clientSeed: clientSeed, nonce: nonce, betUnits: bet, params: o.params || {} }); }
     catch (e) { throw new Error("bet rejected: " + (e && e.message ? e.message : e)); }
-    const payout = round2(Math.max(0, Number(res && res.payoutUnits)));
+    let payout = round2(Math.max(0, Number(res && res.payoutUnits)));
     if (!Number.isFinite(payout)) throw new Error("bet rejected: engine produced a non-finite payout");
+    payout = clampPayout(o.game, bet, payout); // bridge-level backstop: never credit past the per-game ceiling
 
     // Commit atomically now that the result is valid: burn the nonce + move tokens together.
     s.betNonce = nonce + 1;
@@ -305,7 +322,7 @@ function makeTokenBridge(opts) {
       }
       if (!hasGame(b.game)) { payoutsMatch = false; continue; }
       const res = ENGINES[b.game].play({ serverSeed: revealedSeed, clientSeed: b.clientSeed, nonce: b.nonce, betUnits: b.betUnits, params: b.params });
-      const payout = round2(Math.max(0, Number(res && res.payoutUnits) || 0));
+      const payout = clampPayout(b.game, b.betUnits, round2(Math.max(0, Number(res && res.payoutUnits) || 0))); // same cap as play() so a capped payout re-derives to the same value
       if (Math.abs(payout - round2(b.payoutUnits)) > 1e-9) payoutsMatch = false;
       ledger = round2(ledger - round2(b.betUnits) + payout);
     }
@@ -401,8 +418,9 @@ function makeTokenBridge(opts) {
     const cashOutAt = Number(o && o.cashOutAt);
     const params = { cashOutAt: cashOutAt };
     const res = ENGINES[rec.game].play({ serverSeed: s.serverSeed, clientSeed: rec.clientSeed, nonce: nonce, betUnits: rec.betUnits, params: params });
-    const payout = round2(Math.max(0, Number(res && res.payoutUnits)));
+    let payout = round2(Math.max(0, Number(res && res.payoutUnits)));
     if (!Number.isFinite(payout)) throw new Error("resolve rejected: non-finite payout");
+    payout = clampPayout(rec.game, rec.betUnits, payout); // bridge-level backstop on the crash-round payout too
     s.tokens = round2(s.tokens + payout);     // stake already debited at reserve → only credit the gross
     rec.open = false; rec.params = params; rec.payoutUnits = payout; rec.win = !!res.win; rec.multiplier = res.multiplier;
     rec.outcome = res.outcome;                // persist {crashPoint,...} so the ledger entry exposes the settled point (audit + paced==ledger check)
