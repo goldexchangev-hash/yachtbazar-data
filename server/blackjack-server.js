@@ -549,7 +549,18 @@
           }
         }
       }
-      for (const rr of rooms.values()) if (seatOf(rr, sock) >= 0) return err(sock, "already_seated", "Leave your current table first", "join"); // one seat per connection, across all tables
+      // RESUME/RESYNC: the SAME socket re-joining its OWN seat. A mobile app-switch fires visibilitychange →
+      // bj:room:join, but on return the socket is often still HALF-OPEN (readyState 1), so the server never saw a
+      // FIN and the reconnect-reclaim block above didn't fire. This is NOT a second seat — re-send the CURRENT
+      // snapshot so the felt (and the parent dock's bet controls) recover the live betting phase instead of
+      // erroring on stale state and freezing the bet UI until a page refresh. Single-socket + read-only (touches
+      // no seats/bets/hands/timers) → never disturbs a live hand. The per-WALLET multi-tab guard below still
+      // rejects a DIFFERENT socket with the same wallet (a real second tab/device).
+      for (const rr of rooms.values()) { const si = seatOf(rr, sock); if (si >= 0) {
+        send(sock, Object.assign(snapshot(rr), { you: { roomId: rr.id, seat: si, balance: bank.get(wallet) } }));
+        pushWallet(sock, wallet);
+        return rr;
+      } }
       // One seat per WALLET across all tables too — without this a guest could open a
       // second connection (two tabs / stale socket) and sit at another table at once.
       // (Runs after the reconnect-reclaim block above, so genuine reconnects still work.)
@@ -895,6 +906,21 @@
     const gws = mkWs("guest:test1234");
     bj.handle(gws, { type: "bj:room:join" });
     eq("a guest plays on the play-money bank (token ledger untouched)", !bj.isTokenWallet("guest:test1234"));
+
+    // RESUME/RESYNC (mobile app-switch): the SAME socket re-joining its OWN seat gets a fresh SNAPSHOT (so the
+    // felt + bet controls recover the live phase), NOT an already_seated error; a DIFFERENT socket with the same
+    // wallet is still rejected (multi-tab guard intact).
+    const rmsgs = []; const rws = { wallet: "guest:resume1", bjToken: "bearer", send: (m) => rmsgs.push(JSON.parse(m)) }; // send() stringifies → parse back
+    bj.handle(rws, { type: "bj:room:join" });          // first seat
+    const beforeResync = rmsgs.length;
+    bj.handle(rws, { type: "bj:room:join" });          // SAME socket re-joins → resync, not error
+    const resyncMsgs = rmsgs.slice(beforeResync);
+    const snap = resyncMsgs.find((m) => m.type === "bj:room:snapshot");
+    eq("same-socket re-join RESYNCS (bj:room:snapshot with you.seat, not already_seated)", !!snap && snap.you && typeof snap.you.seat === "number");
+    eq("resync sent no already_seated error", !resyncMsgs.some((m) => m.type === "bj:error" && m.code === "already_seated"));
+    const rmsgs2 = []; const rws2 = { wallet: "guest:resume1", bjToken: "bearer", send: (m) => rmsgs2.push(JSON.parse(m)) };
+    bj.handle(rws2, { type: "bj:room:join" });         // DIFFERENT socket, same wallet → still rejected
+    eq("a 2nd socket with the same wallet is still rejected (multi-tab guard intact)", rmsgs2.some((m) => m.type === "bj:error" && m.code === "already_seated"));
 
     // ── KIND SEGREGATION: real (token) + demo (guest) players NEVER share a table (shared shoe → others'
     //    hit/stand decisions change the cards you and the dealer draw) ──

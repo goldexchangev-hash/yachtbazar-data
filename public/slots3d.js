@@ -447,19 +447,28 @@
     res.lines.forEach((ln) => ln.rows.forEach((row, r) => { mark[r + ":" + row] = 1; }));
     if (res.scatter) res.scatter.cells.forEach((c) => { mark[c[0] + ":" + c[1]] = 1; });
     this._pulseCells(mark);
-    const big = res.winUsd >= bet * 10, mega = res.winUsd >= bet * 40;
+    // A PAID base spin can pay back LESS than the stake (a single low line only stakes bet/20), so its PROFIT is
+    // 0 — showing "💎 WIN $0.00" reads as broken. Treat winUsd<=bet as a partial RETURN: show the GROSS amount
+    // that came back with a muted "↩ BACK" banner (no coin storm), never "$0.00". A real WIN (profit>0) is
+    // unchanged — the count-up stays on PROFIT (the site-wide "win = profit only" rule). The balance is credited
+    // the gross winUsd either way at _settle, so this is DISPLAY-ONLY (net is already correct).
+    const partial = !this._bonus && res.winUsd <= bet; // some stake returned, but not a profit (winUsd>0 here)
+    const big = res.winUsd >= bet * 10, mega = res.winUsd >= bet * 40; // both false when partial (winUsd<=bet)
     if (this._bonus) this._punch(mega ? 0.5 : 0.34); else if (mega) this._punch(0.42); else if (big) this._punch(0.24);
-    this.flash.material.opacity = mega ? 0.5 : big ? 0.34 : (this._bonus ? 0.28 : 0.2); this.flash.material.color.set(mega ? 0xffd23f : (this._bonus ? 0xff4d9d : 0x45f0a6));
-    // Count-up shows PROFIT (winnings), not gross: a paid base spin subtracts its stake; a FREE bonus
-    // spin cost nothing, so its whole win IS profit.
-    const _winShow = this._bonus ? res.winUsd : Math.max(0, res.winUsd - bet);
-    this._winFx = { t: 0, total: _winShow, shown: 0, dur: this._bonus ? 0.7 : (mega ? 1.9 : big ? 1.5 : 1.0), big: big, mega: mega, lastCoin: -1 };
-    const n = mega ? 46 : big ? 28 : 14; for (let i = 0; i < n; i++) this._spawnCoin();
-    // GEMS thrown everywhere — every bonus win erupts with them; big/mega normal wins too.
+    this.flash.material.opacity = partial ? 0.08 : (mega ? 0.5 : big ? 0.34 : (this._bonus ? 0.28 : 0.2)); this.flash.material.color.set(partial ? 0x7fc7ff : (mega ? 0xffd23f : (this._bonus ? 0xff4d9d : 0x45f0a6)));
+    // Count-up shows PROFIT (winnings) for a real win; a FREE bonus spin's whole win is profit; a partial
+    // return shows the GROSS amount returned so it never reads $0.00.
+    const _winShow = this._bonus ? res.winUsd : (partial ? res.winUsd : Math.max(0, res.winUsd - bet));
+    this._winFx = { t: 0, total: _winShow, shown: 0, dur: this._bonus ? 0.7 : (mega ? 1.9 : big ? 1.5 : partial ? 0.6 : 1.0), big: big, mega: mega, lastCoin: -1 };
+    const n = partial ? 0 : (mega ? 46 : big ? 28 : 14); for (let i = 0; i < n; i++) this._spawnCoin();
+    // GEMS thrown everywhere — every bonus win erupts with them; big/mega normal wins too. (None on a partial return.)
     const gemN = this._bonus ? (mega ? 34 : big ? 26 : 18) : (mega ? 30 : big ? 16 : 0);
     if (gemN) this._burstGems(gemN, mega ? 7.5 : 6);
-    if (!this._bonus) { this._showWinBanner("💎 WIN", mega ? "mega" : big ? "big" : ""); this._msg(res.scatter ? "VAULT BONUS!" : "", "win"); }
-    const C = root.Chiptune; if (C) try { if (mega && C.jackpot) C.jackpot(); else if (big && C.bigwin) C.bigwin(); else if (C.win) C.win(); } catch (e) {}
+    if (!this._bonus) {
+      if (partial) { this._showWinBanner("↩ BACK", "miss"); this._msg("", ""); } // returned part of the stake — no fanfare, shows the gross amount
+      else { this._showWinBanner("💎 WIN", mega ? "mega" : big ? "big" : ""); this._msg(res.scatter ? "VAULT BONUS!" : "", "win"); }
+    }
+    const C = root.Chiptune; if (C) try { if (partial) { if (C.coin) C.coin(); } else if (mega && C.jackpot) C.jackpot(); else if (big && C.bigwin) C.bigwin(); else if (C.win) C.win(); } catch (e) {}
   };
 
   /* ---------- FREE SPINS bonus round ---------- */

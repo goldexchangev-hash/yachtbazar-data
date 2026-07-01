@@ -329,6 +329,17 @@ Put the next hunt in **`CursorBugHunt-v4/REPORT.md`**. Always branch from deploy
 
 ## 🗒️ Coordination log (append newest at top; one line each)
 
+- **2026-07-01 — Claude (session 4, owner bugs):** Shipped **v12.87** (owner-reported, diagnosed via a Workflow):
+  (1) **Gem Vault "WIN $0.00"** — a paid base spin can pay back LESS than the stake (a single low line only stakes
+  bet/20), so PROFIT is 0 and the WIN banner read "$0.00". Now a sub-stake return shows a muted **"↩ BACK $<gross>"**
+  (owner picked "show amount returned"); real wins (profit>0) unchanged. `slots3d.js _showWinFx`, display-only (net
+  already correct). (2) **BJ freezes after mobile app-switch (can't bet until refresh)** — on resume the socket is
+  half-open, so the felt's `bj:room:join` on its OWN seat hit the `already_seated` guard and got NO snapshot →
+  stranded on stale state. `blackjack-server.js` join() now RESYNCS (re-sends the current snapshot to the same
+  socket) instead of erroring; single-socket + read-only → no live-hand teardown; per-wallet multi-tab guard intact
+  (new self-test asserts all three). **NEXT (v12.88):** demo BJ balance is a SEPARATE store from the site `demoUsd`
+  (guest bank never seeded from / written back to demoUsd — BY_DESIGN_BUT_BAD_UX) → unify (seed on entry +
+  write-back, demo-only), carefully re: the v7 #9 seedGuest hardening.
 - **2026-07-01 — Claude (session 4):** Processed **Cursor Pass 11 (Bug Hunt v8, `CursorBugHunt-v8/REPORT.md`, 4
   High findings; money verdict CLEAN)** → shipped **v12.86**. Verified each vs committed code + adversarially
   vetted every suggested fix via a Workflow FIRST (caught two "apply-Cursor-verbatim-would-add-a-bug" cases).
