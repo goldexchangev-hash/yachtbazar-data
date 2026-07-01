@@ -347,6 +347,7 @@
   };
 
   PressureGame.prototype._valve = function () {
+    if (this._tokenActive()) return; // mega-hunt MEDIUM: valve floor-locks are DEMO-only. In token mode the round is a single server cash-out (no per-floor lock) — showing "pop-proof kept $X" would promise money the server never pays.
     if (this.state !== "inflating" || !this.pressing) return;
     const mult = this.r.getRenderedMultiplier();
     const v = E.valveLock(this.floors, this.valveFraction, mult);

@@ -203,11 +203,17 @@
         changed(true); // #19: force HUD update now even if a fish reveal-window is holding
       } catch (e) {
         note(friendly(e), "err");
-        // If the pre-flight found the session dead, clear it (resets to Buy in). Either way re-check
-        // bjLocked so any stranded lock surfaces the "Recover" button immediately.
+        // mega-hunt MEDIUM: a top-up POST can fail TRANSIENTLY *after* the on-chain lock already succeeded (a
+        // redeploy window / durable-bearer rehydrate), and clearing the session on the bare error text then
+        // ORPHANS the just-locked funds. Mirror _betError: CONFIRM via resume and clear ONLY on a confirmed
+        // "gone". Either way changed() re-checks bjLocked so any stranded lock surfaces the "Recover" button.
         var m = (e && (e.shortMessage || e.message)) || "";
-        if (/invalid session token|no open session|no such session|session is closed/i.test(m)) { try { if (client) { client.session = null; client.tokens = 0; } } catch (e2) {} _clearSession(); }
-        try { changed(); } catch (e2) {}
+        if (/invalid session token|no open session|no such session|session is closed/i.test(m) && client && client.session && client.resume) {
+          client.resume(client.session).then(function (okk) {
+            if (okk === "gone") { try { if (client) { client.session = null; client.tokens = 0; } } catch (e2) {} _clearSession(); }
+            try { changed(); } catch (e2) {}
+          }).catch(function () { try { changed(); } catch (e2) {} });
+        } else { try { changed(); } catch (e2) {} }
       } finally { busy = false; render(); }
     },
 
