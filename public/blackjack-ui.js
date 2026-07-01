@@ -60,6 +60,9 @@
   // Cancel a placed bet before the deal (refunds it to your balance).
   BlackjackClient.prototype.cancelBet = function () { this.net.send({ type: "bj:bet:cancel" }); };
   BlackjackClient.prototype.topUp = function (amount) { this.net.send({ type: "bj:topup", amount: Math.max(0, +amount || 0) }); };
+  // v6 #29: the parent posts the LIVE ETH/USD (piggybacked on bj:active) so the felt's "≈ Ξ" labels aren't
+  // stuck at the hardcoded $3400. Cosmetic only — ETH_USD is never used in any bet/settle/balance math.
+  BlackjackClient.prototype.setRate = function (u) { u = +u; if (u > 0 && isFinite(u)) ETH_USD = u; };
   // Mobile resume: when the tab comes back, make sure the socket is alive and pull a
   // fresh table snapshot so a stale (frozen-while-backgrounded) state can't block betting.
   BlackjackClient.prototype.resume = function () {
