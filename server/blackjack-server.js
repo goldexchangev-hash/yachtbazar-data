@@ -31,7 +31,13 @@
     const rawSet = m.set.bind(m);
     m.set = (k, v) => { const out = rawSet(k, v); if (/^guest:/.test(String(k))) scheduleSave(); return out; };
     if (persist && persist.load) { try { const data = persist.load() || {}; for (const k in data) { const v = data[k]; if (/^guest:/.test(k) && typeof v === "number" && isFinite(v) && v >= 0) rawSet(k, Math.round(v * 100) / 100); } } catch (e) {} }
-    const get = (w) => { if (!m.has(w)) m.set(w, realWallet(w) ? 0 : (start == null ? 5000 : start)); return m.get(w); };
+    const DEFAULT_GUEST = (start == null ? 5000 : start);
+    // v6 #7: get() is READ-ONLY — it must NOT vivify a new entry (the old `m.set` inside get() both created a
+    // 5000-balance row AND scheduled a persist). A client could loop bj:lobby:subscribe with random `guest:<rnd>`
+    // ids (pushWallet → get) with no hello and balloon the map + .bj-bank.json without bound (memory/disk DoS).
+    // The entry is now created ONLY on a real balance MUTATION (credit/debit/seed → m.set → persist), so only
+    // wallets that actually PLAYED are persisted. Reads return the default without touching the map.
+    const get = (w) => m.has(w) ? m.get(w) : (realWallet(w) ? 0 : DEFAULT_GUEST);
     return { get, all: m, flush: doSave, credit: (w, a) => m.set(w, Math.round((get(w) + a) * 100) / 100), debit: (w, a) => { if (get(w) < a) return false; m.set(w, Math.round((get(w) - a) * 100) / 100); return true; } };
   }
   const r2 = (n) => Math.round(n * 100) / 100;

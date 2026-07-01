@@ -310,7 +310,7 @@ function makeTokenService(opts) {
     return best;
   }
 
-  const bridge = makeTokenBridge({ signer: opts.signer || null, persist: nsPersist("bridge") });
+  const bridge = makeTokenBridge({ signer: opts.signer || null, persist: nsPersist("bridge"), maxWinUnits: opts.maxWinUnits }); // v6 #14: per-session max-win cap (USD; protects a finite house from a stuck settle)
   // v4 #5: finalize any crash reservation orphaned by an unclean (SIGKILL) restart — see drainOrphanReservations.
   // Runs once at service init, after the bridge rehydrates from disk. Best-effort; a no-op when there are none.
   try { const n = bridge.drainOrphanReservations(); if (n) { try { console.warn("[token] drained " + n + " orphaned crash reservation(s) on boot"); } catch (e) {} } } catch (e) {}

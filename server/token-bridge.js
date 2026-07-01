@@ -82,6 +82,20 @@ function makeTokenBridge(opts) {
   const persist = opts.persist || null;
   const sessions = new Map();
 
+  // v6 #14: MAX-WIN cap (protects a finite house bankroll from a stuck settle — the settle pays lockedWei+netWei
+  // and netWei scales with the session net, so an uncapped big win could exceed the on-chain house float and
+  // become UNCLAIMABLE). We cap the session UPSIDE at accrual: s.tokens can never exceed buyInUnits + maxWinUnits,
+  // so the DISPLAY never shows more than is payable (no clawback at cash-out) and the signed net is bounded.
+  // Applied identically at every token-mutation site AND in verifyRederive (ledger stays re-derivable). Losses are
+  // never touched. maxWinUnits is USD-denominated (tokens are). Set via TOKEN_MAX_WIN_USD; raise it as the house
+  // grows (a very large value effectively disables the cap). capUp() only clamps the win side.
+  const maxWinUnits = (Number(opts.maxWinUnits) > 0) ? Number(opts.maxWinUnits) : Infinity;
+  function capUp(tokens, buyInUnits) {
+    const ceil = round2(Number(buyInUnits) || 0) + maxWinUnits;
+    if (Number.isFinite(ceil) && tokens > ceil) return round2(ceil);
+    return tokens;
+  }
+
   function save() { if (persist && persist.save) { try { persist.save({ sessions: Array.from(sessions.values()) }); } catch (e) {} } }
   if (persist && persist.load) { try { const st = persist.load(); for (const s of (st && st.sessions) || []) if (s && s.id) sessions.set(s.id, s); } catch (e) {} }
 
@@ -169,7 +183,7 @@ function makeTokenBridge(opts) {
 
     // Commit atomically now that the result is valid: burn the nonce + move tokens together.
     s.betNonce = nonce + 1;
-    s.tokens = round2(s.tokens - bet + payout);
+    s.tokens = capUp(round2(s.tokens - bet + payout), s.buyInUnits); // v6 #14: bound the session win side to the max-win ceiling
     const rec = { nonce: nonce, game: o.game, betUnits: bet, params: o.params || {}, clientSeed: clientSeed, payoutUnits: payout, win: !!res.win, multiplier: res.multiplier };
     s.bets.push(rec);
     save();
@@ -224,7 +238,7 @@ function makeTokenBridge(opts) {
     if (Math.round(bet * 100) > Math.round(s.tokens * 100)) throw new Error("insufficient tokens");
     const nonce = s.betNonce;
     s.betNonce = nonce + 1;                              // external entries advance the nonce (contiguous ledger)
-    s.tokens = round2(s.tokens - bet + payout);
+    s.tokens = capUp(round2(s.tokens - bet + payout), s.buyInUnits); // v6 #14: bound the win side (blackjack too)
     if (s.tokens < 0) s.tokens = 0;
     const rec = { nonce: nonce, kind: "external", game: String(o.game || "blackjack"), betUnits: bet, payoutUnits: payout, ref: o.ref != null ? String(o.ref) : "", shoeCommit: o.shoeCommit ? String(o.shoeCommit) : "" };
     s.bets.push(rec);
@@ -308,7 +322,7 @@ function makeTokenBridge(opts) {
         // bridge's seed — its fairness is proven by the game's own shoe commit-reveal (b.shoeCommit/ref).
         // We trust the recorded bet/payout for the ledger sum; the signed net is still bounded by lockedWei
         // at settle, so this can never sign a loss past the lock or a win the contract can't pay.
-        ledger = round2(ledger - round2(b.betUnits) + round2(Math.max(0, b.payoutUnits)));
+        ledger = capUp(round2(ledger - round2(b.betUnits) + round2(Math.max(0, b.payoutUnits))), buyInUnits); // v6 #14: same win-cap as the live ledger so a capped session re-derives exactly
         continue;
       }
       if (b.kind === "crashRound" && b.open) {
@@ -317,14 +331,14 @@ function makeTokenBridge(opts) {
         // it NOW (empty params) would false-fail mid-round. Trust the recorded provisional bet/payout (payout=0
         // pre-resolve) like an external entry until it's finalized. A RESOLVED crashRound (open:false, has
         // params.cashOutAt) falls through and re-derives exactly below.
-        ledger = round2(ledger - round2(b.betUnits) + round2(Math.max(0, b.payoutUnits)));
+        ledger = capUp(round2(ledger - round2(b.betUnits) + round2(Math.max(0, b.payoutUnits))), buyInUnits); // v6 #14: same win-cap as the live ledger so a capped session re-derives exactly
         continue;
       }
       if (!hasGame(b.game)) { payoutsMatch = false; continue; }
       const res = ENGINES[b.game].play({ serverSeed: revealedSeed, clientSeed: b.clientSeed, nonce: b.nonce, betUnits: b.betUnits, params: b.params });
       const payout = clampPayout(b.game, b.betUnits, round2(Math.max(0, Number(res && res.payoutUnits) || 0))); // same cap as play() so a capped payout re-derives to the same value
       if (Math.abs(payout - round2(b.payoutUnits)) > 1e-9) payoutsMatch = false;
-      ledger = round2(ledger - round2(b.betUnits) + payout);
+      ledger = capUp(round2(ledger - round2(b.betUnits) + payout), buyInUnits); // v6 #14: same win-cap as play()
     }
     const ledgerMatches = Math.abs(ledger - claimedFinalTokens) < 1e-6;
     return {
@@ -421,7 +435,7 @@ function makeTokenBridge(opts) {
     let payout = round2(Math.max(0, Number(res && res.payoutUnits)));
     if (!Number.isFinite(payout)) throw new Error("resolve rejected: non-finite payout");
     payout = clampPayout(rec.game, rec.betUnits, payout); // bridge-level backstop on the crash-round payout too
-    s.tokens = round2(s.tokens + payout);     // stake already debited at reserve → only credit the gross
+    s.tokens = capUp(round2(s.tokens + payout), s.buyInUnits); // v6 #14: bound the win side (crash rounds too)
     rec.open = false; rec.params = params; rec.payoutUnits = payout; rec.win = !!res.win; rec.multiplier = res.multiplier;
     rec.outcome = res.outcome;                // persist {crashPoint,...} so the ledger entry exposes the settled point (audit + paced==ledger check)
     save();
@@ -602,6 +616,18 @@ if (require.main === module) {
     eq("net never below −buyIn", stl.netUnits >= -5_000_000);
     eq("settle reveals the serverSeed", stl.serverSeedReveal && PF.verify(stl.commit, stl.serverSeedReveal));
     eq("settle is idempotent", (await tb.settle({ sessionId: st.sessionId })).signature === stl.signature);
+
+    // ── v6 #14: MAX-WIN cap — bounds the session UPSIDE so the settle can't exceed the house; ledger stays exact ──
+    const cap = makeTokenBridge({ signer: signer2, maxWinUnits: 500, toWei: (u) => BigInt(Math.round(u * 1e6)) });
+    const cs2 = cap.start({ player, chainId: 1, contract, buyInUnits: 100, settleNonce: NONCE });
+    cap.applyExternal({ sessionId: cs2.sessionId, game: "blackjack", betUnits: 10, payoutUnits: 100000, ref: "jackpot" }); // huge win → capped
+    eq("max-win cap bounds s.tokens at buyIn+cap (100+500)", cap.session(cs2.sessionId).tokens === 600);
+    const crd = cap.rederive(cs2.sessionId);
+    eq("capped session still re-derives exactly (ledger == capped tokens)", crd.ledgerMatches && crd.ok);
+    cap.applyExternal({ sessionId: cs2.sessionId, game: "blackjack", betUnits: 50, payoutUnits: 0, ref: "loss" }); // a loss AFTER the cap still reduces tokens
+    eq("max-win cap never touches the loss side", cap.session(cs2.sessionId).tokens === 550);
+    const cstl = await cap.settle({ sessionId: cs2.sessionId });
+    eq("capped session settles (net bounded to the cap)", cstl.netUnits === 450); // 550 − 100 buyIn
 
     console.log(ok ? "\nSELF-TEST OK — token bridge: buy-in → provably-fair play → signed, verifiable settle." : "\nSELF-TEST FAILED");
     process.exit(ok ? 0 : 1);

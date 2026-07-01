@@ -86,6 +86,10 @@ function writeJsonAtomic(file, obj) {
   try { fs.writeFileSync(fd, data); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
   JSON.parse(fs.readFileSync(tmp, "utf8")); // readback: refuse to promote a corrupt temp
   fs.renameSync(tmp, file);
+  // mega-hunt LOW: fsync the PARENT DIR so the rename (the directory entry) is durable across a power loss —
+  // the file DATA was fsync'd above, but the rename can still sit in the OS cache. Best-effort: some platforms
+  // reject opening a dir for fsync, and a failure here never corrupts anything (the atomic rename already landed).
+  try { const dfd = fs.openSync(path.dirname(file), "r"); try { fs.fsyncSync(dfd); } finally { fs.closeSync(dfd); } } catch (e) {}
 }
 // Durable-store loader that DISTINGUISHES "file absent" (fresh install → {}) from "file present but
 // CORRUPT" (truncated/garbled JSON). The old `catch { return {} }` silently emptied a corrupt store,
@@ -264,6 +268,12 @@ const tokenSvc = attachTokenBridge(app, {
   ethUsdReady: () => (Number(process.env.BRIDGE_ETH_USD || process.env.ETH_USD || 0) > 0) || (_ethUsdLive > 0 && (Date.now() - _ethUsdLiveAt) < ETH_USD_STALE_MS),
   persist: tokenPersist,
   minConfirmations: Number(process.env.TOKEN_MIN_CONFIRMATIONS || 1),
+  // v6 #14: per-session MAX-WIN cap (USD). The settle pays lockedWei+netWei and the house float funds the NET, so
+  // an uncapped big win (e.g. a fish bonus tail ~$23k) could exceed a finite house float and become UNCLAIMABLE.
+  // Bounds the session UPSIDE (net) so the house never gets stuck. Default $2000 is safe for the current ~$3,500
+  // house; RAISE `TOKEN_MAX_WIN_USD` as the house grows (a very large value effectively disables the cap). Losses
+  // are never touched. Applied honestly at accrual (the displayed balance never shows more than is payable).
+  maxWinUnits: Number(process.env.TOKEN_MAX_WIN_USD) > 0 ? Number(process.env.TOKEN_MAX_WIN_USD) : 2000,
   // Token-funded blackjack: refuse a token cash-out / recover while the player has a live blackjack hand
   // (else the settle would lock in a debited stake before the hand resolves). blackjack exists already.
   // Stranded-lock auto-claim is only safe when the legacy on-chain blackjack bridge is OFF (else a prior
