@@ -107,7 +107,7 @@ function makeTokenBridge(opts) {
   function nowMs() { try { return Date.now(); } catch (e) { return 0; } }
   function gcClosed() {
     const cutoff = nowMs() - SETTLED_TTL_MS;
-    let dropped = 0;
+    let dropped = 0, compacted = 0;
     for (const s of sessions.values()) {
       if (!s || !((Number(s.createdAt) || 0) > 0) || !(Number(s.createdAt) < cutoff)) continue;
       // (a) a settled session past its TTL. Prune a WIN or PUSH (net>=0) — on-chain bjNonceUsed + txHash guard a
@@ -120,6 +120,13 @@ function makeTokenBridge(opts) {
       if (s.settlement) {
         let winOrPush = true; try { winOrPush = BigInt(String(s.settlement.netWei || "0")) >= 0n; } catch (e) {}
         if (winOrPush) { sessions.delete(s.id); dropped++; }
+        // v6 #6: a KEPT losing session is retained ONLY as loss-escape evidence. The guards read settlement.
+        // netWei/nonce/signature (+ s.closed/chainId/contract) — NEVER s.bets (verified: no external reader, no
+        // live endpoint re-derives a settled session). COMPACT it to a tombstone: drop the growing bets[] ledger
+        // (and the now-redundant serverSeed — settlement.serverSeedReveal holds it) so a busy player's retained
+        // losses can't balloon the map + persisted file without bound. The loss-escape record + idempotent settle
+        // are untouched. (Was: keep the whole session forever → unbounded growth, v6 #6.)
+        else if (Array.isArray(s.bets) && s.bets.length) { s.bets = []; s.serverSeed = undefined; s.tombstoned = true; compacted++; }
         continue;
       }
       // (b) v4 #16: a LIMBO session (closed, no settlement — the #13 signer-outage path) past its TTL. ONLY prune
@@ -129,7 +136,7 @@ function makeTokenBridge(opts) {
       // orphan path either way, so dropping it is harmless and bounds memory for the benign case.
       if (s.closed && !s.settlement && Math.round((Number(s.tokens) || 0) * 100) === Math.round((Number(s.buyInUnits) || 0) * 100)) { sessions.delete(s.id); dropped++; }
     }
-    if (dropped) save();
+    if (dropped || compacted) save(); // v6 #6: persist tombstone compactions too so the shrunk file lands on disk
     return dropped;
   }
 
@@ -608,6 +615,19 @@ if (require.main === module) {
     const dropped = gcb.gcClosed();
     eq("GC prunes the old settled session", dropped === 1 && !gcb.session(gSettled));
     eq("GC never prunes an OPEN session (would strand its lock)", !!gcb.session(gOpen));
+
+    // v6 #6: a settled LOSS is KEPT (loss-escape evidence) but COMPACTED to a tombstone — bets[] dropped, the
+    // settlement (netWei/nonce/signature) retained. Bounds the map/file growth from the v12.66 loss-keeping.
+    const lb = makeTokenBridge({ signer: signer2, settledTtlMs: 1, toWei: (u) => BigInt(Math.round(u * 1e6)) });
+    const ls = lb.start({ player, chainId: 1, contract, buyInUnits: 100, lockedWei: (1n * 10n ** 18n).toString(), settleNonce: NONCE }).sessionId;
+    lb.applyExternal({ sessionId: ls, game: "blackjack", betUnits: 100, payoutUnits: 0, ref: "bustloss" }); // deterministic LOSS → tokens 0, net −100
+    await lb.settle({ sessionId: ls });
+    eq("the losing session settled net<0", BigInt(lb.session(ls).settlement.netWei) < 0n);
+    lb.session(ls).createdAt = 1; // force past the 1ms TTL
+    const d2 = lb.gcClosed();
+    const lAfter = lb.session(ls);
+    eq("GC KEEPS a settled LOSS (loss-escape evidence, not pruned)", !!lAfter && d2 === 0 && !!lAfter.settlement);
+    eq("GC COMPACTS the kept loss (bets[] dropped, tombstoned)", lAfter.bets.length === 0 && lAfter.tombstoned === true);
 
     // settle signs a recoverable net + reveals the seed
     const stl = await tb.settle({ sessionId: st.sessionId });
