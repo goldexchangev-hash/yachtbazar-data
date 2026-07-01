@@ -466,9 +466,22 @@
       // UNCAPPED real winnings → VARIABLE bonus payout. The wave is bounded by the EXPECTED-value
       // budget (see _resolveHit / _frame), not by clamping each catch, so a lucky big fish really
       // pays big. Accumulated here, deposited all at once in the finale (_updateBonusFinale).
-      // TOKEN: free shots are cosmetic — the server already disbursed the wave total (shown via
-      // _startTokenBonus → _startFrenzy), so DON'T accumulate again.
-      if (!this._tokenActive()) this._frenzyWon = Math.round((this._frenzyWon + payout) * 100) / 100;
+      if (!this._tokenActive()) {
+        this._frenzyWon = Math.round((this._frenzyWon + payout) * 100) / 100;
+      } else {
+        // TOKEN: the SERVER already disbursed the WHOLE wave total (held out of the displayed balance at
+        // trigger time — see _resolveHit). REVEAL it one pop at a time so the bonus COUNTER + meter climb
+        // with each real catch ("what I win is what I win"), instead of showing the full lump from the start.
+        // Each pop counts its natural mult*unit, clamped so the running collected never exceeds the server
+        // total. The BALANCE corner itself stays held and deposits once at the finale (owner's "drop the win
+        // when the animation ends") — so RTP/total is UNTOUCHED, only the reveal cadence changes.
+        var remain = Math.max(0, Math.round(((this._tokenWaveTotal || 0) - (this._tokenWavePaid || 0)) * 100) / 100);
+        var inc = Math.min(remain, payout);
+        this._tokenWavePaid = Math.round(((this._tokenWavePaid || 0) + inc) * 100) / 100;
+        this._frenzyWon = this._tokenWavePaid; // the bonus counter shows what you've COLLECTED so far
+        if (inc <= 0) { fish.death = 0; return; } // total already collected → pop silently (no +$0 flash); the wave ends this frame in _frame
+        payout = inc; // the coin burst + "+$" float below show the REAL amount collected on THIS pop
+      }
     } else {
       // TOKEN: balance is the authoritative server ledger (set in _resolveHit's .then); never credit locally.
       if (!this._tokenActive()) this.balance = Math.round((this.balance + payout) * 100) / 100;
@@ -567,7 +580,7 @@
     kind = kind || "frenzy"; this._frenzyKind = kind;
     var th = BONUS_THEME[kind] || BONUS_THEME.frenzy;
     this._frenzyId++; this._frenzy = dur; this._frenzyMax = dur; this._frenzyWon = 0; this._frenzyExpected = 0;
-    if (this._tokenActive()) this._frenzyWon = Math.round((this._tokenWaveTotal || 0) * 100) / 100; // token: the wave pays the SERVER-disbursed total (free shots are cosmetic)
+    if (this._tokenActive()) { this._frenzyWon = 0; this._tokenWavePaid = 0; } // token: COLLECT the server total one pop at a time (climbs in _catch) — "what I win is what I win", not a lump reveal
     this._frenzyUnit = shot.unitBet || this.unitBet;
     this._frenzyPow = 1; // free shots are POWER 1 → the wave is a CONSISTENT length at every bet/power
     // VARIABLE PAYOUT (no more "always 1250"): the wave pays the player's REAL, UNCAPPED free-shot
@@ -812,7 +825,10 @@
     // bonus shot can never ricochet into normal play and pop a creature.
     if (this._frenzy > 0) {
       this._frenzy -= dt;
-      if (this._frenzy <= 0 || (this._frenzyExpected || 0) >= this._frenzyBudget) {
+      // TOKEN: end when the whole SERVER total has been collected pop-by-pop (or the 10s safety timer). The
+      // synthetic expected-budget cutoff is DEMO-only — in token play the bar tracks REAL collected/total.
+      var tokenDone = this._tokenActive() && (this._tokenWaveTotal || 0) > 0 && (this._tokenWavePaid || 0) >= (this._tokenWaveTotal || 0) - 0.005;
+      if (this._frenzy <= 0 || (!this._tokenActive() && (this._frenzyExpected || 0) >= this._frenzyBudget) || tokenDone) {
         this._frenzy = 0;
         this._clearRoundBullets(); // drop ALL in-flight free bullets so none carry into normal play
       }
@@ -914,7 +930,9 @@
     var finale = !!this._bonusFinale; // end-of-round reveal + deposit
     var bth = finale ? (this._bonusFinale.th || BONUS_THEME.frenzy) : (BONUS_THEME[this._frenzyKind] || BONUS_THEME.frenzy);
     // bonus wave = TIME bar (constant); countdown fills the bar; finale = full; else boss HP or the jackpot meter.
-    var fr = this._frenzy > 0 ? clamp((this._frenzyExpected || 0) / (this._frenzyBudget || 1), 0, 1) // fills toward the pre-paid budget (payout itself is variable)
+    var fr = this._frenzy > 0 ? (this._tokenActive() // TOKEN: fill by REAL collected/total (climbs as you pop); DEMO: fill toward the pre-paid expected budget
+        ? clamp((this._tokenWavePaid || 0) / (this._tokenWaveTotal || 1), 0, 1)
+        : clamp((this._frenzyExpected || 0) / (this._frenzyBudget || 1), 0, 1))
       : counting ? clamp(this._bonus.countT / 3, 0, 1)
       : finale ? 1
       : (inBoss && this._boss.hpMax ? Math.max(0, this._boss.hp / this._boss.hpMax) : this._jackpot);
@@ -996,6 +1014,7 @@
     if (this._boss && this._boss.spr) { try { this.bossLayer.removeChild(this._boss.spr); this._boss.spr.destroy(); } catch (e) {} }
     this._boss = null; this._bonus = null; this._bonusFinale = null;
     this._frenzyId++; this._frenzy = 0; this._frenzyMax = 0; this._frenzyWon = 0; this._frenzyExpected = 0; // bump id → any in-flight free bullet is rejected
+    this._tokenWaveTotal = 0; this._tokenWavePaid = 0; // clear the token per-pop collect state so no stale total leaks into the next wave
     this._holding = false;
     for (var i = this.bullets.length - 1; i >= 0; i--) { var b = this.bullets[i]; if (b && (b.free || b.bossId)) this._rmBullet(b); }
     if (this.bgBoss) this.bgBoss.alpha = 0; if (this.bgWorld) this.bgWorld.alpha = 0;
