@@ -126,7 +126,11 @@
     }
 
     // Manual tap. We only REQUEST the cash-out; the server settles at its own multiplier.
-    function cashOut() { if (live && live.roundId) send({ type: "cr:cashout", roundId: live.roundId }); }
+    // v6 #24: latch so a fast double-tap sends only ONE cr:cashout frame. The latch lives on `live`, which
+    // onResult nulls when the round settles (bust or cash) — so it always resets for the next round, and even a
+    // lost frame clears when the server timer resolves the round. (Duplicates are already a harmless server
+    // no-op — crash-rounds.js refuses a settled round — so this is just network hygiene.)
+    function cashOut() { if (live && live.roundId && !live.cashoutRequested) { live.cashoutRequested = true; send({ type: "cr:cashout", roundId: live.roundId }); } }
 
     function onResult(msg) {
       if (!live) return;

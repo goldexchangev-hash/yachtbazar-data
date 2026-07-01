@@ -384,6 +384,15 @@
     var su = free ? this._frenzyUnit : this.unitBet, sp = free ? this._frenzyPow : this.power;
     var paid = Math.round(su * sp * 100) / 100, cost = free ? 0 : paid;
     if (!free && this.balance < cost) { this._flashBanner("INSUFFICIENT", "add funds", 0xff5d72); return; }
+    // v6 #12: TOKEN mode debits on the SERVER at HIT (not at fire), so rapid taps could queue more paid shots
+    // than the balance covers → the server rejects the extras (wasted round-trips). Require the balance to also
+    // cover the stakes of paid shots STILL IN FLIGHT. Derived from the bullets array (not a running counter) so
+    // it can NEVER leak and soft-lock firing. Demo debits at fire, so its balance already reflects this.
+    if (!free && this._tokenActive()) {
+      var pend = 0;
+      for (var pi = 0; pi < this.bullets.length; pi++) { var pb = this.bullets[pi]; if (pb && !pb.free && !pb.hit && (pb.cost || 0) > 0) pend += pb.cost; }
+      if (this.balance < cost + pend) { this._flashBanner("EASY!", "let your shots land", 0xffd23f); return; }
+    }
     if (cost > 0) {
       this._sesSpent = Math.round((this._sesSpent + cost) * 100) / 100;
       // TOKEN: the server debits the stake on each per-shot bet (in _resolveHit) and there is
@@ -537,13 +546,18 @@
   };
   FishShooter.prototype._bomb = function (src, shot) {
     this._explosion(src.cont.x, src.cont.y, 0xff7a3d);
+    // v6 #25: TOKEN paid splash = VISUAL ONLY. The server already paid the authoritative splash.total for the
+    // bomb catch (folded into r.tokens); despawning nearby fish from a CLIENT Math.random roll would remove
+    // real shootable fish the server never settled — robbing future real bets. Keep the explosion, skip the kills.
+    if (this._tokenActive() && !shot.free) return;
     var t = this.fish.filter(function (o) { return o.alive && o !== src; }).map(function (o) { return { o: o, d: Math.hypot(o.cont.x - src.cont.x, o.cont.y - src.cont.y) }; }).filter(function (z) { return z.d < 160; }).sort(function (a, b) { return a.d - b.d; }).slice(0, 4);
     for (var i = 0; i < t.length; i++) { var o = t[i].o; if (this._splashRoll(o.def, shot.power, shot.free, shot.unitBet)) this._catch(o, shot, true); }
   };
   FishShooter.prototype._chain = function (src, shot) {
+    var visualOnly = this._tokenActive() && !shot.free; // v6 #25: keep the lightning arcs, but in token paid play don't despawn shootable fish from a client roll (server paid splash.total already)
     var t = this.fish.filter(function (o) { return o.alive && o !== src; }).map(function (o) { return { o: o, d: Math.hypot(o.cont.x - src.cont.x, o.cont.y - src.cont.y) }; }).sort(function (a, b) { return a.d - b.d; }).slice(0, 3);
     var px = src.cont.x, py = src.cont.y;
-    for (var i = 0; i < t.length; i++) { var o = t[i].o; this._lightning(px, py, o.cont.x, o.cont.y); px = o.cont.x; py = o.cont.y; if (this._splashRoll(o.def, shot.power, shot.free, shot.unitBet)) this._catch(o, shot, true); }
+    for (var i = 0; i < t.length; i++) { var o = t[i].o; this._lightning(px, py, o.cont.x, o.cont.y); px = o.cont.x; py = o.cont.y; if (!visualOnly && this._splashRoll(o.def, shot.power, shot.free, shot.unitBet)) this._catch(o, shot, true); }
   };
   FishShooter.prototype._awardJackpot = function () {
     var amt = Math.round(this._jackpotPool * 100) / 100; this._jackpot = 0;
@@ -598,6 +612,14 @@
   FishShooter.prototype._startBonus = function (kind, shot) {
     if (!this._canBonus()) return;
     this._bonus = { kind: kind, shot: { unitBet: shot.unitBet, power: shot.power, cost: shot.cost, free: !!shot.free }, countT: 0, lastNum: 99, started: false };
+    // v6 #10: clear in-flight PAID shots the instant a bonus wave triggers — mirror the boss round (which
+    // already does this at _updateBoss). Otherwise a pre-wave paid bullet still travels and can hit a FREE
+    // wave fish: in token mode that fires an unexpected mid-wave server bet on connect; in demo it debits/
+    // credits as a stray paid shot instead of contributing to the wave. Refund the debited stake in DEMO only
+    // (token paid shots debit on HIT — which removing the bullet prevents — so there is nothing to refund).
+    var refund = 0;
+    for (var bi = this.bullets.length - 1; bi >= 0; bi--) { var pbb = this.bullets[bi]; if (pbb && !pbb.free && !pbb.bossId) { if (!this._tokenActive() && pbb.cost > 0) refund += pbb.cost; this._rmBullet(pbb); } }
+    if (refund > 0) { refund = Math.round(refund * 100) / 100; this.balance = Math.round((this.balance + refund) * 100) / 100; this._sesSpent = Math.round((this._sesSpent - refund) * 100) / 100; this._save(); this._renderHud(); }
     this._shake = 30;
     var C = root.Chiptune; if (C) try { (C.bigwin || C.jackpot || function () {})(); } catch (e) {}
   };
