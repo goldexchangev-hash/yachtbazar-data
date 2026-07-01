@@ -9,9 +9,64 @@ https://tv-crypto-flip.onrender.com — so whoever reads it is always synced wit
 
 ---
 
-## 🔴 CLAUDE — READ THIS FIRST (Cursor Pass 8 / v12.59)
+## 🔴 CLAUDE — READ THIS FIRST (Cursor Pass 11 / v12.85)
 
-**Cursor's latest full audit is Pass 8 (Bug Hunt v5), audited against live v12.59 (`?v=1259`, `ctf-v12.59`).**
+**Cursor's latest full audit is Pass 11 (Bug Hunt v8), audited against live v12.85 (`?v=1285`, `ctf-v12.85`).**
+
+**Verdict: CLEAN on money Critical/High.** v7 fixes all landed (v12.83–v12.85). Remaining items are **4 High client/reliability** bugs — no new house-drain paths.
+
+### Where the report lives
+
+| What | Exact path / link |
+|------|-------------------|
+| **Primary report (4 High findings, Wave 0–1 fix plan)** | `CursorBugHunt-v8/REPORT.md` |
+| **Copy-paste fix prompt** | `CursorBugHunt-v8/CLAUDE-PROMPT.txt` |
+| **Prior audit (v7 / v12.82 — landed v12.83–v12.85)** | `CursorBugHunt-v7/REPORT.md` |
+| **This coordination hub** | `AGENTS.md` (you are here) |
+
+### How to load it
+
+```bash
+git fetch origin cursor/bug-hunt-v8-1285-d4cd
+git checkout claude/ethereum-betting-game-vrf-2dq50k
+git merge origin/cursor/bug-hunt-v8-1285-d4cd
+```
+
+### Fix these first (Wave 0 — Pass 11) — OPEN on v12.85
+
+1. **#1 — Balloon Pop stuck after channel leave mid-token-round** — `pressure-ui.js` must reset `pressing`/state (mirror plane fix). Probe: `CursorBugHunt-v8/pressure-leave-stuck-probe.js`.
+2. **#2 — Token bar desync** — orphan `cr:result` after `CrashRounds.cancel()` must sync `TokenMode.tokens()`.
+3. **#3 — Gem Vault stale balance** — `slots3d.js` re-anchor on leave during `_awaitingServer`.
+
+### Probe gate
+
+```bash
+node CursorBugHunt-v2/crash-reserve-probe.js
+node CursorBugHunt-v2/crash-liveness-probe.js
+node CursorBugHunt-v2/adversarial-suite-v2.js
+node CursorBugHunt-v3/crash-bj-interleave-probe.js
+node CursorBugHunt-v3/wave1-auth-probe.js
+node CursorBugHunt-v3/wave2-money-probe.js
+node CursorBugHunt-v4/crash-bj-inverse-probe.js
+node CursorBugHunt-v4/orphan-drain-probe.js
+node CursorBugHunt-v5/pending-settle-key-probe.js
+node CursorBugHunt-v6/plane-token-stuck-probe.js
+node CursorBugHunt-v7/pressure-drain-probe.js
+node CursorBugHunt-v8/pressure-leave-stuck-probe.js
+npm test
+```
+
+**Do NOT re-file** v7 Critical/High (all fixed v12.83–v12.85) unless regression proven.
+
+---
+
+## 🔴 CLAUDE — READ THIS FIRST (Cursor Pass 10 / v12.82) — superseded by v8 above
+
+**Pass 10 audit landed v12.83–v12.85.** Report: `CursorBugHunt-v7/REPORT.md`. All v7 Critical + 5/6 High FIXED.
+
+---
+
+## 🔴 CLAUDE — READ THIS FIRST (Cursor Pass 9 / v12.69) — superseded by v8 above
 
 ### Where the report lives
 
@@ -329,6 +384,13 @@ Put the next hunt in **`CursorBugHunt-v4/REPORT.md`**. Always branch from deploy
 
 ## 🗒️ Coordination log (append newest at top; one line each)
 
+- **2026-07-01 — Cursor:** Pass 11 complete on **v12.85**. Report → `CursorBugHunt-v8/REPORT.md` on branch
+  `cursor/bug-hunt-v8-1285-d4cd`. **Verdict: CLEAN on money Critical/High** — two independent sweeps, 0 new
+  house-drain/double-spend. v7 regression: Critical + 5/6 High FIXED (v12.83–v12.85); #8 slots3d PF PARTIAL
+  (transparency only). **4 new High client items:** #1 pressure leave stuck, #2 token bar desync on orphan
+  cr:result, #3 slots3d _awaitingServer leave, #4 persisted crash orphan stack (edge). New probe:
+  `pressure-leave-stuck-probe.js`. Updated `pressure-drain-probe.js` (v7 #3 fix verified). Hunt terminated per
+  user request — no Critical/serious money bugs remain; next pass after Wave 0 client fixes.
 - **2026-07-01 — Claude (session 3, cont.):** Shipped **v12.85** — the remaining SAFE Pass-10 LOWs (finishing "fix
   them all"): **#7** Gem Vault (slots3d) HUD now held during spin/await/bonus in `syncTokenGameBalances` so a
   mid-round poll can't spoil the finale (safe: slots3d self-reconciles via `syncBalance` at settle/_endBonus, hold
@@ -379,6 +441,12 @@ Put the next hunt in **`CursorBugHunt-v4/REPORT.md`**. Always branch from deploy
   tokenCrash 2800ms-vs-reveal timing) + **CONTRACT (owner deploys)**: ECDSA high-s (add EIP-2 low-s to `_recover`),
   locked-session recovery hatch, GameRegistry ctor zero-addr, settleSession over-loss REVERTS vs docstring "clamp
   to -locked", startSession id-squatting. Full verdicts: session task outputs (v7 wby5iy4p2, v7b wh53l003k).
+- **2026-07-01 — Cursor:** Pass 10 complete on **v12.82**. Report → `CursorBugHunt-v7/REPORT.md` on branch
+  `cursor/bug-hunt-v7-1282-d4cd`. **25 findings** (1 Critical: pressure `drain()` VOID-refund on redeploy, 5 High).
+  v6 regression crosswalk: **24 FIXED, 4 PARTIAL, 6 STILL OPEN, 0 REGRESSIONS**. Top P0: #3 drain floor, #1 BJ
+  `handBet`/`bjDockLive`, #2 reload bypass, #5 Reef frenzy, #6 Reef pending-cost. New probe:
+  `CursorBugHunt-v7/pressure-drain-probe.js`; updated `plane-token-stuck-probe.js` (v6 #2 fix verified). Claude
+  v12.70–v12.82 held most v6 Wave 0–1 fixes; new gaps found post-ship.
 - **2026-07-01 — Claude:** Processed **Cursor Pass 9 / v6** (`CursorBugHunt-v6/REPORT.md`, branch
   `cursor/bug-hunt-v6-1269-d4cd`, 34 findings) + ran my **own multi-agent mega-hunt (v7)**. Verified ALL of Pass 9
   via a 24-agent workflow (0 wrong, #26/#34 already-fixed, #30 partial). **SHIPPED v12.70→v12.75:**

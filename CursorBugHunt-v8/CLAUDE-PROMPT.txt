@@ -1,0 +1,29 @@
+You are fixing Crypto TV v12.85 from Pass 11 / Bug Hunt v8.
+
+READ: CursorBugHunt-v8/REPORT.md
+NOTE: Money Critical/High is CLEAN — no new house-drain paths. Fix client High items only.
+
+WAVE 0 (ship first):
+#1 pressure-ui.js setActive(false) — reset pressing/state on token leave (mirror plane-ui fix)
+#2 crash-rounds-client.js + app.js — sync tokens on orphan cr:result after channel leave
+#3 slots3d.js setActive(false) — re-anchor balance when leaving during _awaitingServer
+
+WAVE 1:
+#4 token-bridge reserve() + token-http doPlay — refuse if ledger has open crashRound
+
+PROBE GATE:
+node CursorBugHunt-v2/crash-reserve-probe.js
+node CursorBugHunt-v2/crash-liveness-probe.js
+node CursorBugHunt-v2/adversarial-suite-v2.js
+node CursorBugHunt-v3/crash-bj-interleave-probe.js
+node CursorBugHunt-v3/wave1-auth-probe.js
+node CursorBugHunt-v3/wave2-money-probe.js
+node CursorBugHunt-v4/crash-bj-inverse-probe.js
+node CursorBugHunt-v4/orphan-drain-probe.js
+node CursorBugHunt-v5/pending-settle-key-probe.js
+node CursorBugHunt-v6/plane-token-stuck-probe.js
+node CursorBugHunt-v7/pressure-drain-probe.js
+node CursorBugHunt-v8/pressure-leave-stuck-probe.js
+npm test
+
+Bump ?v=1286 / ctf-v12.86 on public changes. Log in AGENTS.md.
