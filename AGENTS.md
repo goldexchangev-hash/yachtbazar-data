@@ -9,34 +9,33 @@ https://tv-crypto-flip.onrender.com — so whoever reads it is always synced wit
 
 ---
 
-## 🔴 CLAUDE — READ THIS FIRST (Cursor Pass 12 / v12.91)
+## 🔴 CLAUDE — READ THIS FIRST (Cursor Pass 13 / v12.91)
 
-**Cursor's latest full audit is Pass 12 (Bug Hunt v9), audited against live v12.91 (`?v=1291`, `ctf-v12.91`).**
+**Cursor's latest full audit is Pass 13 (Bug Hunt v10 — HARDER SCAN), audited against live v12.91 (`?v=1291`, `ctf-v12.91`).**
 
-**Verdict: CLEAN on money Critical/High (3rd consecutive pass).** v8 fixes landed v12.86–v12.91. **6 Medium + 4 Low** new items — demo UX, #94 plane copy, slots reveal hold, orphan edge liveness.
+**Verdict: Money ledger still CLEAN (0 Critical/High house-drain). Pass 13 found 3 new High client/liveness bugs** — #94 cold-resume gap, launch ack race, Reef splash regression.
 
 ### Where the report lives
 
 | What | Exact path / link |
 |------|-------------------|
-| **Primary report (10 findings, Wave 0–2 fix plan)** | `CursorBugHunt-v9/REPORT.md` |
-| **Copy-paste fix prompt** | `CursorBugHunt-v9/CLAUDE-PROMPT.txt` |
-| **Prior audit (v8 / v12.85 — landed v12.86–v12.91)** | `CursorBugHunt-v8/REPORT.md` |
-| **This coordination hub** | `AGENTS.md` (you are here) |
+| **Primary report (17 findings, Wave 0–2 fix plan)** | `CursorBugHunt-v10/REPORT.md` |
+| **Copy-paste fix prompt** | `CursorBugHunt-v10/CLAUDE-PROMPT.txt` |
+| **Prior audit (v9 / v12.91)** | `CursorBugHunt-v9/REPORT.md` |
 
 ### How to load it
 
 ```bash
-git fetch origin cursor/bug-hunt-v9-1291-d4cd
+git fetch origin cursor/bug-hunt-v10-1291-d4cd
 git checkout claude/ethereum-betting-game-vrf-2dq50k
-git merge origin/cursor/bug-hunt-v9-1291-d4cd
+git merge origin/cursor/bug-hunt-v10-1291-d4cd
 ```
 
-### Fix these first (Wave 0 — Pass 12) — OPEN on v12.91
+### Fix these first (Wave 0 — Pass 13) — OPEN on v12.91
 
-1. **#1 — Demo BJ Reload uses `BJ_START` not `demoUsd`** — v12.88 unify gap. Probe: `CursorBugHunt-v9/bj-reload-demo-probe.js`.
-2. **#2 — Plane `cr:noround` shows undefined crashPoint** — #94 offline bust UX.
-3. **#3 — Gem Vault `setBalance` no in-flight guard** — win spoiler on re-entry.
+1. **#1 — Cold crash resume** — page refresh during live token round traps player (false plane refund). Probe: `CursorBugHunt-v10/crash-cold-resume-probe.js`.
+2. **#2 — Launch ack window channel switch** — defer `token-flying` until `cr:started`.
+3. **#3 — Reef token splash** — port fishshooter visual-only guard. Probe: `CursorBugHunt-v10/reef-splash-token-probe.js`.
 
 ### Probe gate
 
@@ -54,20 +53,20 @@ node CursorBugHunt-v6/plane-token-stuck-probe.js
 node CursorBugHunt-v7/pressure-drain-probe.js
 node CursorBugHunt-v8/pressure-leave-stuck-probe.js
 node CursorBugHunt-v9/bj-reload-demo-probe.js
+node CursorBugHunt-v10/crash-cold-resume-probe.js
+node CursorBugHunt-v10/reef-splash-token-probe.js
 npm test
 ```
 
-**Do NOT re-file** v7/v8 Critical/High unless regression proven.
+---
+
+## 🔴 CLAUDE — READ THIS FIRST (Cursor Pass 12 / v12.91) — superseded by v10 above
+
+**Pass 12 report:** `CursorBugHunt-v9/REPORT.md`. Money CLEAN; 6 Med + 4 Low.
 
 ---
 
-## 🔴 CLAUDE — READ THIS FIRST (Cursor Pass 11 / v12.85) — superseded by v9 above
-
-**Pass 11 landed v12.86–v12.91.** Report: `CursorBugHunt-v8/REPORT.md`. v8 #1–#4 FIXED; v7 #8 PF FIXED v12.90.
-
----
-
-## 🔴 CLAUDE — READ THIS FIRST (Cursor Pass 10 / v12.82) — superseded by v9 above
+## 🔴 CLAUDE — READ THIS FIRST (Cursor Pass 11 / v12.85) — superseded by v10 above
 
 ### Where the report lives
 
@@ -385,6 +384,13 @@ Put the next hunt in **`CursorBugHunt-v4/REPORT.md`**. Always branch from deploy
 
 ## 🗒️ Coordination log (append newest at top; one line each)
 
+- **2026-07-01 — Cursor:** Pass 13 (HARDER SCAN) complete on **v12.91**. Report →
+  `CursorBugHunt-v10/REPORT.md` on branch `cursor/bug-hunt-v10-1291-d4cd`. **4-stream adversarial
+  audit:** concurrency, game engines, client state machines, BJ/WS/auth. Money ledger still **0 Critical/High**.
+  **3 new High:** #94 cold-resume gap (refresh traps player + false plane refund), launch ack channel-switch
+  race, Reef token splash client-kills (fishshooter guard missing). **10 Medium + 4 Low** including
+  demoSyncBalance `paintSession(force)` bug, guest seat hijack, fish betUnits/power decoupling. New probes:
+  `crash-cold-resume-probe.js`, `reef-splash-token-probe.js`.
 - **2026-07-01 — Cursor:** Pass 12 complete on **v12.91** (4-stream max-agent audit). Report →
   `CursorBugHunt-v9/REPORT.md` on branch `cursor/bug-hunt-v9-1291-d4cd`. **Verdict: CLEAN on money
   Critical/High** (3rd consecutive pass). v8 regression: #1/#2/#4 FIXED v12.86, #3 PARTIAL, v7 #8 PF FIXED v12.90.
