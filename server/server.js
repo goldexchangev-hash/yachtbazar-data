@@ -48,7 +48,7 @@ app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "SAMEORIGIN");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-  res.setHeader("Content-Security-Policy", "frame-ancestors 'self'");
+  res.setHeader("Content-Security-Policy", "frame-ancestors 'self'; object-src 'none'; base-uri 'self'"); // v6 #32: object-src 'none' (no <object>/<embed> plugins) + base-uri 'self' (no injected <base> hijack). No script-src/default-src — wallet injection + ethers must keep working.
   res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
   next();
 });
@@ -311,6 +311,10 @@ function gracefulShutdown() {
   const done = () => { flushAllStores(); process.exit(0); }; // re-flush after drain in case an in-flight op completed
   try {
     let closed = false;
+    // v6 #33: server.close() stops NEW connections but leaves open WS sockets alive → shutdown would wait the
+    // full 4s cap every deploy. Close every live socket (1001 Going Away) so it drains promptly; balances are
+    // already flushed above and the client auto-reconnects to the new instance.
+    try { wss.clients.forEach((c) => { try { c.close(1001, "server restarting"); } catch (e) {} }); } catch (e) {}
     server.close(() => { if (!closed) { closed = true; done(); } });
     const t = setTimeout(() => { if (!closed) { closed = true; done(); } }, 4000); // hard cap so we never hang the deploy
     if (t && t.unref) t.unref();
@@ -383,10 +387,43 @@ function wsRateOk(ws) {
 }
 
 const MAX_WS_CONNECTIONS = Number(process.env.MAX_WS_CONNECTIONS) || 600;
-wss.on("connection", (ws) => {
+// v6 #4: the global cap alone lets ONE client open all 600 sockets and deny service to everyone. Add a
+// per-IP cap + an Origin allowlist (anti cross-site-WebSocket-hijack). Both fail OPEN on any uncertainty so
+// a legit player is never locked out.
+const MAX_WS_PER_IP = Number(process.env.MAX_WS_PER_IP) || 12;
+const wsByIp = new Map();
+function wsClientIp(req) {
+  try {
+    const xff = String((req && req.headers && req.headers["x-forwarded-for"]) || "").split(",").map((s) => s.trim()).filter(Boolean);
+    if (xff.length) return xff[xff.length - 1]; // 1 trusted hop (Render) APPENDS the real client IP last; leftmost tokens are client-spoofable (mirror the HTTP trust-proxy=1 resolution)
+    return (req && req.socket && req.socket.remoteAddress) || "";
+  } catch (e) { return ""; }
+}
+function wsOriginOk(req) {
+  try {
+    const origin = String((req && req.headers && req.headers.origin) || "");
+    if (!origin) return true; // non-browser client (native/tests) sends no Origin — allow
+    const oh = new URL(origin).host;
+    const host = String((req && req.headers && req.headers.host) || "");
+    if (host && oh === host) return true;                                  // same-origin: the served page → its own WS (the live case)
+    if (PUBLIC_HOST && (oh === PUBLIC_HOST || origin === PUBLIC_HOST)) return true;
+    if (/^(localhost|127\.0\.0\.1)(:\d+)?$/.test(oh)) return true;          // local dev
+    return false;
+  } catch (e) { return true; } // any parse failure → don't lock anyone out
+}
+wss.on("connection", (ws, req) => {
+  // v6 #4: reject cross-origin browser hijack attempts before we allocate anything.
+  if (!wsOriginOk(req)) { try { ws.close(1008, "origin not allowed"); } catch (e) {} return; }
   // v5 #17: cap total live sockets. Each connect triggers a broadcastPlayers() over ALL clients, so an
   // unbounded connection flood is O(N^2) work on the single event loop. Refuse past the cap instead.
   if (clients.size >= MAX_WS_CONNECTIONS) { try { ws.close(1013, "server at capacity"); } catch (e) {} return; }
+  // v6 #4: per-IP cap so a single source can't hoard the global pool.
+  const ip = wsClientIp(req);
+  if (ip) {
+    const n = (wsByIp.get(ip) || 0) + 1;
+    if (n > MAX_WS_PER_IP) { try { ws.close(1013, "too many connections"); } catch (e) {} return; }
+    wsByIp.set(ip, n); ws._ip = ip;
+  }
   clients.set(ws, { address: null });
   ws.on("error", () => {}); // ignore abrupt drops instead of crashing
   broadcastPlayers();
@@ -427,7 +464,11 @@ wss.on("connection", (ws) => {
       const addr = data.address;
       const realWallet = /^0x[0-9a-fA-F]{40}$/.test(addr);
       ws.bjHelloSeen = true;
-      clients.get(ws).address = addr;
+      // v6 #8: the presence/chat identity (player roster, chat `from`, rooms-updated `by`, bet-proposal `from`)
+      // accepted ANY string → a client could spoof another wallet's handle. Only accept a real 0x wallet or a
+      // well-formed guest id; blank anything else (they still connect, just with no spoofable handle). The
+      // money identity (ws.wallet) is validated separately below and is unaffected.
+      clients.get(ws).address = (realWallet || /^guest:[a-z0-9]{1,32}$/.test(addr)) ? addr : "";
       // Presence/chat can use the displayed address, but Blackjack spending needs
       // a trusted identity. Guests are play-money; real wallets must present a trusted token.
       // PREFERRED real-money path: a TOKEN-bridge session (bjSession=sessionId, bjToken=its bearer) —
@@ -511,6 +552,7 @@ wss.on("connection", (ws) => {
       }
       if (!othersHold) { try { blackjack.unbindToken(ws.wallet); } catch (e) {} }
     }
+    if (ws._ip) { const n = (wsByIp.get(ws._ip) || 0) - 1; if (n <= 0) wsByIp.delete(ws._ip); else wsByIp.set(ws._ip, n); } // v6 #4: release the per-IP slot
     clients.delete(ws);
     broadcastPlayers();
   });

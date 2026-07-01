@@ -35,6 +35,10 @@
     return { get, all: m, flush: doSave, credit: (w, a) => m.set(w, Math.round((get(w) + a) * 100) / 100), debit: (w, a) => { if (get(w) < a) return false; m.set(w, Math.round((get(w) - a) * 100) / 100); return true; } };
   }
   const r2 = (n) => Math.round(n * 100) / 100;
+  // v6 #1: shared GUEST play-money caps (hoisted from topUp so seedGuest enforces the SAME ceiling — a guest
+  // could otherwise bj:seed an arbitrary balance straight into .bj-bank.json, bypassing the top-up cap).
+  const GUEST_TOPUP_MAX = 5000, GUEST_BAL_CAP = 25000, GUEST_TOPUP_COOLDOWN = 3000;
+  const MAX_EMPTY_WINDOWS = 3; // v6 #27: after this many consecutive no-bet betting windows, drop the table to idle instead of re-arming forever
   function newHand(bet, opts) { return Object.assign({ cards: [], bet: bet, done: false, doubled: false, fromSplit: false, isAceSplit: false, surrendered: false, result: null }, opts || {}); }
 
   function attachBlackjack(opts) {
@@ -271,7 +275,14 @@
     function endBetting(r) {
       clrT(r.timers.betting); r.bettingEpoch = (r.bettingEpoch || 0) + 1; // invalidate any queued betting timer
       const active = r.seats.filter(inRound);
-      if (active.length === 0) { if (r.seats.some(Boolean)) return startBetting(r); r.phase = "idle"; broadcastState(r); reapEmptyExtras(); return; }
+      if (active.length === 0) {
+        // v6 #27: nobody bet this window. Re-arm a few times for a returning player, but don't spin (re-broadcasting
+        // every window) for the full idle timeout — after MAX_EMPTY_WINDOWS consecutive empty windows drop to idle
+        // and let the normal idle-close reap the table. The counter resets on any dealt hand or when we go idle.
+        if (r.seats.some(Boolean) && (r.emptyWindows = (r.emptyWindows || 0) + 1) < MAX_EMPTY_WINDOWS) return startBetting(r);
+        r.phase = "idle"; r.emptyWindows = 0; broadcastState(r); reapEmptyExtras(); return;
+      }
+      r.emptyWindows = 0; // a hand is dealing → reset the empty-window counter
       deal(r);
     }
     function deal(r) {
@@ -315,7 +326,7 @@
       // #12: a seat that ABANDONED before insurance (left during betting/dealing — s.left, still inRound via
       // baseBet>0) can never tap a decision, so pre-mark it DECIDED here. Otherwise the closeInsurance quorum
       // (`every(inRound seat decided)`) waits out the full 12s timer. (v3 #34 already handles leaving DURING insurance.)
-      for (const s of r.seats) if (inRound(s)) s.insuranceDecided = !!s.left;
+      for (const s of r.seats) if (inRound(s)) s.insuranceDecided = !!s.left || !!s.disconnected; // v6 #28: a DISCONNECTED (not-left) seat also can't tap a decision → pre-mark it so the quorum doesn't wait out the full 12s
       r.timers.insurance = setT(() => closeInsurance(r), T.insurance);
       broadcast(r, { type: "bj:insurance:offer", roomId: r.id, deadline: r.deadline, maxFactor: 0.5 });
       broadcastState(r);
@@ -387,8 +398,7 @@
       // v5 #22: bound the play-money mint. A guest could call this with $100k, any phase, no cooldown and
       // balloon the demo bank file (.bj-bank.json). Keep legit reloads working (a broke guest tops up to
       // play) but cap each call, cap the standing balance, and rate-limit so it can't be spammed.
-      const GUEST_TOPUP_MAX = 5000, GUEST_BAL_CAP = 25000, GUEST_TOPUP_COOLDOWN = 3000;
-      const nowMs = now();
+      const nowMs = now(); // caps hoisted to module scope (v6 #1) so seedGuest shares them
       if (sock._lastGuestTopUp && nowMs - sock._lastGuestTopUp < GUEST_TOPUP_COOLDOWN) return;
       let amt = r2(Math.max(0, Math.min(GUEST_TOPUP_MAX, +amount || 0)));
       if (amt <= 0) return;
@@ -684,7 +694,10 @@
       // Top-up only: a re-seed (e.g. the ⟳ Reload button) may RAISE an idle guest to the
       // floor but must never DESTROY winnings by lowering them. Otherwise a guest who ground
       // up to $16k and clicked Reload would be wiped back to $1,000.
-      bank.all.set(w, r2(Math.max(amount, bank.get(w))));
+      // v6 #1: clamp the requested seed to the SAME standing cap topUp enforces — a guest could otherwise
+      // {type:"bj:seed", balance:1e12} and persist an arbitrary balance to .bj-bank.json.
+      const capped = Math.min(GUEST_BAL_CAP, amount);
+      bank.all.set(w, r2(Math.max(capped, bank.get(w))));
       pushWallet(sock, w);
       for (const r of rooms.values()) { if (seatOf(r, sock) >= 0) { broadcastState(r); break; } } // refresh betMax
     }

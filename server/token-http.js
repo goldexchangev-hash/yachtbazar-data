@@ -808,7 +808,12 @@ function makeTokenService(opts) {
     };
   }
 
-  function status() { return { ok: true, enabled: true, signerAddress: (opts.signerAddress ? opts.signerAddress() : null), ethUsd: (opts.ethUsd ? opts.ethUsd() : null), priceReady: (opts.ethUsdReady ? !!opts.ethUsdReady() : true), store: (opts.storeInfo ? opts.storeInfo() : null), games: bridge.games(), model: "server commit-reveal token bridge (no VRF)" }; }
+  function status() {
+    // v6 #30: /api/token/status is PUBLIC + unauthenticated. Keep the durability booleans (custom/writable/durable)
+    // but STRIP the raw absolute state-file `path` — an internal filesystem detail that shouldn't be disclosed.
+    let store = (opts.storeInfo ? opts.storeInfo() : null);
+    if (store && typeof store === "object") { store = Object.assign({}, store); delete store.path; delete store.file; delete store.dir; }
+    return { ok: true, enabled: true, signerAddress: (opts.signerAddress ? opts.signerAddress() : null), ethUsd: (opts.ethUsd ? opts.ethUsd() : null), priceReady: (opts.ethUsdReady ? !!opts.ethUsdReady() : true), store: store, games: bridge.games(), model: "server commit-reveal token bridge (no VRF)" }; }
 
   // Owner-facing AGGREGATE of every OPEN token session — so the house can see its live
   // exposure at a glance (locked principal it can't withdraw yet + unrealized P&L that
@@ -962,9 +967,9 @@ function attachTokenBridge(app, opts) {
   // #20: house-state is now OWNER-AUTHENTICATED (POST, signed) — aggregate exposure is no longer open.
   app.post("/api/token/house-state", async (req, res) => { if (!guard(res) || !ipGuard(req, res)) return; try { res.json(await svc.doHouseState(req.body || {})); } catch (e) { fail(res, e); } });
   // #21: session resume is POST (bearer in the body, never a query string that proxies log / browsers cache).
-  app.post("/api/token/session", (req, res) => { if (!guard(res)) return; try { res.json(svc.doSession(req.body || {})); } catch (e) { fail(res, e); } });
+  app.post("/api/token/session", (req, res) => { if (!guard(res) || !ipGuard(req, res)) return; try { res.json(svc.doSession(req.body || {})); } catch (e) { fail(res, e); } }); // v6 #16: per-IP guard like every other route — an invalid-token flood throws at the bearer check BEFORE the per-session limiter, so without this a single source can flood the event loop
   app.post("/api/token/start", async (req, res) => { if (!guard(res) || !ipGuard(req, res)) return; try { res.json(await svc.doStart(req.body || {})); } catch (e) { fail(res, e); } });
-  app.post("/api/token/play", (req, res) => { if (!guard(res)) return; try { res.json(svc.doPlay(req.body || {})); } catch (e) { fail(res, e); } });
+  app.post("/api/token/play", (req, res) => { if (!guard(res) || !ipGuard(req, res)) return; try { res.json(svc.doPlay(req.body || {})); } catch (e) { fail(res, e); } }); // v6 #16: per-IP guard (doPlay is sync; the sessionId-keyed rateOk runs only AFTER the bearer check, so a bad-token flood bypassed it)
   app.post("/api/token/topup", async (req, res) => { if (!guard(res) || !ipGuard(req, res)) return; try { res.json(await svc.doTopUp(req.body || {})); } catch (e) { fail(res, e); } });
   app.post("/api/token/settle", async (req, res) => { if (!guard(res) || !ipGuard(req, res)) return; try { res.json(await svc.doSettle(req.body || {})); } catch (e) { fail(res, e); } });
   app.post("/api/token/release", async (req, res) => { if (!guard(res) || !ipGuard(req, res)) return; try { res.json(await svc.doRelease(req.body || {})); } catch (e) { fail(res, e); } });

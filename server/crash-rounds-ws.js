@@ -71,6 +71,7 @@ function makeCrashWs(opts) {
     onResolve: function (out) {
       const ws = wsByRound.get(out.roundId);
       wsByRound.delete(out.roundId);
+      if (ws && ws._crRounds) ws._crRounds.delete(out.roundId); // v6 #18: prune the per-socket ownership Set too — else it grows for the life of the socket (onClose was the only reaper)
       if (ws) send(ws, Object.assign({ type: "cr:result" }, out));
     },
   });
