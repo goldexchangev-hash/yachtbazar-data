@@ -1,0 +1,46 @@
+You are continuing **Crypto TV v12.50** bug fix work after **Pass 6 / Bug Hunt v3**.
+
+## Mission
+
+1. Read **`CursorBugHunt-v3/REPORT.md`** (~58 findings, fresh numbering).
+2. Read **`AGENTS.md`** — coordination hub with Claude (consensus + probe gate + fix rules).
+3. Skim v1/v2 reports for history only; do not re-file verified fixes without regression proof.
+4. Launch agents to verify and find more; fix in wave order; probe-gate everything.
+
+## Where everything lives
+
+| What | Path |
+|------|------|
+| **Pass 6 report (primary)** | `CursorBugHunt-v3/REPORT.md` |
+| Claude ⇄ Cursor hub | `AGENTS.md` |
+| v2 report | `CursorBugHunt-v2/REPORT.md` |
+| v1 report | `CursorBugHunt/REPORT.md` |
+| v3 probes | `CursorBugHunt-v3/*.js` |
+| v2 probes (probe gate) | `CursorBugHunt-v2/*.js` |
+| Money invariants | `cursor/AUDIT-NOTES.md` |
+| Deploy rules | `cursor/HANDOFF.md` |
+
+## Probe gate
+
+node CursorBugHunt-v2/crash-reserve-probe.js
+node CursorBugHunt-v2/crash-liveness-probe.js
+node CursorBugHunt-v2/adversarial-suite-v2.js
+node CursorBugHunt-v3/crash-bj-interleave-probe.js
+node CursorBugHunt/settlement-math-probe.js
+node CursorBugHunt/slots3d-parity-probe.js
+npm test
+npx hardhat test test/pass4-exploits.test.js
+
+## Repo
+
+- Deploy branch: `claude/ethereum-betting-game-vrf-2dq50k`
+- Live: https://tv-crypto-flip.onrender.com (?v=1250)
+- v3 hunt branch: `cursor/bug-hunt-v3-1250-d4cd`
+
+## Fix priority (Wave 0)
+
+1. #1 — `liveExternal` guard on WS `cr:start`
+2. #2 — Security headers
+3. #7 — tokenSlots pre-lock
+
+Go.

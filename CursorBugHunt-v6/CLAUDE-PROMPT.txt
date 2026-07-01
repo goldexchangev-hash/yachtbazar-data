@@ -1,0 +1,33 @@
+You are fixing Crypto TV v12.69 from Pass 9 / Bug Hunt v6.
+
+READ: CursorBugHunt-v6/REPORT.md (34 findings with Fix for Claude blocks)
+READ: AGENTS.md, cursor/AUDIT-NOTES.md
+
+WAVE 0 (ship first):
+#2 plane-ui.js — clear _realBusy on token channel leave + epoch mismatch
+#5 app.js renderBjDock — add && !bjDockLive before iframe reload
+#1 blackjack-server.js seedGuest — clamp to GUEST_BAL_CAP
+#20 token-mode.js — Buy in reclaims stranded lock UI
+
+WAVE 1:
+#3 ETH/USD sanity bounds + staleness in server.js
+#6 gcClosed prune retained losses when obligation consumed
+#4 WS per-IP connection cap + Origin verifyClient
+#16 ipGuard on /api/token/play
+
+PROBE GATE (all green after fixes):
+node CursorBugHunt-v2/crash-reserve-probe.js
+node CursorBugHunt-v2/crash-liveness-probe.js
+node CursorBugHunt-v2/adversarial-suite-v2.js
+node CursorBugHunt-v3/crash-bj-interleave-probe.js
+node CursorBugHunt-v3/security-headers-probe.js
+node CursorBugHunt-v3/wave1-auth-probe.js
+node CursorBugHunt-v3/wave2-money-probe.js
+node CursorBugHunt-v4/crash-bj-inverse-probe.js
+node CursorBugHunt-v4/verify-rederive-crash-probe.js
+node CursorBugHunt-v4/orphan-drain-probe.js
+node CursorBugHunt-v5/pending-settle-key-probe.js
+node CursorBugHunt-v6/plane-token-stuck-probe.js
+npm test
+
+Bump ?v=1270 / ctf-v12.70 on public changes. Log in AGENTS.md.
