@@ -1,0 +1,36 @@
+You are fixing Crypto TV v12.91 from Pass 12 / Bug Hunt v9.
+
+READ: CursorBugHunt-v9/REPORT.md
+NOTE: Money Critical/High is CLEAN (0 new). Fix Medium client/reliability items.
+
+WAVE 0:
+#1 app.js bjReload — seed demoUsd not BJ_START; fix toast at 5123
+#2 plane-ui.js — handle res.resumedGone without crashPoint (cr:noround #94)
+#3 slots3d.js setBalance in-flight guard + ensureSlots3dReady skip
+
+WAVE 1:
+#4 app.js widen bjDockLive (insurance/dealing/dealer)
+#5 app.js bjFramePost — seed only on first load, not every re-activation
+#6-7 token-http doSettle + token-bridge applyExternal — finalizeOrphanRounds before settle/BJ
+
+WAVE 2:
+#8 plane visibility cash-out parity (optional)
+#9 bump pressure-ui.js/slots3d.js ?v=1292 in app.js
+
+PROBE GATE:
+node CursorBugHunt-v2/crash-reserve-probe.js
+node CursorBugHunt-v2/crash-liveness-probe.js
+node CursorBugHunt-v2/adversarial-suite-v2.js
+node CursorBugHunt-v3/crash-bj-interleave-probe.js
+node CursorBugHunt-v3/wave1-auth-probe.js
+node CursorBugHunt-v3/wave2-money-probe.js
+node CursorBugHunt-v4/crash-bj-inverse-probe.js
+node CursorBugHunt-v4/orphan-drain-probe.js
+node CursorBugHunt-v5/pending-settle-key-probe.js
+node CursorBugHunt-v6/plane-token-stuck-probe.js
+node CursorBugHunt-v7/pressure-drain-probe.js
+node CursorBugHunt-v8/pressure-leave-stuck-probe.js
+node CursorBugHunt-v9/bj-reload-demo-probe.js
+npm test
+
+Bump ?v=1292 / ctf-v12.92. Log in AGENTS.md.

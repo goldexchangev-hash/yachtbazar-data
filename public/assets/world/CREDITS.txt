@@ -1,0 +1,11 @@
+Magic Cliffs art assets (backgrounds, hero, enemies) used by the "Magic Cliffs"
+win-animation theme.
+
+  "Magic Cliffs Environment" by ansimuz (Luis Zuno)
+  License: CC0 1.0 (Public Domain) — free to use, even commercially.
+  Source: https://ansimuz.itch.io/magic-cliffs-environment
+          https://opengameart.org/content/magic-cliffs-environment
+
+Files in this folder are derived only by slicing/renaming the original sheets
+(sky, clouds, far-grounds, sea, tileset, player + enemy spritesheets). No other
+changes. Credit is shown in-app on the theme switcher as a courtesy.
