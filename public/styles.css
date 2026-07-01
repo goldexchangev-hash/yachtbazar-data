@@ -2532,7 +2532,7 @@ body.rr-fs-on #layer-fishshooter, body.rr-fs-on #layer-fishshooter * { visibilit
 /* Hidden: redundant with the top token bar (which shows your live balance) + the wallet chip. It also
    exposed the confusing "guest:…" / stale "$0 tokens" line. The JS still updates these elements; they're
    just not shown. */
-.bj-walletrow { display: none; }
+.bj-walletrow { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 2px 0 6px; } /* #97: show the table CHIPS balance (was display:none → guests saw no balance, and there's no token top-bar to fall back on) */
 .bj-wallet { font-family: var(--mono, monospace); font-size: 12px; color: var(--s-text-2); letter-spacing: .2px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
 .bj-bal { font-family: var(--display); font-size: 16px; color: var(--s-gold); font-weight: 700; white-space: nowrap; }
