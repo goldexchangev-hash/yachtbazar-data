@@ -3493,7 +3493,7 @@
   // CSS/scripts can't collide with the site). Lazy-set the src on first visit. The
   // betting + action CONTROLS are native site elements in the dock under the TV,
   // bridged to the felt via postMessage. ──
-  function bjFramePost(active) { const f = $("bj-frame"); if (f && f.contentWindow) try { f.contentWindow.postMessage({ type: "bj:active", active, ethUsd: ethUsd }, location.origin); } catch (e) {} } // #24: same-origin iframe only. v6 #29: carry the live ETH/USD so the felt's ≈Ξ labels aren't stuck at $3400 (cosmetic).
+  function bjFramePost(active) { const f = $("bj-frame"); if (f && f.contentWindow) try { f.contentWindow.postMessage({ type: "bj:active", active, ethUsd: ethUsd }, location.origin); if (active && !account && !(window.TokenMode && TokenMode.active && TokenMode.active())) f.contentWindow.postMessage({ type: "bj:seed", balance: Math.round(demoUsd * 100) / 100 }, location.origin); } catch (e) {} } // #24: same-origin iframe only. v6 #29: carry the live ETH/USD (cosmetic). v12.88: DEMO unification — seed the felt's guest bank FROM the site demoUsd on (re)activation so BJ shows the SAME balance as the other games (server seedGuest sets it exactly; guest-only + GUEST_BAL_CAP-clamped + not mid-hand).
   // A persistent temp "guest" identity so every visitor is a distinct player with
   // their own demo balance and can sit at a shared table together (multiplayer demo).
   function bjGuestId() {
@@ -3851,6 +3851,12 @@
       const nb = Math.round(Number(s.balance) * 100) / 100;
       const changed = nb !== bjLastBal;
       bjLastBal = nb;
+      // v12.88: DEMO unification — while on the BJ channel the felt's guest bank is the source of truth, so write
+      // it back to the site demoUsd → BJ wins/losses show on the top bar AND carry to the other games (one demo
+      // balance). Demo-only + guarded to the BJ channel (renderBjDock only runs when currentGame==="blackjack", so
+      // an off-channel dock update can't clobber demoUsd while you're playing something else). A connected/token
+      // player's chips ARE their token balance (owned by the top bar), never demoUsd — so this never touches them.
+      if (changed && !account && currentGame === "blackjack" && !(window.TokenMode && TokenMode.active && TokenMode.active())) { demoUsd = nb; try { demoSave(); demoPaint(); } catch (e) {} }
       if (changed || bjReanchorNext) paintSession(bjReanchorNext);
       bjReanchorNext = false;
     }

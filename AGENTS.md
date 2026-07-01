@@ -329,6 +329,19 @@ Put the next hunt in **`CursorBugHunt-v4/REPORT.md`**. Always branch from deploy
 
 ## 🗒️ Coordination log (append newest at top; one line each)
 
+- **2026-07-01 — Claude (session 4, owner bug):** Shipped **v12.88** — **demo blackjack balance now UNIFIED with the
+  site `demoUsd`** (owner: "why are the BJ demo tokens a different balance from the other games?"). Root: the guest
+  bank was never seeded from `demoUsd` and never wrote back (BY_DESIGN_BUT_BAD_UX). Fix: (1) `bjFramePost` posts
+  `bj:seed(demoUsd)` on felt (re)activation → felt forwards → server `seedGuest` (demo-only, `!account && !token`);
+  (2) `seedGuest` now sets the guest bank **EXACTLY** (up OR down) to mirror a `demoUsd` that changed at other games
+  — still guest-only + `GUEST_BAL_CAP`-clamped + cooldown-throttled + never mid-hand (⚠️ Cursor: the v7 #9
+  "raise-only" hardening was intentionally replaced for the demo mirror — persist-spam + real-money are still
+  guarded; do NOT re-file); (3) `renderBjDock` writes the felt balance back to `demoUsd` (guarded to the BJ channel
+  so an off-channel dock update can't clobber it) → BJ wins/losses show on the top bar + carry to the other games.
+  Also relaxed the seed mid-hand guard to allow `idle` (a fresh table sits idle → the entry-seed must land, not be
+  dropped) while still blocking a live hand. New self-tests: exact-set raise/lower, GUEST_BAL_CAP clamp, cooldown,
+  guest-only (real/token untouched). Known minor DEMO edge: leaving a hand mid-play → it auto-settles while away →
+  re-entry re-seeds from the (stale) demoUsd, so a win banked while off-channel can be overwritten; demo-only + rare.
 - **2026-07-01 — Claude (session 4, owner bugs):** Shipped **v12.87** (owner-reported, diagnosed via a Workflow):
   (1) **Gem Vault "WIN $0.00"** — a paid base spin can pay back LESS than the stake (a single low line only stakes
   bet/20), so PROFIT is 0 and the WIN banner read "$0.00". Now a sub-stake return shows a muted **"↩ BACK $<gross>"**

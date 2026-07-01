@@ -716,22 +716,24 @@
       if (!/^guest:/.test(w) || typeof amount !== "number" || !isFinite(amount) || amount < 0) return;
       for (const r of rooms.values()) {
         const i = seatOf(r, sock);
-        if (i >= 0) { const s = r.seats[i]; if (s && (s.baseBet > 0 || r.phase !== "betting")) return; } // not mid-hand
+        // Never mid-hand: block if a bet is placed OR a hand is live (dealing/dealer/insurance/turns/settle). ALLOW
+        // "idle" + "betting" (pre-bet) — a fresh table sits "idle", and the entry-seed must land then, not be dropped.
+        if (i >= 0) { const s = r.seats[i]; if (s && (s.baseBet > 0 || (r.phase !== "betting" && r.phase !== "idle"))) return; }
       }
-      // Top-up only: a re-seed (e.g. the ⟳ Reload button) may RAISE an idle guest to the
-      // floor but must never DESTROY winnings by lowering them. Otherwise a guest who ground
-      // up to $16k and clicked Reload would be wiped back to $1,000.
-      // v6 #1 + v7 #9: match topUp's guards — clamp to the standing GUEST_BAL_CAP, cap the per-call RAISE to
-      // GUEST_TOPUP_MAX (so a guest can't jump 0→25k in one bj:seed), and cooldown so it can't spam the persist.
-      // Only ever RAISE toward the requested amount (a reload restores the ~$1,000 floor; never lowers winnings).
+      // The demo guest bank MIRRORS the site's play-money demoUsd (the single balance the player sees), which can
+      // go UP or DOWN as they play the OTHER games — so set it EXACTLY to the requested amount (not raise-only),
+      // else a demoUsd that dropped elsewhere couldn't be reflected on the felt. Still fully bounded + anti-abuse:
+      // GUESTS ONLY (0x/token wallets never reach here — their funds are on-chain), clamped to GUEST_BAL_CAP, never
+      // mid-hand (guard above), and cooldown-throttled so it can't spam the .bj-bank.json persist. This is safe
+      // for DEMO: demo money has no value and demoUsd is already fully client-owned (localStorage + Reset button),
+      // so an exact set is not a mint (the v6 #1 / v7 #9 concern was persist-spam + real-money, both still guarded).
+      // ⚠️ Cursor: do NOT re-file the "seedGuest only raises" hardening — the exact-set is intentional + demo-scoped.
       const nowMsS = now();
       if (sock._lastGuestSeed && nowMsS - sock._lastGuestSeed < GUEST_TOPUP_COOLDOWN) return;
-      const curBal = bank.get(w);
-      const want = Math.min(GUEST_BAL_CAP, amount);
-      const raised = r2(Math.min(want, curBal + GUEST_TOPUP_MAX));
-      if (raised <= curBal) return; // nothing to raise (already at/above the request) — don't touch winnings or persist
+      const target = r2(Math.min(GUEST_BAL_CAP, amount));
+      if (target === bank.get(w)) return; // already in sync — don't churn the persist
       sock._lastGuestSeed = nowMsS;
-      bank.all.set(w, raised);
+      bank.all.set(w, target);
       pushWallet(sock, w);
       for (const r of rooms.values()) { if (seatOf(r, sock) >= 0) { broadcastState(r); break; } } // refresh betMax
     }
@@ -921,6 +923,23 @@
     const rmsgs2 = []; const rws2 = { wallet: "guest:resume1", bjToken: "bearer", send: (m) => rmsgs2.push(JSON.parse(m)) };
     bj.handle(rws2, { type: "bj:room:join" });         // DIFFERENT socket, same wallet → still rejected
     eq("a 2nd socket with the same wallet is still rejected (multi-tab guard intact)", rmsgs2.some((m) => m.type === "bj:error" && m.code === "already_seated"));
+
+    // v12.88: DEMO balance MIRROR — bj:seed sets the guest bank EXACTLY to the site demoUsd (up OR down), clamped
+    // to GUEST_BAL_CAP, cooldown-throttled, guests only. (Mid-hand guard is asserted elsewhere by the phase check.)
+    const sws = { wallet: "guest:seedtest", send: () => {} };
+    bj.handle(sws, { type: "bj:room:join" });
+    sws._lastGuestSeed = 0; bj.handle(sws, { type: "bj:seed", balance: 250 });
+    eq("bj:seed sets the guest bank exactly (raise → 250)", bj.bank.get("guest:seedtest") === 250);
+    sws._lastGuestSeed = 0; bj.handle(sws, { type: "bj:seed", balance: 80 });
+    eq("bj:seed LOWERS to mirror a demoUsd that dropped (→ 80)", bj.bank.get("guest:seedtest") === 80);
+    sws._lastGuestSeed = 0; bj.handle(sws, { type: "bj:seed", balance: 9e9 });
+    eq("bj:seed clamps to GUEST_BAL_CAP (25000)", bj.bank.get("guest:seedtest") === 25000);
+    sws._lastGuestSeed = 0; bj.handle(sws, { type: "bj:seed", balance: 100 });      // sets _lastGuestSeed = now
+    bj.handle(sws, { type: "bj:seed", balance: 5000 });                              // within the 3s cooldown → ignored
+    eq("bj:seed cooldown blocks a rapid 2nd seed (stays 100)", bj.bank.get("guest:seedtest") === 100);
+    const realBefore = TL.tokensOf("S1");
+    bj.handle({ wallet: player, bjToken: "bearer", send: () => {} }, { type: "bj:seed", balance: 1 }); // a REAL (0x) wallet
+    eq("bj:seed NEVER touches a real/token wallet (guest-only)", TL.tokensOf("S1") === realBefore);
 
     // ── KIND SEGREGATION: real (token) + demo (guest) players NEVER share a table (shared shoe → others'
     //    hit/stand decisions change the cards you and the dealer draw) ──
