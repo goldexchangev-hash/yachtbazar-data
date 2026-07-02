@@ -14,10 +14,18 @@
 
   const GAMES = {
     flip: "Coin Flip",
-    dice: "0-100",
-    twodice: "Dice #2",
+    dice: "Dice 0-100",
+    twodice: "Two Dice",
     crash: "Crash",
     slots: "Slots",
+    pressure: "Balloon Pop",
+    plane: "Plane",
+    slots3d: "Gem Vault",
+    fish: "Reef Raiders",
+    fishshooter: "Fish Shooter",
+    fishshooter2: "Fish Shooter V2",
+    swoop: "Sky Swoop",
+    blackjack: "Blackjack",
   };
 
   const Profile = {
@@ -37,25 +45,56 @@
     },
     name(addr) { return (this.load(addr).name || "").slice(0, 24); },
 
+    // ---- per-round RESULTS LEDGER (localStorage ring buffer, address-keyed) ----
+    // Fills the gap the on-chain fetch can't see: demo + token rounds and every canvas
+    // game. Entry: { g: gameKey, m: "demo"|"token"|"wallet", w: won, b: betUsd, p: netProfitUsd, ts }.
+    // Browser-local by design (same trust level as the demo balance itself).
+    resKey(addr) { return "ctf_results_" + String(addr || "").toLowerCase(); },
+    loadResults(addr) {
+      try { return JSON.parse(localStorage.getItem(this.resKey(addr))) || []; }
+      catch { return []; }
+    },
+    recordResult(addr, r) {
+      try {
+        if (!addr || !r) return;
+        const bet = Math.max(0, +r.betUsd || 0), profit = +r.profitUsd || 0;
+        if (!(bet > 0) && !r.won) return; // nothing at stake, nothing won → not a round
+        const list = this.loadResults(addr);
+        list.push({ g: String(r.game || "?"), m: String(r.mode || "demo"), w: !!r.won,
+                    b: Math.round(bet * 100) / 100, p: Math.round(profit * 100) / 100,
+                    ts: Math.floor(Date.now() / 1000) });
+        while (list.length > 600) list.shift(); // ring buffer — newest 600 rounds
+        localStorage.setItem(this.resKey(addr), JSON.stringify(list));
+      } catch {}
+    },
+
     // Aggregate a single player's stats from already-fetched recent arrays.
-    //   data = { rooms:[], dice:[], twoDice:[], crash:[], slots:[] }  (any may be missing)
+    //   data = { rooms:[], dice:[], twoDice:[], crash:[], slots:[],
+    //            local:[], usdToWei: (usd)=>BigInt }   (any may be missing)
+    //   `local` = this browser's results ledger (loadResults) — demo/token/canvas rounds
+    //   the chain can't see. Chain-covered combos are skipped to avoid double counting.
     //   eq(a,b) = case-insensitive address compare (passed from app.js)
     // All wei values are returned as BigInt; timestamps in unix seconds.
     computeStats(addr, data, eq) {
       const per = { flip: 0, dice: 0, twodice: 0, crash: 0, slots: 0 };
+      const perWL = {}; // game → { n, w, l, netWei } (all games, incl. ledger-only ones)
       let wins = 0, losses = 0, wageredWei = 0n, biggestWinWei = 0n, netWei = 0n;
       let memberSinceSec = 0;
       const history = [];
       const FLIP_RAKE_BPS = 300n; // coin-flip 3% rake (matches HOUSE_FEE_BPS)
 
       const note = (ts) => { if (ts && (!memberSinceSec || ts < memberSinceSec)) memberSinceSec = ts; };
-      const record = (game, won, betWei, payoutWei, ts) => {
-        per[game]++;
+      // netOverrideWei: pass for ledger entries where the loss side can be partial
+      // (e.g. a blackjack push) — the default won/lost formula assumes all-or-nothing.
+      const record = (game, won, betWei, payoutWei, ts, netOverrideWei) => {
+        per[game] = (per[game] || 0) + 1;
         if (won) wins++; else losses++;
         wageredWei += betWei;
-        const net = won ? (payoutWei - betWei) : -betWei;
+        const net = netOverrideWei != null ? netOverrideWei : (won ? (payoutWei - betWei) : -betWei);
         netWei += net;
         if (won && net > biggestWinWei) biggestWinWei = net;
+        const w = perWL[game] || (perWL[game] = { n: 0, w: 0, l: 0, netWei: 0n });
+        w.n++; if (won) w.w++; else w.l++; w.netWei += net;
         note(ts);
         history.push({ game, won, betWei, payoutWei, net, ts });
       };
@@ -98,6 +137,21 @@
           record("slots", pay > bet, bet, pay, Number(s.ts || 0));
         } catch {}
       }
+      // Local results ledger (demo/token/canvas rounds). Wallet-mode flip/dice/twodice are
+      // already on chain above — skip those combos so nothing double-counts.
+      const CHAIN_COVERED = { flip: 1, dice: 1, twodice: 1 };
+      const toWei = typeof data.usdToWei === "function" ? data.usdToWei : null;
+      if (toWei) {
+        for (const e of (data.local || [])) {
+          try {
+            if (!e || (e.m === "wallet" && CHAIN_COVERED[e.g])) continue;
+            const betWei = toWei(Math.max(0, +e.b || 0));
+            const netW = toWei(Math.abs(+e.p || 0)) * (+e.p < 0 ? -1n : 1n);
+            const payoutWei = betWei + netW > 0n ? betWei + netW : 0n;
+            record(e.g, !!e.w, betWei, payoutWei, Number(e.ts || 0), netW);
+          } catch {}
+        }
+      }
 
       const played = wins + losses;
       // favorite = most-played game
@@ -105,11 +159,21 @@
       for (const k in per) if (per[k] > favCount) { favCount = per[k]; favoriteGame = per[k] > 0 ? k : null; }
 
       history.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+      // current streak: consecutive same-outcome runs from the most recent game (+wins / −losses)
+      let curStreak = 0;
+      for (const h of history) {
+        if (curStreak === 0) curStreak = h.won ? 1 : -1;
+        else if (h.won && curStreak > 0) curStreak++;
+        else if (!h.won && curStreak < 0) curStreak--;
+        else break;
+      }
 
       return {
-        per, played, wins, losses,
+        per, perWL, played, wins, losses,
         winRate: played ? wins / played : 0,
         wageredWei, biggestWinWei, netWei,
+        avgBetWei: played ? wageredWei / BigInt(played) : 0n,
+        curStreak,
         memberSinceSec,
         favoriteGame, favoriteGameLabel: favoriteGame ? GAMES[favoriteGame] : "—",
         history: history.slice(0, 25),

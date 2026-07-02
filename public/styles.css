@@ -2971,3 +2971,7 @@ input[type="range"].bbs-slider { padding: 15px 0; }
 .plane-feed-tabs .ftab { appearance: none; -webkit-appearance: none; margin: 0; }
 /* a31: non-color-only open cue on the chat toggle */
 body.chat-open #chat-toggle { box-shadow: inset 0 -3px 0 0 currentColor; }
+/* Profile modal: per-game W-L breakdown strip above the history list (v13.35) */
+.ph-per { font-size: 12px; line-height: 1.7; margin: 2px 0 8px; }
+.ph-per-item { white-space: nowrap; }
+.ph-per b { color: var(--s-text, #eaf2ff); font-weight: 700; }
