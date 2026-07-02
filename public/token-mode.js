@@ -245,7 +245,13 @@
     paintTokens: function () { try { var m = $("token-mount"); var el = m && m.querySelector(".token-bal strong"); if (el) el.textContent = fmt(barBal()); } catch (e) {} },
     // Freeze the top-bar balance at its current value through a reveal; the game clears it via syncBalance().
     holdBar: function () { try { if (TokenMode.active()) _barHoldVal = TokenMode.tokens(); } catch (e) {} },
+    // HOLD the top bar at a SPECIFIC value — used to show an OPTIMISTIC per-spin debit the instant you tap (before
+    // the server settles), so the displayed balance drops right away. Cleared by syncBalance()/releaseBar() at settle.
+    holdBarAt: function (v) { try { if (TokenMode.active()) { var n = +v; if (isFinite(n) && n >= 0) { _barHoldVal = Math.round(n * 100) / 100; TokenMode.paintTokens(); } } } catch (e) {} },
     releaseBar: function () { _barHoldVal = null; try { TokenMode.paintTokens(); } catch (e) {} },
+    // The DISPLAYED token balance (held value during a reveal/optimistic debit, else the live client.tokens). The
+    // TV balance overlay reads this so it always matches the top bar.
+    displayTokens: function () { return barBal(); },
 
     // Token-funded BLACKJACK drives the token session from the felt (server-side), so client.tokens would
     // otherwise stay stale until cash-out — the top bar wouldn't show a hand's win/loss live. The felt

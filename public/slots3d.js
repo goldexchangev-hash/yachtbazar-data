@@ -303,7 +303,7 @@
       if (!self._spinning) return; // already settled/cleared elsewhere
       if (!self._active) { // left the channel while the bet was in flight (resolved late, off-screen)
         self._spinning = false; self.state = "idle";
-        self.balance = TM.tokens(); self._renderHud(); self._renderSpinBtn();
+        self.balance = TM.tokens(); try { if (TM.releaseBar) TM.releaseBar(); } catch (e) {} self._renderHud(); self._renderSpinBtn(); // release the optimistic-debit bar hold
         return;
       }
       try {
@@ -331,13 +331,13 @@
         // A malformed grid/result must NEVER strand the round: a throw inside this .then is NOT
         // caught by the sibling .catch, so recover here exactly as the .catch does.
         self._spinning = false; self.state = "idle";
-        self.balance = TM.tokens(); self._renderHud();
+        self.balance = TM.tokens(); try { if (TM.releaseBar) TM.releaseBar(); } catch (e) {} self._renderHud(); // release the optimistic-debit bar hold
         self._msg("Spin failed — try again", "lose"); self._renderSpinBtn();
       }
     }).catch(function (e) {
       self._awaitingServer = false;
       self._spinning = false; self.state = "idle";
-      self.balance = TM.tokens(); self._renderHud(); // re-sync to the untouched ledger (TRANSACTIONAL: a failed bet costs nothing)
+      self.balance = TM.tokens(); try { if (TM.releaseBar) TM.releaseBar(); } catch (e) {} self._renderHud(); // re-sync to the untouched ledger + release the optimistic-debit bar hold (TRANSACTIONAL: a failed bet costs nothing)
       self._msg("Spin failed — try again", "lose"); self._renderSpinBtn();
     });
   };
