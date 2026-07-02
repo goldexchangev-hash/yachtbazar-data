@@ -2820,3 +2820,34 @@ body.plane-real .plane-bets { grid-template-columns: 1fr; }
   .slider::-moz-range-thumb, .bj-slider::-moz-range-thumb { transition: none; }
   .modal-card { animation: none; }
 }
+
+/* ============================================================
+   DESIGN POLISH 2 — v13.16 (Fable design hunt, batch 2). Appended overrides; CSS-only, no money paths.
+   ============================================================ */
+
+/* #9 a11y: brighten muted text to ~4.6:1 (WCAG AA) on the navy panels; route two low-contrast spots up a tier */
+:root { --s-muted: #8296a8; }
+.chat-sys { color: var(--s-text-2); }
+.fish-help-body { color: var(--s-text-2); }
+
+/* #10 + #13 mobile: the game's primary choice + quick controls hit the 40px tap floor; side picker full-width on phones */
+.side-btn { min-height: 40px; }
+@media (max-width: 900px) {
+  .side-btn, .fish-pill { min-width: 40px; min-height: 40px; display: inline-flex; align-items: center; justify-content: center; }
+  #connect-btn { min-height: 40px; }
+}
+@media (max-width: 480px) {
+  .side-toggle { display: flex; flex: 1 1 100%; }
+  .side-btn { flex: 1; }
+}
+
+/* #20 channel badge: design-system gold + legible dark ink; let the TV controls wrap instead of colliding */
+.tv-channel { color: #2a0f0d; background: var(--s-gold); border-radius: 8px; padding: 5px 11px; letter-spacing: .5px; white-space: nowrap; box-shadow: inset 0 -2px 4px rgba(0, 0, 0, 0.3); }
+.tv-controls { flex-wrap: wrap; row-gap: 8px; }
+
+/* #27 unify the empty states into one dashed card (was 3 inconsistent bare grey one-liners) */
+.leaderboard-list .empty, .feed-list .empty, .players-list .empty, .rooms-list .empty, .hist-list .empty {
+  color: var(--muted); font-size: 13px; text-align: center; padding: 16px 10px;
+  border: 1px dashed var(--s-border); border-radius: var(--r-md); background: rgba(255, 255, 255, .02);
+}
+.profile-history > .muted { text-align: center; padding: 14px 10px; border: 1px dashed var(--s-border); border-radius: var(--r-sm); margin: 0; }
