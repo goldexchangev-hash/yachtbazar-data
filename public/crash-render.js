@@ -43,6 +43,10 @@
   const trail = [];
   let STARS = [], gridScroll = 0, altSmooth = 0, launchT = -1;
   let shakeMag = 0, lastTier = 1, plume = [];
+  // a16: honor prefers-reduced-motion for the whole-screen camera shake + high-altitude sway (vestibular safety).
+  // Read the live MediaQueryList each frame (zero cost) so a mid-session OS toggle is respected.
+  const _rmq = (typeof window !== "undefined" && window.matchMedia) ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
+  const REDUCE_MOTION = () => !!(_rmq && _rmq.matches);
   const flame = new (FlameEmitterCtor())();
 
   // ── cosmic altitude: 0 at 1x → 1.0 at 1000x (log so liftoff feels big) ──
@@ -576,8 +580,8 @@
 
     const tier = Math.floor(m); if (flying && tier > lastTier) { shakeMag = Math.max(shakeMag, 3.5); rocket.spin += 0; } lastTier = tier;
     shakeMag *= 0.86; if (shakeMag < 0.05) shakeMag = 0;
-    const drift = altSmooth > 0.85 ? Math.sin(t * 0.6) * 1 : 0;
-    const sh = Math.max(flying ? danger * 5.5 : 0, shakeMag);
+    const drift = (!REDUCE_MOTION() && altSmooth > 0.85) ? Math.sin(t * 0.6) * 1 : 0; // a16
+    const sh = REDUCE_MOTION() ? 0 : Math.max(flying ? danger * 5.5 : 0, shakeMag);   // a16: no whole-screen shake under reduced-motion
 
     // rocket transform (with a launch leap for the first 0.6s)
     const pos = rocketPath(progress);

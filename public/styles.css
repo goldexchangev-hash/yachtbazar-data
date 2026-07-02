@@ -2904,3 +2904,12 @@ body.plane-real .plane-bets { grid-template-columns: 1fr; }
   .btn-icon, .rail-link, .mm-track, .mm-ctrl, .chat-drawer-close { transition: none; }
   .btn-icon:active, .chat-drawer-close:active { transform: none; }
 }
+
+/* ============================================================
+   ACCESSIBILITY — v13.22 (Fable a11y hunt). Reduced-motion: stop the remaining
+   infinite/large animations for users who ask the OS to reduce motion.
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  .cta-pulse { animation: none !important; }                                                  /* a24: Connect-wallet CTA */
+  .bj-act.bj-topup-act, .eth-ticker-tag, .brand-live i, .boss-dots span { animation: none !important; } /* a33: BJ top-up pulse, ticker LIVE tag, ON-AIR dot, boss dots */
+}
