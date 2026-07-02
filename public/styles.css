@@ -2855,3 +2855,28 @@ body.plane-real .plane-bets { grid-template-columns: 1fr; }
 /* #19 the help "?" reads as a designed gold glyph, not stray body text between two emoji buttons (Bungee ships weight 400 only) */
 #help-btn { font-family: var(--display); font-weight: 400; font-size: 15px; color: var(--s-gold); }
 #help-btn:hover { color: var(--s-text); }
+
+/* ============================================================
+   DESIGN POLISH 3 — v13.19 (Fable design hunt, batch 4). Motion polish; CSS-only.
+   ============================================================ */
+
+/* #31 error toasts get one quick side-to-side nudge on arrival so a failure FEELS different from a success */
+.toast.err.show { animation: toastNudge .38s ease-out .1s; }
+@keyframes toastNudge {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  25%      { transform: translateX(calc(-50% - 6px)) translateY(0); }
+  55%      { transform: translateX(calc(-50% + 5px)) translateY(0); }
+  80%      { transform: translateX(calc(-50% - 2px)) translateY(0); }
+}
+
+/* #32 smooth press/release feedback on the most-tapped mobile controls */
+.bbs-step, .bbs-preset, .fish-step, .fish-pill, .fish-seg-btn, .fish-fs {
+  transition: transform .08s ease, background .15s ease, border-color .15s ease, color .15s ease;
+}
+.bn-ic { transition: transform .1s ease; }
+.bn-item:active .bn-ic { transform: scale(.85); }
+
+@media (prefers-reduced-motion: reduce) {
+  .toast.err.show { animation: none; }
+  .bbs-step, .bbs-preset, .fish-step, .fish-pill, .fish-seg-btn, .fish-fs, .bn-ic { transition: none; }
+}

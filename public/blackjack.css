@@ -458,3 +458,14 @@ body.tv-embed .seats.seat-count-4 .stack .card:not(:first-child) {
   .seat { min-height: 130px; } .felt .arc-text { font-size: 7px; }
   .bet-stepper input { width: 64px; }
 }
+
+/* ---------- a11y: keyboard focus rings + reduced-motion kill-switch (v13.19 design hunt #26) ---------- */
+.btn:focus-visible, .chip:focus-visible, .icon-btn:focus-visible,
+.seat .take:focus-visible, .pf-verify:focus-visible, .bet-slider:focus-visible {
+  outline: 2px solid var(--cyan); outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .felt, .felt::after, .card.back::before, .live-dot, .seat.turn, .seat-timer.crit { animation: none !important; }
+  .card.dealing, .card.flip { animation-duration: .01s !important; }
+  .btn, .chip, .qchips .chip, .tcard, .bet-slider::-webkit-slider-thumb { transition: none !important; }
+}
