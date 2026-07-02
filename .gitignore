@@ -16,3 +16,5 @@ npm-debug.log*
 .bj-bank.json
 .bj-bank*.json
 server/.bj-bank.json
+.bac-bank.json
+.bac-bank*.json
