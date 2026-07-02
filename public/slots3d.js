@@ -120,6 +120,7 @@
     this.ethUsd = opts.ethUsd || 3400;
     this.onBalance = opts.onBalance || null;
     this.onWin = opts.onWin || null;
+    this.onRound = opts.onRound || null; // ({won,betUsd,netUsd}) → profile stats ledger (normal spins; bonus totals via _endBonus)
     this.balance = opts.initialBalance != null ? opts.initialBalance : 5000;
     this.bet = MIN_BET;
     this._active = false; this._enabled = true; this._spinning = false; this._raf = 0;
@@ -437,6 +438,7 @@
 
     // Normal spin: bank the profit, then check whether 3+ Vaults lit the bonus.
     if (res.winUsd > 0 && this.onWin) { const profit = res.winUsd - bet; if (profit > 0) try { this.onWin({ profitUsd: profit, mult: res.winUsd / bet }); } catch (e) {} }
+    if (this.onRound) try { this.onRound({ won: res.winUsd > bet, betUsd: bet, netUsd: Math.round((res.winUsd - bet) * 100) / 100 }); } catch (e) {}
     if (res.scatter && res.scatter.count >= 3 && E.freeSpinsFor(res.scatter.count) > 0) { this._beginBonus(res.scatter.count); return; }
     clearTimeout(this._idleT); this._idleT = setTimeout(() => { if (!this._spinning && !this._bonus) { this.state = "idle"; this._msg("Tap SPIN", ""); this._renderSpinBtn(); } }, 1600);
     this._renderSpinBtn();
@@ -517,6 +519,7 @@
     this._showOverlay("🏆 BONUS COMPLETE", "+" + this._usd(total), spins + " free spins · ×" + mult, "end");
     const C = root.Chiptune; if (C && C.jackpot) try { C.jackpot(); } catch (e) {}
     if (this.onWin && total > 0) try { this.onWin({ profitUsd: total, mult: mult, bonus: true }); } catch (e) {}
+    if (this.onRound && total > 0) try { this.onRound({ won: true, betUsd: 0, netUsd: total }); } catch (e) {} // the bonus total is one free "round" (stake was the trigger spin, already recorded)
     this._renderHud();
     // #14: NOW reconcile the token bar — the bonus animation is done, so the final base+bonus total is
     // no longer a spoiler (and the bar still ends on the authoritative client.tokens).
@@ -537,6 +540,7 @@
     }
     this._save();
     if (this.onWin && b.total > 0) try { this.onWin({ profitUsd: b.total, mult: b.plan.mult, bonus: true }); } catch (e) {}
+    if (this.onRound && b.total > 0) try { this.onRound({ won: true, betUsd: 0, netUsd: b.total }); } catch (e) {}
     this._bonus = null; this._spinning = false; this.state = "idle";
     this._hideOverlay(); this._renderHud(); this._renderSpinBtn();
     if (root.TokenMode && root.TokenMode.active() && root.TokenMode.syncBalance) try { root.TokenMode.syncBalance(); } catch (e) {} // #14: reconcile after the aborted bonus banks

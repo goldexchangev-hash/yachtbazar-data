@@ -2548,7 +2548,7 @@
     return new Promise((res, rej) => {
       // v13 #38: dedup by src so a watchdog re-kick (an ensure*Ready promise nulled) never appends a SECOND <script>
       // for the same file while the first is still downloading (the load race). The selector keys on the exact
-      // versioned src ("...?v=1336"), so a later ?v bump is a distinct file and still loads fresh — no stale cache.
+      // versioned src ("...?v=1337"), so a later ?v bump is a distinct file and still loads fresh — no stale cache.
       const sel = 'script[data-loadonce="' + src.replace(/"/g, "&quot;") + '"]';
       const existing = document.querySelector(sel);
       if (existing) {
@@ -2584,7 +2584,7 @@
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=1336"))
+      .then(() => loadScriptOnce("slots.js?v=1337"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -2594,11 +2594,11 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=1336"))
-      .then(() => loadScriptOnce("pressure-render.js?v=1336"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=1336"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=1337"))
+      .then(() => loadScriptOnce("pressure-render.js?v=1337"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=1337"))
       // optional 3D red balloon (Three.js) — falls back to the 2D balloon if it can't load
-      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1336")).catch(() => {}))
+      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1337")).catch(() => {}))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -2622,6 +2622,7 @@
       initialBalance: (window.TokenMode && TokenMode.active()) ? TokenMode.tokens() : (account ? 0 : demoUsd),
       onBalance: (b) => { if (window.TokenMode && TokenMode.active()) return; demoUsd = Math.round(b * 100) / 100; demoSave(); demoPaint(); }, // demo only (token mode: balance owned by TokenMode)
       onWin: (i) => setLastResult({ won: true, game: "Balloon Pop", emoji: "🎈", amountUsd: i.profitUsd, detail: i.mult.toFixed(2) + "× banked" }), // Balloon Pop shows its own rich in-canvas win — no result overlay (would collide)
+      onRound: (r) => recordGameResult("pressure", statsMode(), r.won, r.betUsd, r.netUsd),
       // TOKEN mode: HOLD starts a server-paced round (pressure burst = 3% edge), RELEASE is
       // the manual cash-out. Settles through the pressure engine on the round-runner.
       onTokenLaunch: (stake, autoTarget, onTick) => {
@@ -2670,10 +2671,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=1336"))
-      .then(() => loadScriptOnce("plane-render.js?v=1336"))
-      .then(() => loadScriptOnce("plane-feed.js?v=1336"))
-      .then(() => loadScriptOnce("plane-ui.js?v=1336"))
+      .then(() => loadScriptOnce("plane-engine.js?v=1337"))
+      .then(() => loadScriptOnce("plane-render.js?v=1337"))
+      .then(() => loadScriptOnce("plane-feed.js?v=1337"))
+      .then(() => loadScriptOnce("plane-ui.js?v=1337"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2697,6 +2698,7 @@
       initialBalance: demoOn ? demoUsd : ((window.TokenMode && TokenMode.active()) ? TokenMode.tokens() : 0), // token-only: 0 until you buy in
       onBalance: (b) => { if (window.TokenMode && TokenMode.active()) return; demoUsd = Math.round(b * 100) / 100; demoSave(); demoPaint(); }, // demo only (token mode: balance owned by TokenMode)
       onWin: (i) => setLastResult({ won: true, game: "Plane", emoji: "✈️", amountUsd: i.profitUsd, detail: i.mult.toFixed(2) + "× cashed" }), // Plane shows its own in-canvas cash-out win — no result overlay (would collide)
+      onRound: (r) => recordGameResult("plane", statsMode(), r.won, r.betUsd, r.netUsd),
       onRealBet: (betUsd, targetX100) => doPlanePlay(betUsd, targetX100),       // single on-chain round
       onRealDone: () => { unlockReveal(); refreshBalances().then(() => { if (planeGame) planeGame.setBalance(weiToUsd(gameWei)); }); refreshDiceHouse(); try { refreshStats(); } catch (e) {} },
       // TOKEN mode: a server-paced live round (CrashRounds) settles through the same crash
@@ -2784,8 +2786,8 @@
     if (window.Slots3D) return Promise.resolve(true);
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("slots3d-engine.js?v=1336"))
-      .then(() => loadScriptOnce("slots3d.js?v=1336"))
+      .then(() => loadScriptOnce("slots3d-engine.js?v=1337"))
+      .then(() => loadScriptOnce("slots3d.js?v=1337"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2809,6 +2811,7 @@
         demoUsd = Math.round(b * 100) / 100; demoSave(); demoPaint();
       }, // demo play-money (token mode: optimistic spin debit shown on the bar + TV overlay, reconciled at settle)
       onWin: (i) => setLastResult({ won: true, game: "Gem Vault", emoji: "💎", amountUsd: i.profitUsd, detail: i.mult.toFixed(2) + "× spin" }),
+      onRound: (r) => recordGameResult("slots3d", statsMode(), r.won, r.betUsd, r.netUsd),
       els: {
         balance: el("s3d-balance"), win: el("s3d-win"), message: el("s3d-message"),
         betSlider: el("s3d-bet-slider"), betVal: el("s3d-bet-val"), betEth: el("s3d-bet-eth"),
@@ -2842,8 +2845,8 @@
     if (window.FishTable) return Promise.resolve(true);
     if (fishLoadPromise) return fishLoadPromise;
     fishLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishtable-engine.js?v=1336"))
-      .then(() => loadScriptOnce("fishtable.js?v=1336"))
+      .then(() => loadScriptOnce("fishtable-engine.js?v=1337"))
+      .then(() => loadScriptOnce("fishtable.js?v=1337"))
       .then(() => true)
       .catch((e) => { fishLoadPromise = null; throw e; });
     return fishLoadPromise;
@@ -2926,7 +2929,7 @@
     if (window.SwoopGame) return Promise.resolve(true);
     if (swoopLoadPromise) return swoopLoadPromise;
     swoopLoadPromise = loadPlayCanvasOnce()
-      .then(() => loadScriptOnce("swoop3d.js?v=1336"))
+      .then(() => loadScriptOnce("swoop3d.js?v=1337"))
       .then(() => true)
       .catch((e) => { swoopLoadPromise = null; throw e; });
     return swoopLoadPromise;
@@ -3007,8 +3010,8 @@
     if (window.FishShooter) return Promise.resolve(true);
     if (fishshooterLoadPromise) return fishshooterLoadPromise;
     fishshooterLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishshooter-engine.js?v=1336")) // OWN engine (decoupled from Reef's fishtable-engine.js)
-      .then(() => loadScriptOnce("fishshooter.js?v=1336"))
+      .then(() => loadScriptOnce("fishshooter-engine.js?v=1337")) // OWN engine (decoupled from Reef's fishtable-engine.js)
+      .then(() => loadScriptOnce("fishshooter.js?v=1337"))
       .then(() => true)
       .catch((e) => { fishshooterLoadPromise = null; throw e; });
     return fishshooterLoadPromise;
@@ -3095,8 +3098,8 @@
     if (window.FishShooter2) return Promise.resolve(true);
     if (fishshooter2LoadPromise) return fishshooter2LoadPromise;
     fishshooter2LoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishshooter2-engine.js?v=1336"))
-      .then(() => loadScriptOnce("fishshooter2.js?v=1336"))
+      .then(() => loadScriptOnce("fishshooter2-engine.js?v=1337"))
+      .then(() => loadScriptOnce("fishshooter2.js?v=1337"))
       .then(() => true)
       .catch((e) => { fishshooter2LoadPromise = null; throw e; });
     return fishshooter2LoadPromise;
@@ -3177,7 +3180,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1336"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1337"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -3204,7 +3207,7 @@
   function loadRail3dOnce() {
     if (window.Rail3D) return Promise.resolve(true);
     if (rail3dLoadPromise) return rail3dLoadPromise;
-    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1336")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
+    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1337")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
     return rail3dLoadPromise;
   }
   function buildRail3d() {
@@ -3225,7 +3228,7 @@
   function loadDice2_3dOnce() {
     if (window.TwoDice3D) return Promise.resolve(true);
     if (d2_3dLoadPromise) return d2_3dLoadPromise;
-    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1336")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
+    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1337")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
     return d2_3dLoadPromise;
   }
   function buildDice2_3d() {
@@ -3379,6 +3382,9 @@
   function recordGameResult(game, mode, won, betUsd, netUsd) {
     try { if (window.Profile && Profile.recordResult) Profile.recordResult(account || "guest", { game, mode, won, betUsd, profitUsd: netUsd }); } catch (e) {}
   }
+  // Canvas games (pressure/plane/slots3d) resolve rounds inside their engines and report via onRound —
+  // classify the mode at settle time (token session > demo play-money > wallet real).
+  function statsMode() { return (window.TokenMode && TokenMode.active()) ? "token" : (demoOn ? "demo" : (account ? "wallet" : "demo")); }
   // reanchor=true → a buy-in / top-up / cash-out: shift the base by the deposit/withdrawal so NET (a P&L
   // figure) stays put and the deposit isn't misread as a win. A normal bet's balance delta is classified.
   function paintSession(reanchor) {
@@ -3930,7 +3936,7 @@
     if (game === "flip") { ensureCoinFlip3dReady(); }
     else if (game === "dice") { refreshDiceHouse(); diceReadouts(); ensureDice3dReady(); }
     else if (game === "twodice") { refreshDiceHouse(); twoDiceReadouts(); ensureTwoDiceSupport(); ensureDice2_3dReady(); }
-    else if (game === "crash") { if (!window.CrashRender) loadScriptOnce("crash-render.js?v=1336").then(() => { try { if (window.TV && TV._crashIdle && currentGame === "crash") TV._crashIdle(); } catch (e) {} }).catch(() => {}); refreshDiceHouse(); crashReadouts(); ensureCrashSupport(); }
+    else if (game === "crash") { if (!window.CrashRender) loadScriptOnce("crash-render.js?v=1337").then(() => { try { if (window.TV && TV._crashIdle && currentGame === "crash") TV._crashIdle(); } catch (e) {} }).catch(() => {}); refreshDiceHouse(); crashReadouts(); ensureCrashSupport(); }
     else if (game === "pressure") { ensurePressureReady(); }
     else if (game === "plane") { refreshDiceHouse(); ensurePlaneReady(); }
     else if (game === "slots3d") { ensureSlots3dReady(); }
@@ -4044,7 +4050,7 @@
       const tableWallet = account || bjGuestId();
       // &r=<nonce> in the QUERY forces a real iframe reload (so the felt re-reads the #bjsession from the
       // hash and re-sends its hello → the server re-binds the table to the token session).
-      let src = "blackjack.html?tv=1&v=1336&r=" + (++bjFeltNonce % 8) + "&guest=" + encodeURIComponent(tableWallet); // %8: consecutive nonces still ALWAYS differ (n vs n+1 mod 8) so the iframe truly reloads, but the URL set is bounded → the SW's ?v= cache-first path can actually HIT (instant felt load from cache) instead of storing a new never-reusable copy per open
+      let src = "blackjack.html?tv=1&v=1337&r=" + (++bjFeltNonce % 8) + "&guest=" + encodeURIComponent(tableWallet); // %8: consecutive nonces still ALWAYS differ (n vs n+1 mod 8) so the iframe truly reloads, but the URL set is bounded → the SW's ?v= cache-first path can actually HIT (instant felt load from cache) instead of storing a new never-reusable copy per open
       let tokenHash = "";
       // PREFERRED real-money path: fund the table with the player's TOKEN session (chips = tokens, no lock step).
       if (account && window.TokenMode && TokenMode.active && TokenMode.active() && TokenMode.session) {
@@ -4292,7 +4298,7 @@
     // + dead-bridge screen), re-init it so it binds to the account + token session. Throttled so it can't loop.
     try {
       const f0 = $("bj-frame");
-      // v13.36: the felt is ALSO stale if it's bound to a DIFFERENT (or no) token bjsession than the live one —
+      // v13.37: the felt is ALSO stale if it's bound to a DIFFERENT (or no) token bjsession than the live one —
       // e.g. it loaded as a $0 GUEST and the post-buy-in re-bind raced the just-created session, so the seat
       // shows $0 and the bet controls never appear until a manual ⟳ Reload. Reloading it (via the proven
       // ensureBlackjackReady) re-funds the seat from the token session AUTOMATICALLY. Guarded by !bjDockLive
@@ -4519,7 +4525,7 @@
     paintGameTabs(saved);
     if (saved === "poker" && window.PokerUI) PokerUI.show();
     if (window.TV) TV._activeChannel = GAME_CHANNEL[saved] || 8;
-    if (saved === "crash") { if (window.TV && TV._crashIdle) { try { TV._crashIdle(); } catch (e) {} } if (!window.CrashRender) loadScriptOnce("crash-render.js?v=1336").then(() => { try { if (window.TV && TV._crashIdle && currentGame === "crash") TV._crashIdle(); } catch (e) {} }).catch(() => {}); }
+    if (saved === "crash") { if (window.TV && TV._crashIdle) { try { TV._crashIdle(); } catch (e) {} } if (!window.CrashRender) loadScriptOnce("crash-render.js?v=1337").then(() => { try { if (window.TV && TV._crashIdle && currentGame === "crash") TV._crashIdle(); } catch (e) {} }).catch(() => {}); }
     // Balloon Pop needs its engine built + activated on reload too (enterDemo,
     // which runs just after, flips it to enabled once it exists).
     if (saved === "pressure") ensurePressureReady();
@@ -6152,7 +6158,7 @@
     // them AFTER first paint. loadScriptOnce dedupes; scenes.js self-boots on inject (readyState !== "loading").
     // The window.* guards make this a no-op if the classic <script defer> tags are still in index.html
     // (never double-execute the IIFEs — a second chiptune.js run would rebind window.Chiptune mid-song).
-    { const goExtras = () => { if (!window.WinScenes) loadScriptOnce("scenes.js?v=1336").catch(() => {}); if (!window.Chiptune) loadScriptOnce("chiptune.js?v=1336").then(() => { try { syncSoundBtn(); } catch (e) {} }).catch(() => {}); };
+    { const goExtras = () => { if (!window.WinScenes) loadScriptOnce("scenes.js?v=1337").catch(() => {}); if (!window.Chiptune) loadScriptOnce("chiptune.js?v=1337").then(() => { try { syncSoundBtn(); } catch (e) {} }).catch(() => {}); };
       if (document.readyState === "complete") setTimeout(goExtras, 0);
       else window.addEventListener("load", () => setTimeout(goExtras, 0), { once: true }); }
     wireUI();

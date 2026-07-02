@@ -44,6 +44,7 @@
     this.ethUsd = opts.ethUsd > 0 ? opts.ethUsd : ETH_USD;
     this.onBalance = typeof opts.onBalance === "function" ? opts.onBalance : null;
     this.onWin = typeof opts.onWin === "function" ? opts.onWin : null;
+    this.onRound = typeof opts.onRound === "function" ? opts.onRound : null; // ({won,betUsd,netUsd}) → profile stats ledger (every settled round, incl. losses)
     // TOKEN mode (server-paced live round via CrashRounds): HOLD starts the round, RELEASE
     // is the manual cash-out, the pop is the server's committed burst. The hold-and-release
     // mechanic the on-chain model couldn't settle provably-fairly.
@@ -315,6 +316,7 @@
     var co = res.cashOutAt || 0, payout = res.payoutUnits || 0, profit = Math.max(0, payout - stake);
     var voided = !res.busted && co > 0 && co < MIN_CASHOUT && Math.abs(payout - stake) < 1e-6; // server refunded
     this.lastRound = { nonce: this.nonce, releaseMult: res.busted ? this.burst : co, burst: this.burst, payout: payout, exit: res.busted ? "pop" : (voided ? "void" : "release") };
+    if (this.onRound && !voided) try { this.onRound({ won: !res.busted && profit > 0, betUsd: stake, netUsd: Math.round((payout - stake) * 100) / 100 }); } catch (e) {} // a void = refund, not a round
     if (res.busted) {
       this.r.pop(); if (this._b3d) this._b3d.pop();
       this.r.showReceipt("POP @ " + this.burst.toFixed(2) + "x", false);
@@ -400,6 +402,7 @@
     this._saveBalance();
 
     this.lastRound = { nonce: this.nonce, releaseMult, burst: this.burst, payout: res.payout, exit, lockedSum: res.lockedSum };
+    if (this.onRound) try { this.onRound({ won: !res.popped && res.profit > 0, betUsd: this.bet, netUsd: Math.round((res.payout - this.bet) * 100) / 100 }); } catch (e) {}
 
     if (res.popped) {
       this.r.pop();

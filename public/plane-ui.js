@@ -49,6 +49,7 @@
     this.ethUsd = opts.ethUsd || 3400;
     this.onBalance = opts.onBalance || null; // (usd) → sync demo play-money
     this.onWin = opts.onWin || null;         // ({profitUsd,mult}) → share-win card
+    this.onRound = opts.onRound || null;     // ({won,betUsd,netUsd}) → profile stats ledger (per bet, incl. losses)
     this.onRealBet = opts.onRealBet || null; // (betUsd,targetX100) → Promise<result|null>
     this.onRealDone = opts.onRealDone || null; // () → host refreshes balance after the flight
     // TOKEN mode (server-paced live round via CrashRounds): the upgrade the single-tx
@@ -183,6 +184,7 @@
     this._msg("💰 " + b.id + " " + (auto ? "auto-" : "") + "cashed " + mult.toFixed(2) + "x  →  " + this._usd(res.payout) + "  (+" + this._usd(res.profit) + ")", "win");
     this._sfx("coin"); this._sfx(res.profit >= 300 ? "jackpot" : res.profit >= 100 ? "bigwin" : "win");
     if (this.onWin && res.profit > 0) { try { this.onWin({ profitUsd: res.profit, mult: mult }); } catch (e) {} }
+    if (this.onRound) try { this.onRound({ won: res.profit > 0, betUsd: b.stake, netUsd: res.profit }); } catch (e) {}
     this._renderHud(); this._renderButtons(mult);
   };
 
@@ -194,7 +196,7 @@
     this.history.unshift(this.crash); this.history = this.history.slice(0, 20); this._renderHistory();
     let lost = 0, near = null;
     this.bets.forEach((b) => {
-      if (b.active && !b.cashed) lost += b.stake;
+      if (b.active && !b.cashed) { lost += b.stake; if (this.onRound) try { this.onRound({ won: false, betUsd: b.stake, netUsd: -b.stake }); } catch (e) {} }
       if (b.cashed && (this.crash - b._cashedAt) <= Math.max(0.05, this.crash * 0.06)) near = { at: b._cashedAt, crash: this.crash };
       if (b.active && b.autoBet && b.martingale) { b.stake = b.cashed ? b.baseStake : Math.max(MIN_BET, Math.min(this.balance, Math.round(b.stake * 2 * 100) / 100)); this._syncPanel(b); }
     });
@@ -312,6 +314,7 @@
     this._sfx("coin"); this._sfx(res.profitUsd >= 300 ? "jackpot" : res.profitUsd >= 100 ? "bigwin" : "win");
     this._msg("💰 Cashed " + res.targetX.toFixed(2) + "x  →  +" + this._usd(res.profitUsd) + " (real)", "win");
     if (this.onWin && res.profitUsd > 0) { try { this.onWin({ profitUsd: res.profitUsd, mult: res.targetX }); } catch (e) {} }
+    if (this.onRound) try { this.onRound({ won: res.profitUsd > 0, betUsd: res.stake, netUsd: res.profitUsd }); } catch (e) {}
     this.history.unshift(res.crashX); this.history = this.history.slice(0, 20); this._renderHistory();
     this.lastRound = { nonce: this.nonce, crash: res.crashX }; this._updatePfLast();
     this.state = "real-end"; this._pause = CRASH_PAUSE; Riser.stop();
@@ -374,6 +377,7 @@
       if (res.resumedGone) {
         this.r.crash(0, true);
         this._msg("Round ended while you were away — stake lost.", "lose"); this._sfx("lose");
+        if (this.onRound) try { this.onRound({ won: false, betUsd: stake, netUsd: -stake }); } catch (e) {}
       } else {
         this.crash = res.crashPoint;
         this.history.unshift(res.crashPoint); this.history = this.history.slice(0, 20); this._renderHistory();
@@ -381,12 +385,14 @@
         if (res.busted) {
           const instant = res.crashPoint <= 1.01; this.r.crash(res.crashPoint, instant);
           this._msg("✈️ Flew away @ " + res.crashPoint.toFixed(2) + "x — lost " + this._usd(stake), "lose"); this._sfx("lose");
+          if (this.onRound) try { this.onRound({ won: false, betUsd: stake, netUsd: -stake }); } catch (e) {}
         } else {
           const co = res.cashOutAt || 1, profit = Math.max(0, (res.payoutUnits || 0) - stake);
           this.r.cashOut(profit, co, stake);
           this._sfx("coin"); this._sfx(profit >= 300 ? "jackpot" : profit >= 100 ? "bigwin" : "win");
           this._msg("💰 Cashed " + co.toFixed(2) + "x  →  +" + this._usd(profit) + " (tokens)", "win");
           if (this.onWin && profit > 0) { try { this.onWin({ profitUsd: profit, mult: co }); } catch (e) {} }
+          if (this.onRound) try { this.onRound({ won: profit > 0, betUsd: stake, netUsd: Math.round(((res.payoutUnits || 0) - stake) * 100) / 100 }); } catch (e) {}
         }
       }
       this.state = "token-end"; this._pause = CRASH_PAUSE; Riser.stop();
