@@ -334,7 +334,7 @@
     // fishshooter guard.) Demo debits at fire, so its balance already reflects this.
     if (!free && this._tokenActive()) {
       var pend = 0;
-      for (var pi = 0; pi < this.bullets.length; pi++) { var pb = this.bullets[pi]; if (pb && !pb.free && !pb.hit && (pb.cost || 0) > 0) pend += pb.cost; }
+      for (var pi = 0; pi < this.bullets.length; pi++) { var pb = this.bullets[pi]; if (pb && !pb.free && !pb.settled && (pb.cost || 0) > 0) pend += pb.cost; }
       if (this.balance < cost + pend) { this._flashBanner("EASY!", "let your shots land", 0xffd23f); return; }
     }
     if (cost > 0) {
@@ -383,6 +383,7 @@
       var epoch = (self._tokenEpoch = self._tokenEpoch || 0); // v11 #1: pin the epoch so an off-channel resolve (after setActive(false) bumps it) can't re-arm a bonus/catch on a screen you already left
       this._net(b.s.x, b.s.y, fish.def.color); // immediate net FX
       root.TokenMode.bet("reef", shot.cost, { targetKey: fish.def.key, power: shot.power }).then(function (r) {
+        b.settled = true; // v13.05: server resolved this shot → it leaves the in-flight display sum + the over-bet pend, and the bullet loop may now remove it
         if (epoch !== self._tokenEpoch || !self._active) { if (root.TokenMode && root.TokenMode.paintTokens) root.TokenMode.paintTokens(); return; } // v11 #1: left the channel / mode changed → keep the top token bar synced but suppress off-channel bonus/catch side effects
         self.balance = root.TokenMode.tokens(); // authoritative
         self._tokenRevealUntil = Date.now() + 520; // hold the HUD balance briefly so the win reveals AFTER the catch (syncTokenGameBalances skips only during this window — a buy-in/top-up still updates immediately)
@@ -393,7 +394,7 @@
         // Hold the balance HUD until the catch/blow-up plays out so it doesn't spoil the result.
         // Sync the top token bar at the same beat (light paint) so it tracks the balance live.
         setTimeout(function () { self._renderHud(); if (root.TokenMode && root.TokenMode.paintTokens) root.TokenMode.paintTokens(); }, 480);
-      }).catch(function (e) { if (epoch !== self._tokenEpoch || !self._active) { if (root.TokenMode && root.TokenMode.paintTokens) root.TokenMode.paintTokens(); return; } self.balance = root.TokenMode.tokens(); self._renderHud(); if (root.TokenMode && root.TokenMode.paintTokens) root.TokenMode.paintTokens(); });
+      }).catch(function (e) { b.settled = true; if (epoch !== self._tokenEpoch || !self._active) { if (root.TokenMode && root.TokenMode.paintTokens) root.TokenMode.paintTokens(); return; } self.balance = root.TokenMode.tokens(); self._renderHud(); if (root.TokenMode && root.TokenMode.paintTokens) root.TokenMode.paintTokens(); });
       return;
     }
     const shot = { unitBet: b.unitBet || this.unitBet, power: b.power || this.power, cost: b.cost || this.cost(), free: !!b.free, frenzyId: b.frenzyId || 0 };
@@ -771,13 +772,20 @@
       if (b.s.y < b.r) { b.s.y = b.r; b.vy = Math.abs(b.vy); bounced = true; }
       else if (b.s.y > this.H - b.r) { b.s.y = this.H - b.r; b.vy = -Math.abs(b.vy); bounced = true; }
       if (bounced) { b.bounces++; b.s.rotation = Math.atan2(b.vy, b.vx) + Math.PI / 2; } // keep ricocheting until it catches a fish
+      // v13.05: a PAID token shot that connected but whose server bet hasn't RESOLVED yet stays in the array
+      // (hidden, no re-collision) so it keeps counting toward the in-flight display sum until settled — the tapped
+      // per-shot debit stays steady with no flicker. Free bullets (no server bet) are removed at hit as before.
+      if (b.hit) {
+        if (this._tokenActive() && !b.free && !b.settled && (b.cost || 0) > 0) { if (b.s) b.s.visible = false; continue; }
+        this._removeBullet(b); continue;
+      }
       let hitFish = null;
       for (const f of this.fish) { if (!f.alive) continue; const d = Math.hypot(b.s.x - f.c.x, b.s.y - f.c.y); if (d < f.r + b.r) { hitFish = f; break; } }
       if (hitFish) { this._resolveBulletFish(b, hitFish); }
       // A shot NEVER expires on its own — it ricochets forever until it catches a fish,
       // so the player never feels a paid shot was wasted. (Memory stays bounded by the
       // 38-bullet FIFO cap in _fire(); fish now fill the whole field so hits come fast.)
-      if (b.hit) this._removeBullet(b);
+      if (b.hit) { if (this._tokenActive() && !b.free && !b.settled && (b.cost || 0) > 0) { if (b.s) b.s.visible = false; } else this._removeBullet(b); }
     }
 
     // coins fly to balance HUD
@@ -911,13 +919,22 @@
   /* ---------- HUD / money ---------- */
   FishTable.prototype._usd = function (n) { return "$" + (Math.round((+n || 0) * 100) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
   FishTable.prototype._renderHud = function () {
-    if (this.balText) this.balText.text = "💰 " + this._usd(this.balance);
+    // v13.05: TOKEN shows the per-shot debit the INSTANT you tap — subtract paid shots STILL IN FLIGHT (fired but
+    // not yet settled by the server). Skipped during a bonus state (frenzy / treasure chest / jackpot show) where
+    // shots are free and the balance is animating. this.balance stays the authoritative server value; a culled or
+    // cleared bullet leaves the array → the balance recovers.
+    var balShow = this.balance;
+    if (this._tokenActive() && !(this._frenzy > 0) && !this._chest && !this._jpFx) {
+      var infl = 0; for (var qi = 0; qi < this.bullets.length; qi++) { var qb = this.bullets[qi]; if (qb && !qb.free && !qb.settled && (qb.cost || 0) > 0) infl += qb.cost; }
+      if (infl > 0) balShow = Math.max(0, Math.round((balShow - infl) * 100) / 100);
+    }
+    if (this.balText) this.balText.text = "💰 " + this._usd(balShow);
     if (this.winText) this.winText.text = this._won > 0 ? "WIN " + this._usd(this._won) : "";
     if (this.powText) this.powText.text = "PWR " + this.power + "  ·  $" + this.cost().toFixed(2) + "/shot";
     if (this.modeText) this.modeText.text = (this.auto ? "🔥AUTO " : "") + (this.lock ? "🎯LOCK" : "") || "tap to shoot";
     if (this.sesText) { const net = Math.round((this._sesWon - this._sesSpent) * 100) / 100; this.sesText.text = "SESSION   shots −$" + this._sesSpent.toFixed(2) + "   ·   caught +$" + this._sesWon.toFixed(2) + "   ·   net " + (net >= 0 ? "+" : "−") + "$" + Math.abs(net).toFixed(2); this.sesText.style.fill = net >= 0 ? 0x9be8ff : 0xffb4c0; }
     const e = this.els;
-    if (e.balance) e.balance.textContent = this._usd(this.balance);
+    if (e.balance) e.balance.textContent = this._usd(balShow); // v13.05: dock readout matches the in-flight-adjusted canvas balance
     if (e.betVal) e.betVal.textContent = this._usd(this.unitBet);
     if (e.power) e.power.textContent = "Power " + this.power;
     if (e.cost) e.cost.textContent = this._usd(this.cost()) + "/shot";
