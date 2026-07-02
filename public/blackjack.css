@@ -469,3 +469,13 @@ body.tv-embed .seats.seat-count-4 .stack .card:not(:first-child) {
   .card.dealing, .card.flip { animation-duration: .01s !important; }
   .btn, .chip, .qchips .chip, .tcard, .bet-slider::-webkit-slider-thumb { transition: none !important; }
 }
+
+/* ============================================================
+   ACCESSIBILITY — v13.33: BUST/soft on the hand-total pills is not color-only.
+   Alt-text form last: SRs get the state from the pill text change on bust
+   elsewhere; keep the pseudo label visual-only where supported. ::after also
+   covers the dealer pill ("Dealer 23 BUST"). Pill text itself is the number
+   (blackjack-ui.js _totalPill), so no duplication.
+   ============================================================ */
+.total-pill.bust::after { content: " BUST"; font-weight: 800; letter-spacing: .04em; }
+.total-pill.soft::before { content: "soft "; font-weight: 600; opacity: .85; }

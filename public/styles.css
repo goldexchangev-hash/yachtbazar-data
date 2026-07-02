@@ -2940,3 +2940,34 @@ body.plane-real .plane-bets { grid-template-columns: 1fr; }
   .cta-pulse { animation: none !important; }                                                  /* a24: Connect-wallet CTA */
   .bj-act.bj-topup-act, .eth-ticker-tag, .brand-live i, .boss-dots span { animation: none !important; } /* a33: BJ top-up pulse, ticker LIVE tag, ON-AIR dot, boss dots */
 }
+
+/* ============================================================
+   ACCESSIBILITY — v13.33 (a11y focus-management batch, appended overrides).
+   ============================================================ */
+/* a11: Dice 0-100 odds bar — label the WIN/LOSE zones, not color-only.
+   Plain content first, alt-text form last so supporting browsers keep the
+   label OUT of the accessibility tree (role=slider aria-label already speaks). */
+.ob-zone { overflow: hidden; }
+.ob-zone::after { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font: 800 9px/1 var(--display, sans-serif); letter-spacing: .08em; pointer-events: none; }
+.ob-win::after { content: "WIN"; content: "WIN" / ""; color: #04241a; text-shadow: 0 0 4px rgba(255,255,255,.35); }
+.ob-lose::after { content: "LOSE"; content: "LOSE" / ""; color: rgba(255,255,255,.75); }
+/* a15: 40px touch box for bet sliders — track stays 8px visually (40 − 2×16).
+   Scoped to range inputs: #crash-target is a NUMBER input with class .slider, and
+   background-clip would punch transparent strips into its padding. */
+input[type="range"].slider { height: 40px; padding: 16px 0; background-clip: content-box; }
+.slider::-webkit-slider-thumb { width: 26px; height: 26px; }
+.slider::-moz-range-thumb { width: 24px; height: 24px; }
+/* #bbs-slider keeps its tuned 10px track (40 − 2×15) — must match the scoped specificity above */
+input[type="range"].bbs-slider { padding: 15px 0; }
+/* a12/a25: non-color ON cue for Fish Shooter toggle pills + speed segment */
+.fishshooter-dock .fish-pill.on::before { content: "\2713\0020"; content: "\2713\0020" / ""; font-weight: 900; }
+.fish-seg-btn.on::after { content: "\2713"; content: "\2713" / ""; font-size: .62em; font-weight: 900; color: #041326; margin-left: 2px; vertical-align: top; }
+/* a27: Fish Shooter power stepper + speed segment reach the 40px tap floor on mobile */
+@media (max-width: 900px) {
+  .fishshooter-dock .fish-step, .fish-step { width: auto; min-width: 44px; min-height: 40px; }
+  .fish-seg-btn { min-height: 40px; }
+}
+/* a17/a18: feed-filter tabs are now real <button>s — neutralize UA button defaults */
+.plane-feed-tabs .ftab { appearance: none; -webkit-appearance: none; margin: 0; }
+/* a31: non-color-only open cue on the chat toggle */
+body.chat-open #chat-toggle { box-shadow: inset 0 -3px 0 0 currentColor; }

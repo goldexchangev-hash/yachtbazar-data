@@ -33,11 +33,11 @@
         <div class="poker-hint" id="poker-hint"></div>
         <div class="poker-actions" id="poker-actions"></div>
       </div>
-      <div class="poker-modal hidden" id="poker-buyin">
+      <div class="poker-modal hidden" id="poker-buyin" role="dialog" aria-modal="true" aria-labelledby="poker-buyin-title">
         <div class="poker-card-modal">
-          <h3>Sit down</h3>
+          <h3 id="poker-buyin-title">Sit down</h3>
           <p>Preview buy-in.</p>
-          <div class="pm-row"><input id="poker-buyin-range" type="range" min="0" max="100" step="1" value="50" /><span class="pm-amt" id="poker-buyin-amt">$0</span></div>
+          <div class="pm-row"><input id="poker-buyin-range" type="range" min="0" max="100" step="1" value="50" aria-label="Buy-in amount" /><span class="pm-amt" id="poker-buyin-amt">$0</span></div>
           <div class="bankroll-actions" style="justify-content:center;"><button id="poker-buyin-cancel" class="btn btn-ghost">Cancel</button><button id="poker-buyin-go" class="btn btn-primary">Sit &amp; deal</button></div>
         </div>
       </div>

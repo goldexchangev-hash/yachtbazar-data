@@ -594,6 +594,7 @@
         ? "+$" + Math.abs(res.amountUsd).toFixed(2) + " · " + res.mult.toFixed(2) + "×"
         : "−$" + Math.abs(res.amountUsd).toFixed(2);
       if (!res.youWon && Math.abs(res.roll - res.target) < 0.5) L.classList.add("nearmiss");
+      try { if (this.srLive) this.srLive.textContent = "Roll " + end.toFixed(2) + ". " + $("dice-tv-verdict").textContent + " " + $("dice-tv-payout").textContent; } catch (e) {} // a11y: announce the settled verdict (post stale-guard)
       // 3) release balance + escalate, reusing the flip celebration ladder
       if (!window.__cineActive) {
         try { window.__onTvReveal && window.__onTvReveal(res); } catch (e) {}
@@ -645,6 +646,7 @@
       $("td-tv-payout").textContent = res.youWon
         ? "+$" + Math.abs(res.amountUsd).toFixed(2) + " · " + res.mult.toFixed(2) + "×"
         : "−$" + Math.abs(res.amountUsd).toFixed(2);
+      try { if (this.srLive) this.srLive.textContent = $("td-tv-sum").textContent + ". " + $("td-tv-verdict").textContent + " " + $("td-tv-payout").textContent; } catch (e) {} // a11y: announce the settled verdict (post stale-guard)
       // 3) release balance + escalate, reusing the flip celebration ladder
       if (!window.__cineActive) {
         try { window.__onTvReveal && window.__onTvReveal(res); } catch (e) {}
@@ -710,6 +712,7 @@
         if (subEl) subEl.textContent = "BUSTED  −$" + Math.abs(res.amountUsd).toFixed(2);
         if (R) { R.explode(); R.setState("crashed"); }
       }
+      try { if (this.srLive && multEl && subEl) this.srLive.textContent = multEl.textContent + ". " + subEl.textContent; } catch (e) {} // a11y: announce the settled verdict (post stale-guard)
       // 3) release balance + escalate, reusing the flip celebration ladder
       if (!window.__cineActive) {
         try { window.__onTvReveal && window.__onTvReveal(res); } catch (e) {}
@@ -738,6 +741,7 @@
         L.classList.toggle("win", !!r.won);
         L.classList.toggle("lose", !r.won);
         if (msg) msg.textContent = ""; // the count-up amount is rendered in-canvas
+        try { if (this.srLive) this.srLive.textContent = r.won ? "You won $" + Number(res.winUsd).toFixed(2) : "No win. Minus $" + Number(res.betUsd).toFixed(2); } catch (e) {} // a11y: result renders in-canvas only — announce it
         release();
         if (!window.__cineActive) {
           if (r.won) this._celebrate(L, r.big ? "mega" : "normal");

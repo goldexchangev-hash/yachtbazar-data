@@ -100,7 +100,7 @@
     if (e.betEth) e.betEth.textContent = "≈ " + this._eth(b.stake);
     if (e.autoSlider) e.autoSlider.value = b.autoTarget;
     if (e.autoVal) e.autoVal.textContent = b.autoTarget.toFixed(2) + "x";
-    if (e.autoToggle) { e.autoToggle.classList.toggle("active", b.autoOn); e.autoToggle.textContent = b.autoOn ? "AUTO ✓" : "AUTO"; }
+    if (e.autoToggle) { e.autoToggle.classList.toggle("active", b.autoOn); e.autoToggle.textContent = b.autoOn ? "AUTO ✓" : "AUTO"; e.autoToggle.setAttribute("aria-pressed", String(!!b.autoOn)); }
     if (e.autobet) { e.autobet.classList.toggle("active", b.autoBet); e.autobet.textContent = b.autoBet ? "⟳ AUTOBET ✓" : "⟳ AUTOBET"; }
     if (e.mart) e.mart.classList.toggle("active", b.martingale);
   };
@@ -424,7 +424,7 @@
     document.addEventListener("keydown", (ev) => {
       if (ev.code !== "Space" || !this._active) return; // only the live Plane channel owns space
       const tag = (ev.target && ev.target.tagName) || "";
-      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA" || tag === "BUTTON") return; // BUTTON: Space activates the focused button (e.g. a feed tab), never also fires a launch
       if (document.querySelector(".modal:not(.hidden)")) return; // a dialog is open
       ev.preventDefault();
       if (this.mode === "real") this._realLaunch(); else this._onAction(this.bets[0]);
@@ -433,7 +433,7 @@
     if (e.soundBtn) e.soundBtn.addEventListener("click", () => { this.muted = !this.muted; Riser.mute(this.muted); try { if (this.muted && Chiptune.stop) Chiptune.stop(); } catch (x) {} e.soundBtn.textContent = this.muted ? "🔇" : "🔊"; });
     if (e.pfClient) e.pfClient.addEventListener("change", () => { this.clientSeed = e.pfClient.value || E.randomSeed(8); });
     if (e.pfVerify) e.pfVerify.addEventListener("click", () => this._verifyLast());
-    if (e.feedTabs) e.feedTabs.forEach((t) => t.addEventListener("click", () => { if (root.PlaneFeed) root.PlaneFeed.setTab(t.dataset.tab); e.feedTabs.forEach((x) => x.classList.toggle("active", x === t)); }));
+    if (e.feedTabs) e.feedTabs.forEach((t) => t.addEventListener("click", () => { if (root.PlaneFeed) root.PlaneFeed.setTab(t.dataset.tab); e.feedTabs.forEach((x) => { x.classList.toggle("active", x === t); x.setAttribute("aria-pressed", x === t ? "true" : "false"); }); }));
     this.bets.forEach((b) => this._wirePanel(b));
   };
   PlaneGame.prototype._wirePanel = function (b) {

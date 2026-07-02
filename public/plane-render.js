@@ -14,6 +14,9 @@
 (function (root) {
   "use strict";
   const PIXI = root.PIXI;
+  // a11y: live media query (matches crash-render.js) — respects toggling the OS setting mid-session
+  const _rmq = root.matchMedia ? root.matchMedia("(prefers-reduced-motion: reduce)") : null;
+  const REDUCE_MOTION = () => !!(_rmq && _rmq.matches);
   const ADD = PIXI.BLEND_MODES.ADD;
   const C = {
     cyan: 0x39e7ff, magenta: 0xff4d9d, gold: 0xffd23f, green: 0x45f0a6, red: 0xff2a4a, white: 0xffffff,
@@ -189,10 +192,10 @@
     // win FX, particles, rays, rings
     this._stepWin(dt); this._stepParts(dt); this._stepRays(dt); this._stepRings(dt);
 
-    // shake (whole stage)
-    const sh = this._shake + this._intensity * (this._intensity > 0.8 ? 1.5 : 0);
+    // shake (whole stage) — zeroed for reduced-motion users; the else branch below re-centers and drains _shake
+    const sh = REDUCE_MOTION() ? 0 : this._shake + this._intensity * (this._intensity > 0.8 ? 1.5 : 0);
     if (sh > 0.3) { this.app.stage.position.set((Math.random() - 0.5) * sh, (Math.random() - 0.5) * sh); this._shake *= 0.86; }
-    else if (this.app.stage.position.x || this.app.stage.position.y) { this.app.stage.position.set(0, 0); this._shake = 0; }
+    else if (this.app.stage.position.x || this.app.stage.position.y || this._shake) { this.app.stage.position.set(0, 0); this._shake = 0; } // also drain a shake latched under reduced-motion so toggling the OS setting off can't replay it
 
     if (this._flash > 0.01) { this.flash.tint = this._flashCol; this.flash.alpha = this._flash * 0.5; this._flash *= 0.86; } else this.flash.alpha = 0;
 

@@ -13,7 +13,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Space+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
     <noscript><link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Space+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet" /></noscript>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🃏</text></svg>" />
-    <link rel="stylesheet" href="blackjack.css?v=1332" />
+    <link rel="stylesheet" href="blackjack.css?v=1333" />
     <style>
       /* TV-embed mode (?tv=1): just the felt, scaled to fill the 4:3 screen. The
          betting/action controls render in the PARENT page's dock under the TV, so the
@@ -75,13 +75,13 @@
         </div>
 
         <div class="dock">
-          <div class="msg" id="dock-msg">Loading…</div>
+          <div class="msg" id="dock-msg" role="status" aria-live="polite" aria-atomic="true">Loading…</div>
           <div class="row" id="dock-row"></div>
         </div>
 
         <div class="pf">
           <div class="pf-r"><b>Provably fair</b> · commit <code id="pf-commit">—</code></div>
-          <div class="pf-r">your client seed <input id="pf-client" type="text" placeholder="(auto)" maxlength="32" />
+          <div class="pf-r">your client seed <input id="pf-client" type="text" placeholder="(auto)" maxlength="32" aria-label="Your client seed (optional, auto-generated if left blank)" />
             <button class="pf-verify" id="pf-verify">Verify last hand</button></div>
           <div class="pf-reveal" id="pf-reveal"></div>
           <div id="pf-out" style="margin-top:6px"></div>
@@ -91,16 +91,16 @@
       </section>
     </div>
 
-    <div class="toast" id="toast"></div>
+    <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
-    <script src="blackjack-shuffle.js?v=1332"></script>
-    <script src="blackjack-rules.js?v=1332"></script>
-    <script src="blackjack-net.js?v=1332"></script>
-    <script src="blackjack-fx.js?v=1332"></script>
-    <script src="blackjack-sfx.js?v=1332"></script>
+    <script src="blackjack-shuffle.js?v=1333"></script>
+    <script src="blackjack-rules.js?v=1333"></script>
+    <script src="blackjack-net.js?v=1333"></script>
+    <script src="blackjack-fx.js?v=1333"></script>
+    <script src="blackjack-sfx.js?v=1333"></script>
     <script src="vendor/three.min.js?v=three-1"></script>
-    <script src="blackjack-gl.js?v=1332"></script>
-    <script src="blackjack-ui.js?v=1332"></script>
+    <script src="blackjack-gl.js?v=1333"></script>
+    <script src="blackjack-ui.js?v=1333"></script>
     <script>
       window.addEventListener("DOMContentLoaded", function () {
         var id = function (x) { return document.getElementById(x); };

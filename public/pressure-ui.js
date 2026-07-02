@@ -204,6 +204,7 @@
     if (this.els.autoToggle) {
       this.els.autoToggle.textContent = this.autoOn ? "AUTO ON" : "AUTO OFF";
       this.els.autoToggle.classList.toggle("active", this.autoOn);
+      this.els.autoToggle.setAttribute("aria-pressed", String(!!this.autoOn));
     }
   };
 

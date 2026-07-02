@@ -152,7 +152,7 @@
 
     // app.js calls this after reading the connected wallet's on-chain bjLocked: the USD amount that
     // is locked with no active session (0 = nothing stranded). Drives the "Recover" token-bar state.
-    setStranded: function (usd) { var v = Math.max(0, Math.round((+usd || 0) * 100) / 100); if (v !== stranded) { stranded = v; render(); } },
+    setStranded: function (usd) { var v = Math.max(0, Math.round((+usd || 0) * 100) / 100); if (v !== stranded) { var was = stranded; stranded = v; render(); if (v > 0 && !was) { try { var sr = document.getElementById("sr-live"); if (sr) sr.textContent = "$" + v.toFixed(2) + " is locked from a past session. A Recover button is available in the token bar."; } catch (e) {} } } },
 
     // Recover a stranded on-chain lock (a session the server forgot) back to your game credits.
     releaseStuck: async function () {

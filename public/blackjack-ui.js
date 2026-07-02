@@ -417,7 +417,7 @@
     else if (m.phase === "dealing" || m.phase === "dealer") msg = "Dealer is playing…";
     else if (m.phase === "settle") msg = this._settleMsg(mySeat);
     else msg = "Waiting for the next hand…";
-    E.dockMsg.innerHTML = msg;
+    if (E.dockMsg.innerHTML !== msg) E.dockMsg.innerHTML = msg; // idempotent: dock-msg is aria-live — identical rewrites must not re-announce
     if (this.embed) this._emitDock(m, seated, mySeat, isMyTurn, iBet, insurePhase, msg); // TV channel: controls live in the parent dock
 
     var sig = (seated ? "S" : "X") + "|" + m.phase + "|" + (isMyTurn ? 1 : 0) + "|" + (iBet ? 1 : 0) + "|" + (insurePhase ? 1 : 0) + "|" + this.legal.join(",");

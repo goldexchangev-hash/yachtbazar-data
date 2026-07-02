@@ -298,8 +298,24 @@
     const v = +$(id).value;
     const valEl = $(id + "-val"); if (valEl) valEl.textContent = usd(v);
     const ethEl = $(id + "-eth"); if (ethEl) ethEl.textContent = "(approx ETH: " + (v / ethUsd).toFixed(4) + ")";
+    // A11y: announce the painted dollar string, not the raw slider value (withdraw is 0–100 %).
+    try { $(id).setAttribute("aria-valuetext", valEl ? valEl.textContent : usd(v)); } catch (e) {}
     if (id === "bet-input") updateCreateBreakdown();
     if (id === "house-bet") updateFlipButton();
+  }
+  // ---- A11y: send focus into a modal on open, return it to the trigger on close ----
+  // `prefer` overrides the default target — pass the SAFE control (never the money
+  // button) for dialogs that open asynchronously (e.g. a WS bet-proposal).
+  let _modalOpener = null;
+  function a11yModalOpen(m, prefer) {
+    if (!m) return;
+    _modalOpener = document.activeElement;
+    const f = prefer || m.querySelector(".modal-close") || m.querySelector('button, input, select, [href], [tabindex]');
+    if (f) try { f.focus(); } catch (e) {}
+  }
+  function a11yModalClose() {
+    const o = _modalOpener; _modalOpener = null;
+    if (o && o.focus && document.contains(o)) try { o.focus(); } catch (e) {}
   }
   // Fill a uniform action button's "BET $X · WIN $Y" amounts. Win id is either
   // {game}-payout-hint (dice/twodice/crash) or {game}-win-hint (slots/flip).
@@ -1711,10 +1727,11 @@
       const cb = $("xfer-confirm"); if (cb) cb.textContent = o.confirmLabel || "✓ Confirm";
       const nt = $("xfer-note"); if (nt) nt.textContent = o.note || "You'll still approve the transaction in your wallet on the next step.";
       $("xfer-modal").classList.remove("hidden");
+      a11yModalOpen($("xfer-modal"));
     });
   }
   function closeXfer(result) {
-    const m = $("xfer-modal"); if (m) m.classList.add("hidden");
+    const m = $("xfer-modal"); if (m) { m.classList.add("hidden"); a11yModalClose(); }
     const r = _xferResolve; _xferResolve = null;
     if (r) r(!!result);
   }
@@ -2182,6 +2199,8 @@
     if (diceMode === "under") { $("ob-win").style.cssText = "left:0;width:" + pct + "%"; $("ob-lose").style.cssText = "left:" + pct + "%;width:" + (100 - pct) + "%"; }
     else { $("ob-lose").style.cssText = "left:0;width:" + pct + "%"; $("ob-win").style.cssText = "left:" + pct + "%;width:" + (100 - pct) + "%"; }
     $("dice-oddsbar").dataset.mode = diceMode;
+    // A11y: mirror the drag-bar state for the role=slider (valuetext includes win chance — matches the visible ob-flag)
+    { const ob = $("dice-oddsbar"); ob.setAttribute("aria-valuenow", pct.toFixed(2)); ob.setAttribute("aria-valuetext", "Target " + pct.toFixed(2) + " percent, win chance " + chance.toFixed(2) + " percent"); }
     if (currentGame === "dice" && !revealLock && window.TV && TV.previewDice) try { TV.previewDice({ target: pct, mode: diceMode }); } catch (e) {}
     // affordability guards
     let hint = "";
@@ -2526,7 +2545,7 @@
     return new Promise((res, rej) => {
       // v13 #38: dedup by src so a watchdog re-kick (an ensure*Ready promise nulled) never appends a SECOND <script>
       // for the same file while the first is still downloading (the load race). The selector keys on the exact
-      // versioned src ("...?v=1332"), so a later ?v bump is a distinct file and still loads fresh — no stale cache.
+      // versioned src ("...?v=1333"), so a later ?v bump is a distinct file and still loads fresh — no stale cache.
       const sel = 'script[data-loadonce="' + src.replace(/"/g, "&quot;") + '"]';
       const existing = document.querySelector(sel);
       if (existing) {
@@ -2562,7 +2581,7 @@
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=1332"))
+      .then(() => loadScriptOnce("slots.js?v=1333"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -2572,11 +2591,11 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=1332"))
-      .then(() => loadScriptOnce("pressure-render.js?v=1332"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=1332"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=1333"))
+      .then(() => loadScriptOnce("pressure-render.js?v=1333"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=1333"))
       // optional 3D red balloon (Three.js) — falls back to the 2D balloon if it can't load
-      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1332")).catch(() => {}))
+      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1333")).catch(() => {}))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -2648,10 +2667,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=1332"))
-      .then(() => loadScriptOnce("plane-render.js?v=1332"))
-      .then(() => loadScriptOnce("plane-feed.js?v=1332"))
-      .then(() => loadScriptOnce("plane-ui.js?v=1332"))
+      .then(() => loadScriptOnce("plane-engine.js?v=1333"))
+      .then(() => loadScriptOnce("plane-render.js?v=1333"))
+      .then(() => loadScriptOnce("plane-feed.js?v=1333"))
+      .then(() => loadScriptOnce("plane-ui.js?v=1333"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2762,8 +2781,8 @@
     if (window.Slots3D) return Promise.resolve(true);
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("slots3d-engine.js?v=1332"))
-      .then(() => loadScriptOnce("slots3d.js?v=1332"))
+      .then(() => loadScriptOnce("slots3d-engine.js?v=1333"))
+      .then(() => loadScriptOnce("slots3d.js?v=1333"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2820,8 +2839,8 @@
     if (window.FishTable) return Promise.resolve(true);
     if (fishLoadPromise) return fishLoadPromise;
     fishLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishtable-engine.js?v=1332"))
-      .then(() => loadScriptOnce("fishtable.js?v=1332"))
+      .then(() => loadScriptOnce("fishtable-engine.js?v=1333"))
+      .then(() => loadScriptOnce("fishtable.js?v=1333"))
       .then(() => true)
       .catch((e) => { fishLoadPromise = null; throw e; });
     return fishLoadPromise;
@@ -2904,7 +2923,7 @@
     if (window.SwoopGame) return Promise.resolve(true);
     if (swoopLoadPromise) return swoopLoadPromise;
     swoopLoadPromise = loadPlayCanvasOnce()
-      .then(() => loadScriptOnce("swoop3d.js?v=1332"))
+      .then(() => loadScriptOnce("swoop3d.js?v=1333"))
       .then(() => true)
       .catch((e) => { swoopLoadPromise = null; throw e; });
     return swoopLoadPromise;
@@ -2930,7 +2949,7 @@
       },
       els: { fsBtn: el("swoop-fs") },
     });
-    { const b = el("swoop-bet"), bv = el("swoop-bet-val"); if (b) b.addEventListener("input", () => { swoopGame.setBet(parseFloat(b.value) || 10); if (bv) bv.textContent = usd(swoopGame.unitBet).replace(".00", ""); if (swoopGame._state === "idle" && go) go.textContent = launchLabel(); }); }
+    { const b = el("swoop-bet"), bv = el("swoop-bet-val"); if (b) b.addEventListener("input", () => { swoopGame.setBet(parseFloat(b.value) || 10); if (bv) bv.textContent = usd(swoopGame.unitBet).replace(".00", ""); b.setAttribute("aria-valuetext", usd(swoopGame.unitBet).replace(".00", "")); if (swoopGame._state === "idle" && go) go.textContent = launchLabel(); }); }
     // the single one-action button: LAUNCH when idle, CASH OUT while climbing
     if (go) go.addEventListener("click", () => { if (swoopGame._state === "idle") swoopGame.launch(); else if (swoopGame._state === "climbing") swoopGame.cashOut(); });
     try { swoopGame.setFullscreenTarget($("layer-swoop")); } catch (e) {}
@@ -2985,8 +3004,8 @@
     if (window.FishShooter) return Promise.resolve(true);
     if (fishshooterLoadPromise) return fishshooterLoadPromise;
     fishshooterLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishshooter-engine.js?v=1332")) // OWN engine (decoupled from Reef's fishtable-engine.js)
-      .then(() => loadScriptOnce("fishshooter.js?v=1332"))
+      .then(() => loadScriptOnce("fishshooter-engine.js?v=1333")) // OWN engine (decoupled from Reef's fishtable-engine.js)
+      .then(() => loadScriptOnce("fishshooter.js?v=1333"))
       .then(() => true)
       .catch((e) => { fishshooterLoadPromise = null; throw e; });
     return fishshooterLoadPromise;
@@ -3071,7 +3090,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1332"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1333"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -3098,7 +3117,7 @@
   function loadRail3dOnce() {
     if (window.Rail3D) return Promise.resolve(true);
     if (rail3dLoadPromise) return rail3dLoadPromise;
-    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1332")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
+    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1333")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
     return rail3dLoadPromise;
   }
   function buildRail3d() {
@@ -3119,7 +3138,7 @@
   function loadDice2_3dOnce() {
     if (window.TwoDice3D) return Promise.resolve(true);
     if (d2_3dLoadPromise) return d2_3dLoadPromise;
-    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1332")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
+    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1333")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
     return d2_3dLoadPromise;
   }
   function buildDice2_3d() {
@@ -3172,7 +3191,7 @@
   }
   function openSlots3dHelp() {
     const m = $("s3d-help-modal"); if (!m) return;
-    const show = () => { buildSlots3dHelp(); m.classList.remove("hidden"); };
+    const show = () => { buildSlots3dHelp(); m.classList.remove("hidden"); a11yModalOpen(m); };
     if (window.Slots3DEngine) show();
     else ensureSlots3dLoaded().then(show).catch(() => toast("Couldn't load the paytable — check your connection", "err"));
   }
@@ -3795,7 +3814,7 @@
     if (game === "flip") { ensureCoinFlip3dReady(); }
     else if (game === "dice") { refreshDiceHouse(); diceReadouts(); ensureDice3dReady(); }
     else if (game === "twodice") { refreshDiceHouse(); twoDiceReadouts(); ensureTwoDiceSupport(); ensureDice2_3dReady(); }
-    else if (game === "crash") { if (!window.CrashRender) loadScriptOnce("crash-render.js?v=1332").then(() => { try { if (window.TV && TV._crashIdle && currentGame === "crash") TV._crashIdle(); } catch (e) {} }).catch(() => {}); refreshDiceHouse(); crashReadouts(); ensureCrashSupport(); }
+    else if (game === "crash") { if (!window.CrashRender) loadScriptOnce("crash-render.js?v=1333").then(() => { try { if (window.TV && TV._crashIdle && currentGame === "crash") TV._crashIdle(); } catch (e) {} }).catch(() => {}); refreshDiceHouse(); crashReadouts(); ensureCrashSupport(); }
     else if (game === "pressure") { ensurePressureReady(); }
     else if (game === "plane") { refreshDiceHouse(); ensurePlaneReady(); }
     else if (game === "slots3d") { ensureSlots3dReady(); }
@@ -3908,7 +3927,7 @@
       const tableWallet = account || bjGuestId();
       // &r=<nonce> in the QUERY forces a real iframe reload (so the felt re-reads the #bjsession from the
       // hash and re-sends its hello → the server re-binds the table to the token session).
-      let src = "blackjack.html?tv=1&v=1332&r=" + (++bjFeltNonce % 8) + "&guest=" + encodeURIComponent(tableWallet); // %8: consecutive nonces still ALWAYS differ (n vs n+1 mod 8) so the iframe truly reloads, but the URL set is bounded → the SW's ?v= cache-first path can actually HIT (instant felt load from cache) instead of storing a new never-reusable copy per open
+      let src = "blackjack.html?tv=1&v=1333&r=" + (++bjFeltNonce % 8) + "&guest=" + encodeURIComponent(tableWallet); // %8: consecutive nonces still ALWAYS differ (n vs n+1 mod 8) so the iframe truly reloads, but the URL set is bounded → the SW's ?v= cache-first path can actually HIT (instant felt load from cache) instead of storing a new never-reusable copy per open
       let tokenHash = "";
       // PREFERRED real-money path: fund the table with the player's TOKEN session (chips = tokens, no lock step).
       if (account && window.TokenMode && TokenMode.active && TokenMode.active() && TokenMode.session) {
@@ -4156,7 +4175,7 @@
     // + dead-bridge screen), re-init it so it binds to the account + token session. Throttled so it can't loop.
     try {
       const f0 = $("bj-frame");
-      // v13.32: the felt is ALSO stale if it's bound to a DIFFERENT (or no) token bjsession than the live one —
+      // v13.33: the felt is ALSO stale if it's bound to a DIFFERENT (or no) token bjsession than the live one —
       // e.g. it loaded as a $0 GUEST and the post-buy-in re-bind raced the just-created session, so the seat
       // shows $0 and the bet controls never appear until a manual ⟳ Reload. Reloading it (via the proven
       // ensureBlackjackReady) re-funds the seat from the token session AUTOMATICALLY. Guarded by !bjDockLive
@@ -4309,15 +4328,16 @@
       ob.addEventListener("pointermove", (e) => { if (dragging) setFromX(e.clientX); });
       const stop = () => { dragging = false; };
       ob.addEventListener("pointerup", stop); ob.addEventListener("pointercancel", stop);
-      ob.addEventListener("keydown", (e) => { // arrow-key nudges for accessibility
-        const d = e.key === "ArrowLeft" ? -100 : e.key === "ArrowRight" ? 100 : 0; if (!d) return;
+      ob.addEventListener("keydown", (e) => { // arrow-key nudges for accessibility (Up/Down mirror Right/Left)
+        const d = (e.key === "ArrowLeft" || e.key === "ArrowDown") ? -100 : (e.key === "ArrowRight" || e.key === "ArrowUp") ? 100 : 0; if (!d) return;
         t.value = Math.max(lo, Math.min(hi, (+t.value) + d)); diceReadouts(); e.preventDefault();
+        e.stopPropagation(); // the global ArrowUp/Down stake-step hotkey must not also fire
       });
     }
     $("dice-stake").oninput = () => { setSliderUsd("dice-stake"); diceReadouts(); };
     document.querySelectorAll("#dice-mode .side-btn").forEach((b) => {
       b.onclick = () => {
-        document.querySelectorAll("#dice-mode .side-btn").forEach((x) => x.classList.toggle("active", x === b));
+        document.querySelectorAll("#dice-mode .side-btn").forEach((x) => { x.classList.toggle("active", x === b); x.setAttribute("aria-pressed", String(x === b)); });
         diceMode = b.dataset.mode; diceReadouts();
       };
     });
@@ -4328,7 +4348,7 @@
       $("td-stake").oninput = () => { setSliderUsd("td-stake"); twoDiceReadouts(); };
       document.querySelectorAll("#td-mode .side-btn").forEach((b) => {
         b.onclick = () => {
-          document.querySelectorAll("#td-mode .side-btn").forEach((x) => x.classList.toggle("active", x === b));
+          document.querySelectorAll("#td-mode .side-btn").forEach((x) => { x.classList.toggle("active", x === b); x.setAttribute("aria-pressed", String(x === b)); });
           tdMode = b.dataset.mode; twoDiceReadouts();
         };
       });
@@ -4349,8 +4369,8 @@
     }
     // Gem Vault paytable / free-spins explainer
     { const b = $("s3d-help-btn"); if (b) b.onclick = openSlots3dHelp; }
-    { const c = $("s3d-help-close"); if (c) c.onclick = () => $("s3d-help-modal").classList.add("hidden"); }
-    { const m = $("s3d-help-modal"); if (m) m.addEventListener("click", (e) => { if (e.target === m) m.classList.add("hidden"); }); }
+    { const c = $("s3d-help-close"); if (c) c.onclick = () => { $("s3d-help-modal").classList.add("hidden"); a11yModalClose(); }; }
+    { const m = $("s3d-help-modal"); if (m) m.addEventListener("click", (e) => { if (e.target === m) { m.classList.add("hidden"); a11yModalClose(); } }); }
     document.querySelectorAll("#game-nav .game-card").forEach((b) => { b.onclick = () => switchGame(b.dataset.game); });
     // keyboard: ←/→ to cycle channels through every game. SPACE is swallowed here
     // too (belt-and-suspenders) so a focused nav card can never switch on Space —
@@ -4382,7 +4402,7 @@
     paintGameTabs(saved);
     if (saved === "poker" && window.PokerUI) PokerUI.show();
     if (window.TV) TV._activeChannel = GAME_CHANNEL[saved] || 8;
-    if (saved === "crash") { if (window.TV && TV._crashIdle) { try { TV._crashIdle(); } catch (e) {} } if (!window.CrashRender) loadScriptOnce("crash-render.js?v=1332").then(() => { try { if (window.TV && TV._crashIdle && currentGame === "crash") TV._crashIdle(); } catch (e) {} }).catch(() => {}); }
+    if (saved === "crash") { if (window.TV && TV._crashIdle) { try { TV._crashIdle(); } catch (e) {} } if (!window.CrashRender) loadScriptOnce("crash-render.js?v=1333").then(() => { try { if (window.TV && TV._crashIdle && currentGame === "crash") TV._crashIdle(); } catch (e) {} }).catch(() => {}); }
     // Balloon Pop needs its engine built + activated on reload too (enterDemo,
     // which runs just after, flips it to enabled once it exists).
     if (saved === "pressure") ensurePressureReady();
@@ -4542,8 +4562,9 @@
     }
     updateBetModalAmount(opts.bet);
     $("bet-modal").classList.remove("hidden");
+    a11yModalOpen($("bet-modal"));
   }
-  function closeBetModal() { $("bet-modal").classList.add("hidden"); }
+  function closeBetModal() { $("bet-modal").classList.add("hidden"); a11yModalClose(); }
 
   function updateBetModalAmount(bet) {
     if (!pendingBet) return;
@@ -4588,12 +4609,17 @@
         escapeHtml(short(d.from)) + " wants to bet <b>" + usdOf(BigInt(d.amount)) +
         "</b> (your room is " + usdOf(r.betAmount) + "). Accept to raise the stake for both of you.";
       $("nego-modal").classList.remove("hidden");
+      // Async (WS-triggered) money dialog: never yank focus from a text field mid-sentence,
+      // and land on DENY (the safe control) — never the Accept button an in-flight Enter could fire.
+      { const ae = document.activeElement, typing = ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.isContentEditable);
+        if (!typing) a11yModalOpen($("nego-modal"), $("nego-deny")); }
     } catch (e) { console.error(e); }
   }
 
   async function negoAccept() {
     const p = pendingProposal;
     $("nego-modal").classList.add("hidden");
+    a11yModalClose();
     if (!p) return;
     try {
       toast("Raising the room bet… confirm in MetaMask");
@@ -4611,6 +4637,7 @@
   function negoDeny() {
     const p = pendingProposal;
     $("nego-modal").classList.add("hidden");
+    a11yModalClose();
     if (!p) return;
     wsSend({ type: "bet-response", roomId: p.roomId, amount: p.amount.toString(), accepted: false, to: p.proposer });
     toast("Denied — they can propose a different amount");
@@ -4739,6 +4766,9 @@
   function renderChatBadges() {
     const show = chatUnread > 0, label = chatUnread > 99 ? "99+" : String(chatUnread);
     ["chat-tab-badge", "chat-toggle-badge", "bn-chat-badge"].forEach((id) => { const b = $(id); if (b) { b.textContent = label; b.classList.toggle("hidden", !show); } });
+    // A11y: the visual badge is aria-hidden — surface the unread count on the buttons themselves.
+    const base = { "chat-toggle": "Open chat", "chat-tab": "Open chat", "bn-chat": "Chat" };
+    Object.keys(base).forEach((id) => { const btn = $(id); if (btn) btn.setAttribute("aria-label", show ? base[id] + ", " + label + " unread" : base[id]); });
   }
   function clearChatUnread() { chatUnread = 0; renderChatBadges(); const tab = $("chat-tab"); if (tab) tab.classList.remove("pulsing"); }
   function bumpChatUnread() {
@@ -4748,7 +4778,7 @@
   }
   function openChat() {
     document.body.classList.add("chat-open"); clearChatUnread();
-    const ta = $("chat-tab"); if (ta) ta.setAttribute("aria-expanded", "true");
+    for (const id of ["chat-toggle", "chat-tab", "bn-chat"]) { const b = $(id); if (b) b.setAttribute("aria-expanded", "true"); }
     const inp = $("chat-input"); if (inp) setTimeout(() => inp.focus(), 350);
   }
 
@@ -4773,6 +4803,7 @@
     { const nt = pm.querySelector(".profile-note"); if (nt) nt.style.display = mine ? "" : "none"; }
     { const rv = $("profile-addr-reveal"); if (rv) rv.style.display = mine ? "" : "none"; } // copy is for your own address
     pm.classList.remove("hidden");
+    a11yModalOpen(pm);
     renderProfileStats();
     renderHouseDiag(addr, mine);
   }
@@ -5417,8 +5448,9 @@
     if (btn) {
       btn.textContent = on ? "🔊" : "🔇";
       btn.classList.toggle("active", on);
+      btn.setAttribute("aria-label", on ? "Music: on — open music menu" : "Music: off — open music menu");
     }
-    const play = $("music-play"); if (play) play.textContent = on ? "⏸" : "▶";
+    const play = $("music-play"); if (play) { play.textContent = on ? "⏸" : "▶"; play.setAttribute("aria-label", on ? "Pause music" : "Play music"); }
     if (window.Chiptune && Chiptune.current) {
       const c = Chiptune.current();
       const now = $("music-now"); if (now) now.textContent = (on ? "♪ " : "") + (c ? c.name : "—");
@@ -5463,8 +5495,9 @@
     document.querySelectorAll(".side-toggle").forEach((tog) => {
       tog.querySelectorAll(".side-btn").forEach((b) => {
         b.onclick = () => {
-          tog.querySelectorAll(".side-btn").forEach((x) => x.classList.remove("active"));
+          tog.querySelectorAll(".side-btn").forEach((x) => { x.classList.remove("active"); x.setAttribute("aria-pressed", "false"); });
           b.classList.add("active");
+          b.setAttribute("aria-pressed", "true");
           try { updateFlipButton(); } catch (e) {} // sync the coin-flip "You're HEADS/TAILS" note + FLIP verb when the side changes
         };
       });
@@ -5569,6 +5602,23 @@
       try { s.dispatchEvent(new Event("input", { bubbles: true })); } catch (e) {}
       return true;
     }
+    // ---- A11y: keep Tab inside the topmost open dialog. Capture phase so it
+    // still applies when focus is currently on a control BEHIND the backdrop. ----
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Tab") return;
+      const open = [...document.querySelectorAll(".modal, .poker-modal")]
+        .filter((m) => !m.classList.contains("hidden") && m.getClientRects().length)
+        .sort((a, b) => ((parseInt(getComputedStyle(a).zIndex, 10) || 0) - (parseInt(getComputedStyle(b).zIndex, 10) || 0)));
+      if (!open.length) return;
+      const m = open[open.length - 1]; // topmost by z-index (poker-modal z200 > .modal z120), DOM order among equals
+      const f = [...m.querySelectorAll('button, input, textarea, select, a[href], [tabindex]:not([tabindex="-1"])')]
+        .filter((el) => el.getClientRects().length && !el.disabled);
+      if (!f.length) { e.preventDefault(); return; }
+      const first = f[0], last = f[f.length - 1], a = document.activeElement;
+      if (!m.contains(a)) { e.preventDefault(); first.focus(); return; } // focus escaped → pull it in
+      if (e.shiftKey && a === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && a === last) { e.preventDefault(); first.focus(); }
+    }, true);
     // ---- Keyboard hotkeys (skip while typing / over a modal / on a focused control) ----
     document.addEventListener("keydown", (e) => {
       const el = e.target, tag = (el.tagName || "").toLowerCase();
@@ -5580,13 +5630,28 @@
 
       if (k === "escape") { // close only the topmost open overlay
         if (betOpen) { closeBetModal(); return; }
-        for (const id of ["nego-modal", "profile-modal", "help-modal"]) if (isOpen(id)) { $(id).classList.add("hidden"); return; }
-        if (document.body.classList.contains("chat-open")) document.body.classList.remove("chat-open");
+        if (isOpen("xfer-modal")) { closeXfer(false); return; } // same path as tapping Cancel — resolves the pending confirm as cancelled
+        if (isOpen("poker-buyin")) { const c = $("poker-buyin-cancel"); if (c) c.click(); return; }
+        for (const id of ["nego-modal", "profile-modal", "help-modal", "s3d-help-modal"]) if (isOpen(id)) { $(id).classList.add("hidden"); a11yModalClose(); return; }
+        if (document.body.classList.contains("chat-open")) {
+          document.body.classList.remove("chat-open");
+          for (const id of ["chat-toggle", "chat-tab", "bn-chat"]) { const b = $(id); if (b) b.setAttribute("aria-expanded", "false"); }
+        }
         return;
       }
-      if (betOpen) { if (k === "enter") { e.preventDefault(); $("bet-accept").click(); } return; }
+      if (betOpen) {
+        if (k === "enter") {
+          // Focus now moves INTO the modal on open — if a button other than Accept is
+          // focused (e.g. the ✕ Close), Enter must activate THAT natively, never force a bet.
+          const a = document.activeElement;
+          if ($("bet-modal").contains(a) && a.tagName === "BUTTON" && a.id !== "bet-accept") return;
+          e.preventDefault(); $("bet-accept").click();
+        }
+        return;
+      }
       // Behind any open overlay → don't fire game hotkeys.
       if (isOpen("help-modal") || isOpen("profile-modal") || isOpen("nego-modal") ||
+          isOpen("xfer-modal") || isOpen("s3d-help-modal") || isOpen("poker-buyin") ||
           document.body.classList.contains("chat-open") || document.body.classList.contains("rail-open")) return;
 
       if (k === " ") {
@@ -5611,9 +5676,9 @@
       else if (k === "+" || k === "=" || k === "arrowup") { if (stepCurrentStake(1)) e.preventDefault(); }
       else if (k === "-" || k === "_" || k === "arrowdown") { if (stepCurrentStake(-1)) e.preventDefault(); }
     });
-    $("help-btn").onclick = () => $("help-modal").classList.remove("hidden");
-    $("help-close").onclick = () => $("help-modal").classList.add("hidden");
-    $("help-modal").onclick = (e) => { if (e.target === $("help-modal")) $("help-modal").classList.add("hidden"); };
+    $("help-btn").onclick = () => { $("help-modal").classList.remove("hidden"); a11yModalOpen($("help-modal")); };
+    $("help-close").onclick = () => { $("help-modal").classList.add("hidden"); a11yModalClose(); };
+    $("help-modal").onclick = (e) => { if (e.target === $("help-modal")) { $("help-modal").classList.add("hidden"); a11yModalClose(); } };
 
     // ── Stake-style sidebar: mobile drawer toggle + essentials links ──
     const closeRail = () => document.body.classList.remove("rail-open");
@@ -5628,11 +5693,11 @@
     // selecting a game closes the drawer on mobile
     document.querySelectorAll("#game-nav .game-card").forEach((b) => b.addEventListener("click", () => { if (window.matchMedia("(max-width:900px)").matches) closeRail(); }));
     { const w = $("rail-wallet"); if (w) w.onclick = () => { closeRail(); const t = ["token-mount", "game-balance", "demo-balance", "deposit-input"].map($).find((el) => el && el.getClientRects().length) || $("connect-btn"); if (t) t.scrollIntoView({ behavior: "smooth", block: "center" }); }; } // U3: scroll to the first VISIBLE wallet element (in demo, game-balance/deposit are hidden — was a dead tap)
-    { const h = $("rail-howto"); if (h) h.onclick = () => { closeRail(); $("help-modal").classList.remove("hidden"); }; }
+    { const h = $("rail-howto"); if (h) h.onclick = () => { closeRail(); $("help-modal").classList.remove("hidden"); a11yModalOpen($("help-modal")); }; }
     { const ht = $("rail-host"); if (ht) ht.onclick = () => { closeRail(); const t = $("host-tools"); if (t) { t.hidden = false; t.scrollIntoView({ behavior: "smooth", block: "center" }); } }; }
     { const rp = $("rail-profile"); if (rp) rp.onclick = () => { closeRail(); openProfile(); }; }
-    { const pc = $("profile-close"); if (pc) pc.onclick = () => $("profile-modal").classList.add("hidden"); }
-    { const pm = $("profile-modal"); if (pm) pm.onclick = (e) => { if (e.target === pm) pm.classList.add("hidden"); }; }
+    { const pc = $("profile-close"); if (pc) pc.onclick = () => { $("profile-modal").classList.add("hidden"); a11yModalClose(); }; }
+    { const pm = $("profile-modal"); if (pm) pm.onclick = (e) => { if (e.target === pm) { pm.classList.add("hidden"); a11yModalClose(); } }; }
     { const ps = $("profile-save"); if (ps) ps.onclick = saveProfile; }
     { const pr = $("profile-addr-reveal"); if (pr) pr.onclick = () => {
         const el = $("profile-addr-short");
@@ -5641,7 +5706,7 @@
       }; }
 
     // ── Chat drawer: slide-in panel toggled from the top bar ──
-    const closeChat = () => { document.body.classList.remove("chat-open"); const ta = $("chat-tab"); if (ta) ta.setAttribute("aria-expanded", "false"); };
+    const closeChat = () => { document.body.classList.remove("chat-open"); for (const id of ["chat-toggle", "chat-tab", "bn-chat"]) { const b = $(id); if (b) b.setAttribute("aria-expanded", "false"); } };
     const toggleChat = () => { if (document.body.classList.contains("chat-open")) closeChat(); else openChat(); };
     { const ct = $("chat-toggle"); if (ct) ct.onclick = (e) => { e.stopPropagation(); toggleChat(); }; }
     { const tab = $("chat-tab"); if (tab) tab.onclick = (e) => { e.stopPropagation(); openChat(); }; }
@@ -5696,13 +5761,14 @@
     { const b = $("bn-games"); if (b) b.onclick = (e) => { e.stopPropagation(); closeChat(); document.body.classList.toggle("rail-open"); }; }
     { const b = $("bn-wallet"); if (b) b.onclick = () => { closeRail(); closeChat(); const t = ["token-mount", "game-balance", "demo-balance", "deposit-input"].map($).find((el) => el && el.getClientRects().length) || $("connect-btn"); if (t) t.scrollIntoView({ behavior: "smooth", block: "center" }); }; } // U3: first VISIBLE wallet element (demo-safe)
     { const b = $("bn-chat"); if (b) b.onclick = (e) => { e.stopPropagation(); closeRail(); toggleChat(); }; }
-    { const b = $("bn-help"); if (b) b.onclick = () => { closeRail(); closeChat(); $("help-modal").classList.remove("hidden"); }; }
+    { const b = $("bn-help"); if (b) b.onclick = () => { closeRail(); closeChat(); $("help-modal").classList.remove("hidden"); a11yModalOpen($("help-modal")); }; }
     // ── Music dropdown: open the track menu, play/pause, prev/next, pick a track ──
     { const sb = $("sound-btn"); if (sb) sb.onclick = (e) => {
         e.stopPropagation();
         const menu = $("music-menu");
         if (!menu) return;
         menu.classList.toggle("hidden");
+        sb.setAttribute("aria-expanded", menu.classList.contains("hidden") ? "false" : "true");
         if (!menu.classList.contains("hidden")) {
           renderTrackList();
           // Menu is position:fixed (escapes the topbar stacking context), so pin it
@@ -5723,7 +5789,7 @@
     document.addEventListener("click", (e) => {
       const menu = $("music-menu"); if (!menu || menu.classList.contains("hidden")) return;
       const wrap = menu.closest(".music-wrap");
-      if (wrap && !wrap.contains(e.target)) menu.classList.add("hidden");
+      if (wrap && !wrap.contains(e.target)) { menu.classList.add("hidden"); const sb = $("sound-btn"); if (sb) sb.setAttribute("aria-expanded", "false"); }
     });
 
     if (window.ethereum) {
@@ -5954,7 +6020,7 @@
     // them AFTER first paint. loadScriptOnce dedupes; scenes.js self-boots on inject (readyState !== "loading").
     // The window.* guards make this a no-op if the classic <script defer> tags are still in index.html
     // (never double-execute the IIFEs — a second chiptune.js run would rebind window.Chiptune mid-song).
-    { const goExtras = () => { if (!window.WinScenes) loadScriptOnce("scenes.js?v=1332").catch(() => {}); if (!window.Chiptune) loadScriptOnce("chiptune.js?v=1332").then(() => { try { syncSoundBtn(); } catch (e) {} }).catch(() => {}); };
+    { const goExtras = () => { if (!window.WinScenes) loadScriptOnce("scenes.js?v=1333").catch(() => {}); if (!window.Chiptune) loadScriptOnce("chiptune.js?v=1333").then(() => { try { syncSoundBtn(); } catch (e) {} }).catch(() => {}); };
       if (document.readyState === "complete") setTimeout(goExtras, 0);
       else window.addEventListener("load", () => setTimeout(goExtras, 0), { once: true }); }
     wireUI();

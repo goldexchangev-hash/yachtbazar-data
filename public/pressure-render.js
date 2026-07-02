@@ -12,6 +12,9 @@
 (function (root) {
   "use strict";
   const PIXI = root.PIXI;
+  // a11y: live media query (matches crash-render.js) — respects toggling the OS setting mid-session
+  const _rmq = root.matchMedia ? root.matchMedia("(prefers-reduced-motion: reduce)") : null;
+  const REDUCE_MOTION = () => !!(_rmq && _rmq.matches);
 
   const C = {
     bg: 0x0a0717,
@@ -275,7 +278,7 @@
     this.glow.alpha = this._popped ? 0 : (0.35 + 0.45 * p + 0.08 * Math.sin(this._t * 8));
 
     // jitter (B-independent) — bigger shake near the burst
-    if (this._state === "inflating" && !this._popped) {
+    if (!REDUCE_MOTION() && this._state === "inflating" && !this._popped) {
       const amp = p * p * 16;
       this.balloonLayer.position.set(this.cx + (Math.random() - 0.5) * amp, this.cy + (Math.random() - 0.5) * amp);
     } else this.balloonLayer.position.set(this.cx, this.cy);
@@ -298,8 +301,8 @@
     }
 
     // shake
-    if (this._shake > 0.2) { this.world.position.set((Math.random() - 0.5) * this._shake, (Math.random() - 0.5) * this._shake); this._shake *= 0.87; }
-    else if (this.world.position.x || this.world.position.y) { this.world.position.set(0, 0); this._shake = 0; }
+    if (!REDUCE_MOTION() && this._shake > 0.2) { this.world.position.set((Math.random() - 0.5) * this._shake, (Math.random() - 0.5) * this._shake); this._shake *= 0.87; }
+    else if (this.world.position.x || this.world.position.y || this._shake) { this.world.position.set(0, 0); this._shake = 0; }
 
     if (this.flash.alpha > 0.01) this.flash.alpha *= 0.84; else this.flash.alpha = 0;
     if (this.receipt.alpha > 0 && this._state !== "inflating") this.receipt.alpha = Math.max(0, this.receipt.alpha - dt * 0.5);

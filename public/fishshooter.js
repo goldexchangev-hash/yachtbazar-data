@@ -1097,13 +1097,14 @@
     // re-render the speed-segment UI active state
     var e = this.els; if (e && e.speedSlow && e.speedMed && e.speedFast) {
       e.speedSlow.classList.toggle("on", s === "slow"); e.speedMed.classList.toggle("on", s === "medium"); e.speedFast.classList.toggle("on", s === "fast");
+      e.speedSlow.setAttribute("aria-pressed", String(s === "slow")); e.speedMed.setAttribute("aria-pressed", String(s === "medium")); e.speedFast.setAttribute("aria-pressed", String(s === "fast"));
     }
     this._renderHud();
   };
-  FishShooter.prototype.toggleAuto = function () { this.auto = !this.auto; this._holding = false; if (this.els.autoBtn) this.els.autoBtn.classList.toggle("on", this.auto); };
-  FishShooter.prototype.toggleLock = function () { this.lock = !this.lock; if (this.els.lockBtn) this.els.lockBtn.classList.toggle("on", this.lock); };
+  FishShooter.prototype.toggleAuto = function () { this.auto = !this.auto; this._holding = false; if (this.els.autoBtn) { this.els.autoBtn.classList.toggle("on", this.auto); this.els.autoBtn.setAttribute("aria-pressed", String(this.auto)); } };
+  FishShooter.prototype.toggleLock = function () { this.lock = !this.lock; if (this.els.lockBtn) { this.els.lockBtn.classList.toggle("on", this.lock); this.els.lockBtn.setAttribute("aria-pressed", String(this.lock)); } };
   FishShooter.prototype.newSession = function () { this._sesSpent = 0; this._sesWon = 0; try { this._teardownRounds(); } catch (e) {} this._renderHud(); };
-  FishShooter.prototype.restartDemo = function () { this.auto = false; this.lock = false; this._holding = false; try { this._teardownRounds(); } catch (e) {} this._renderHud(); };
+  FishShooter.prototype.restartDemo = function () { this.auto = false; this.lock = false; this._holding = false; if (this.els.autoBtn) { this.els.autoBtn.classList.remove("on"); this.els.autoBtn.setAttribute("aria-pressed", "false"); } if (this.els.lockBtn) { this.els.lockBtn.classList.remove("on"); this.els.lockBtn.setAttribute("aria-pressed", "false"); } try { this._teardownRounds(); } catch (e) {} this._renderHud(); };
   FishShooter.prototype.start = function () { this.setActive(true); };
 
   /* fullscreen (reparent-to-body, mirrors Reef) */
