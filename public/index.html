@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#0c0d16" />
     <meta name="referrer" content="same-origin" />
-    <link rel="manifest" href="manifest.webmanifest?v=1335" />
+    <link rel="manifest" href="manifest.webmanifest?v=1336" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -35,7 +35,7 @@
       <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Press+Start+2P&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
     </noscript>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=1335" />
+    <link rel="stylesheet" href="styles.css?v=1336" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -45,13 +45,13 @@
     <!-- ───────────────────────── Header ───────────────────────── -->
     <header class="topbar">
       <button id="rail-toggle" class="rail-toggle" aria-label="Open menu" title="Menu">☰</button>
-      <span class="build-tag-m" id="build-tag-m" title="Live build version — confirms the deploy is up to date">v13.35</span>
+      <span class="build-tag-m" id="build-tag-m" title="Live build version — confirms the deploy is up to date">v13.36</span>
       <div class="brand">
         <span class="brand-tv">📺</span>
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v13.35</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v13.36</span>
       </div>
       <div class="topbar-right">
         <div class="tb-tools">
@@ -204,6 +204,18 @@
             </svg>
           </span>
           <span class="gc-name">Fish Shooter</span>
+        </button>
+
+        <!-- Fish Shooter V2 · NEON ABYSS (CH 20) — full rebuild, own engine/assets; kill switch: FS2_ENABLED in config.js -->
+        <button type="button" class="game-card fishshooter2" id="ch-fishshooter2" role="tab" aria-selected="false" data-game="fishshooter2">
+          <span class="gc-tile">
+            <svg class="gc-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 12c3-4 7-6 11-6 3 0 5 2 6 6-1 4-3 6-6 6-4 0-8-2-11-6z"/>
+              <circle cx="20" cy="12" r="2.4"/><path d="M20 8.6v-1.6M20 17v-1.6M23.4 12h1.2M15.4 12h1.2"/>
+              <path d="M6 9.5l1.2 1.2M6 14.5l1.2-1.2" opacity=".7"/>
+            </svg>
+          </span>
+          <span class="gc-name">Fish Shooter V2</span>
         </button>
 
         <button type="button" class="game-card blackjack" id="ch-blackjack" role="tab" aria-selected="false" data-game="blackjack">
@@ -420,6 +432,12 @@
                   <button type="button" id="fsh-fs-exit" class="fish-fs-exit">✕ Exit fullscreen</button>
                 </div>
 
+                <!-- Fish Shooter V2 · NEON ABYSS (CH 20): full rebuild — own engine + assets (fishshooter2/) -->
+                <div class="screen-layer hidden" id="layer-fishshooter2">
+                  <div id="fishshooter2-stage" class="fishshooter-stage"></div>
+                  <button type="button" id="fs2-fs-exit" class="fish-fs-exit">✕ Exit fullscreen</button>
+                </div>
+
                 <!-- Blackjack (CH 16): live multiplayer felt runs in an isolated iframe
                      (its own CSS/scripts can't collide with the site). The felt fills
                      the 4:3 screen; the betting + action controls dock UNDER the TV. -->
@@ -444,7 +462,7 @@
                 <!-- Promo intro reel — autoplays once (muted) on first load, then fades
                      to black and hands off to the game. Replay button under the TV. -->
                 <!-- promo DISABLED for now (owner) — preload none so the reel isn't even downloaded; re-enable via PROMO_ENABLED in app.js -->
-                <video id="promo-video" class="promo-video hidden" playsinline preload="none" muted src="promo.mp4?v=1335"></video>
+                <video id="promo-video" class="promo-video hidden" playsinline preload="none" muted src="promo.mp4?v=1336"></video>
 
                 <!-- Shown while a bet tx is being signed + mined (esp. slow on mobile) -->
                 <div id="tv-pending" class="tv-pending hidden">⏳ SENDING BET…<br />confirm in your wallet, then hold tight</div>
@@ -593,6 +611,35 @@
             </div>
           </div>
           <div class="muted dice-roll-hint" id="fsh-message">Aim & tap the tank to shoot · bigger fish pay more · chain catches for bonus waves</div>
+        </div>
+        <!-- Fish Shooter V2 · NEON ABYSS (CH 20) — same proven dock controls, fs2- ids -->
+        <div class="action-dock fishshooter-dock" data-game="fishshooter2">
+          <div class="slider-wrap">
+            <input id="fs2-bet" class="slider" type="range" min="1" max="50" step="1" value="1" aria-label="Base bet per shot in dollars" />
+            <div class="slider-val"><strong id="fs2-bet-val">$1</strong><span class="muted"> base bet</span></div>
+          </div>
+          <div class="fish-row">
+            <div class="fish-stepper" role="group" aria-label="Shot power">
+              <button type="button" class="fish-step" id="fs2-pdn" aria-label="Lower power">–</button>
+              <span class="fish-step-val"><small>POWER</small><strong id="fs2-power">1</strong></span>
+              <button type="button" class="fish-step" id="fs2-pup" aria-label="Raise power">+</button>
+            </div>
+            <span class="fish-cost" id="fs2-cost">$1.00 / shot</span>
+            <button type="button" class="fish-fs" id="fs2-fs" title="Fullscreen" aria-label="Fullscreen">⛶</button>
+          </div>
+          <div class="fish-toggles" role="group" aria-label="Firing options">
+            <button type="button" class="fish-pill" id="fs2-auto" title="Hold fire automatically" aria-pressed="false">🔥 Auto-fire</button>
+            <button type="button" class="fish-pill" id="fs2-lock" title="Aim at the nearest fish for you" aria-pressed="false">🎯 Lock-on</button>
+          </div>
+          <div class="fish-seg" role="group" aria-label="Shooting speed">
+            <span class="fish-seg-lbl">Speed</span>
+            <div class="fish-seg-track">
+              <button type="button" class="fish-seg-btn" id="fs2-spd-slow" title="Slow — gentle pace" aria-pressed="false" aria-label="Slow firing speed">🐢</button>
+              <button type="button" class="fish-seg-btn" id="fs2-spd-med"  title="Medium pace" aria-pressed="false" aria-label="Medium firing speed">🐠</button>
+              <button type="button" class="fish-seg-btn on" id="fs2-spd-fast" title="Fast — the cap" aria-pressed="true" aria-label="Fast firing speed">⚡</button>
+            </div>
+          </div>
+          <div class="muted dice-roll-hint" id="fs2-message">NEON ABYSS · aim & tap to shoot · glowing giants pay the most</div>
         </div>
         <div class="action-dock" data-game="plane">
           <div class="plane-actions">
@@ -1557,22 +1604,22 @@
     </aside>
 
     <script defer src="vendor/ethers.umd.min.js?v=ethers-1"></script>
-    <script defer src="config.js?v=1335"></script>
-    <script defer src="contract.js?v=1335"></script>
+    <script defer src="config.js?v=1336"></script>
+    <script defer src="contract.js?v=1336"></script>
     <!-- chiptune.js + scenes.js (119.5KB raw / 33.6KB br) are fetched AFTER first paint by app.js goExtras (window load) — music is gesture-gated and win-scene art is bet-gated, so neither is needed before first interaction; every call site is window.Chiptune/window.WinScenes-guarded -->
-    <script defer src="tv.js?v=1335"></script>
+    <script defer src="tv.js?v=1336"></script>
     <!-- P6: poker is a hidden, unopenable channel (absent from GAME_CHANNEL, no UI/URL entry) — its 3 scripts
          (~42KB) were parsed by every visitor for nothing. Removed. Every PokerUI call site is `if (window.PokerUI)`
          -guarded, so this is inert. To re-enable: lazy-load these via loadScriptOnce + add a GAME_CHANNEL entry.
-    <script defer src="poker-engine.js?v=1335"></script>
-    <script defer src="poker-bots.js?v=1335"></script>
-    <script defer src="poker-ui.js?v=1335"></script> -->
-    <script defer src="crash-engine.js?v=1335"></script>
+    <script defer src="poker-engine.js?v=1336"></script>
+    <script defer src="poker-bots.js?v=1336"></script>
+    <script defer src="poker-ui.js?v=1336"></script> -->
+    <script defer src="crash-engine.js?v=1336"></script>
     <!-- crash-render.js (43.8KB raw / 13.6KB br) is lazy-loaded by app.js on CH11 crash-channel entry; every tv.js call site is window.CrashRender-guarded and _ensureCrash retries -->
-    <script defer src="profile.js?v=1335"></script>
-    <script defer src="token-client.js?v=1335"></script>
-    <script defer src="token-mode.js?v=1335"></script>
-    <script defer src="crash-rounds-client.js?v=1335"></script>
-    <script defer src="app.js?v=1335"></script>
+    <script defer src="profile.js?v=1336"></script>
+    <script defer src="token-client.js?v=1336"></script>
+    <script defer src="token-mode.js?v=1336"></script>
+    <script defer src="crash-rounds-client.js?v=1336"></script>
+    <script defer src="app.js?v=1336"></script>
   </body>
 </html>

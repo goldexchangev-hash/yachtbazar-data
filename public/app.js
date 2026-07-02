@@ -78,6 +78,8 @@
   let swoopLoadPromise = null;    // lazy-load guard for Sky Swoop (PlayCanvas biplane crash)
   let swoopGame = null;           // the Sky Swoop instance, built on first visit to CH 18
   let fishshooterLoadPromise = null; // lazy-load guard for Fish Shooter (PixiJS fish-table)
+  let fishshooter2Game = null, fishshooter2LoadPromise = null; // Fish Shooter V2 · NEON ABYSS (CH 20) — own engine/assets, FS2_ENABLED kill switch
+  const FS2_ENABLED = () => window.FS2_ENABLED !== false; // config.js flag: set false to hide the whole V2 channel (v1 untouched)
   let fishshooterGame = null;     // the Fish Shooter instance, built on first visit to CH 19
   let coinFlip3dLoadPromise = null; // lazy-load guard for the 3D coin (Three.js)
   let coinFlip3d = null;          // the CoinFlip3D instance, built on first visit to CH 8
@@ -347,7 +349,7 @@
   // deposit — so "max" must clamp to that, never to the raw slider cap.
   function spendableUsd() {
     if (window.TokenMode && TokenMode.active()) return TokenMode.tokens(); // v6 #21: in token mode every game spends the token balance — quick-bet Max/2x must clamp to that, not to demoUsd
-    if (currentGame === "slots3d" || currentGame === "pressure" || currentGame === "fish" || currentGame === "swoop" || currentGame === "fishshooter") return demoUsd;
+    if (currentGame === "slots3d" || currentGame === "pressure" || currentGame === "fish" || currentGame === "swoop" || currentGame === "fishshooter" || currentGame === "fishshooter2") return demoUsd;
     return gameWei > 0n ? weiToUsd(gameWei) : 0;
   }
   function quickBet(id, mode) {
@@ -381,7 +383,7 @@
   // mirrors/drives the current game's REAL stake slider so you can change the
   // bet without scrolling. No game logic is duplicated — every change funnels
   // through the same <input> + "input" event the panel already listens to.
-  const BETBAR_GAMES = new Set(["flip", "dice", "twodice", "crash", "pressure", "plane", "slots3d", "fish", "fishshooter"]); // #20: swoop removed — it's hidden/unreachable, so a stale localStorage restore must not show its betbar
+  const BETBAR_GAMES = new Set(["flip", "dice", "twodice", "crash", "pressure", "plane", "slots3d", "fish", "fishshooter", "fishshooter2"]); // #20: swoop removed — it's hidden/unreachable, so a stale localStorage restore must not show its betbar
   // #26: fishshooter + swoop were in BETBAR_GAMES but missing here → curStakeSlider() returned null → blank
   // mobile stake strip on those channels. Map them to their real sliders (fsh-bet / swoop-bet).
   const BETBAR_SL = { flip: "house-bet", dice: "dice-stake", twodice: "td-stake", crash: "crash-stake", pressure: "pr-bet-slider", slots3d: "s3d-bet-slider", plane: "plane-a-bet", fish: "fish-bet", fishshooter: "fsh-bet" }; // #20: swoop removed (hidden channel)
@@ -2546,7 +2548,7 @@
     return new Promise((res, rej) => {
       // v13 #38: dedup by src so a watchdog re-kick (an ensure*Ready promise nulled) never appends a SECOND <script>
       // for the same file while the first is still downloading (the load race). The selector keys on the exact
-      // versioned src ("...?v=1335"), so a later ?v bump is a distinct file and still loads fresh — no stale cache.
+      // versioned src ("...?v=1336"), so a later ?v bump is a distinct file and still loads fresh — no stale cache.
       const sel = 'script[data-loadonce="' + src.replace(/"/g, "&quot;") + '"]';
       const existing = document.querySelector(sel);
       if (existing) {
@@ -2582,7 +2584,7 @@
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=1335"))
+      .then(() => loadScriptOnce("slots.js?v=1336"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -2592,11 +2594,11 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=1335"))
-      .then(() => loadScriptOnce("pressure-render.js?v=1335"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=1335"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=1336"))
+      .then(() => loadScriptOnce("pressure-render.js?v=1336"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=1336"))
       // optional 3D red balloon (Three.js) — falls back to the 2D balloon if it can't load
-      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1335")).catch(() => {}))
+      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1336")).catch(() => {}))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -2668,10 +2670,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=1335"))
-      .then(() => loadScriptOnce("plane-render.js?v=1335"))
-      .then(() => loadScriptOnce("plane-feed.js?v=1335"))
-      .then(() => loadScriptOnce("plane-ui.js?v=1335"))
+      .then(() => loadScriptOnce("plane-engine.js?v=1336"))
+      .then(() => loadScriptOnce("plane-render.js?v=1336"))
+      .then(() => loadScriptOnce("plane-feed.js?v=1336"))
+      .then(() => loadScriptOnce("plane-ui.js?v=1336"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2782,8 +2784,8 @@
     if (window.Slots3D) return Promise.resolve(true);
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("slots3d-engine.js?v=1335"))
-      .then(() => loadScriptOnce("slots3d.js?v=1335"))
+      .then(() => loadScriptOnce("slots3d-engine.js?v=1336"))
+      .then(() => loadScriptOnce("slots3d.js?v=1336"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2840,8 +2842,8 @@
     if (window.FishTable) return Promise.resolve(true);
     if (fishLoadPromise) return fishLoadPromise;
     fishLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishtable-engine.js?v=1335"))
-      .then(() => loadScriptOnce("fishtable.js?v=1335"))
+      .then(() => loadScriptOnce("fishtable-engine.js?v=1336"))
+      .then(() => loadScriptOnce("fishtable.js?v=1336"))
       .then(() => true)
       .catch((e) => { fishLoadPromise = null; throw e; });
     return fishLoadPromise;
@@ -2924,7 +2926,7 @@
     if (window.SwoopGame) return Promise.resolve(true);
     if (swoopLoadPromise) return swoopLoadPromise;
     swoopLoadPromise = loadPlayCanvasOnce()
-      .then(() => loadScriptOnce("swoop3d.js?v=1335"))
+      .then(() => loadScriptOnce("swoop3d.js?v=1336"))
       .then(() => true)
       .catch((e) => { swoopLoadPromise = null; throw e; });
     return swoopLoadPromise;
@@ -3005,8 +3007,8 @@
     if (window.FishShooter) return Promise.resolve(true);
     if (fishshooterLoadPromise) return fishshooterLoadPromise;
     fishshooterLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishshooter-engine.js?v=1335")) // OWN engine (decoupled from Reef's fishtable-engine.js)
-      .then(() => loadScriptOnce("fishshooter.js?v=1335"))
+      .then(() => loadScriptOnce("fishshooter-engine.js?v=1336")) // OWN engine (decoupled from Reef's fishtable-engine.js)
+      .then(() => loadScriptOnce("fishshooter.js?v=1336"))
       .then(() => true)
       .catch((e) => { fishshooterLoadPromise = null; throw e; });
     return fishshooterLoadPromise;
@@ -3085,13 +3087,97 @@
     settle();
   }
 
+  // ── Fish Shooter V2 · NEON ABYSS (CH 20, key "fishshooter2"): the ground-up rebuild —
+  //    OWN engine (fishshooter2-engine.js), OWN client (fishshooter2.js), OWN assets
+  //    (assets/fishshooter2/). Mirrors the proven v1 wiring 1:1; FS2_ENABLED in config.js
+  //    is the kill switch (false → channel hidden everywhere, v1 completely untouched). ──
+  function ensureFishShooter2Loaded() {
+    if (window.FishShooter2) return Promise.resolve(true);
+    if (fishshooter2LoadPromise) return fishshooter2LoadPromise;
+    fishshooter2LoadPromise = loadPixiOnce()
+      .then(() => loadScriptOnce("fishshooter2-engine.js?v=1336"))
+      .then(() => loadScriptOnce("fishshooter2.js?v=1336"))
+      .then(() => true)
+      .catch((e) => { fishshooter2LoadPromise = null; throw e; });
+    return fishshooter2LoadPromise;
+  }
+  function buildFishShooter2() {
+    if (fishshooter2Game || !window.FishShooter2) return fishshooter2Game;
+    const el = (id) => $(id);
+    const mount = $("fishshooter2-stage"); if (!mount) return null;
+    fishshooter2Game = new window.FishShooter2({
+      mount, ethUsd: ethUsd, initialBalance: (window.TokenMode && TokenMode.active()) ? TokenMode.tokens() : (account ? 0 : demoUsd),
+      onBalance: (b) => { if (window.TokenMode && TokenMode.active()) return; demoUsd = Math.round(b * 100) / 100; demoSave(); demoPaint(); }, // demo only (token mode: balance owned by TokenMode)
+      onReady: () => {
+        if (currentGame !== "fishshooter2") return;
+        try { if (window.TV && !TV._promoPlaying) TV.idle(); } catch (e) {}
+        try { fishshooter2Game && fishshooter2Game._resize(); } catch (e) {}
+      },
+      onWin: (i) => setLastResult({ won: true, game: "Fish Shooter V2", emoji: "🌊", amountUsd: i.profitUsd, detail: i.bonus ? "bonus" : (i.mult ? Math.round(i.mult) + "× catch" : "big catch") }),
+      els: {
+        betSlider: el("fs2-bet"), betVal: el("fs2-bet-val"), cost: el("fs2-cost"), power: el("fs2-power"),
+        powerUp: el("fs2-pup"), powerDown: el("fs2-pdn"), autoBtn: el("fs2-auto"), lockBtn: el("fs2-lock"), fsBtn: el("fs2-fs"),
+        speedSlow: el("fs2-spd-slow"), speedMed: el("fs2-spd-med"), speedFast: el("fs2-spd-fast"),
+        balance: el("fs2-balance"), win: el("fs2-win"), sesSpent: el("fs2-ses-spent"), sesWon: el("fs2-ses-won"), sesNet: el("fs2-ses-net"),
+      },
+    });
+    try { fishshooter2Game.setFullscreenTarget($("layer-fishshooter2")); } catch (e) {}
+    { const fb = $("fs2-fs"); if (fb) fb.addEventListener("click", () => { try { fishshooter2Game.toggleFullscreen($("layer-fishshooter2")); } catch (e) {} }); }
+    { const fx = $("fs2-fs-exit"); if (fx) fx.addEventListener("click", () => { try { fishshooter2Game.toggleFullscreen($("layer-fishshooter2")); } catch (e) {} }); }
+    setupFishShooter2TiltFullscreen();
+    try { window.__fshoot2 = fishshooter2Game; } catch (e) {}
+    return fishshooter2Game;
+  }
+  function setupFishShooter2TiltFullscreen() {
+    if (setupFishShooter2TiltFullscreen.done) return;
+    setupFishShooter2TiltFullscreen.done = true;
+    const isMobile = () => /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (window.matchMedia && window.matchMedia("(max-width: 900px)").matches);
+    const isLandscape = () => window.matchMedia ? window.matchMedia("(orientation: landscape)").matches : window.innerWidth > window.innerHeight;
+    const sync = () => { if (!fishshooter2Game || currentGame !== "fishshooter2" || !isMobile()) return; try { fishshooter2Game.autoFullscreen(isLandscape(), $("layer-fishshooter2")); } catch (e) {} };
+    const afterTilt = () => [80, 220, 520, 900].forEach((ms) => setTimeout(sync, ms));
+    window.addEventListener("orientationchange", afterTilt, { passive: true });
+    window.addEventListener("resize", afterTilt, { passive: true });
+    document.addEventListener("visibilitychange", sync);
+    setTimeout(sync, 0);
+  }
+  function ensureFishShooter2Ready() {
+    if (!FS2_ENABLED()) return; // kill switch — a stale saved-channel restore must not boot a disabled game
+    try { if (window.TV && TV._loadingScreen && !document.querySelector("#fishshooter2-stage canvas")) TV._loadingScreen(); } catch (e) {}
+    let kicked = 0;
+    const boot = () => ensureFishShooter2Loaded().then(() => {
+      const g = buildFishShooter2(); if (!g || currentGame !== "fishshooter2") return;
+      g.setActive(true); g.setEthUsd(ethUsd);
+      if (window.TokenMode && TokenMode.active()) g.setBalance(TokenMode.tokens()); else g.setBalance(account ? 0 : demoUsd);
+      g.setEnabled(true);
+      try { g._resize(); } catch (e) {}
+      setupFishShooter2TiltFullscreen();
+    }).catch(() => { fishshooter2LoadPromise = null; });
+    boot();
+    let tries = 0;
+    const settle = () => {
+      if (currentGame !== "fishshooter2") return;
+      const promo = !!(window.TV && TV._promoPlaying);
+      const ready = !!(fishshooter2Game && fishshooter2Game._ready);
+      const canvas = document.querySelector("#fishshooter2-stage canvas");
+      if (window.TV && !promo && ready) { try { TV.idle(); } catch (e) {} }
+      if (ready && canvas && window.TV && TV._phase === "fishshooter2") { try { fishshooter2Game._resize(); } catch (e) {} return; }
+      if (!promo) {
+        tries++;
+        if (!canvas && tries === 12 && kicked < 2) { kicked++; fishshooter2LoadPromise = null; boot(); }
+        if (tries >= 44 && kicked >= 2 && !ready) { toast("Couldn't load Fish Shooter V2 — tap the channel again", "err"); return; }
+      }
+      if (tries < 48) setTimeout(settle, 200);
+    };
+    settle();
+  }
+
   // ── Coin Flip (CH 8): premium Three.js 3D coin. Lazy-loaded; the CSS coin is
   //    the fallback if WebGL/Three isn't available. tv.js drives it via TV._coin3d.
   function loadCoinFlip3dOnce() {
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1335"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1336"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -3118,7 +3204,7 @@
   function loadRail3dOnce() {
     if (window.Rail3D) return Promise.resolve(true);
     if (rail3dLoadPromise) return rail3dLoadPromise;
-    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1335")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
+    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1336")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
     return rail3dLoadPromise;
   }
   function buildRail3d() {
@@ -3139,7 +3225,7 @@
   function loadDice2_3dOnce() {
     if (window.TwoDice3D) return Promise.resolve(true);
     if (d2_3dLoadPromise) return d2_3dLoadPromise;
-    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1335")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
+    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1336")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
     return d2_3dLoadPromise;
   }
   function buildDice2_3d() {
@@ -3319,7 +3405,7 @@
   // event (token onChange, demo/ethUsd refresh) and polled by the interval below (canvas token bets that skip onChange).
   function paintTvBalance() {
     var el = document.getElementById("tv-balance"); if (!el) return;
-    if (currentGame === "fish" || currentGame === "fishshooter" || currentGame === "blackjack") { el.classList.add("hidden"); return; }
+    if (currentGame === "fish" || currentGame === "fishshooter" || currentGame === "fishshooter2" || currentGame === "blackjack") { el.classList.add("hidden"); return; }
     // Show ONLY the balance you can actually PLAY with right now: the token session (with the optimistic per-spin
     // debit hold) or the demo bankroll. When connected WITHOUT a token session, HIDE it — your deposited game-credits
     // are NOT in play (every game is token-only; you buy in first), and showing them looked like a spendable balance
@@ -3420,7 +3506,7 @@
       // burst. Skip the forced sync ONLY during that brief window (g._tokenRevealUntil, set in the bet .then) —
       // NOT unconditionally: a buy-in / top-up / connect must update the HUD immediately (else the balance stays
       // stuck on the old value until the next shot — the "$110 tokens but HUD shows $4 / $9k on connect" bug).
-      var onFishChan = (g === fishGame && currentGame === "fish") || (g === fishshooterGame && currentGame === "fishshooter");
+      var onFishChan = (g === fishGame && currentGame === "fish") || (g === fishshooterGame && currentGame === "fishshooter") || (g === fishshooter2Game && currentGame === "fishshooter2");
       // v7 #7: Gem Vault (slots3d) runs its OWN free-spins bonus in this SAME poll but the hold used to apply only
       // on the fish channels, so a mid-round poll could reveal the full base+bonus total early (spoiling the finale)
       // or flash the win before the reels land. Hold the HUD while slots3d is spinning / awaiting the server / in a
@@ -3558,6 +3644,7 @@
     if (slots3dGame && demoOn) try { slots3dGame.restartDemo(); } catch (e) {}
     if (fishGame && demoOn) try { fishGame.restartDemo(); } catch (e) {}
     if (fishshooterGame && demoOn) try { fishshooterGame.restartDemo(); } catch (e) {} // end any open Fish Shooter bonus/boss round on a demo top-up
+    if (fishshooter2Game && demoOn) try { fishshooter2Game.restartDemo(); } catch (e) {} // same for V2
     demoUsd = Math.max(demoUsd, DEMO_START_USD); demoSave(); demoSyncBalance(); // top UP only — never knock a winning demo balance back down to the start grant
     sessionReset(); // a credit top-up re-bases the session so it doesn't show as winnings
     if (pressureGame && demoOn) pressureGame.setBalance(demoUsd); // v5 #4: match the demoOn guard the siblings use — never set a demo balance on a connected wallet
@@ -3768,9 +3855,13 @@
 
   // ── Game switcher ("change the channel") ──
   // Poker is temporarily disabled (hidden from the channel bar) — to be revisited.
-  const GAME_CHANNEL = { flip: 8, dice: 9, twodice: 10, crash: 11, pressure: 13, plane: 14, slots3d: 15, blackjack: 16, fish: 17, swoop: 18, fishshooter: 19 };
-  const GAME_TITLE = { flip: "CRYPTO TV FLIP", dice: "CRYPTO TV 0-100", twodice: "CRYPTO TV DICE #2", crash: "CRYPTO TV CRASH", pressure: "BALLOON POP", plane: "CRYPTO TV PLANE", slots3d: "GEM VAULT", blackjack: "BLACKJACK", fish: "REEF RAIDERS", swoop: "SKY SWOOP", fishshooter: "FISH SHOOTER" };
-  const GAME_ORDER = ["flip", "dice", "twodice", "crash", "pressure", "plane", "slots3d", "fish", "fishshooter", "blackjack"]; // Sky Swoop hidden for now
+  const GAME_CHANNEL = { flip: 8, dice: 9, twodice: 10, crash: 11, pressure: 13, plane: 14, slots3d: 15, blackjack: 16, fish: 17, swoop: 18, fishshooter: 19, fishshooter2: 20 };
+  const GAME_TITLE = { flip: "CRYPTO TV FLIP", dice: "CRYPTO TV 0-100", twodice: "CRYPTO TV DICE #2", crash: "CRYPTO TV CRASH", pressure: "BALLOON POP", plane: "CRYPTO TV PLANE", slots3d: "GEM VAULT", blackjack: "BLACKJACK", fish: "REEF RAIDERS", swoop: "SKY SWOOP", fishshooter: "FISH SHOOTER", fishshooter2: "FISH SHOOTER V2" };
+  const GAME_ORDER = ["flip", "dice", "twodice", "crash", "pressure", "plane", "slots3d", "fish", "fishshooter", "fishshooter2", "blackjack"]; // Sky Swoop hidden for now; fishshooter2 removed at boot when FS2_ENABLED is off
+  if (!FS2_ENABLED()) { // kill switch: hide the V2 tile + drop it from the rotation (v1 untouched)
+    { const t = $("ch-fishshooter2"); if (t) t.hidden = true; }
+    { const i = GAME_ORDER.indexOf("fishshooter2"); if (i >= 0) GAME_ORDER.splice(i, 1); }
+  }
   function paintGameTabs(game) {
     document.body.classList.toggle("game-dice", game === "dice");
     document.body.classList.toggle("game-twodice", game === "twodice");
@@ -3782,6 +3873,7 @@
     document.body.classList.toggle("game-fish", game === "fish");
     document.body.classList.toggle("game-swoop", game === "swoop");
     document.body.classList.toggle("game-fishshooter", game === "fishshooter");
+    document.body.classList.toggle("game-fishshooter2", game === "fishshooter2");
     document.body.classList.toggle("game-blackjack", game === "blackjack");
     document.body.classList.toggle("game-poker", game === "poker"); // CSS hides the TV layout, shows #poker-view
     const bar = $("game-nav"); if (bar) bar.dataset.game = game;
@@ -3824,6 +3916,7 @@
     if (game !== "fish" && fishGame) fishGame.setActive(false);
     if (game !== "swoop" && swoopGame) swoopGame.setActive(false);
     if (game !== "fishshooter" && fishshooterGame) fishshooterGame.setActive(false);
+    if (game !== "fishshooter2" && fishshooter2Game) fishshooter2Game.setActive(false);
     if (game !== "flip" && coinFlip3d) coinFlip3d.setActive(false);
     if (game !== "dice" && rail3d) rail3d.setActive(false);
     if (game !== "twodice" && d2_3d) d2_3d.setActive(false);
@@ -3837,13 +3930,14 @@
     if (game === "flip") { ensureCoinFlip3dReady(); }
     else if (game === "dice") { refreshDiceHouse(); diceReadouts(); ensureDice3dReady(); }
     else if (game === "twodice") { refreshDiceHouse(); twoDiceReadouts(); ensureTwoDiceSupport(); ensureDice2_3dReady(); }
-    else if (game === "crash") { if (!window.CrashRender) loadScriptOnce("crash-render.js?v=1335").then(() => { try { if (window.TV && TV._crashIdle && currentGame === "crash") TV._crashIdle(); } catch (e) {} }).catch(() => {}); refreshDiceHouse(); crashReadouts(); ensureCrashSupport(); }
+    else if (game === "crash") { if (!window.CrashRender) loadScriptOnce("crash-render.js?v=1336").then(() => { try { if (window.TV && TV._crashIdle && currentGame === "crash") TV._crashIdle(); } catch (e) {} }).catch(() => {}); refreshDiceHouse(); crashReadouts(); ensureCrashSupport(); }
     else if (game === "pressure") { ensurePressureReady(); }
     else if (game === "plane") { refreshDiceHouse(); ensurePlaneReady(); }
     else if (game === "slots3d") { ensureSlots3dReady(); }
     else if (game === "fish") { ensureFishReady(); }
     else if (game === "swoop") { ensureSwoopReady(); }
     else if (game === "fishshooter") { ensureFishShooterReady(); }
+    else if (game === "fishshooter2") { ensureFishShooter2Ready(); }
     else if (game === "blackjack") { ensureBlackjackReady(); }
   }
   // ── Blackjack channel (CH 16): the live felt runs in an isolated iframe (its own
@@ -3950,7 +4044,7 @@
       const tableWallet = account || bjGuestId();
       // &r=<nonce> in the QUERY forces a real iframe reload (so the felt re-reads the #bjsession from the
       // hash and re-sends its hello → the server re-binds the table to the token session).
-      let src = "blackjack.html?tv=1&v=1335&r=" + (++bjFeltNonce % 8) + "&guest=" + encodeURIComponent(tableWallet); // %8: consecutive nonces still ALWAYS differ (n vs n+1 mod 8) so the iframe truly reloads, but the URL set is bounded → the SW's ?v= cache-first path can actually HIT (instant felt load from cache) instead of storing a new never-reusable copy per open
+      let src = "blackjack.html?tv=1&v=1336&r=" + (++bjFeltNonce % 8) + "&guest=" + encodeURIComponent(tableWallet); // %8: consecutive nonces still ALWAYS differ (n vs n+1 mod 8) so the iframe truly reloads, but the URL set is bounded → the SW's ?v= cache-first path can actually HIT (instant felt load from cache) instead of storing a new never-reusable copy per open
       let tokenHash = "";
       // PREFERRED real-money path: fund the table with the player's TOKEN session (chips = tokens, no lock step).
       if (account && window.TokenMode && TokenMode.active && TokenMode.active() && TokenMode.session) {
@@ -4198,7 +4292,7 @@
     // + dead-bridge screen), re-init it so it binds to the account + token session. Throttled so it can't loop.
     try {
       const f0 = $("bj-frame");
-      // v13.35: the felt is ALSO stale if it's bound to a DIFFERENT (or no) token bjsession than the live one —
+      // v13.36: the felt is ALSO stale if it's bound to a DIFFERENT (or no) token bjsession than the live one —
       // e.g. it loaded as a $0 GUEST and the post-buy-in re-bind raced the just-created session, so the seat
       // shows $0 and the bet controls never appear until a manual ⟳ Reload. Reloading it (via the proven
       // ensureBlackjackReady) re-funds the seat from the token session AUTOMATICALLY. Guarded by !bjDockLive
@@ -4425,7 +4519,7 @@
     paintGameTabs(saved);
     if (saved === "poker" && window.PokerUI) PokerUI.show();
     if (window.TV) TV._activeChannel = GAME_CHANNEL[saved] || 8;
-    if (saved === "crash") { if (window.TV && TV._crashIdle) { try { TV._crashIdle(); } catch (e) {} } if (!window.CrashRender) loadScriptOnce("crash-render.js?v=1335").then(() => { try { if (window.TV && TV._crashIdle && currentGame === "crash") TV._crashIdle(); } catch (e) {} }).catch(() => {}); }
+    if (saved === "crash") { if (window.TV && TV._crashIdle) { try { TV._crashIdle(); } catch (e) {} } if (!window.CrashRender) loadScriptOnce("crash-render.js?v=1336").then(() => { try { if (window.TV && TV._crashIdle && currentGame === "crash") TV._crashIdle(); } catch (e) {} }).catch(() => {}); }
     // Balloon Pop needs its engine built + activated on reload too (enterDemo,
     // which runs just after, flips it to enabled once it exists).
     if (saved === "pressure") ensurePressureReady();
@@ -4440,6 +4534,7 @@
     if (saved === "fish") ensureFishReady();
     if (saved === "swoop") ensureSwoopReady(); // build the PlayCanvas biplane on reload too
     if (saved === "fishshooter") ensureFishShooterReady(); // build the Fish Shooter on reload too
+    if (saved === "fishshooter2") ensureFishShooter2Ready(); // build Fish Shooter V2 on reload too
     if (saved === "flip") ensureCoinFlip3dReady(); // build the 3D coin on reload too
     if (saved === "dice") ensureDice3dReady();     // build the 0-100 neon rail on reload too
     if (saved === "twodice") ensureDice2_3dReady(); // build the 3D dice on reload too
@@ -6057,7 +6152,7 @@
     // them AFTER first paint. loadScriptOnce dedupes; scenes.js self-boots on inject (readyState !== "loading").
     // The window.* guards make this a no-op if the classic <script defer> tags are still in index.html
     // (never double-execute the IIFEs — a second chiptune.js run would rebind window.Chiptune mid-song).
-    { const goExtras = () => { if (!window.WinScenes) loadScriptOnce("scenes.js?v=1335").catch(() => {}); if (!window.Chiptune) loadScriptOnce("chiptune.js?v=1335").then(() => { try { syncSoundBtn(); } catch (e) {} }).catch(() => {}); };
+    { const goExtras = () => { if (!window.WinScenes) loadScriptOnce("scenes.js?v=1336").catch(() => {}); if (!window.Chiptune) loadScriptOnce("chiptune.js?v=1336").then(() => { try { syncSoundBtn(); } catch (e) {} }).catch(() => {}); };
       if (document.readyState === "complete") setTimeout(goExtras, 0);
       else window.addEventListener("load", () => setTimeout(goExtras, 0), { once: true }); }
     wireUI();

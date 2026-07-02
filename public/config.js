@@ -26,3 +26,4 @@ window.COINFLIP_CONFIG = {
 // at q90 (sharp), PNGs kept as the automatic per-file fallback (fishshooter.js tryLoad). Regenerate the
 // .webp pack whenever the sprite pipeline adds/changes PNGs, or new art silently loads the PNG path.
 window.FS_WEBP_PACK = true;
+window.FS2_ENABLED = true; // Fish Shooter V2 (CH 20) kill switch — set false to hide the whole channel (v1 untouched)

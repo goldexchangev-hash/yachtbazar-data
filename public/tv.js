@@ -49,6 +49,7 @@
         fish: $("layer-fish"),
         swoop: $("layer-swoop"),
         fishshooter: $("layer-fishshooter"),
+        fishshooter2: $("layer-fishshooter2"),
         blackjack: $("layer-blackjack"),
         loading: $("layer-loading"),
       };
@@ -213,6 +214,7 @@
       if (this._activeChannel === 17) return this._fishIdle();   // reef raiders
       if (this._activeChannel === 18) return this._swoopIdle();  // sky swoop
       if (this._activeChannel === 19) return this._fishshooterIdle(); // fish shooter
+      if (this._activeChannel === 20) return this._fishshooter2Idle(); // fish shooter v2
       this._readyRoom(subtext);                                  // flip / 0-100 / dice #2 ready room
     },
 
@@ -223,7 +225,7 @@
       if (c === this._connected) return;
       this._connected = c;
       const p = this._phase;
-      if (p === "idle" || p === "crash" || p === "slots" || p === "pressure" || p === "fish" || p === "swoop" || p === "fishshooter" || p === "plane" || p === "slots3d" || p === "blackjack") this.idle(); // only refresh a resting screen
+      if (p === "idle" || p === "crash" || p === "slots" || p === "pressure" || p === "fish" || p === "swoop" || p === "fishshooter" || p === "fishshooter2" || p === "plane" || p === "slots3d" || p === "blackjack") this.idle(); // only refresh a resting screen
     },
 
     // app.js sets the channel's title here; the TV shows it in the ready room
@@ -513,6 +515,16 @@
       this._show("fishshooter");
     },
 
+    // Fish Shooter V2 (CH 20): same contract as v1 — LOADING until __fshoot2._ready.
+    _fishshooter2Idle() {
+      const stage = $("fishshooter2-stage");
+      const game = (typeof window !== "undefined") ? window.__fshoot2 : null;
+      if (!stage || !stage.querySelector("canvas") || !(game && game._ready)) return this._loadingScreen();
+      if (!this._connected) return this._staticIdle();
+      this._setStatic(0.03);
+      this._show("fishshooter2");
+    },
+
     // Blackjack (CH 16): the live felt runs in its own iframe over its own WebSocket
     // (guest-friendly play-money), so just reveal its layer — BlackjackClient drives
     // the table + the dock under the TV itself.
@@ -546,6 +558,7 @@
       else if (num === 17) this._fishIdle();
       else if (num === 18) this._swoopIdle();
       else if (num === 19) this._fishshooterIdle();
+      else if (num === 20) this._fishshooter2Idle();
       else this._readyRoom();
       await sleep(160); if (seq !== this._seq) return;
       this.screenEl.classList.remove("ch-switch");

@@ -41,6 +41,7 @@ const ENGINES = {
   slots: require("./games/slots.js"),
   slots3d: require("./games/slots3d.js"),
   fishshooter: require("./games/fishshooter.js"), // per-shot micro-bet engine (continuous game)
+  fishshooter2: require("./games/fishshooter2.js"), // Fish Shooter V2 · NEON ABYSS — own roster, same proven math (client channel kill-switched by FS2_ENABLED)
   reef: require("./games/reef.js"),               // per-shot micro-bet engine (continuous game)
   plane: require("./games/crash.js"),             // Aviator-style climb = the crash mechanic
   swoop: require("./games/crash.js"),             // Sky Swoop biplane = the crash mechanic
@@ -68,7 +69,7 @@ const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 // 188x, crash/pressure ≤1000x, fish/reef ~760x with the bonus tail) so it can NEVER clip a legit win — but a
 // mispriced/exploited engine can never drain past the ceiling. Applied identically in play + resolveReserved +
 // verifyRederive so the ledger stays re-derivable. Firing this is an exceptional event = a bug/exploit → log loud.
-const PAYOUT_CAP = { coinflip: 10, dice: 300, dice2: 150, slots: 600, slots3d: 600, crash: 1100, plane: 1100, swoop: 1100, pressure: 1100, fishshooter: 2500, reef: 2500 };
+const PAYOUT_CAP = { coinflip: 10, dice: 300, dice2: 150, slots: 600, slots3d: 600, crash: 1100, plane: 1100, swoop: 1100, pressure: 1100, fishshooter: 2500, fishshooter2: 2500, reef: 2500 };
 const PAYOUT_CAP_DEFAULT = 2500;
 function clampPayout(game, betUnits, payout) {
   const b = Number(betUnits) || 0;
@@ -570,7 +571,7 @@ if (require.main === module) {
     const tb = makeTokenBridge({ signer: signer2, toWei: (u) => BigInt(Math.round(u * 1e6)) }); // 1 unit = 1e6 wei (test scale)
 
     // games are registered
-    eq("11 games token-enabled (" + tb.games().join(",") + ")", tb.games().length === 11);
+    eq("12 games token-enabled (" + tb.games().join(",") + ")", tb.games().length === 12); // +fishshooter2 (V2 · NEON ABYSS)
 
     // start a big session so we can measure RTP without running dry
     const st = tb.start({ player, chainId: 11155111, contract, buyInUnits: 5_000_000, settleNonce: NONCE });
