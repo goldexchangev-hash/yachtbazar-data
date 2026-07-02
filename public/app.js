@@ -1604,19 +1604,32 @@
     setBtnBusy(btn, "Depositing Funds…");
     try {
       toast("Confirm the deposit in MetaMask…");
-      const before = await read.balances(account).catch(() => gameWei); // credits BEFORE this deposit (on-chain)
+      const before = await read.balances(account).catch(() => null); // credits BEFORE this deposit (on-chain)
       const tx = await contract.deposit({ value, gasLimit: await estGas("deposit", [], { value }, 130_000n) });
       toast("Deposit submitted — confirming on-chain…");
-      // Don't hang on tx.wait alone: an injected/mobile wallet often stalls delivering the receipt, which
-      // left the credit uncredited until the user tapped the wallet notice or refreshed. Resolve on WHICHEVER
-      // lands first — the receipt OR the on-chain balance actually rising — so the credit shows the instant
-      // chain reflects it. W2: still bounded so a dropped tx can't latch the button busy forever.
-      await Promise.race([
-        tx.wait(1, 180000).catch(() => null),
-        waitBalanceIncrease(before, 180000),
-      ]);
-      toast("Deposited " + usd(weiToUsd(value)), "ok");
-      await refreshBalances();
+      if (before != null) {
+        // Don't hang on tx.wait alone: an injected/mobile wallet often stalls delivering the receipt, which
+        // left the credit uncredited until the user tapped the wallet notice or refreshed. Resolve on WHICHEVER
+        // lands first — the receipt OR the on-chain balance actually rising — so the credit shows the instant
+        // chain reflects it. W2: still bounded so a dropped tx can't latch the button busy forever.
+        await Promise.race([
+          tx.wait(1, 180000).catch(() => null),
+          waitBalanceIncrease(before, 180000),
+        ]);
+        await refreshBalances();
+        // Gate the success toast on the AUTHORITATIVE on-chain balance actually rising — a dropped/never-mined
+        // tx must NOT falsely report "Deposited" (the old bare `await tx.wait` threw + surfaced an error; keep
+        // that guarantee). If it didn't credit yet, say so neutrally — the periodic balance poll still lands it.
+        const after = await read.balances(account).catch(() => before);
+        if (after > before) toast("Deposited " + usd(weiToUsd(value)), "ok");
+        else toast("Deposit sent — it’ll credit automatically the moment it confirms. If it doesn’t show shortly, check MetaMask for a stuck transaction.", "err");
+      } else {
+        // Couldn't read the pre-balance — fall back to the receipt as the confirmation signal (old behavior:
+        // a timeout throws and is surfaced as an error, never a false success).
+        await tx.wait(1, 180000);
+        toast("Deposited " + usd(weiToUsd(value)), "ok");
+        refreshBalances();
+      }
     } catch (e) { txErr(e); }
     finally { clearBtnBusy(btn); updateDepositBtn(); }
   }

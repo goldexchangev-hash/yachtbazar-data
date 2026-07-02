@@ -56,7 +56,7 @@
     let bal;
     try { bal = BigInt(await d.contract.balances(d.account)); }
     catch (e) { return wantWei; } // couldn't read — don't block; fall through to the original path
-    if (bal <= 0n) throw new Error("Your deposit hasn't confirmed on-chain yet — give it a few seconds, then " + (verb || "buy in") + " again.");
+    if (bal <= 0n) throw new Error("No spendable game credits yet — if you just deposited, give it a few seconds and try again; if funds show as locked, tap Recover first.");
     return wantWei > bal ? bal : wantWei;
   }
 
