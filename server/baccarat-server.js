@@ -518,12 +518,11 @@
     // SHORTEN the window: an extra chip tap can never push the deadline back out (no
     // infinite-extension grief).
     function fastForwardIfAllBet(r) {
-      // MULTIPLAYER-ONLY speed-up: when every seated player has chips down, close the window in 3s
-      // so nobody waits on an already-decided table. A SOLO player is "everyone" the moment their
-      // first chip lands — fast-forwarding would slam the window shut mid-bet-building (owner report:
-      // "the timer jumps to ~3s when I place a bet") — so solo keeps the FULL betting window.
+      // When every seated player has chips down, close the window in 3s. Owner-approved for SOLO
+      // too (2026-07-02): with the dial-then-place controls (chips add onto the slider, one zone
+      // tap places the whole amount) a placed bet means the player is DONE — 3s is good pacing.
       const seated = r.seats.filter(Boolean);
-      if (seated.length < 2 || !seated.every((x) => seatStake(x) > 0)) return;
+      if (!seated.length || !seated.every((x) => seatStake(x) > 0)) return;
       const target = now() + 3000;
       if (target < r.deadline) { r.deadline = target; armBetting(r, 3000); }
     }
@@ -813,7 +812,7 @@
     bac.handle(A, { type: "bac:bet:clear" });
     eq("alice cleared to a clean slate", stakeOf(sa()) === 0 && bac.bank.get("guest:alice") === 5000);
 
-    // ── all-bet fast-forward: MULTIPLAYER-ONLY, and only ever SHORTENS the window ──
+    // ── all-bet fast-forward: only ever SHORTENS the window ──
     clock += 3000;
     bac.handle(A, { type: "bac:bet:add", zone: "player", amountUsd: 100 });
     eq("first bettor alone never fast-forwards (other seats still deciding)", r1.deadline - clock > 3000);
@@ -822,15 +821,14 @@
     const dl = r1.deadline; clock += 1000;
     bac.handle(A, { type: "bac:bet:add", zone: "tie", amountUsd: 10 });
     eq("an extra chip tap never EXTENDS the no-more-bets grace", r1.deadline === dl);
-    // SOLO: a lone player's chip keeps the FULL window (owner: the timer must not jump to ~3s).
-    // Isolated engine instance — joining the shared room above would make it a 3-player table.
+    // SOLO also fast-forwards (owner-approved with dial-then-place controls: a placed bet = done)
     {
       const bacSolo = attachBaccarat(Object.assign({ timers: { dealPace: 0, revealHold: 0, revealPace: 0, resultHold: 0, between: 0 } }, noT));
       const S = mkWs("guest:solo");
       bacSolo.handle(S, { type: "bac:room:join", roomId: null });
       const rs = Array.from(bacSolo._mgr.rooms.values()).find((rr) => rr.seats.some((s) => s && s.wallet === "guest:solo"));
       bacSolo.handle(S, { type: "bac:bet:add", zone: "player", amountUsd: 25 });
-      eq("SOLO bet does NOT fast-forward — full betting window kept", rs.deadline - clock > 3000);
+      eq("SOLO bet fast-forwards to the 3s grace (dial-then-place: one placement = done)", rs.deadline - clock <= 3000 && rs.deadline > clock);
     }
 
     // ── ROUND 1: player natural 9 vs banker 5 (T1) — exact nets ──
