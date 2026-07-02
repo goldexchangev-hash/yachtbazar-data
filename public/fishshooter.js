@@ -995,7 +995,7 @@
     // v12.99: TOKEN shows the per-shot debit the INSTANT you tap — subtract paid shots STILL IN FLIGHT (fired but
     // not yet settled by the server). A culled/cleared bullet leaves the array → the balance recovers; a settled hit
     // leaves this sum AND is already reflected in this.balance → no flicker. this.balance stays the authoritative value.
-    if (this._tokenActive()) { var infl = 0; for (var qi = 0; qi < this.bullets.length; qi++) { var qb = this.bullets[qi]; if (qb && !qb.free && !qb.bossId && !qb.settled && (qb.cost || 0) > 0) infl += qb.cost; } if (infl > 0) balShow = Math.max(0, Math.round((balShow - infl) * 100) / 100); }
+    if (this._tokenActive() && !this._bonus && !this._bonusFinale) { var infl = 0; for (var qi = 0; qi < this.bullets.length; qi++) { var qb = this.bullets[qi]; if (qb && !qb.free && !qb.bossId && !qb.settled && (qb.cost || 0) > 0) infl += qb.cost; } if (infl > 0) balShow = Math.max(0, Math.round((balShow - infl) * 100) / 100); } // v13.00 review: skip the in-flight subtraction during a bonus wave/finale — shots are free there and the finale animates the authoritative server total (a pre-wave shot settling would otherwise jump the count-up)
     if (fz2 && fz2.paid && fz2.won > 0) { var dpp = clamp((fz2.t - 1.95) / 1.3, 0, 1); balShow = balShow - fz2.won * (1 - dpp); }
     this.balText.text = "💰 " + this._usd(balShow);
     this.balText.scale.set(1 + (this._depositPulse || 0) * 0.5);
