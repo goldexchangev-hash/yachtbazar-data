@@ -843,13 +843,16 @@
 
   FishTable.prototype._drawJackpotMeter = function () {
     const g = this.jpBar, W = this.W; g.clear();
-    const bw = 220, bh = 12, x = W / 2 - bw / 2, y = 52;
     const frenzy = this._frenzy > 0;
+    // v13.04: the idle "★ JACKPOT $X · Y% ★" meter is HIDDEN (owner disabled it — parity with Fish Shooter). Only
+    // the active FREE-FIRE FRENZY meter renders; in plain play there is no top meter.
+    if (!frenzy) { if (this.jpText) this.jpText.text = ""; return; }
+    const bw = 220, bh = 12, x = W / 2 - bw / 2, y = 52;
     g.beginFill(0x041326, 0.7); g.drawRoundedRect(x - 3, y - 3, bw + 6, bh + 6, 6); g.endFill();
     g.beginFill(0x0c2840); g.drawRoundedRect(x, y, bw, bh, 5); g.endFill();
-    const frac = frenzy ? (this._frenzy / this._frenzyMax) : this._jackpot;
-    g.beginFill(frenzy ? 0x45f0a6 : 0xffd23f); g.drawRoundedRect(x, y, bw * frac, bh, 5); g.endFill();
-    this.jpText.text = frenzy ? ("🌊 FREE-FIRE FRENZY  " + this._frenzy.toFixed(1) + "s  +$" + this._frenzyWon.toFixed(0)) : ("★ JACKPOT $" + this._usd(this._jackpotPool) + "  ·  " + Math.floor(this._jackpot * 100) + "% ★");
+    const frac = this._frenzy / this._frenzyMax;
+    g.beginFill(0x45f0a6); g.drawRoundedRect(x, y, bw * frac, bh, 5); g.endFill();
+    this.jpText.text = "🌊 FREE-FIRE FRENZY  " + this._frenzy.toFixed(1) + "s  +$" + this._frenzyWon.toFixed(0);
   };
 
   /* ---------- aim / input ---------- */
