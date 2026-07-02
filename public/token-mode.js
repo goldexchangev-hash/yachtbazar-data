@@ -72,6 +72,7 @@
     available: function () { return !!client && enabled !== false; },
     active: function () { return !!(client && client.session); },
     resumePending: function () { return resumePending; }, // v12 #2: true while a saved session is mid-resume
+    pendingBuyIn: function () { return busy; }, // true while a buy-in/top-up/recover is mid-flight — checkStrandedLock uses this to avoid flashing Recover before the session opens
     hasSavedSession: function () { try { return !!_loadSession(); } catch (e) { return false; } },
     tokens: function () { return client ? Math.round((client.tokens || 0) * 100) / 100 : 0; },
 

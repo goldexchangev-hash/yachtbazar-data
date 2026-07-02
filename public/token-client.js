@@ -60,6 +60,25 @@
     return wantWei > bal ? bal : wantWei;
   }
 
+  // Ensure the wallet can cover the GAS for an on-chain lock. blackjackBuyIn spends game CREDITS, but the
+  // transaction itself still costs ETH — a player who deposited most of their ETH into credits can be left
+  // unable to pay gas, and the wallet then rejects the buy-in (or it sits unmined and STALLS, which reads as
+  // "the buy-in just doesn't work"). Mirror the wallet's own gate (balance >= maxFeePerGas * gasLimit) and,
+  // if it can't be met, surface a clear faucet path instead of a cryptic failure. Any estimation failure
+  // SKIPS the check (a flaky fee read must never block a legit buy-in).
+  async function ensureGas(d, gasLimit) {
+    try {
+      var prov = (d.signer && d.signer.provider) || d.provider;
+      if (!prov || !prov.getFeeData || !prov.getBalance) return;
+      var res = await Promise.all([prov.getBalance(d.account), prov.getFeeData()]);
+      var bal = BigInt(res[0]), fee = res[1] || {};
+      var price = fee.maxFeePerGas || fee.gasPrice;
+      if (!price) return;
+      var need = BigInt(price) * BigInt(gasLimit || 200000);
+      if (bal < need) { var e = new Error("Not enough ETH in your wallet to cover the buy-in gas fee — your game credits are separate from gas. Keep a little Sepolia ETH in your wallet (get free Sepolia ETH at sepolia-faucet.pk910.de)."); e.gas = true; throw e; }
+    } catch (e) { if (e && e.gas) throw e; }
+  }
+
   // Decode the custom-error NAME from a reverted settleBlackjack simulation. ethers v6 puts ABI-known custom
   // errors in err.revert.name; fall back to scanning the message text.
   function settleRevertName(err) {
@@ -175,6 +194,9 @@
     // withheld LOSS is on record the server still rejects with "tap Recover first" and the Recover button shows.
     const pre = await this._preflight(false);
     if (!pre.ok) throw new Error(pre.error);
+    // The lock tx costs ETH gas even though it spends CREDITS — fail clearly (with a faucet) if the wallet
+    // can't cover the gas, instead of a cryptic reject or a stalled tx.
+    await ensureGas(d, 200000n);
     // Clamp to the CURRENT on-chain credits BEFORE signing so the signature, the lock, and the /start
     // buyInWei all agree — kills the "reverted with credits showing" buy-in failure (rate-drift / rounding).
     want = await clampBuyIn(d, want, "buy in");
@@ -216,6 +238,7 @@
     const d = this.d, player = d.account, contract = d.contractAddr, chainId = Number(d.chainId);
     const sessionId = this.session.sessionId;
     let addWant = (typeof amountWei === "bigint" ? amountWei : BigInt(amountWei));
+    await ensureGas(d, 200000n); // top-up lock also costs ETH gas — fail clearly if the wallet can't cover it
     addWant = await clampBuyIn(d, addWant, "add"); // same clamp: never lock more than the REMAINING on-chain credits
     const addWei = addWant.toString();
     const signature = await d.signer.signMessage(tokenAuthMessage("topup", { player, contract, chainId, sessionId, buyInWei: addWei }, d.ethers.getAddress));
