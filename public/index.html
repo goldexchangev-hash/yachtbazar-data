@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#0c0d16" />
     <meta name="referrer" content="same-origin" />
-    <link rel="manifest" href="manifest.webmanifest?v=1310" />
+    <link rel="manifest" href="manifest.webmanifest?v=1311" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -35,7 +35,7 @@
       <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Press+Start+2P&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
     </noscript>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=1310" />
+    <link rel="stylesheet" href="styles.css?v=1311" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -45,13 +45,13 @@
     <!-- ───────────────────────── Header ───────────────────────── -->
     <header class="topbar">
       <button id="rail-toggle" class="rail-toggle" aria-label="Open menu" title="Menu">☰</button>
-      <span class="build-tag-m" id="build-tag-m" title="Live build version — confirms the deploy is up to date">v13.10</span>
+      <span class="build-tag-m" id="build-tag-m" title="Live build version — confirms the deploy is up to date">v13.11</span>
       <div class="brand">
         <span class="brand-tv">📺</span>
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v13.10</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v13.11</span>
       </div>
       <div class="topbar-right">
         <div class="tb-tools">
@@ -444,7 +444,7 @@
                 <!-- Promo intro reel — autoplays once (muted) on first load, then fades
                      to black and hands off to the game. Replay button under the TV. -->
                 <!-- promo DISABLED for now (owner) — preload none so the reel isn't even downloaded; re-enable via PROMO_ENABLED in app.js -->
-                <video id="promo-video" class="promo-video hidden" playsinline preload="none" muted src="promo.mp4?v=1310"></video>
+                <video id="promo-video" class="promo-video hidden" playsinline preload="none" muted src="promo.mp4?v=1311"></video>
 
                 <!-- Shown while a bet tx is being signed + mined (esp. slow on mobile) -->
                 <div id="tv-pending" class="tv-pending hidden">⏳ SENDING BET…<br />confirm in your wallet, then hold tight</div>
@@ -1034,9 +1034,9 @@
         <div class="card dice-panel fish-panel" id="fish-panel" data-game="fish" hidden>
           <div class="ph-head">
             <h2 class="card-title">🐟 Reef Raiders <span class="ch-tag">CH 17</span></h2>
-            <span class="ph-bankroll muted">Balance: <strong id="fish-balance">$0</strong> · ~90% RTP</span>
+            <span class="ph-bankroll muted">Balance: <strong id="fish-balance">$0</strong> · ~85% RTP</span>
           </div>
-          <p class="muted td-intro">Aim the cannon and <strong>shoot fish to catch them for coins</strong>. Each shot costs <em>power × bet</em>; bigger fish pay more but are harder to land. Catch the <strong>Gold Crab</strong> for a Treasure Chest, or the <strong>Treasure Clam</strong> for a Feeding Frenzy. <strong>~90% RTP</strong> · provably fair.</p>
+          <p class="muted td-intro">Aim the cannon and <strong>shoot fish to catch them for coins</strong>. Each shot costs <em>power × bet</em>; bigger fish pay more but are harder to land. Catch the <strong>Gold Crab</strong> for a Treasure Chest, or the <strong>Treasure Clam</strong> for a Feeding Frenzy. <strong>~85% RTP</strong> · provably fair.</p>
           <div class="side-row"><span class="side-label">Last catch</span><strong class="fish-winval" id="fish-win">$0.00</strong></div>
           <div class="fish-flow" id="fish-flow">
             <span class="ff-label">This session</span>
@@ -1335,13 +1335,13 @@
             <button id="refresh-rooms" class="btn btn-mini" title="Refresh rooms" aria-label="Refresh open rooms">↻</button>
           </h2>
           <ul id="rooms-list" class="rooms-list">
-            <li class="empty">No open rooms. Create one!</li>
+            <li class="empty">No open rooms right now.</li>
           </ul>
         </div>
 
         <!-- House info -->
         <div class="card house-card">
-          <div class="house-row"><span class="muted">House fee</span><strong>10%</strong></div>
+          <div class="house-row"><span class="muted">House fee</span><strong>3%</strong></div>
           <div class="house-row"><span class="muted">Games played</span><strong id="stat-games">0</strong></div>
           <div class="house-row"><span class="muted">Total wagered</span><strong id="stat-wagered">0 ETH</strong></div>
           <div class="house-row"><span class="muted">Fees to treasury</span><strong id="stat-fees">0 ETH</strong></div>
@@ -1407,23 +1407,23 @@
             <span class="mono">sepoliafaucet.com</span>,
             <span class="mono">cloud.google.com/application/web3/faucet/ethereum/sepolia</span>.)
             On a local chain, test ETH is pre-funded — import a test key into MetaMask.</li>
-          <li><b>Deposit ETH</b> into the game from the panel under the TV.</li>
-          <li><b>Create or join a room.</b> Two players, equal bet. Max bet is shown by the
-            form. Everything is pure ETH — no tokens, no swaps.</li>
-          <li><b>Watch the TV.</b> When both bets are in: 3‑2‑1‑FLIP — the coin is
-            decided on‑chain by the block's randomness (<span class="mono">prevrandao</span>),
-            settled instantly inside your transaction, and your screen shows WINNER 😄 or LOSER 😢.</li>
-          <li><b>Winner takes the pot minus the 3% house fee.</b> Withdraw your balance
-            to your wallet anytime.</li>
+          <li><b>Buy in once.</b> Tap <i>🪙 Buy in</i> in the top bar — a single MetaMask popup
+            locks Sepolia test‑ETH and credits your token balance. (No wallet? Just play the
+            <b>demo</b> instantly — it's play‑money, nothing real at stake.)</li>
+          <li><b>Pick a channel &amp; play.</b> Coin Flip, Dice, Crash, Balloon Pop, Plane, Gem Vault,
+            Fish Shooter and Blackjack — every bet settles <b>instantly off‑chain</b>, no popup per bet.</li>
+          <li><b>Provably fair.</b> Each result is decided by a server seed that's <b>hashed before</b> you
+            bet and <b>revealed after</b> — recompute any round yourself from the “provably fair” panel.</li>
+          <li><b>Cash out once.</b> When you're done, cash out your token balance to your wallet in one
+            popup. If a session ever looks stuck, tap <i>Recover</i> to release your locked funds.</li>
         </ol>
         <p class="help-foot muted">
           <b>Hotkeys:</b> <kbd>Space</kbd> flip vs house / confirm bet · <kbd>H</kbd>/<kbd>T</kbd> pick side ·
           <kbd>+</kbd>/<kbd>−</kbd> adjust stake · <kbd>Esc</kbd> close.
         </p>
         <p class="help-foot muted">
-          The result is computed on‑chain and visible in the transaction on Etherscan.
-          This is play‑money on a test network — never use real funds.
-          (A Chainlink VRF randomness upgrade is planned for mainnet.)
+          Every result is provably fair — a committed (hashed) server seed is revealed after each round so you
+          can recompute it yourself. This is play‑money on a test network — never use real funds.
         </p>
       </div>
     </div>
@@ -1480,7 +1480,7 @@
           <div class="bd-row"><span>Your bet</span><strong id="bd-yourbet">—</strong></div>
           <div class="bd-row"><span id="bd-opplabel">Opponent bet</span><strong id="bd-oppbet">—</strong></div>
           <div class="bd-row total"><span>Total pot</span><strong id="bd-pot">—</strong></div>
-          <div class="bd-row fee"><span>House cut (10%) → host pot</span><strong id="bd-fee">—</strong></div>
+          <div class="bd-row fee"><span>House cut (3%)</span><strong id="bd-fee">—</strong></div>
           <div class="bd-row win"><span>🏆 Winner takes home</span><strong id="bd-win">—</strong></div>
         </div>
         <button id="bet-accept" class="btn btn-primary btn-block">✓ Accept bet &amp; flip</button>
@@ -1557,23 +1557,23 @@
     </aside>
 
     <script defer src="vendor/ethers.umd.min.js?v=ethers-1"></script>
-    <script defer src="config.js?v=1310"></script>
-    <script defer src="contract.js?v=1310"></script>
-    <script defer src="chiptune.js?v=1310"></script>
-    <script defer src="scenes.js?v=1310"></script>
-    <script defer src="tv.js?v=1310"></script>
+    <script defer src="config.js?v=1311"></script>
+    <script defer src="contract.js?v=1311"></script>
+    <script defer src="chiptune.js?v=1311"></script>
+    <script defer src="scenes.js?v=1311"></script>
+    <script defer src="tv.js?v=1311"></script>
     <!-- P6: poker is a hidden, unopenable channel (absent from GAME_CHANNEL, no UI/URL entry) — its 3 scripts
          (~42KB) were parsed by every visitor for nothing. Removed. Every PokerUI call site is `if (window.PokerUI)`
          -guarded, so this is inert. To re-enable: lazy-load these via loadScriptOnce + add a GAME_CHANNEL entry.
-    <script defer src="poker-engine.js?v=1310"></script>
-    <script defer src="poker-bots.js?v=1310"></script>
-    <script defer src="poker-ui.js?v=1310"></script> -->
-    <script defer src="crash-engine.js?v=1310"></script>
-    <script defer src="crash-render.js?v=1310"></script>
-    <script defer src="profile.js?v=1310"></script>
-    <script defer src="token-client.js?v=1310"></script>
-    <script defer src="token-mode.js?v=1310"></script>
-    <script defer src="crash-rounds-client.js?v=1310"></script>
-    <script defer src="app.js?v=1310"></script>
+    <script defer src="poker-engine.js?v=1311"></script>
+    <script defer src="poker-bots.js?v=1311"></script>
+    <script defer src="poker-ui.js?v=1311"></script> -->
+    <script defer src="crash-engine.js?v=1311"></script>
+    <script defer src="crash-render.js?v=1311"></script>
+    <script defer src="profile.js?v=1311"></script>
+    <script defer src="token-client.js?v=1311"></script>
+    <script defer src="token-mode.js?v=1311"></script>
+    <script defer src="crash-rounds-client.js?v=1311"></script>
+    <script defer src="app.js?v=1311"></script>
   </body>
 </html>

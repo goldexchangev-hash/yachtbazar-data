@@ -676,7 +676,7 @@
   Slots3D.prototype._clearWinFx = function () {
     for (const p of this._pulses) { p.tile.scale.set(1, 1, 1); p.tile.userData.mat.emissiveIntensity = 0.55; }
     this._pulses = []; this._winFx = null; if (this.els.win) this.els.win.textContent = this._usd(0);
-    for (const c of this._coins) { this.fx.remove(c.s); }
+    for (const c of this._coins) { this.fx.remove(c.s); c.s.material.dispose(); } // L4: dispose per-coin SpriteMaterials (mirrors the gem branch + the line-662 expiry path) — the abrupt clear was leaking them; the shared texture survives
     this._coins = [];
     for (const g of this._gems) { this.fx.remove(g.s); g.s.material.dispose(); }
     this._gems = [];
@@ -763,7 +763,7 @@
   Slots3D.prototype.setEnabled = function (on) { this._enabled = !!on; this._renderSpinBtn(); };
   Slots3D.prototype.setBalance = function (usd) { this.balance = Math.max(0, Math.round((+usd || 0) * 100) / 100); this._renderHud(); this._renderSpinBtn(); };
   Slots3D.prototype.setEthUsd = function (n) { if (n > 0) { this.ethUsd = n; this._renderHud(); } };
-  Slots3D.prototype.setMode = function () { /* demo-only for now; kept for API symmetry */ };
+  Slots3D.prototype.setMode = function () { /* C4: NO-OP, but this game is NOT demo-only — it plays REAL money via the token bridge whenever root.TokenMode.active() (decided per spin in _spinToken), demo otherwise. There is no stored mode to set. Do NOT "enable real money" by editing payout/RNG here — the money path already lives in _spinToken + the server. */ };
   Slots3D.prototype.restartDemo = function () {
     clearTimeout(this._bonusT); clearTimeout(this._idleT); this._bonusT = 0; this._idleT = 0;
     this._bonus = null; this._spinning = false; this.state = "idle";

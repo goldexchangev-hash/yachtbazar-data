@@ -556,6 +556,10 @@
   function frame(now) {
     if (!running) return;
     if (document.hidden || !canvas || !canvas.offsetParent) { last = now; setTimeout(() => { if (running) requestAnimationFrame(frame); }, 200); return; }
+    // L3: when the scene is idle (no live round, no fx/plume) cap the loop to ~30fps instead of 60 — the per-frame
+    // work is a no-op at idle, so this halves the GPU/CPU spend while the crash channel sits open. Do NOT advance
+    // `last` on a skip (dt must accumulate correctly for the next real frame).
+    if (scene.state === "idle" && !fx.length && !plume.length && now - last < 33) { requestAnimationFrame(frame); return; }
     let dt = (now - last) / 1000; last = now; dt = Math.min(dt, 0.05);
     if (onFrameCb) try { onFrameCb(dt); } catch (e) { }
     const m = Math.max(1, scene.mult), t = now / 1000;

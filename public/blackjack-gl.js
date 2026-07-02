@@ -84,7 +84,12 @@
         renderer.render(scene, cam);
       }
       GL._on = true; GL._raf = requestAnimationFrame(loop);
-      GL._stop = function () { GL._on = false; if (GL._raf) cancelAnimationFrame(GL._raf); root.removeEventListener("resize", resize); try { renderer.dispose(); } catch (e) {} };
+      GL._stop = function () { GL._disposed = true; GL._on = false; if (GL._raf) cancelAnimationFrame(GL._raf); root.removeEventListener("resize", resize); try { renderer.dispose(); } catch (e) {} };
+      // L1: pause/resume the ambient loop WITHOUT disposing the renderer (stop() is one-shot + tears down the GL
+      // context). The felt iframe is display:none when you leave the Blackjack channel but the tab stays VISIBLE,
+      // so document.hidden is false and the loop would otherwise render ~30fps into a hidden iframe all session.
+      GL.pause = function () { GL._on = false; if (GL._raf) { cancelAnimationFrame(GL._raf); GL._raf = 0; } };
+      GL.resume = function () { if (GL._disposed || GL._on) return; GL._on = true; last = 0; GL._raf = requestAnimationFrame(loop); };
       GL._resize = resize;
       return true;
     } catch (e) { if (root.console) console.warn("BlackjackGL disabled:", e && e.message); return false; }

@@ -974,7 +974,7 @@
   FishTable.prototype.setEnabled = function (on) { this._enabled = !!on; this._renderHud(); };
   FishTable.prototype.setBalance = function (usd) { this.balance = Math.max(0, Math.round((+usd || 0) * 100) / 100); this._renderHud(); };
   FishTable.prototype.setEthUsd = function (n) { if (n > 0) { this.ethUsd = n; this._renderHud(); } };
-  FishTable.prototype.setMode = function () { /* demo-only for now; kept for API symmetry */ };
+  FishTable.prototype.setMode = function () { /* C4: NO-OP, but Reef Raiders is NOT demo-only — it plays REAL money via the token bridge whenever root.TokenMode.active() (decided per shot), demo otherwise. There is no stored mode. Do NOT edit payout/RNG here believing no real money flows — this is the very game the v12.75 house-drain fix was on. */ };
   FishTable.prototype.setBet = function (v) { this.unitBet = Math.max(MIN_BET, Math.min(MAX_BET, Math.round((+v || MIN_BET) * 100) / 100)); this._renderHud(); };
   FishTable.prototype.setPower = function (p) { this.power = clamp(p | 0, 1, MAX_POWER); this._renderHud(); };
   FishTable.prototype.restartDemo = function () {

@@ -13,7 +13,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Space+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
     <noscript><link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Space+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet" /></noscript>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🃏</text></svg>" />
-    <link rel="stylesheet" href="blackjack.css?v=1310" />
+    <link rel="stylesheet" href="blackjack.css?v=1311" />
     <style>
       /* TV-embed mode (?tv=1): just the felt, scaled to fill the 4:3 screen. The
          betting/action controls render in the PARENT page's dock under the TV, so the
@@ -93,14 +93,14 @@
 
     <div class="toast" id="toast"></div>
 
-    <script src="blackjack-shuffle.js?v=1310"></script>
-    <script src="blackjack-rules.js?v=1310"></script>
-    <script src="blackjack-net.js?v=1310"></script>
-    <script src="blackjack-fx.js?v=1310"></script>
-    <script src="blackjack-sfx.js?v=1310"></script>
+    <script src="blackjack-shuffle.js?v=1311"></script>
+    <script src="blackjack-rules.js?v=1311"></script>
+    <script src="blackjack-net.js?v=1311"></script>
+    <script src="blackjack-fx.js?v=1311"></script>
+    <script src="blackjack-sfx.js?v=1311"></script>
     <script src="vendor/three.min.js?v=three-1"></script>
-    <script src="blackjack-gl.js?v=1310"></script>
-    <script src="blackjack-ui.js?v=1310"></script>
+    <script src="blackjack-gl.js?v=1311"></script>
+    <script src="blackjack-ui.js?v=1311"></script>
     <script>
       window.addEventListener("DOMContentLoaded", function () {
         var id = function (x) { return document.getElementById(x); };
@@ -137,6 +137,7 @@
             var d = e.data; if (!d) return;
             if (d.type === "bj:active") {
               if (window.BlackjackSFX) window.BlackjackSFX.muted = !d.active;
+              try { if (window.BlackjackGL) { if (d.active) { window.BlackjackGL.resume && window.BlackjackGL.resume(); } else { window.BlackjackGL.pause && window.BlackjackGL.pause(); } } } catch (e) {} // L1: stop the ambient WebGL render loop while off-channel
               if (d.ethUsd && window.BJ && window.BJ.setRate) window.BJ.setRate(d.ethUsd); // v6 #29: live ETH/USD for the ≈Ξ labels (cosmetic)
               if (d.active && window.BJ && window.BJ.room) window.BJ._renderDock(); // re-sync the parent dock on channel re-entry
             }

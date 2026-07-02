@@ -558,7 +558,7 @@ wss.on("connection", (ws, req) => {
       // client-supplied one, and cap the length.
       const from = clients.get(ws)?.address || null;
       const text = cleanChat(data.text).slice(0, 240);            // v7 #14: NFKC + strip zero-width/bidi/zalgo
-      const name = cleanChat(data.name).slice(0, 24).trim() || null; // chosen display name (same cleaning)
+      const name = (cleanChat(data.name).replace(/\(\s*host\s*\)/ig, "").slice(0, 24).trim()) || null; // S1: strip a literal "(host)" suffix so a player can't impersonate the house in chat (parens required so real names like "Ghostrider" are untouched)
       if (from && text.trim()) {
         const line = { type: "chat", from, name, text, ts: Date.now() };
         chatHistory.push({ from, name, text, ts: line.ts });

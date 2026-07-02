@@ -512,15 +512,17 @@ function makeTokenBridge(opts) {
   // was already debited at reserve, so a bust just FINALIZES the interrupted round — deterministic + re-derivable
   // (the recorded cashOutAt replays to payout 0). Best-effort; never throws.
   function drainOrphanReservations() {
-    let drained = 0;
+    let drained = 0, failed = 0;
     for (const s of sessions.values()) {
       if (!s || s.closed) continue;
       for (const rec of (s.bets || [])) {
         if (rec && rec.kind === "crashRound" && rec.open) {
-          try { resolveReserved({ sessionId: s.id, nonce: rec.nonce, cashOutAt: 1e9, forceBust: true }); drained++; } catch (e) {} // v13 #1: forceBust ⇒ payout 0 even at a 1000× crashPoint (no cap-win drain)
+          try { resolveReserved({ sessionId: s.id, nonce: rec.nonce, cashOutAt: 1e9, forceBust: true }); drained++; } // v13 #1: forceBust ⇒ payout 0 even at a 1000× crashPoint (no cap-win drain)
+          catch (e) { failed++; try { console.warn("[token] boot orphan-drain failed for session " + s.id + " nonce " + rec.nonce + ": " + (e && e.message)); } catch (_) {} } // C1: never break boot, but STOP swallowing — a persistent failure here re-blocks blackjack on that session, so surface it
         }
       }
     }
+    if (failed) { try { console.warn("[token] boot orphan-drain: " + drained + " drained, " + failed + " FAILED (see above)"); } catch (_) {} }
     return drained;
   }
 

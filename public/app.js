@@ -435,6 +435,7 @@
     // stake). Poll the live slider so the floating bar's range + amount never go stale —
     // critically so dragging "to the max" can actually reach the real ceiling.
     setInterval(() => {
+      if (document.hidden) return; // L5: don't sync the bet-bar mirror while the tab is backgrounded (nothing's visible; saves 350ms wakeups)
       if (!document.body.classList.contains("has-betbar")) return;
       const s = curStakeSlider(), f = $("bbs-slider"); if (!s || !f) return;
       if (f.min !== String(s.min)) f.min = s.min;
@@ -1502,7 +1503,7 @@
       $("rooms-count").textContent = rooms.length;
       list.innerHTML = "";
       if (!rooms.length) {
-        list.innerHTML = '<li class="empty">No open rooms. Create one!</li>';
+        list.innerHTML = '<li class="empty">No open rooms right now.</li>'; // U2: room creation is retired/hidden — don't prompt "Create one!"
         return;
       }
       for (const r of rooms) {
@@ -2328,7 +2329,7 @@
     return new Promise((res, rej) => {
       // v13 #38: dedup by src so a watchdog re-kick (an ensure*Ready promise nulled) never appends a SECOND <script>
       // for the same file while the first is still downloading (the load race). The selector keys on the exact
-      // versioned src ("...?v=1310"), so a later ?v bump is a distinct file and still loads fresh — no stale cache.
+      // versioned src ("...?v=1311"), so a later ?v bump is a distinct file and still loads fresh — no stale cache.
       const sel = 'script[data-loadonce="' + src.replace(/"/g, "&quot;") + '"]';
       const existing = document.querySelector(sel);
       if (existing) {
@@ -2364,7 +2365,7 @@
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=1310"))
+      .then(() => loadScriptOnce("slots.js?v=1311"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -2374,11 +2375,11 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=1310"))
-      .then(() => loadScriptOnce("pressure-render.js?v=1310"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=1310"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=1311"))
+      .then(() => loadScriptOnce("pressure-render.js?v=1311"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=1311"))
       // optional 3D red balloon (Three.js) — falls back to the 2D balloon if it can't load
-      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1310")).catch(() => {}))
+      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1311")).catch(() => {}))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -2450,10 +2451,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=1310"))
-      .then(() => loadScriptOnce("plane-render.js?v=1310"))
-      .then(() => loadScriptOnce("plane-feed.js?v=1310"))
-      .then(() => loadScriptOnce("plane-ui.js?v=1310"))
+      .then(() => loadScriptOnce("plane-engine.js?v=1311"))
+      .then(() => loadScriptOnce("plane-render.js?v=1311"))
+      .then(() => loadScriptOnce("plane-feed.js?v=1311"))
+      .then(() => loadScriptOnce("plane-ui.js?v=1311"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2564,8 +2565,8 @@
     if (window.Slots3D) return Promise.resolve(true);
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("slots3d-engine.js?v=1310"))
-      .then(() => loadScriptOnce("slots3d.js?v=1310"))
+      .then(() => loadScriptOnce("slots3d-engine.js?v=1311"))
+      .then(() => loadScriptOnce("slots3d.js?v=1311"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2622,8 +2623,8 @@
     if (window.FishTable) return Promise.resolve(true);
     if (fishLoadPromise) return fishLoadPromise;
     fishLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishtable-engine.js?v=1310"))
-      .then(() => loadScriptOnce("fishtable.js?v=1310"))
+      .then(() => loadScriptOnce("fishtable-engine.js?v=1311"))
+      .then(() => loadScriptOnce("fishtable.js?v=1311"))
       .then(() => true)
       .catch((e) => { fishLoadPromise = null; throw e; });
     return fishLoadPromise;
@@ -2706,7 +2707,7 @@
     if (window.SwoopGame) return Promise.resolve(true);
     if (swoopLoadPromise) return swoopLoadPromise;
     swoopLoadPromise = loadPlayCanvasOnce()
-      .then(() => loadScriptOnce("swoop3d.js?v=1310"))
+      .then(() => loadScriptOnce("swoop3d.js?v=1311"))
       .then(() => true)
       .catch((e) => { swoopLoadPromise = null; throw e; });
     return swoopLoadPromise;
@@ -2787,8 +2788,8 @@
     if (window.FishShooter) return Promise.resolve(true);
     if (fishshooterLoadPromise) return fishshooterLoadPromise;
     fishshooterLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishshooter-engine.js?v=1310")) // OWN engine (decoupled from Reef's fishtable-engine.js)
-      .then(() => loadScriptOnce("fishshooter.js?v=1310"))
+      .then(() => loadScriptOnce("fishshooter-engine.js?v=1311")) // OWN engine (decoupled from Reef's fishtable-engine.js)
+      .then(() => loadScriptOnce("fishshooter.js?v=1311"))
       .then(() => true)
       .catch((e) => { fishshooterLoadPromise = null; throw e; });
     return fishshooterLoadPromise;
@@ -2873,7 +2874,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1310"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1311"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -2900,7 +2901,7 @@
   function loadRail3dOnce() {
     if (window.Rail3D) return Promise.resolve(true);
     if (rail3dLoadPromise) return rail3dLoadPromise;
-    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1310")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
+    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1311")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
     return rail3dLoadPromise;
   }
   function buildRail3d() {
@@ -2921,7 +2922,7 @@
   function loadDice2_3dOnce() {
     if (window.TwoDice3D) return Promise.resolve(true);
     if (d2_3dLoadPromise) return d2_3dLoadPromise;
-    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1310")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
+    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1311")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
     return d2_3dLoadPromise;
   }
   function buildDice2_3d() {
@@ -3110,7 +3111,7 @@
   }
   // Token bets in canvas games (fish/slots3d/…) move TokenMode.tokens() without always firing onChange, so
   // poll lightly to keep the tracker live; the delta-watcher dedupes via _sesBal so this never double-counts.
-  setInterval(function () { try { if ((window.TokenMode && TokenMode.active()) || currentGame === "blackjack") paintSession(); } catch (e) {} try { paintTvBalance(); } catch (e) {} }, 1500);
+  setInterval(function () { if (document.hidden) return; try { if ((window.TokenMode && TokenMode.active()) || currentGame === "blackjack") paintSession(); } catch (e) {} try { paintTvBalance(); } catch (e) {} }, 1500); // L5: skip the session/TV-balance repaint while the tab is hidden
   // Mirror demo credits into the same guards the live readouts use, so the
   // per-game affordability hints ("not enough credits") work unchanged.
   function demoSyncBalance() {
@@ -3693,7 +3694,7 @@
       const tableWallet = account || bjGuestId();
       // &r=<nonce> in the QUERY forces a real iframe reload (so the felt re-reads the #bjsession from the
       // hash and re-sends its hello → the server re-binds the table to the token session).
-      let src = "blackjack.html?tv=1&v=1310&r=" + (++bjFeltNonce) + "&guest=" + encodeURIComponent(tableWallet);
+      let src = "blackjack.html?tv=1&v=1311&r=" + (++bjFeltNonce) + "&guest=" + encodeURIComponent(tableWallet);
       let tokenHash = "";
       // PREFERRED real-money path: fund the table with the player's TOKEN session (chips = tokens, no lock step).
       if (account && window.TokenMode && TokenMode.active && TokenMode.active() && TokenMode.session) {
@@ -5395,7 +5396,7 @@
     });
     // selecting a game closes the drawer on mobile
     document.querySelectorAll("#game-nav .game-card").forEach((b) => b.addEventListener("click", () => { if (window.matchMedia("(max-width:900px)").matches) closeRail(); }));
-    { const w = $("rail-wallet"); if (w) w.onclick = () => { closeRail(); const t = $("game-balance") || $("deposit-input"); if (t) t.scrollIntoView({ behavior: "smooth", block: "center" }); }; }
+    { const w = $("rail-wallet"); if (w) w.onclick = () => { closeRail(); const t = ["token-mount", "game-balance", "demo-balance", "deposit-input"].map($).find((el) => el && el.getClientRects().length) || $("connect-btn"); if (t) t.scrollIntoView({ behavior: "smooth", block: "center" }); }; } // U3: scroll to the first VISIBLE wallet element (in demo, game-balance/deposit are hidden — was a dead tap)
     { const h = $("rail-howto"); if (h) h.onclick = () => { closeRail(); $("help-modal").classList.remove("hidden"); }; }
     { const ht = $("rail-host"); if (ht) ht.onclick = () => { closeRail(); const t = $("host-tools"); if (t) { t.hidden = false; t.scrollIntoView({ behavior: "smooth", block: "center" }); } }; }
     { const rp = $("rail-profile"); if (rp) rp.onclick = () => { closeRail(); openProfile(); }; }
@@ -5462,7 +5463,7 @@
 
     // ── Mobile bottom tab bar ──
     { const b = $("bn-games"); if (b) b.onclick = (e) => { e.stopPropagation(); closeChat(); document.body.classList.toggle("rail-open"); }; }
-    { const b = $("bn-wallet"); if (b) b.onclick = () => { closeRail(); closeChat(); const t = $("game-balance") || $("deposit-input"); if (t) t.scrollIntoView({ behavior: "smooth", block: "center" }); }; }
+    { const b = $("bn-wallet"); if (b) b.onclick = () => { closeRail(); closeChat(); const t = ["token-mount", "game-balance", "demo-balance", "deposit-input"].map($).find((el) => el && el.getClientRects().length) || $("connect-btn"); if (t) t.scrollIntoView({ behavior: "smooth", block: "center" }); }; } // U3: first VISIBLE wallet element (demo-safe)
     { const b = $("bn-chat"); if (b) b.onclick = (e) => { e.stopPropagation(); closeRail(); toggleChat(); }; }
     { const b = $("bn-help"); if (b) b.onclick = () => { closeRail(); closeChat(); $("help-modal").classList.remove("hidden"); }; }
     // ── Music dropdown: open the track menu, play/pause, prev/next, pick a track ──
