@@ -22,6 +22,7 @@
   var enabled = null;  // cached /api/token/status.enabled (null = unknown)
   var busy = false;
   var stranded = 0;    // USD locked on-chain (bjLocked) with NO active session — set by app.js
+  var _maxWin = 0;     // M4: per-session max-win (profit) cap in USD, from /status (0 = uncapped) — disclosed at buy-in
   var resumePending = false; // v12 #2: a saved session is mid-resume (client.resume in flight) — suppress the Recover
                              // banner until it resolves, so a tap can't force-settle a session that's coming back.
   // Remember the amount the player slid to, so a background re-render (a balance poll calls render())
@@ -52,7 +53,7 @@
       try { client = new root.TokenBridgeClient(d); } catch (e) { client = null; }
       render();
       // Probe the server flag once so the UI knows whether to offer token play.
-      if (client) client.status().then(function (s) { enabled = !!(s && s.enabled); render(); }).catch(function () { enabled = false; render(); });
+      if (client) client.status().then(function (s) { enabled = !!(s && s.enabled); _maxWin = (s && typeof s.maxWinUnits === "number" && s.maxWinUnits > 0) ? s.maxWinUnits : 0; render(); }).catch(function () { enabled = false; render(); });
       // Reconnect to a session that survived a page refresh (the server still has it) — or clear it
       // cleanly if the server lost it (so we never show ghost tokens after a refresh).
       try {
@@ -107,7 +108,7 @@
         var amountWei = deps.usdToWei(usd);
         note("Confirm the buy-in in your wallet (one time)…", "ok");
         var r = await client.buyIn(amountWei);
-        note("Bought in — " + fmt(r.tokens) + " tokens. Play any game, no more popups 🪙", "ok");
+        note("Bought in — " + fmt(r.tokens) + " tokens. Play any game, no more popups 🪙" + (_maxWin > 0 ? " · Max win this session: " + fmt(_maxWin) + " over your buy-in" : ""), "ok"); // M4: disclose the session max-win cap up front
         changed(true); // #19: force HUD update now (bypass any fish reveal-window hold)
         _saveSession(); // survive a page refresh
       } catch (e) {

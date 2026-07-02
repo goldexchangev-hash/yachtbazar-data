@@ -890,7 +890,7 @@ function makeTokenService(opts) {
     // but STRIP the raw absolute state-file `path` — an internal filesystem detail that shouldn't be disclosed.
     let store = (opts.storeInfo ? opts.storeInfo() : null);
     if (store && typeof store === "object") { store = Object.assign({}, store); delete store.path; delete store.file; delete store.dir; }
-    return { ok: true, enabled: true, signerAddress: (opts.signerAddress ? opts.signerAddress() : null), ethUsd: (opts.ethUsd ? opts.ethUsd() : null), priceReady: (opts.ethUsdReady ? !!opts.ethUsdReady() : true), store: store, games: bridge.games(), model: "server commit-reveal token bridge (no VRF)" }; }
+    return { ok: true, enabled: true, signerAddress: (opts.signerAddress ? opts.signerAddress() : null), ethUsd: (opts.ethUsd ? opts.ethUsd() : null), priceReady: (opts.ethUsdReady ? !!opts.ethUsdReady() : true), store: store, games: bridge.games(), maxWinUnits: (opts.maxWinUnits != null && isFinite(opts.maxWinUnits) ? Number(opts.maxWinUnits) : null), model: "server commit-reveal token bridge (no VRF)" }; } // M4: disclose the per-session max-win (profit) cap so a clamped win is never a surprise (null = uncapped)
 
   // Owner-facing AGGREGATE of every OPEN token session — so the house can see its live
   // exposure at a glance (locked principal it can't withdraw yet + unrealized P&L that
