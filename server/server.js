@@ -93,7 +93,11 @@ function writeJsonAtomic(file, obj) {
   const data = JSON.stringify(obj);
   const fd = fs.openSync(tmp, "w");
   try { fs.writeFileSync(fd, data); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
-  JSON.parse(fs.readFileSync(tmp, "utf8")); // readback: refuse to promote a corrupt temp
+  // P3-step1: readback verifies the temp isn't truncated/corrupt before we promote it. `data` came from
+  // JSON.stringify (valid by construction), so a BYTE-EQUALITY check is exactly as strong as re-parsing —
+  // and skips the parse + object allocation on every save (the token-bridge writes the whole sessions map
+  // per bet, so this is on the hot path). A partial/interrupted write won't byte-match → we throw, same as before.
+  if (fs.readFileSync(tmp, "utf8") !== data) throw new Error("write-verify mismatch: refusing to promote a corrupt temp");
   fs.renameSync(tmp, file);
   // mega-hunt LOW: fsync the PARENT DIR so the rename (the directory entry) is durable across a power loss —
   // the file DATA was fsync'd above, but the rename can still sit in the OS cache. Best-effort: some platforms
@@ -410,9 +414,18 @@ function broadcast(obj) {
   }
 }
 
-function broadcastPlayers() {
+function broadcastPlayersNow() {
   const players = activePlayers();
   broadcast({ type: "players", players, count: players.length });
+}
+// C2: coalesce rapid presence changes. After a deploy, every client reconnects at once — each connect fired a
+// full broadcastPlayers() to ALL sockets (O(N²) sends, a real storm). A 250ms trailing debounce recomputes the
+// roster ONCE at fire time and broadcasts it once; a newly-connected socket still sees presence within 250ms.
+let _bpTimer = null;
+function broadcastPlayers() {
+  if (_bpTimer) return;
+  _bpTimer = setTimeout(() => { _bpTimer = null; broadcastPlayersNow(); }, 250);
+  if (_bpTimer && _bpTimer.unref) _bpTimer.unref();
 }
 
 // #9/#22: per-connection token-bucket. One socket flooding hello/chat/rooms-updated/bet-proposal makes

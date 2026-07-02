@@ -3,7 +3,7 @@
    are picked up immediately and users never get a stale build online), caching
    each response, and falls back to cache only when offline. Cross-origin
    requests (RPC node, fonts, price API, MetaMask) are left untouched. */
-const CACHE = "ctf-v13.11";
+const CACHE = "ctf-v13.12";
 // P1: the vendor libs (PIXI/Three/PlayCanvas/ethers, ~3.9MB) NEVER change between deploys, yet the old
 // single-cache design deleted them on every version bump → returning players re-downloaded the lot each deploy.
 // Keep them in a SEPARATE long-lived cache that the activate purge whitelists; paired with library-pinned ?v
