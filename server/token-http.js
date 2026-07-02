@@ -973,6 +973,21 @@ function makeTokenService(opts) {
     const r = bridge.applyExternal({ sessionId: s.id, game: "blackjack", betUnits: betUnits, payoutUnits: payoutUnits, ref: ref });
     return r.tokens;
   }
+  // ── TOKEN-FUNDED BACCARAT (spec §8) — additive SIBLING of applyBlackjackNet, identical body but
+  // game:"baccarat" so ledger rows are labeled per-game. Deliberately NOT a generalization of the
+  // audited applyBlackjackNet path (which stays byte-identical): the open-session + player-match +
+  // liveCrashSession gates are the v12.95/v12.99 lessons and must hold for every external engine.
+  function applyBaccaratNet(player, sessionId, betUnits, payoutUnits, ref) {
+    const s = bridge.session(String(sessionId || ""));
+    if (!s || s.closed || s.settlement) throw new Error("no open token session");
+    if (String(s.player).toLowerCase() !== String(player || "").toLowerCase()) throw new Error("session does not belong to player");
+    // v12.99 gate (see applyBlackjackNet above): a GENUINELY-LIVE server-paced crash round on this session
+    // must block a baccarat net-apply, or applyExternal's orphan self-heal would force-bust the live round.
+    // A true SIGKILL orphan has an EMPTY RAM map after a restart → liveCrashSession is false → still heals.
+    if (liveCrashSession(s.id)) throw new Error("finish your live round before placing a baccarat bet");
+    const r = bridge.applyExternal({ sessionId: s.id, game: "baccarat", betUnits: betUnits, payoutUnits: payoutUnits, ref: ref });
+    return r.tokens;
+  }
   // True if the player has a blackjack hand/bet in flight against their token session — used to REFUSE a
   // cash-out / recover mid-hand (else the settle would lock in a debited stake before the hand resolves).
   function liveExternal(player) { try { return !!(opts.hasLiveExternal && opts.hasLiveExternal(player)); } catch (e) { return false; } }
@@ -1027,7 +1042,7 @@ function makeTokenService(opts) {
   // Synchronous + swallow-on-fail (we're on the way down; never throw out of a signal handler).
   function flushPersist() { try { saveHttp(); } catch (e) {} }
 
-  return { doStart, doPlay, doTopUp, doSettle, doSession, doRelease, doAdminRelease, doAdminPlayer, doHouseState, status, houseState, verifySession, tokensOf, applyBlackjackNet, liveExternal, setActiveCrashCheck, liveCrashSession, liveCrashPlayer, flushPersist, _bridge: bridge };
+  return { doStart, doPlay, doTopUp, doSettle, doSession, doRelease, doAdminRelease, doAdminPlayer, doHouseState, status, houseState, verifySession, tokensOf, applyBlackjackNet, applyBaccaratNet, liveExternal, setActiveCrashCheck, liveCrashSession, liveCrashPlayer, flushPersist, _bridge: bridge };
 }
 
 // Wire the service onto an Express app, behind a flag. Live demo is untouched.

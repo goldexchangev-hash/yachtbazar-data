@@ -51,6 +51,7 @@
         fishshooter: $("layer-fishshooter"),
         fishshooter2: $("layer-fishshooter2"),
         blackjack: $("layer-blackjack"),
+        baccarat: $("layer-baccarat"),
         loading: $("layer-loading"),
       };
       this._activeChannel = 8; // 8 = Flip, 9 = Dice — so idle() advertises the active game
@@ -205,6 +206,7 @@
       this._clearConfetti();
       this.setChannel(this._activeChannel || 8); // keep showing the active game's channel
       if (this._activeChannel === 16) return this._blackjackIdle(); // guest-friendly: show the live felt even with no wallet
+      if (this._activeChannel === 21) return this._baccaratIdle();  // baccarat felt is guest-friendly too (BEFORE the connected check, CH 16 pattern)
       if (!this._connected) return this._staticIdle();          // disconnected → static on every channel
       if (this._activeChannel === 11) return this._crashIdle();  // rocket room
       if (this._activeChannel === 12) return this._slotsIdle();  // reels room
@@ -225,7 +227,7 @@
       if (c === this._connected) return;
       this._connected = c;
       const p = this._phase;
-      if (p === "idle" || p === "crash" || p === "slots" || p === "pressure" || p === "fish" || p === "swoop" || p === "fishshooter" || p === "fishshooter2" || p === "plane" || p === "slots3d" || p === "blackjack") this.idle(); // only refresh a resting screen
+      if (p === "idle" || p === "crash" || p === "slots" || p === "pressure" || p === "fish" || p === "swoop" || p === "fishshooter" || p === "fishshooter2" || p === "plane" || p === "slots3d" || p === "blackjack" || p === "baccarat") this.idle(); // only refresh a resting screen
     },
 
     // app.js sets the channel's title here; the TV shows it in the ready room
@@ -533,6 +535,13 @@
       this._show("blackjack");
     },
 
+    // Baccarat (CH 21): same contract as blackjack — the felt runs in its own iframe over
+    // its own WebSocket (guest-friendly play-money), so just reveal its layer.
+    _baccaratIdle() {
+      this._setStatic(0.03);
+      this._show("baccarat");
+    },
+
     // Turn the dial between Coin Flip (08) and Dice (09) with a CRT "tune" effect.
     async changeChannel(num) {
       const seq = ++this._seq;
@@ -559,6 +568,7 @@
       else if (num === 18) this._swoopIdle();
       else if (num === 19) this._fishshooterIdle();
       else if (num === 20) this._fishshooter2Idle();
+      else if (num === 21) this._baccaratIdle();
       else this._readyRoom();
       await sleep(160); if (seq !== this._seq) return;
       this.screenEl.classList.remove("ch-switch");

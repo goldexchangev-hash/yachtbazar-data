@@ -1117,7 +1117,8 @@ body:not(.game-swoop) [data-game="swoop"] { display: none !important; }
 body:not(.game-fishshooter) [data-game="fishshooter"] { display: none !important; }
 body:not(.game-fishshooter2) [data-game="fishshooter2"] { display: none !important; }
 body:not(.game-blackjack) [data-game="blackjack"] { display: none !important; }
-body.game-dice [data-game="flip"], body.game-twodice [data-game="flip"], body.game-crash [data-game="flip"], body.game-slots [data-game="flip"], body.game-pressure [data-game="flip"], body.game-plane [data-game="flip"], body.game-slots3d [data-game="flip"], body.game-fish [data-game="flip"], body.game-swoop [data-game="flip"], body.game-fishshooter [data-game="flip"], body.game-fishshooter2 [data-game="flip"], body.game-blackjack [data-game="flip"] { display: none !important; }
+body:not(.game-baccarat) [data-game="baccarat"] { display: none !important; }
+body.game-dice [data-game="flip"], body.game-twodice [data-game="flip"], body.game-crash [data-game="flip"], body.game-slots [data-game="flip"], body.game-pressure [data-game="flip"], body.game-plane [data-game="flip"], body.game-slots3d [data-game="flip"], body.game-fish [data-game="flip"], body.game-swoop [data-game="flip"], body.game-fishshooter [data-game="flip"], body.game-fishshooter2 [data-game="flip"], body.game-blackjack [data-game="flip"], body.game-baccarat [data-game="flip"] { display: none !important; }
 /* …but the channel selector tiles are always visible (they're how you switch) */
 #game-nav .game-card { display: flex !important; }
 #game-nav .game-card[hidden] { display: none !important; } /* hidden channels (e.g. poker) stay hidden */
@@ -1138,6 +1139,7 @@ body.game-dice [data-game="flip"], body.game-twodice [data-game="flip"], body.ga
 .gc-tile::after { content:""; position:absolute; inset:0; border-radius:22px; background: linear-gradient(180deg, rgba(255,255,255,.42) 0%, rgba(255,255,255,.10) 38%, rgba(255,255,255,0) 60%); pointer-events:none; }
 .game-card.flip .gc-tile { background: linear-gradient(160deg, #7b5cff 0%, #5a32e6 55%, #3d1fb0 100%); }
 .game-card.dice .gc-tile { background: linear-gradient(160deg, #ff8a3d 0%, #ff5d8f 55%, #e23a86 100%); }
+.game-card.baccarat .gc-tile { background: linear-gradient(160deg, #ffd23f 0%, #ff4d9d 60%, #a1206b 100%); } /* Baccarat (CH 21) — gold→magenta "high-roller" tile */
 .gc-glyph { width: 58px; height: 58px; position: relative; z-index: 1; filter: drop-shadow(0 2px 3px rgba(0,0,0,.22)); }
 .gc-name { font-family: var(--display); font-size: 14px; font-weight: 700; color: rgba(255,255,255,.92); letter-spacing: .2px; }
 .gc-ch { display:none; }
@@ -2976,3 +2978,81 @@ body.chat-open #chat-toggle { box-shadow: inset 0 -3px 0 0 currentColor; }
 .ph-per { font-size: 12px; line-height: 1.7; margin: 2px 0 8px; }
 .ph-per-item { white-space: nowrap; }
 .ph-per b { color: var(--s-text, #eaf2ff); font-weight: 700; }
+
+/* ============================================================
+   BACCARAT (CH 21) — felt iframe + dock (blackjack clones) + the chip-tap
+   controls (spec: chip tray + tap-zone, UNDO/CLEAR/REBET, no confirm button).
+   Zone identity: PLAYER cyan / BANKER red #ff5b73 / TIE green (research R7).
+   ============================================================ */
+.bac-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; background: #06091a; }
+.bac-dock { max-width: 560px; margin: 4px auto 0; }
+.bac-walletrow { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 2px 0 6px; }
+.bac-wallet { font-family: var(--mono, monospace); font-size: 12px; color: var(--s-text-2); letter-spacing: .2px; }
+.bac-bal { font-family: var(--display); font-size: 16px; color: var(--s-gold); font-weight: 700; white-space: nowrap; }
+.bac-toprow { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 22px; }
+.bac-count { font-family: var(--display); font-size: 14px; color: var(--s-text-2); }
+.bac-count.crit { color: var(--s-gold); }
+.bac-count:empty { display: none; }
+.bac-fs { min-width: 40px; min-height: 32px; background: rgba(10,16,30,.5); border: 1px solid var(--s-border, #2a3550);
+  border-radius: 8px; color: var(--s-text-2); cursor: pointer; font-size: 15px; }
+.bac-fs:hover { color: var(--s-text); border-color: var(--s-text-2); }
+.bac-statusrow { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 20px; margin-bottom: 10px; }
+.bac-status { text-align: center; color: var(--s-text-2); font-weight: 700; font-size: 14px; }
+.bac-status b { color: var(--s-text); }
+.bac-controls:empty { display: none; }
+.bac-dock:has(.bac-controls:empty) .bac-statusrow { margin-bottom: 0; }
+/* chip tray — round denomination chips; --cc is the chip color set by JS */
+.bac-chiprow { display: flex; justify-content: center; gap: 10px; margin: 4px 0 10px; }
+.bac-chip { width: 48px; height: 48px; border-radius: 50%; cursor: pointer;
+  font-family: var(--display); font-weight: 800; font-size: 12px; color: var(--s-text);
+  background: radial-gradient(circle at 50% 42%, #0c1424 58%, var(--cc, #39e7ff) 60%, var(--cc, #39e7ff) 72%, #0c1424 74%);
+  border: 2px dashed var(--cc, #39e7ff); transition: transform .12s ease, box-shadow .12s ease; }
+.bac-chip:hover { transform: translateY(-2px); }
+.bac-chip.active { color: #04121a; background: var(--cc, #39e7ff); border: 2px solid #fff;
+  box-shadow: 0 0 12px var(--cc, #39e7ff); }
+.bac-chip:disabled { opacity: .35; filter: grayscale(.5); cursor: default; transform: none; }
+/* zone buttons — tap adds the selected chip; Tie deliberately narrower (spec) */
+.bac-zones { display: grid; grid-template-columns: 1.15fr .85fr 1.15fr; gap: 8px; margin-bottom: 10px; }
+.bac-zone { min-height: 58px; border-radius: 12px; cursor: pointer; padding: 8px 6px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  background: rgba(10,16,30,.55); transition: box-shadow .12s ease, transform .12s ease, background .12s ease; }
+.bac-zone:active { transform: scale(.97); }
+.bac-zone .bac-zn { font-family: var(--display); font-weight: 800; font-size: 13px; letter-spacing: .4px; }
+.bac-zone .bac-zs { font-family: var(--display); font-weight: 800; font-size: 13px; color: var(--s-gold); }
+.bac-zone.player { border: 1.5px solid #39e7ff; color: #9ef0ff; }
+.bac-zone.player:hover { box-shadow: 0 0 14px rgba(57,231,255,.35); background: rgba(57,231,255,.08); }
+.bac-zone.banker { border: 1.5px solid #ff5b73; color: #ffb3bf; }
+.bac-zone.banker:hover { box-shadow: 0 0 14px rgba(255,91,115,.35); background: rgba(255,91,115,.08); }
+.bac-zone.tie { border: 1.5px solid #00e701; color: #9dffa0; }
+.bac-zone.tie:hover { box-shadow: 0 0 14px rgba(0,231,1,.3); background: rgba(0,231,1,.07); }
+.bac-ctlrow { display: flex; gap: 8px; margin-bottom: 8px; }
+.bac-ctl { flex: 1 1 0; min-height: 40px; font-weight: 700; letter-spacing: .3px; }
+.bac-ctl:disabled { opacity: .45; cursor: default; }
+.bac-share { margin: 10px auto 0; display: block; width: 100%; font-size: 13px; letter-spacing: .3px; }
+.bac-share:disabled { opacity: .5; cursor: default; }
+/* baccarat channel: the felt owns the balance — hide the site demo credit chrome (bj-channel clone) */
+body.bac-channel #demo-below,
+body.bac-channel #demo-bar { display: none !important; }
+/* mobile: pin the dock above the bottom-nav so the chip tray is thumb-reachable (bj clone) */
+@media (max-width: 900px) {
+  body.game-baccarat .stage > .action-dock.bac-dock {
+    position: fixed; left: 0; right: 0; bottom: calc(58px + env(safe-area-inset-bottom));
+    z-index: 62; margin: 0; max-width: none; max-height: 56vh; overflow-y: auto;
+    background: var(--s-panel); border-top: 1px solid var(--s-border);
+    box-shadow: 0 -8px 24px rgba(0,0,0,.45);
+    padding: 10px max(12px, env(safe-area-inset-left)) calc(10px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-right));
+  }
+  body.game-baccarat { padding-bottom: calc(58px + 168px + env(safe-area-inset-bottom)); }
+}
+/* Baccarat fullscreen (spec §5.6): promote #layer-baccarat IN PLACE to a fixed full-viewport
+   overlay (NOT the rr-fs reparent — moving an iframe reloads its document and would drop the
+   felt's socket mid-round). The felt renders its own bet bar in fs (body.fs-embed). */
+#layer-baccarat.bac-fs { display: block !important; position: fixed !important; inset: 0 !important;
+  width: 100vw !important; height: 100dvh !important; z-index: 2147483646 !important; background: #06091a !important; }
+#layer-baccarat.bac-fs .bac-frame { position: absolute; inset: 0; width: 100%; height: 100%; }
+html.bac-fs-on, body.bac-fs-on { width: 100vw !important; height: 100dvh !important; overflow: hidden !important;
+  overscroll-behavior: none !important; background: #06091a !important; }
+body.bac-fs-on .topbar, body.bac-fs-on .bottom-nav, body.bac-fs-on .chat-tab,
+body.bac-fs-on .sidebar, body.bac-fs-on .channels-grid { display: none !important; }
+/* neutralize any ancestor transform that would trap the fixed overlay (TV frame effects) */
+body.bac-fs-on .stage, body.bac-fs-on .tv, body.bac-fs-on .tv-wrap, body.bac-fs-on .screen { transform: none !important; filter: none !important; }

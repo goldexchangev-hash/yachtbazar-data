@@ -80,6 +80,7 @@
   let fishshooterLoadPromise = null; // lazy-load guard for Fish Shooter (PixiJS fish-table)
   let fishshooter2Game = null, fishshooter2LoadPromise = null; // Fish Shooter V2 · NEON ABYSS (CH 20) — own engine/assets, FS2_ENABLED kill switch
   const FS2_ENABLED = () => window.FS2_ENABLED !== false; // config.js flag: set false to hide the whole V2 channel (v1 untouched)
+  const BACCARAT_ENABLED = () => window.BACCARAT_ENABLED !== false; // config.js flag: set false to hide the whole Baccarat channel (CH 21)
   let fishshooterGame = null;     // the Fish Shooter instance, built on first visit to CH 19
   let coinFlip3dLoadPromise = null; // lazy-load guard for the 3D coin (Three.js)
   let coinFlip3d = null;          // the CoinFlip3D instance, built on first visit to CH 8
@@ -1001,6 +1002,7 @@
     try { localStorage.setItem("cf_last_addr", account); } catch (e) {} // W10: remember that THIS browser has connected before — used only to label the button "Reconnect Wallet" for returning players whose locked wallet blocks the W7 silent autoconnect
     blockies(account, 8, 4, $("wallet-avatar"));
     { const f = $("bj-frame"); if (f && f.getAttribute("src") && !bjFrameMatchesWallet(f, account) && currentGame === "blackjack") ensureBlackjackReady(); } // v7 #2: delegate to the GUARDED ensureBlackjackReady (don't pre-strip src here — that bypassed its bjDockLive mid-hand guard → felt socket drop → auto-stand)
+    { const f = $("bac-frame"); if (f && f.getAttribute("src") && !bacFrameMatchesWallet(f, account) && currentGame === "baccarat") ensureBaccaratReady(); } // baccarat felt: same guarded re-bind on wallet connect
     const nb = $("net-badge");
     nb.classList.remove("hidden");
     nb.classList.toggle("wrong", !chainOK);
@@ -2548,7 +2550,7 @@
     return new Promise((res, rej) => {
       // v13 #38: dedup by src so a watchdog re-kick (an ensure*Ready promise nulled) never appends a SECOND <script>
       // for the same file while the first is still downloading (the load race). The selector keys on the exact
-      // versioned src ("...?v=1337"), so a later ?v bump is a distinct file and still loads fresh — no stale cache.
+      // versioned src ("...?v=1340"), so a later ?v bump is a distinct file and still loads fresh — no stale cache.
       const sel = 'script[data-loadonce="' + src.replace(/"/g, "&quot;") + '"]';
       const existing = document.querySelector(sel);
       if (existing) {
@@ -2584,7 +2586,7 @@
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=1337"))
+      .then(() => loadScriptOnce("slots.js?v=1340"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -2594,11 +2596,11 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=1337"))
-      .then(() => loadScriptOnce("pressure-render.js?v=1337"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=1337"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=1340"))
+      .then(() => loadScriptOnce("pressure-render.js?v=1340"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=1340"))
       // optional 3D red balloon (Three.js) — falls back to the 2D balloon if it can't load
-      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1337")).catch(() => {}))
+      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1340")).catch(() => {}))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -2671,10 +2673,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=1337"))
-      .then(() => loadScriptOnce("plane-render.js?v=1337"))
-      .then(() => loadScriptOnce("plane-feed.js?v=1337"))
-      .then(() => loadScriptOnce("plane-ui.js?v=1337"))
+      .then(() => loadScriptOnce("plane-engine.js?v=1340"))
+      .then(() => loadScriptOnce("plane-render.js?v=1340"))
+      .then(() => loadScriptOnce("plane-feed.js?v=1340"))
+      .then(() => loadScriptOnce("plane-ui.js?v=1340"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2786,8 +2788,8 @@
     if (window.Slots3D) return Promise.resolve(true);
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("slots3d-engine.js?v=1337"))
-      .then(() => loadScriptOnce("slots3d.js?v=1337"))
+      .then(() => loadScriptOnce("slots3d-engine.js?v=1340"))
+      .then(() => loadScriptOnce("slots3d.js?v=1340"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2845,8 +2847,8 @@
     if (window.FishTable) return Promise.resolve(true);
     if (fishLoadPromise) return fishLoadPromise;
     fishLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishtable-engine.js?v=1337"))
-      .then(() => loadScriptOnce("fishtable.js?v=1337"))
+      .then(() => loadScriptOnce("fishtable-engine.js?v=1340"))
+      .then(() => loadScriptOnce("fishtable.js?v=1340"))
       .then(() => true)
       .catch((e) => { fishLoadPromise = null; throw e; });
     return fishLoadPromise;
@@ -2929,7 +2931,7 @@
     if (window.SwoopGame) return Promise.resolve(true);
     if (swoopLoadPromise) return swoopLoadPromise;
     swoopLoadPromise = loadPlayCanvasOnce()
-      .then(() => loadScriptOnce("swoop3d.js?v=1337"))
+      .then(() => loadScriptOnce("swoop3d.js?v=1340"))
       .then(() => true)
       .catch((e) => { swoopLoadPromise = null; throw e; });
     return swoopLoadPromise;
@@ -3010,8 +3012,8 @@
     if (window.FishShooter) return Promise.resolve(true);
     if (fishshooterLoadPromise) return fishshooterLoadPromise;
     fishshooterLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishshooter-engine.js?v=1337")) // OWN engine (decoupled from Reef's fishtable-engine.js)
-      .then(() => loadScriptOnce("fishshooter.js?v=1337"))
+      .then(() => loadScriptOnce("fishshooter-engine.js?v=1340")) // OWN engine (decoupled from Reef's fishtable-engine.js)
+      .then(() => loadScriptOnce("fishshooter.js?v=1340"))
       .then(() => true)
       .catch((e) => { fishshooterLoadPromise = null; throw e; });
     return fishshooterLoadPromise;
@@ -3098,8 +3100,8 @@
     if (window.FishShooter2) return Promise.resolve(true);
     if (fishshooter2LoadPromise) return fishshooter2LoadPromise;
     fishshooter2LoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishshooter2-engine.js?v=1337"))
-      .then(() => loadScriptOnce("fishshooter2.js?v=1337"))
+      .then(() => loadScriptOnce("fishshooter2-engine.js?v=1340"))
+      .then(() => loadScriptOnce("fishshooter2.js?v=1340"))
       .then(() => true)
       .catch((e) => { fishshooter2LoadPromise = null; throw e; });
     return fishshooter2LoadPromise;
@@ -3180,7 +3182,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1337"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1340"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -3207,7 +3209,7 @@
   function loadRail3dOnce() {
     if (window.Rail3D) return Promise.resolve(true);
     if (rail3dLoadPromise) return rail3dLoadPromise;
-    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1337")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
+    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1340")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
     return rail3dLoadPromise;
   }
   function buildRail3d() {
@@ -3228,7 +3230,7 @@
   function loadDice2_3dOnce() {
     if (window.TwoDice3D) return Promise.resolve(true);
     if (d2_3dLoadPromise) return d2_3dLoadPromise;
-    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1337")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
+    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1340")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
     return d2_3dLoadPromise;
   }
   function buildDice2_3d() {
@@ -3356,6 +3358,7 @@
   // accumulate from the discrete table-game settles via recordSession().
   let sessionBase = null, sesWagered = 0, sesWon = 0, _sesBal = null, _sesMode = null;
   let bjLastBal = null, bjReanchorNext = false; // #97: the blackjack felt's chips balance (its own iframe) + a "next change is a deposit, re-anchor" flag for RELOAD
+  let bacLastBal = null; // baccarat felt's chips balance (same iframe pattern — CH 21 is its own session "mode")
   // The session tracker follows the ACTIVE balance: TokenMode tokens when a token session is live, else the
   // demo play-money balance. So wagered/won/NET update during TOKEN play too — it was demo-only, so it froze
   // the moment you connected + bought in (the "player info isn't updating" report). A demo↔token switch starts
@@ -3363,14 +3366,23 @@
   // #97: on the Blackjack channel the felt runs in its own iframe with its OWN chips balance, so the tracker
   // follows THAT (bjLastBal) instead of demo/token credits. Blackjack is its own session "mode", so entering/
   // leaving the channel re-anchors (a mode change) — switching channels never misreads as a huge win/loss.
-  function sesMode() { return currentGame === "blackjack" ? "bj" : ((window.TokenMode && TokenMode.active()) ? "token" : "demo"); }
+  function sesMode() { return currentGame === "blackjack" ? "bj" : (currentGame === "baccarat" ? "bac" : ((window.TokenMode && TokenMode.active()) ? "token" : "demo")); }
   function activeBal() {
     try {
       if (currentGame === "blackjack") return bjLastBal != null ? Math.round(bjLastBal * 100) / 100 : 0;
+      if (currentGame === "baccarat") return bacLastBal != null ? Math.round(bacLastBal * 100) / 100 : 0;
       return (window.TokenMode && TokenMode.active()) ? (Math.round((TokenMode.tokens() || 0) * 100) / 100) : demoUsd;
     } catch (e) { return demoUsd; }
   }
-  function sessionReset() { const b = activeBal(); sessionBase = b; _sesBal = b; sesWagered = 0; sesWon = 0; _sesMode = sesMode(); paintSession(); }
+  function sessionReset() {
+    const m = sesMode();
+    // On a FELT channel (bj/bac) before the iframe has reported its chips balance, activeBal()
+    // falls back to 0 — anchoring there makes the whole balance read as "won" forever. Defer:
+    // paintSession's `sessionBase == null` branch anchors the moment a real balance lands.
+    const feltUnknown = (m === "bj" && bjLastBal == null) || (m === "bac" && bacLastBal == null);
+    const b = feltUnknown ? null : activeBal();
+    sessionBase = b; _sesBal = b; sesWagered = 0; sesWon = 0; _sesMode = m; paintSession();
+  }
   function recordSession(wager, returned) { // demo table games report EXACT gross wagered + returned
     sesWagered = Math.round((sesWagered + Math.max(0, +wager || 0)) * 100) / 100;
     sesWon = Math.round((sesWon + Math.max(0, +returned || 0)) * 100) / 100;
@@ -3390,6 +3402,7 @@
   function paintSession(reanchor) {
     const mode = sesMode();
     if (mode === "bj" && bjLastBal == null) return; // #97: blackjack chips balance not known yet — nothing to classify
+    if (mode === "bac" && bacLastBal == null) return; // same guard for the baccarat felt
     const bal = activeBal();
     if (_sesMode !== mode) { _sesMode = mode; sessionBase = bal; _sesBal = bal; sesWagered = 0; sesWon = 0; } // demo↔token↔blackjack → fresh session (no cross-mode delta)
     else if (sessionBase == null) { sessionBase = bal; _sesBal = bal; }
@@ -3411,7 +3424,7 @@
   // event (token onChange, demo/ethUsd refresh) and polled by the interval below (canvas token bets that skip onChange).
   function paintTvBalance() {
     var el = document.getElementById("tv-balance"); if (!el) return;
-    if (currentGame === "fish" || currentGame === "fishshooter" || currentGame === "fishshooter2" || currentGame === "blackjack") { el.classList.add("hidden"); return; }
+    if (currentGame === "fish" || currentGame === "fishshooter" || currentGame === "fishshooter2" || currentGame === "blackjack" || currentGame === "baccarat") { el.classList.add("hidden"); return; }
     // Show ONLY the balance you can actually PLAY with right now: the token session (with the optimistic per-spin
     // debit hold) or the demo bankroll. When connected WITHOUT a token session, HIDE it — your deposited game-credits
     // are NOT in play (every game is token-only; you buy in first), and showing them looked like a spendable balance
@@ -3426,7 +3439,7 @@
   }
   // Token bets in canvas games (fish/slots3d/…) move TokenMode.tokens() without always firing onChange, so
   // poll lightly to keep the tracker live; the delta-watcher dedupes via _sesBal so this never double-counts.
-  setInterval(function () { if (document.hidden) return; try { if ((window.TokenMode && TokenMode.active()) || currentGame === "blackjack") paintSession(); } catch (e) {} try { paintTvBalance(); } catch (e) {} }, 1500); // L5: skip the session/TV-balance repaint while the tab is hidden
+  setInterval(function () { if (document.hidden) return; try { if ((window.TokenMode && TokenMode.active()) || currentGame === "blackjack" || currentGame === "baccarat") paintSession(); } catch (e) {} try { paintTvBalance(); } catch (e) {} }, 1500); // L5: skip the session/TV-balance repaint while the tab is hidden
   // Mirror demo credits into the same guards the live readouts use, so the
   // per-game affordability hints ("not enough credits") work unchanged.
   function demoSyncBalance() {
@@ -3536,6 +3549,10 @@
     if (currentGame === "blackjack" && account) {
       try { const f = $("bj-frame"); if (f && f.getAttribute("src") && !bjFrameMatchesWallet(f, account) && Date.now() - bjHealAt > 1500) { bjHealAt = Date.now(); ensureBlackjackReady(); } } catch (e) {} // v7 #2: delegate to the GUARDED ensureBlackjackReady (don't pre-strip src → its bjDockLive guard would be bypassed → mid-hand teardown/auto-stand)
     }
+    // Baccarat felt: identical buy-in re-bind (a hash change alone won't reload an iframe).
+    if (currentGame === "baccarat" && account) {
+      try { const f = $("bac-frame"); if (f && f.getAttribute("src") && !bacFrameMatchesWallet(f, account) && Date.now() - bacHealAt > 1500) { bacHealAt = Date.now(); ensureBaccaratReady(); } } catch (e) {}
+    }
   }
   // Surface a STRANDED on-chain lock to ANY connected player (not just the owner host panel): read
   // the wallet's bjLocked; if funds are locked with no active token session, tell TokenMode the USD
@@ -3562,7 +3579,7 @@
   }
   // v12 #2: when a page-reload session resume finishes (success OR gone), re-evaluate the stranded lock so a
   // genuinely-orphaned lock still surfaces Recover — but only AFTER the resume can no longer be clobbered.
-  try { window.addEventListener("ctf:resume-done", function () { try { checkStrandedLock(); } catch (e) {} try { if (currentGame === "blackjack" && account) ensureBlackjackReady(); } catch (e) {} }); } catch (e) {} // resume finished → (re)bind the felt to the resumed session (it was deferred while resumePending)
+  try { window.addEventListener("ctf:resume-done", function () { try { checkStrandedLock(); } catch (e) {} try { if (currentGame === "blackjack" && account) ensureBlackjackReady(); } catch (e) {} try { if (currentGame === "baccarat" && account) ensureBaccaratReady(); } catch (e) {} }); } catch (e) {} // resume finished → (re)bind the felt to the resumed session (it was deferred while resumePending)
   function enterDemo() {
     if (demoOn || account) return; // never override a live wallet connection
     demoOn = true;
@@ -3861,12 +3878,16 @@
 
   // ── Game switcher ("change the channel") ──
   // Poker is temporarily disabled (hidden from the channel bar) — to be revisited.
-  const GAME_CHANNEL = { flip: 8, dice: 9, twodice: 10, crash: 11, pressure: 13, plane: 14, slots3d: 15, blackjack: 16, fish: 17, swoop: 18, fishshooter: 19, fishshooter2: 20 };
-  const GAME_TITLE = { flip: "CRYPTO TV FLIP", dice: "CRYPTO TV 0-100", twodice: "CRYPTO TV DICE #2", crash: "CRYPTO TV CRASH", pressure: "BALLOON POP", plane: "CRYPTO TV PLANE", slots3d: "GEM VAULT", blackjack: "BLACKJACK", fish: "REEF RAIDERS", swoop: "SKY SWOOP", fishshooter: "FISH SHOOTER", fishshooter2: "FISH SHOOTER V2" };
-  const GAME_ORDER = ["flip", "dice", "twodice", "crash", "pressure", "plane", "slots3d", "fish", "fishshooter", "fishshooter2", "blackjack"]; // Sky Swoop hidden for now; fishshooter2 removed at boot when FS2_ENABLED is off
+  const GAME_CHANNEL = { flip: 8, dice: 9, twodice: 10, crash: 11, pressure: 13, plane: 14, slots3d: 15, blackjack: 16, fish: 17, swoop: 18, fishshooter: 19, fishshooter2: 20, baccarat: 21 };
+  const GAME_TITLE = { flip: "CRYPTO TV FLIP", dice: "CRYPTO TV 0-100", twodice: "CRYPTO TV DICE #2", crash: "CRYPTO TV CRASH", pressure: "BALLOON POP", plane: "CRYPTO TV PLANE", slots3d: "GEM VAULT", blackjack: "BLACKJACK", fish: "REEF RAIDERS", swoop: "SKY SWOOP", fishshooter: "FISH SHOOTER", fishshooter2: "FISH SHOOTER V2", baccarat: "BACCARAT" };
+  const GAME_ORDER = ["flip", "dice", "twodice", "crash", "pressure", "plane", "slots3d", "fish", "fishshooter", "fishshooter2", "blackjack", "baccarat"]; // Sky Swoop hidden for now; fishshooter2/baccarat removed at boot when their kill switches are off
   if (!FS2_ENABLED()) { // kill switch: hide the V2 tile + drop it from the rotation (v1 untouched)
     { const t = $("ch-fishshooter2"); if (t) t.hidden = true; }
     { const i = GAME_ORDER.indexOf("fishshooter2"); if (i >= 0) GAME_ORDER.splice(i, 1); }
+  }
+  if (!BACCARAT_ENABLED()) { // kill switch: hide the Baccarat tile + drop it from the rotation (FS2 pattern)
+    { const t = $("ch-baccarat"); if (t) t.hidden = true; }
+    { const i = GAME_ORDER.indexOf("baccarat"); if (i >= 0) GAME_ORDER.splice(i, 1); }
   }
   function paintGameTabs(game) {
     document.body.classList.toggle("game-dice", game === "dice");
@@ -3881,6 +3902,7 @@
     document.body.classList.toggle("game-fishshooter", game === "fishshooter");
     document.body.classList.toggle("game-fishshooter2", game === "fishshooter2");
     document.body.classList.toggle("game-blackjack", game === "blackjack");
+    document.body.classList.toggle("game-baccarat", game === "baccarat");
     document.body.classList.toggle("game-poker", game === "poker"); // CSS hides the TV layout, shows #poker-view
     const bar = $("game-nav"); if (bar) bar.dataset.game = game;
     document.querySelectorAll("#game-nav .game-card").forEach((b) => {
@@ -3927,16 +3949,19 @@
     if (game !== "dice" && rail3d) rail3d.setActive(false);
     if (game !== "twodice" && d2_3d) d2_3d.setActive(false);
     if (game !== "blackjack" && window.BJ_MUTE) { window.BJ_MUTE(true); bjStopCount(); bjBetSig = ""; } // hush blackjack + stop its countdown off-channel; clear the dock sig so re-entry always repaints the BET controls
+    if (game !== "baccarat" && window.BAC_MUTE) { window.BAC_MUTE(true); bacStopCount(); bacDockSig = ""; } // same for the baccarat felt
     // Blackjack uses its OWN standalone server balance — hide the demo credits on this channel.
     document.body.classList.toggle("bj-channel", game === "blackjack");
+    document.body.classList.toggle("bac-channel", game === "baccarat"); // baccarat felt owns its balance too — hide demo credits
     if (game === "blackjack") { const wl = $("bj-wallet"); if (wl) wl.textContent = "🪪 " + short(account || bjGuestId()); }
+    if (game === "baccarat") { const wl = $("bac-wallet"); if (wl) wl.textContent = "🪪 " + short(account || bjGuestId()); } // one guest identity spans both tables (bjGuestId reused)
     // Poker is its own full-width view (no TV); everything else uses the TV channel.
     if (game === "poker") { if (window.PokerUI) PokerUI.show(); }
     else { if (window.PokerUI) PokerUI.hide(); if (window.TV && TV.changeChannel) TV.changeChannel(GAME_CHANNEL[game]); }
     if (game === "flip") { ensureCoinFlip3dReady(); }
     else if (game === "dice") { refreshDiceHouse(); diceReadouts(); ensureDice3dReady(); }
     else if (game === "twodice") { refreshDiceHouse(); twoDiceReadouts(); ensureTwoDiceSupport(); ensureDice2_3dReady(); }
-    else if (game === "crash") { if (!window.CrashRender) loadScriptOnce("crash-render.js?v=1337").then(() => { try { if (window.TV && TV._crashIdle && currentGame === "crash") TV._crashIdle(); } catch (e) {} }).catch(() => {}); refreshDiceHouse(); crashReadouts(); ensureCrashSupport(); }
+    else if (game === "crash") { if (!window.CrashRender) loadScriptOnce("crash-render.js?v=1340").then(() => { try { if (window.TV && TV._crashIdle && currentGame === "crash") TV._crashIdle(); } catch (e) {} }).catch(() => {}); refreshDiceHouse(); crashReadouts(); ensureCrashSupport(); }
     else if (game === "pressure") { ensurePressureReady(); }
     else if (game === "plane") { refreshDiceHouse(); ensurePlaneReady(); }
     else if (game === "slots3d") { ensureSlots3dReady(); }
@@ -3945,6 +3970,7 @@
     else if (game === "fishshooter") { ensureFishShooterReady(); }
     else if (game === "fishshooter2") { ensureFishShooter2Ready(); }
     else if (game === "blackjack") { ensureBlackjackReady(); }
+    else if (game === "baccarat") { ensureBaccaratReady(); }
   }
   // ── Blackjack channel (CH 16): the live felt runs in an isolated iframe (its own
   // CSS/scripts can't collide with the site). Lazy-set the src on first visit. The
@@ -4050,7 +4076,7 @@
       const tableWallet = account || bjGuestId();
       // &r=<nonce> in the QUERY forces a real iframe reload (so the felt re-reads the #bjsession from the
       // hash and re-sends its hello → the server re-binds the table to the token session).
-      let src = "blackjack.html?tv=1&v=1337&r=" + (++bjFeltNonce % 8) + "&guest=" + encodeURIComponent(tableWallet); // %8: consecutive nonces still ALWAYS differ (n vs n+1 mod 8) so the iframe truly reloads, but the URL set is bounded → the SW's ?v= cache-first path can actually HIT (instant felt load from cache) instead of storing a new never-reusable copy per open
+      let src = "blackjack.html?tv=1&v=1340&r=" + (++bjFeltNonce % 8) + "&guest=" + encodeURIComponent(tableWallet); // %8: consecutive nonces still ALWAYS differ (n vs n+1 mod 8) so the iframe truly reloads, but the URL set is bounded → the SW's ?v= cache-first path can actually HIT (instant felt load from cache) instead of storing a new never-reusable copy per open
       let tokenHash = "";
       // PREFERRED real-money path: fund the table with the player's TOKEN session (chips = tokens, no lock step).
       if (account && window.TokenMode && TokenMode.active && TokenMode.active() && TokenMode.session) {
@@ -4298,7 +4324,7 @@
     // + dead-bridge screen), re-init it so it binds to the account + token session. Throttled so it can't loop.
     try {
       const f0 = $("bj-frame");
-      // v13.37: the felt is ALSO stale if it's bound to a DIFFERENT (or no) token bjsession than the live one —
+      // v13.40: the felt is ALSO stale if it's bound to a DIFFERENT (or no) token bjsession than the live one —
       // e.g. it loaded as a $0 GUEST and the post-buy-in re-bind raced the just-created session, so the seat
       // shows $0 and the bet controls never appear until a manual ⟳ Reload. Reloading it (via the proven
       // ensureBlackjackReady) re-funds the seat from the token session AUTOMATICALLY. Guarded by !bjDockLive
@@ -4416,6 +4442,248 @@
     // Blackjack balance is standalone (server-held) — it does NOT touch the demo credits.
     if (currentGame === "blackjack") renderBjDock(d);
   });
+  // ── Baccarat channel (CH 21): the live Punto Banco felt runs in an isolated iframe
+  // (blackjack pattern — its own CSS/scripts can't collide with the site). The chip tray +
+  // PLAYER/TIE/BANKER zone buttons are native site elements in the dock under the TV,
+  // bridged to the felt via postMessage (bac:cmd add/undo/clear/rebet — spec §5: tap-a-zone,
+  // NO confirm button; chips on the felt at window close ARE the bet). Chip selection is
+  // PARENT-local UI state, shared with the felt through localStorage "bacChip" (the felt
+  // listens for the same-origin storage event). ──
+  let bacFsOn = false; // parent-owned fullscreen state — the felt asks via bac:fs, we answer via bac:active {fs}
+  function bacFramePost(active) { const f = $("bac-frame"); if (f && f.contentWindow) try { f.contentWindow.postMessage({ type: "bac:active", active, ethUsd: ethUsd, fs: bacFsOn }, location.origin); if (active && !account && !(window.TokenMode && TokenMode.active && TokenMode.active())) f.contentWindow.postMessage({ type: "bac:seed", balance: Math.round(demoUsd * 100) / 100 }, location.origin); } catch (e) {} } // same-origin iframe only; carries the live ETH/USD (cosmetic) + fs state. DEMO unification: seed the felt's guest bank FROM the site demoUsd on (re)activation (server seedGuest sets it exactly; guest-only + capped + never mid-coup)
+  let bacPendingTable = null; // a specific table id arrived via a share link (?bactable=…)
+  try { bacPendingTable = new URLSearchParams(location.search).get("bactable"); } catch (e) {}
+  let bacRoomId = null; // latest table id the felt reports (for the Share button)
+  function bacFrameMatchesWallet(frame, wallet) {
+    if (!frame || !frame.getAttribute("src") || !wallet) return false;
+    try {
+      const src = frame.getAttribute("src");
+      const u = new URL(src, location.href);
+      if (String(u.searchParams.get("guest") || "").toLowerCase() !== String(wallet).toLowerCase()) return false;
+      // A BUY-IN keeps the same wallet but opens a NEW token session; the felt must reload with the #bjsession
+      // hash to bind to it (changing only an iframe's #hash does NOT reload it) — bjFrameMatchesWallet clone.
+      try {
+        const si = (window.TokenMode && TokenMode.active && TokenMode.active() && TokenMode.session) ? TokenMode.session() : null;
+        const liveSid = si && si.sessionId ? String(si.sessionId) : "";
+        if (liveSid) {
+          const feltSid = String(new URLSearchParams((src.split("#")[1] || "")).get("bjsession") || "");
+          if (feltSid !== liveSid) return false;
+        }
+      } catch (e) {}
+      return true;
+    } catch (e) { return false; }
+  }
+  let bacFeltNonce = 0; // bumps each felt (re)load so the iframe TRULY reloads (a #hash change alone doesn't)
+  function ensureBaccaratReady() {
+    if (!BACCARAT_ENABLED()) return; // kill switch — a stale saved-channel restore must not boot a disabled game
+    const f = $("bac-frame");
+    // NEVER tear down / reload the felt iframe while money rides the current coup (v5 #10 pattern):
+    // dropping the src kills the felt's socket mid-round. Re-post the active state and defer the re-bind.
+    if (f && f.getAttribute("src") && bacDockLive) { bacFramePost(true); return; }
+    if (f && f.getAttribute("src") && account && !bacFrameMatchesWallet(f, account)) f.removeAttribute("src");
+    // Token session changed (bought in / cashed out) since the felt loaded → reload to re-bind (safe: token
+    // cash-out is refused mid-coup server-side, and bacDockLive above blocks a mid-round teardown).
+    if (f && f.getAttribute("src")) {
+      let wantSid = "";
+      try { if (account && window.TokenMode && TokenMode.active && TokenMode.active() && TokenMode.session) { const si = TokenMode.session(); wantSid = (si && si.sessionId) || ""; } } catch (e) {}
+      let curSid = "";
+      try { curSid = new URLSearchParams(((new URL(f.src, location.href)).hash || "").replace(/^#/, "")).get("bjsession") || ""; } catch (e) {}
+      if (curSid !== wantSid) f.removeAttribute("src");
+    }
+    // While a SAVED token session is still resuming, defer — ctf:resume-done re-runs this (bj clone).
+    if (f && !f.getAttribute("src") && account && window.TokenMode && TokenMode.resumePending && TokenMode.resumePending()) return;
+    if (f && !f.getAttribute("src")) {
+      const tableWallet = account || bjGuestId(); // REUSE the blackjack guest identity — one guest + one demo balance spans both tables
+      let src = "baccarat.html?tv=1&v=1340&r=" + (++bacFeltNonce % 8) + "&guest=" + encodeURIComponent(tableWallet); // %8 bounds the URL set so the SW ?v= cache can HIT (bj pattern)
+      let tokenHash = "";
+      // Real-money path: fund the table with the player's TOKEN session (chips = tokens; hello frame identical to BJ).
+      if (account && window.TokenMode && TokenMode.active && TokenMode.active() && TokenMode.session) {
+        try { const si = TokenMode.session(); if (si && si.sessionId) tokenHash = "#bjtoken=" + encodeURIComponent(si.sessionToken || "") + "&bjsession=" + encodeURIComponent(si.sessionId); } catch (e) {}
+      }
+      if (bacPendingTable) { src += "&table=" + encodeURIComponent(bacPendingTable); bacPendingTable = null; }
+      f.src = src + tokenHash; // loads the felt + scripts inside the TV (no legacy-bridge fallback — token-only, spec §8)
+    }
+    setTimeout(() => { bacFramePost(true); }, 50);
+  }
+  window.BAC_MUTE = (mute) => bacFramePost(!mute); // hush the felt's audio when off-channel
+  function bacShareLink() { return location.origin + location.pathname + "?game=baccarat" + (bacRoomId ? "&bactable=" + encodeURIComponent(bacRoomId) : ""); }
+  function bacShareTable() {
+    const link = bacShareLink();
+    const done = () => toast("Table link copied — send it to a friend to sit down with you", "ok");
+    try { navigator.clipboard.writeText(link).then(done, () => { window.prompt("Copy this table link:", link); }); }
+    catch (e) { window.prompt("Copy this table link:", link); }
+  }
+  // Fullscreen (spec §5.6): the felt posts bac:fs {on}; the parent promotes #layer-baccarat to a
+  // fixed full-viewport overlay + attempts native requestFullscreen, then answers bac:active {fs}
+  // (the felt flips body.fs-embed and renders its own bet bar). DELIBERATELY promoted IN PLACE, not
+  // the fish rr-fs reparent-to-<body>: moving an <iframe> in the DOM reloads its document, which
+  // would drop the felt's socket mid-round (fish layers hold canvases, so reparenting is safe there).
+  // No ancestor of the layer forms a fixed-position containing block, so the overlay fills the
+  // viewport; entry/exit never touches the socket or iframe src.
+  function bacSetFullscreen(on) {
+    const layer = $("layer-baccarat"); if (!layer) return;
+    on = !!on;
+    if (on !== bacFsOn) {
+      bacFsOn = on;
+      layer.classList.toggle("bac-fs", on);
+      document.documentElement.classList.toggle("bac-fs-on", on);
+      document.body.classList.toggle("bac-fs-on", on);
+      if (on) { try { const req = layer.requestFullscreen || layer.webkitRequestFullscreen; if (req) req.call(layer); } catch (e) {} } // native when available; the CSS overlay is the iOS fallback
+      else { try { if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen(); else if (document.webkitFullscreenElement && document.webkitExitFullscreen) document.webkitExitFullscreen(); } catch (e) {} }
+    }
+    bacFramePost(currentGame === "baccarat");
+  }
+  // ---- Baccarat dock (under the TV). The felt emits a compact "bac:dock" state on every
+  // render; here we paint native, site-styled controls and post intents back as "bac:cmd". ----
+  let bacChip = 25; // sticky chip denomination (spec §5.1), default $25
+  try { const c = parseInt(localStorage.getItem("bacChip"), 10); if ([10, 25, 100, 500].indexOf(c) >= 0) bacChip = c; } catch (e) {}
+  const BAC_TRAY = [[10, "#39e7ff"], [25, "#45f0a6"], [100, "#ff4d9d"], [500, "#ffd23f"]]; // CHIP_DENOMS colors (spec §5.1)
+  const BAC_ZONES = [["player", "PLAYER", "1:1"], ["tie", "TIE", "8:1"], ["banker", "BANKER", "0.95:1"]];
+  let bacDockSig = "";
+  let bacHealAt = 0;   // throttle for the felt self-heal (re-init a guest-stuck felt after the wallet connects)
+  let bacDockLive = false; // money rides the current coup (chips placed, or deal/reveal in flight) — refuses a mid-round iframe teardown
+  let bacTokenSyncAt = 0;  // debounce for refreshing the top token bar while at a token table
+  let bacCountTimer = null, bacBetEndAt = 0;
+  function bacStopCount() { if (bacCountTimer) { clearInterval(bacCountTimer); bacCountTimer = null; } }
+  function bacPaintCount() {
+    const el = $("bac-count"); if (!el) { bacStopCount(); return; }
+    const s = Math.max(0, Math.ceil((bacBetEndAt - Date.now()) / 1000));
+    el.textContent = "⏱ " + s + " sec"; el.classList.toggle("crit", s <= 3);
+    if (bacBetEndAt - Date.now() <= 0) bacStopCount();
+  }
+  function bacCmd(cmd, extra) { const f = $("bac-frame"); if (f && f.contentWindow) try { f.contentWindow.postMessage(Object.assign({ type: "bac:cmd", cmd }, extra || {}), location.origin); } catch (e) {} } // same-origin iframe only
+  function bacMoney(n) { return "$" + (Math.round((+n || 0) * 100) / 100).toLocaleString(); }
+  function buildBacControls(ctr, s) {
+    // chip tray — a chip larger than min(balance, biggest zone headroom) is dead (spec §5.1)
+    const bal = (s.balance != null && isFinite(s.balance)) ? Number(s.balance) : 0;
+    let maxHeadroom = 0;
+    BAC_ZONES.forEach((z) => { const h = ((s.zoneMax && s.zoneMax[z[0]]) || 0) - ((s.staked && s.staked[z[0]]) || 0); if (h > maxHeadroom) maxHeadroom = h; });
+    const tray = document.createElement("div"); tray.className = "bac-chiprow"; tray.setAttribute("role", "group"); tray.setAttribute("aria-label", "Chip value");
+    BAC_TRAY.forEach((cd) => {
+      const v = cd[0];
+      const b = document.createElement("button"); b.type = "button"; b.className = "bac-chip" + (bacChip === v ? " active" : "");
+      b.style.setProperty("--cc", cd[1]); b.textContent = "$" + v;
+      b.setAttribute("aria-pressed", bacChip === v ? "true" : "false");
+      b.setAttribute("aria-label", "$" + v + " chip");
+      if (v > Math.min(bal, maxHeadroom)) { b.disabled = true; b.setAttribute("aria-disabled", "true"); }
+      b.onclick = () => { bacChip = v; try { localStorage.setItem("bacChip", String(v)); } catch (e) {} bacDockSig = ""; renderBacDock(s); }; // localStorage write → storage event syncs the felt's tray
+      tray.appendChild(b);
+    });
+    ctr.appendChild(tray);
+    // zone buttons — tap = add the selected chip (server clamps + partial-fills; felt zones mirror this surface)
+    const zr = document.createElement("div"); zr.className = "bac-zones";
+    BAC_ZONES.forEach((z) => {
+      const key = z[0], mine = (s.staked && s.staked[key]) || 0;
+      const b = document.createElement("button"); b.type = "button"; b.className = "bac-zone " + key;
+      b.innerHTML = '<span class="bac-zn">' + z[1] + ' · ' + z[2] + '</span>' + (mine > 0 ? '<span class="bac-zs">' + bacMoney(mine) + '</span>' : "");
+      b.setAttribute("aria-label", "Add $" + bacChip + " to " + z[1] + ". Your " + z[1] + " bet is " + bacMoney(mine) + ".");
+      b.onclick = () => bacCmd("add", { zone: key, amount: bacChip });
+      zr.appendChild(b);
+    });
+    ctr.appendChild(zr);
+    // UNDO (LIFO) / CLEAR — server escrow refunds; they VANISH with the betting window (spec §5.3)
+    if (s.canUndo || s.canClear) {
+      const row = document.createElement("div"); row.className = "bac-ctlrow";
+      const un = document.createElement("button"); un.type = "button"; un.className = "btn btn-ghost bac-ctl"; un.textContent = "↩ UNDO";
+      if (!s.canUndo) { un.disabled = true; un.setAttribute("aria-disabled", "true"); }
+      un.onclick = () => bacCmd("undo");
+      const cl = document.createElement("button"); cl.type = "button"; cl.className = "btn btn-ghost bac-ctl bac-clear"; cl.textContent = "✕ CLEAR";
+      if (!s.canClear) { cl.disabled = true; cl.setAttribute("aria-disabled", "true"); }
+      cl.onclick = () => bacCmd("clear");
+      row.append(un, cl); ctr.appendChild(row);
+    }
+    // REBET / REBET ×2 — only while the current bets are empty; amounts PRINTED (spec R12)
+    if (s.rebet && !(s.totalStaked > 0)) {
+      const row = document.createElement("div"); row.className = "bac-ctlrow";
+      [["⟳ REBET " + bacMoney(s.rebet.total), 1, s.rebet.ok], ["⟳⟳ REBET ×2 " + bacMoney(s.rebet.total2), 2, s.rebet.ok2]].forEach((def) => {
+        const b = document.createElement("button"); b.type = "button"; b.className = "btn btn-ghost bac-ctl bac-rebet"; b.textContent = def[0];
+        if (!def[2]) { b.disabled = true; b.setAttribute("aria-disabled", "true"); }
+        b.onclick = () => bacCmd("rebet", { mult: def[1] });
+        row.appendChild(b);
+      });
+      ctr.appendChild(row);
+    }
+  }
+  function renderBacDock(s) {
+    const status = $("bac-status"), ctr = $("bac-controls"); if (!ctr) return;
+    // money committed to the current coup? (parent guard, spec §5.5): chips down, or the coup in flight
+    try { bacDockLive = !!(s && ((s.totalStaked > 0) || s.phase === "dealing" || s.phase === "reveal")); } catch (e) { bacDockLive = false; }
+    // SELF-HEAL (bj clone): wallet connected but the felt is guest-bound / on a stale token session →
+    // re-init so it binds to the account + live session. 3s throttle; NEVER while live.
+    try {
+      const f0 = $("bac-frame");
+      let feltStale = false;
+      try {
+        if (f0 && f0.getAttribute("src") && window.TokenMode && TokenMode.active && TokenMode.active() && TokenMode.session) {
+          const _si = TokenMode.session(); const _want = (_si && _si.sessionId) || "";
+          const _cur = new URLSearchParams(((new URL(f0.src, location.href)).hash || "").replace(/^#/, "")).get("bjsession") || "";
+          feltStale = !!(_want && _cur !== _want);
+        }
+      } catch (e) {}
+      if (account && f0 && f0.getAttribute("src") && !bacDockLive && Date.now() - bacHealAt > 3000 && (!bacFrameMatchesWallet(f0, account) || feltStale)) {
+        bacHealAt = Date.now();
+        const wl = $("bac-wallet"); if (wl) wl.textContent = "🪪 " + short(account);
+        f0.removeAttribute("src"); ensureBaccaratReady();
+        return;
+      }
+    } catch (e) {}
+    if (status) status.innerHTML = s.msg || "Taking a seat at a live table…";
+    // walletrow: balance + your chips on the felt (spec §5.4: "💰 $940 · FELT $75")
+    const balEl = $("bac-bal");
+    if (balEl) {
+      const tokenFunded = !!(account && window.TokenMode && TokenMode.active && TokenMode.active());
+      const balTxt = s.balance != null ? (tokenFunded ? "🪙 $" + Number(s.balance).toLocaleString() + " tokens" : "💰 $" + Number(s.balance).toLocaleString()) : "";
+      balEl.textContent = balTxt + (s.totalStaked > 0 ? " · FELT " + bacMoney(s.totalStaked) : "");
+    }
+    if (!account) { const wl0 = $("bac-wallet"); if (wl0) wl0.textContent = "🎴 Table chips"; }
+    if (s.balance != null && s.mode !== "waiting" && s.mode !== "spectating") { // pre-seat dock states carry a placeholder 0 — recording it anchors the session tracker at $0 and the whole balance reads as "won"
+      const nb = Math.round(Number(s.balance) * 100) / 100;
+      const changed = nb !== bacLastBal;
+      bacLastBal = nb;
+      // DEMO unification (v12.88 pattern): while on the baccarat channel the felt's guest bank is the source
+      // of truth → write it back to the site demoUsd (one demo balance across every game, incl. blackjack —
+      // both felts seed from and write back to the SAME demoUsd under the SAME guest id). Demo-only; a
+      // connected/token player's chips ARE their token balance (owned by the top bar), never demoUsd.
+      if (changed && !account && currentGame === "baccarat" && !(window.TokenMode && TokenMode.active && TokenMode.active())) { demoUsd = nb; try { demoSave(); demoPaint(); } catch (e) {} }
+      if (changed) paintSession();
+    }
+    if (account) {
+      // LIVE-SYNC the top token bar to the real token balance while at a token table (authoritative
+      // server read via refreshTokens, debounced ≤ once/1.5s — bj clone).
+      try {
+        const f1 = $("bac-frame");
+        if (window.TokenMode && TokenMode.active && TokenMode.active() && f1 && bacFrameMatchesWallet(f1, account) && TokenMode.refreshTokens && Date.now() - bacTokenSyncAt > 1500) {
+          bacTokenSyncAt = Date.now();
+          TokenMode.refreshTokens();
+        }
+      } catch (e) {}
+    }
+    // countdown: re-anchor only on >900ms drift so smoothed jitter never bounces the seconds (bj clone)
+    if (s.countMsLeft != null && s.countMsLeft > 0) {
+      const next = Date.now() + s.countMsLeft;
+      if (Math.abs(next - bacBetEndAt) > 900) { bacBetEndAt = next; bacPaintCount(); }
+      if (!bacCountTimer) bacCountTimer = setInterval(bacPaintCount, 250);
+    } else { bacStopCount(); const cEl = $("bac-count"); if (cEl) cEl.textContent = ""; }
+    if (s.mode === "betting") {
+      const st = s.staked || {};
+      const sig = "bet|" + bacChip + "|" + (st.player || 0) + "|" + (st.banker || 0) + "|" + (st.tie || 0) + "|" +
+        Math.floor((s.balance || 0) / 5) + "|" + (s.canUndo ? 1 : 0) + (s.canClear ? 1 : 0) + "|" +
+        (s.rebet ? s.rebet.total + ":" + (s.rebet.ok ? 1 : 0) + (s.rebet.ok2 ? 1 : 0) : "-");
+      // rebuild on sig change OR an empty dock (channel re-entry can find #bac-controls cleared — bj pattern)
+      if (sig !== bacDockSig || !ctr.firstChild) { bacDockSig = sig; ctr.innerHTML = ""; buildBacControls(ctr, s); }
+      return;
+    }
+    bacDockSig = ""; ctr.innerHTML = ""; // controls VANISH outside the betting window (spec §5.3); the status line narrates the coup
+  }
+  window.addEventListener("message", (e) => {
+    const f = $("bac-frame"); if (!f || e.source !== f.contentWindow || e.origin !== location.origin) return; // same-origin + EXACT source only (#8 pattern)
+    const d = e.data; if (!d) return;
+    if (d.type === "bac:ready") { bacFramePost(currentGame === "baccarat"); return; } // ack-driven re-post (v5 #27): felt just booted → ship it the active/seed state now
+    if (d.type === "bac:fs") { bacSetFullscreen(!!d.on); return; } // felt's ⛶ — the parent owns the layer
+    if (d.type !== "bac:dock") return;
+    if (d.roomId) { bacRoomId = d.roomId; const sb = $("bac-share"); if (sb) sb.disabled = false; } // enable Share once at a table
+    if (currentGame === "baccarat") renderBacDock(d);
+  });
   // Poker chips are a session-local pool seeded from your in-game balance.
   // Phase 1 (vs house bots) plays out client-side; net results are NOT yet
   // written on-chain — the trusted house-signed settlement lands with the
@@ -4518,14 +4786,16 @@
       if (qg === "slots") saved = "slots3d";
       else if (qg && GAME_CHANNEL[qg]) saved = qg;
       else if (qp.get("bjtable")) saved = "blackjack";
+      else if (qp.get("bactable")) saved = "baccarat";
     } catch (e) {}
     if (saved === "slots") saved = "slots3d";
+    if (saved === "baccarat" && !BACCARAT_ENABLED()) saved = "flip"; // kill switch off: a stale ctf_game="baccarat" falls back cleanly
     if (!GAME_CHANNEL[saved]) saved = "flip";
     currentGame = saved;
     paintGameTabs(saved);
     if (saved === "poker" && window.PokerUI) PokerUI.show();
     if (window.TV) TV._activeChannel = GAME_CHANNEL[saved] || 8;
-    if (saved === "crash") { if (window.TV && TV._crashIdle) { try { TV._crashIdle(); } catch (e) {} } if (!window.CrashRender) loadScriptOnce("crash-render.js?v=1337").then(() => { try { if (window.TV && TV._crashIdle && currentGame === "crash") TV._crashIdle(); } catch (e) {} }).catch(() => {}); }
+    if (saved === "crash") { if (window.TV && TV._crashIdle) { try { TV._crashIdle(); } catch (e) {} } if (!window.CrashRender) loadScriptOnce("crash-render.js?v=1340").then(() => { try { if (window.TV && TV._crashIdle && currentGame === "crash") TV._crashIdle(); } catch (e) {} }).catch(() => {}); }
     // Balloon Pop needs its engine built + activated on reload too (enterDemo,
     // which runs just after, flips it to enabled once it exists).
     if (saved === "pressure") ensurePressureReady();
@@ -4545,6 +4815,7 @@
     if (saved === "dice") ensureDice3dReady();     // build the 0-100 neon rail on reload too
     if (saved === "twodice") ensureDice2_3dReady(); // build the 3D dice on reload too
     if (saved === "blackjack") { document.body.classList.add("bj-channel"); { const wl = $("bj-wallet"); if (wl) wl.textContent = "🪪 " + short(account || bjGuestId()); } ensureBlackjackReady(); if (window.TV && TV._blackjackIdle) try { TV._blackjackIdle(); } catch (e) {} } // restore + show the CH 16 felt on reload (hide demo credits, show table wallet)
+    if (saved === "baccarat") { document.body.classList.add("bac-channel"); { const wl = $("bac-wallet"); if (wl) wl.textContent = "🪪 " + short(account || bjGuestId()); } ensureBaccaratReady(); if (window.TV && TV._baccaratIdle) try { TV._baccaratIdle(); } catch (e) {} } // restore + show the CH 21 felt on reload
   }
 
   // My open tables: show bank + idle countdown, auto-close (refund) when stale.
@@ -5649,6 +5920,8 @@
     { const dr = $("demo-reset"); if (dr) dr.onclick = demoReset; }
     { const dc = $("demo-connect"); if (dc) dc.onclick = () => { try { localStorage.removeItem("cf_no_autoconnect"); } catch (e) {} connect(); }; } // W7: manual Connect clears the sticky flag
     { const bs = $("bj-share"); if (bs) bs.onclick = bjShareTable; } // copy a link to the current blackjack table
+    { const bs = $("bac-share"); if (bs) bs.onclick = bacShareTable; } // copy a link to the current baccarat table
+    { const fb = $("bac-fs"); if (fb) fb.onclick = () => bacSetFullscreen(!bacFsOn); } // dock ⛶ mirrors the felt's corner button
     { const br = $("bj-reload"); if (br) br.onclick = () => { bjReanchorNext = true; bjReload(); if (!account) toast("Table chips synced to your $" + Math.round(demoUsd).toLocaleString() + " demo balance 💰", "ok"); }; } // #97 / cluster-a: reflect the real demo balance, not a stale "$1,000": a reload is a DEPOSIT → re-anchor the session net, don't count it as a win
     { const bc = $("bj-cashout"); if (bc) bc.onclick = bjCashout; }
     $("raise-max-btn").onclick = raiseMaxBet;
@@ -6149,6 +6422,8 @@
     // self-heal only runs on token onChange — which nothing fires here. Re-run the GUARDED re-bind directly:
     // it no-ops unless the felt is missing/stale (bjDockLive blocks any mid-hand teardown).
     try { if (currentGame === "blackjack" && account) ensureBlackjackReady(); } catch (e) {}
+    // Baccarat felt: identical guarded re-bind after app-switching (no-ops unless missing/stale; never mid-coup).
+    try { if (currentGame === "baccarat" && account) ensureBaccaratReady(); } catch (e) {}
   });
 
   window.addEventListener("DOMContentLoaded", () => {
@@ -6158,7 +6433,7 @@
     // them AFTER first paint. loadScriptOnce dedupes; scenes.js self-boots on inject (readyState !== "loading").
     // The window.* guards make this a no-op if the classic <script defer> tags are still in index.html
     // (never double-execute the IIFEs — a second chiptune.js run would rebind window.Chiptune mid-song).
-    { const goExtras = () => { if (!window.WinScenes) loadScriptOnce("scenes.js?v=1337").catch(() => {}); if (!window.Chiptune) loadScriptOnce("chiptune.js?v=1337").then(() => { try { syncSoundBtn(); } catch (e) {} }).catch(() => {}); };
+    { const goExtras = () => { if (!window.WinScenes) loadScriptOnce("scenes.js?v=1340").catch(() => {}); if (!window.Chiptune) loadScriptOnce("chiptune.js?v=1340").then(() => { try { syncSoundBtn(); } catch (e) {} }).catch(() => {}); };
       if (document.readyState === "complete") setTimeout(goExtras, 0);
       else window.addEventListener("load", () => setTimeout(goExtras, 0), { once: true }); }
     wireUI();

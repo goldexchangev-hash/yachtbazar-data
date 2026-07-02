@@ -19,6 +19,7 @@ require("dotenv").config();
 const express = require("express");
 const { WebSocketServer } = require("ws");
 const { attachBlackjack } = require("./blackjack-server.js");
+const { attachBaccarat } = require("./baccarat-server.js");
 const { attachBridge } = require("./bridge-server.js");
 const { makeCrashWs } = require("./crash-rounds-ws.js");
 
@@ -192,6 +193,27 @@ const blackjack = attachBlackjack({
 });
 attachBridge(app, { blackjack });
 
+// Multiplayer Baccarat (CH 21) — second felt engine on the SAME ws server (blackjack clone,
+// spec §8). Constructed HERE, right after blackjack and BEFORE makeTokenService, so the token
+// guard closures below (hasLiveExternal/hasDealtExternal) can reference it. Own guest bank file
+// (same atomic-write + corrupt-quarantine posture as the blackjack guest bank).
+const BAC_BANK_FILE = String(process.env.BAC_BANK_FILE || path.join(__dirname, ".bac-bank.json"));
+const bacPersist = {
+  load() {
+    try { return loadJsonStoreOrThrow(BAC_BANK_FILE, "baccarat guest bank"); }
+    catch (e) { return {}; } // corrupt bytes already backed up + logged inside loadJsonStoreOrThrow (play money — don't take the site down)
+  },
+  save(obj) { try { writeJsonAtomic(BAC_BANK_FILE, obj); } catch (e) {} },
+};
+const baccarat = attachBaccarat({
+  startBalance: 5000, // match the site-wide $5,000 play-money demo balance
+  persist: bacPersist,
+  timers: { dealPace: 450, revealHold: 700, revealPace: 650 }, // spec §3 choreography (pacing 0 ⇒ synchronous is the test convention)
+});
+// Optional server-side kill switch (spec §8 step 10): BACCARAT_ENABLED="0" skips the ws routing +
+// token bind below. The client flag (config.js BACCARAT_ENABLED) is the primary switch (FS2 precedent).
+const BACCARAT_WS = process.env.BACCARAT_ENABLED !== "0";
+
 // ── Server-side TOKEN bridge (the new commit-reveal token games: coinflip/dice/dice2/
 //    crash/pressure/slots/slots3d). FLAG-GATED + OFF by default, so the live demo is
 //    untouched. Enable with ENABLE_TOKEN_BRIDGE=1 plus HOUSE_SIGNER_KEY (signer) and an
@@ -338,10 +360,12 @@ const tokenSvc = attachTokenBridge(app, {
   // Stranded-lock auto-claim is only safe when the legacy on-chain blackjack bridge is OFF (else a prior
   // bjLocked could be a live on-chain hand). It is OFF by default and the owner keeps it 0.
   experimentalBridgeOn: () => process.env.ENABLE_EXPERIMENTAL_BRIDGE === "1",
-  hasLiveExternal: (player) => { try { return blackjack.hasLiveHand(player); } catch (e) { return false; } },
+  // OR'd across BOTH felt engines (spec §8): token cash-out/recover is refused while EITHER game has
+  // money in flight for this player — a settle must never lock in a debited stake before a hand/coup resolves.
+  hasLiveExternal: (player) => { try { return blackjack.hasLiveHand(player) || baccarat.hasLiveHand(player); } catch (e) { return false; } },
   // STRICTER: only a DEALT, in-play hand (not a bet placed in the betting phase). The token top-up guard uses
   // this so adding funds between hands / during betting credits immediately, while mid-hand top-up still refuses.
-  hasDealtExternal: (player) => { try { return blackjack.hasDealtHand(player); } catch (e) { return false; } },
+  hasDealtExternal: (player) => { try { return blackjack.hasDealtHand(player) || baccarat.hasDealtHand(player); } catch (e) { return false; } },
 });
 
 // TOKEN-FUNDED BLACKJACK wiring: a real wallet's blackjack chips ARE their token session. Hand bets/wins
@@ -352,6 +376,9 @@ const tokenSvc = attachTokenBridge(app, {
 // is refused (never placed), matching the HTTP posture. Demo BJ (guest bank) doesn't consult tokensOf → unaffected.
 const _tokenBridgeEnabled = () => process.env.ENABLE_TOKEN_BRIDGE === "1" && realmoney.enabled();
 try { blackjack.setTokenLedger({ tokensOf: (sid) => (_tokenBridgeEnabled() ? tokenSvc.tokensOf(sid) : null), applyNet: tokenSvc.applyBlackjackNet }); } catch (e) {}
+// TOKEN-FUNDED BACCARAT: identical wiring, its own additive ledger sibling (applyBaccaratNet →
+// applyExternal game:"baccarat") so the audited blackjack path stays byte-identical (spec §8).
+try { baccarat.setTokenLedger({ tokensOf: (sid) => (_tokenBridgeEnabled() ? tokenSvc.tokensOf(sid) : null), applyNet: tokenSvc.applyBaccaratNet }); } catch (e) {}
 
 // ── Live crash rounds over the ws (cr:* sub-protocol) ───────────────────────────
 // The server-paced round-runner that makes MANUAL tap-to-cash-out provably fair for the
@@ -370,13 +397,13 @@ try { tokenSvc.setActiveCrashCheck((sessionId) => crashWs.hasActiveRound(session
 // stray throw/rejection anywhere must NOT silently exit and wipe the in-memory bank. Log it, flush
 // balances to disk, and keep serving. Also flush on a graceful shutdown (Render sends SIGTERM on
 // deploy/spin-down) so the last balances are persisted.
-function flushBjBank() { try { blackjack.bank && blackjack.bank.flush && blackjack.bank.flush(); } catch (e) {} }
+function flushGameBanks() { try { blackjack.bank && blackjack.bank.flush && blackjack.bank.flush(); } catch (e) {} try { baccarat.bank && baccarat.bank.flush && baccarat.bank.flush(); } catch (e) {} } // BOTH felt engines' guest banks (was flushBjBank)
 // Flush BOTH money stores on the way down/sideways (audit #143/#144): the GUEST blackjack bank AND the
 // token bridge's HTTP-guard state (spent buy-ins, open sessions, bearers, pendingSettle obligations).
 // The token bridge already persists synchronously on every op, but a final flush guarantees the very
 // last state survives a deploy/spin-down and is cheap + swallow-on-fail.
 function flushTokenStore() { try { tokenSvc && tokenSvc.flushPersist && tokenSvc.flushPersist(); } catch (e) {} }
-function flushAllStores() { flushBjBank(); flushTokenStore(); }
+function flushAllStores() { flushGameBanks(); flushTokenStore(); }
 // #32: drain in-flight crash rounds into the ledger BEFORE flushing on a fault too (mirrors the SIGTERM
 // path) — an uncaughtException often precedes the process dying, so booking the reserved stakes now keeps
 // the ledger consistent even if Render SIGKILLs us next. drainCrashRounds() is idempotent + best-effort
@@ -549,6 +576,7 @@ wss.on("connection", (ws, req) => {
       return;
     }
     if (data.type === "bj:ping") { try { ws.send(JSON.stringify({ type: "bj:pong" })); } catch {} return; } // liveness probe so the client can detect a half-open socket + recover a frozen felt
+    if (data.type === "bac:ping") { try { ws.send(JSON.stringify({ type: "bac:pong" })); } catch {} return; } // baccarat felt's identical liveness probe
     if (typeof data.type === "string" && data.type.startsWith("cr:")) {
       // Live crash rounds (token mode). Self-authorizing via the bridge session token in
       // the message itself — no `hello` required. Errors are returned as cr:error, never thrown.
@@ -569,6 +597,24 @@ wss.on("connection", (ws, req) => {
       } catch (e) {
         try { ws.send(JSON.stringify({ type: "bj:error", code: "server", message: "Blackjack message could not be processed" })); } catch {}
         console.error("blackjack ws error:", e && e.message ? e.message : e);
+      }
+      return;
+    }
+    if (typeof data.type === "string" && data.type.startsWith("bac:")) {
+      if (!BACCARAT_WS) return; // server kill switch (BACCARAT_ENABLED="0") — routing off, engine dormant
+      // Baccarat shares blackjack's identity gate: ONE hello per socket marks it identified for BOTH engines
+      // (the felts send the identical {type:"hello", address, bjToken, bjSession} frame).
+      const allowedBeforeHello = data.type === "bac:lobby:subscribe" || data.type === "bac:lobby:unsubscribe";
+      if (!ws.bjHelloSeen && !allowedBeforeHello) {
+        try { ws.send(JSON.stringify({ type: "bac:error", code: "auth_required", message: "Identify before joining baccarat" })); } catch {}
+        return;
+      }
+      // Baccarat sub-protocol: route any bac:* intent to the engine after identity.
+      try {
+        baccarat.handle(ws, data);
+      } catch (e) {
+        try { ws.send(JSON.stringify({ type: "bac:error", code: "server", message: "Baccarat message could not be processed" })); } catch {}
+        console.error("baccarat ws error:", e && e.message ? e.message : e);
       }
       return;
     }
@@ -594,6 +640,10 @@ wss.on("connection", (ws, req) => {
           if (ts && String(ts.player || "").toLowerCase() === addr.toLowerCase()) {
             ws.wallet = addr; ws.tokenSession = String(data.bjSession); ws.bjToken = String(data.bjToken || "");
             blackjack.bindToken(addr, data.bjSession);
+            // One token session funds BOTH felt tables (ledger-safe: every applyExternal row is atomic+nonced;
+            // the OR'd hasLiveExternal guard covers both). bindToken self-refuses mid-coup per engine — its own
+            // try so a frozen baccarat bind can never break the blackjack identity path.
+            if (BACCARAT_WS) { try { baccarat.bindToken(addr, data.bjSession); } catch (e) {} }
             tokenOk = true;
           }
         } catch (e) {}
@@ -660,6 +710,7 @@ wss.on("connection", (ws, req) => {
 
   ws.on("close", () => {
     blackjack.onClose(ws); // free the player's seat / spectator slot
+    baccarat.onClose(ws);  // ditto on the baccarat felt (disconnect grace keeps the seat + bets)
     crashWs.onClose(ws);   // detach any live crash round (it still settles via the server timer)
     // Drop any token-session binding so a settled/replaced session can't keep routing this wallet's chips —
     // BUT only if no OTHER open socket still holds the same wallet's token session (#36 two-tab safety):
@@ -672,7 +723,7 @@ wss.on("connection", (ws, req) => {
         if (other === ws) continue;
         if (other.readyState === other.OPEN && other.wallet && other.tokenSession && other.wallet.toLowerCase() === w) { othersHold = true; break; }
       }
-      if (!othersHold) { try { blackjack.unbindToken(ws.wallet); } catch (e) {} }
+      if (!othersHold) { try { blackjack.unbindToken(ws.wallet); } catch (e) {} try { baccarat.unbindToken(ws.wallet); } catch (e) {} } // each engine self-guards on its own live hand/coup
     }
     if (ws._ip) { const n = (wsByIp.get(ws._ip) || 0) - 1; if (n <= 0) wsByIp.delete(ws._ip); else wsByIp.set(ws._ip, n); } // v6 #4: release the per-IP slot
     clients.delete(ws);

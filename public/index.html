@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#0c0d16" />
     <meta name="referrer" content="same-origin" />
-    <link rel="manifest" href="manifest.webmanifest?v=1337" />
+    <link rel="manifest" href="manifest.webmanifest?v=1340" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -35,7 +35,7 @@
       <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Press+Start+2P&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
     </noscript>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=1337" />
+    <link rel="stylesheet" href="styles.css?v=1340" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -45,13 +45,13 @@
     <!-- ───────────────────────── Header ───────────────────────── -->
     <header class="topbar">
       <button id="rail-toggle" class="rail-toggle" aria-label="Open menu" title="Menu">☰</button>
-      <span class="build-tag-m" id="build-tag-m" title="Live build version — confirms the deploy is up to date">v13.37</span>
+      <span class="build-tag-m" id="build-tag-m" title="Live build version — confirms the deploy is up to date">v13.40</span>
       <div class="brand">
         <span class="brand-tv">📺</span>
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v13.37</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v13.40</span>
       </div>
       <div class="topbar-right">
         <div class="tb-tools">
@@ -227,6 +227,18 @@
             </svg>
           </span>
           <span class="gc-name">Blackjack</span>
+        </button>
+
+        <!-- Baccarat (CH 21) — communal Punto Banco felt (blackjack iframe pattern); kill switch: BACCARAT_ENABLED in config.js -->
+        <button type="button" class="game-card baccarat" id="ch-baccarat" role="tab" aria-selected="false" data-game="baccarat">
+          <span class="gc-tile">
+            <svg class="gc-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3.6" y="5.4" width="9.6" height="13.4" rx="2" transform="rotate(-8 8.4 12.1)"/>
+              <rect x="10.8" y="5.2" width="9.6" height="13.4" rx="2" transform="rotate(8 15.6 11.9)" fill="rgba(0,0,0,.25)"/>
+              <circle cx="15.7" cy="11.9" r="2.2"/>
+            </svg>
+          </span>
+          <span class="gc-name">Baccarat</span>
         </button>
 
         <button type="button" class="game-card poker" id="ch-poker" role="tab" aria-selected="false" data-game="poker" hidden>
@@ -445,6 +457,12 @@
                   <iframe id="bj-frame" class="bj-frame" title="Blackjack felt" frameborder="0" scrolling="no"></iframe>
                 </div>
 
+                <!-- Baccarat (CH 21): communal Punto Banco felt in its own isolated iframe
+                     (blackjack pattern). Chip tray + zone controls dock UNDER the TV. -->
+                <div class="screen-layer hidden" id="layer-baccarat">
+                  <iframe id="bac-frame" class="bac-frame" title="Baccarat table" frameborder="0" scrolling="no"></iframe>
+                </div>
+
                 <!-- Universal "loading" screen shown while a lazy game module builds,
                      so the correct game name is on-screen instead of looking like Flip -->
                 <div class="screen-layer hidden" id="layer-loading">
@@ -462,7 +480,7 @@
                 <!-- Promo intro reel — autoplays once (muted) on first load, then fades
                      to black and hands off to the game. Replay button under the TV. -->
                 <!-- promo DISABLED for now (owner) — preload none so the reel isn't even downloaded; re-enable via PROMO_ENABLED in app.js -->
-                <video id="promo-video" class="promo-video hidden" playsinline preload="none" muted src="promo.mp4?v=1337"></video>
+                <video id="promo-video" class="promo-video hidden" playsinline preload="none" muted src="promo.mp4?v=1340"></video>
 
                 <!-- Shown while a bet tx is being signed + mined (esp. slow on mobile) -->
                 <div id="tv-pending" class="tv-pending hidden">⏳ SENDING BET…<br />confirm in your wallet, then hold tight</div>
@@ -694,6 +712,25 @@
           </div>
           <div class="bj-controls" id="bj-controls"></div>
           <button type="button" class="btn btn-ghost bj-share" id="bj-share" disabled title="Copy a link to this exact table so a friend can sit down with you">🔗 Share this table</button>
+        </div>
+
+        <!-- Baccarat (CH 21): felt is the iframe in the TV; the chip tray + PLAYER/TIE/BANKER zone
+             buttons here drive it via postMessage (bac:cmd add/undo/clear/rebet — spec §5, no confirm
+             button: chips on the felt at window close ARE the bet). Countdown lives HERE, never on the TV. -->
+        <div class="action-dock bac-dock" data-game="baccarat">
+          <div class="bac-walletrow">
+            <span class="bac-wallet" id="bac-wallet" title="Your table wallet on the baccarat server (demo chips sync with the site demo balance)">🪪 —</span>
+            <span class="bac-bal" id="bac-bal" title="Your baccarat balance (connected players: your tokens fund the felt)"></span>
+          </div>
+          <div class="bac-toprow">
+            <span class="bac-count" id="bac-count"></span>
+            <button type="button" class="bac-fs" id="bac-fs" title="Fullscreen" aria-label="Fullscreen">⛶</button>
+          </div>
+          <div class="bac-statusrow">
+            <span class="bac-status" id="bac-status" role="status" aria-live="polite">Taking a seat at a live table…</span>
+          </div>
+          <div class="bac-controls" id="bac-controls"></div>
+          <button type="button" class="btn btn-ghost bac-share" id="bac-share" disabled title="Copy a link to this exact table so a friend can sit down with you">🔗 Share this table</button>
         </div>
 
         <!-- Win-animation theme switcher (hidden for now — locked to Scarfblade Films) -->
@@ -1604,22 +1641,22 @@
     </aside>
 
     <script defer src="vendor/ethers.umd.min.js?v=ethers-1"></script>
-    <script defer src="config.js?v=1337"></script>
-    <script defer src="contract.js?v=1337"></script>
+    <script defer src="config.js?v=1340"></script>
+    <script defer src="contract.js?v=1340"></script>
     <!-- chiptune.js + scenes.js (119.5KB raw / 33.6KB br) are fetched AFTER first paint by app.js goExtras (window load) — music is gesture-gated and win-scene art is bet-gated, so neither is needed before first interaction; every call site is window.Chiptune/window.WinScenes-guarded -->
-    <script defer src="tv.js?v=1337"></script>
+    <script defer src="tv.js?v=1340"></script>
     <!-- P6: poker is a hidden, unopenable channel (absent from GAME_CHANNEL, no UI/URL entry) — its 3 scripts
          (~42KB) were parsed by every visitor for nothing. Removed. Every PokerUI call site is `if (window.PokerUI)`
          -guarded, so this is inert. To re-enable: lazy-load these via loadScriptOnce + add a GAME_CHANNEL entry.
-    <script defer src="poker-engine.js?v=1337"></script>
-    <script defer src="poker-bots.js?v=1337"></script>
-    <script defer src="poker-ui.js?v=1337"></script> -->
-    <script defer src="crash-engine.js?v=1337"></script>
+    <script defer src="poker-engine.js?v=1340"></script>
+    <script defer src="poker-bots.js?v=1340"></script>
+    <script defer src="poker-ui.js?v=1340"></script> -->
+    <script defer src="crash-engine.js?v=1340"></script>
     <!-- crash-render.js (43.8KB raw / 13.6KB br) is lazy-loaded by app.js on CH11 crash-channel entry; every tv.js call site is window.CrashRender-guarded and _ensureCrash retries -->
-    <script defer src="profile.js?v=1337"></script>
-    <script defer src="token-client.js?v=1337"></script>
-    <script defer src="token-mode.js?v=1337"></script>
-    <script defer src="crash-rounds-client.js?v=1337"></script>
-    <script defer src="app.js?v=1337"></script>
+    <script defer src="profile.js?v=1340"></script>
+    <script defer src="token-client.js?v=1340"></script>
+    <script defer src="token-mode.js?v=1340"></script>
+    <script defer src="crash-rounds-client.js?v=1340"></script>
+    <script defer src="app.js?v=1340"></script>
   </body>
 </html>

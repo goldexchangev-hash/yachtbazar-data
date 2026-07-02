@@ -69,7 +69,7 @@ const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 // 188x, crash/pressure ≤1000x, fish/reef ~760x with the bonus tail) so it can NEVER clip a legit win — but a
 // mispriced/exploited engine can never drain past the ceiling. Applied identically in play + resolveReserved +
 // verifyRederive so the ledger stays re-derivable. Firing this is an exceptional event = a bug/exploit → log loud.
-const PAYOUT_CAP = { coinflip: 10, dice: 300, dice2: 150, slots: 600, slots3d: 600, crash: 1100, plane: 1100, swoop: 1100, pressure: 1100, fishshooter: 2500, fishshooter2: 2500, reef: 2500 };
+const PAYOUT_CAP = { coinflip: 10, dice: 300, dice2: 150, slots: 600, slots3d: 600, crash: 1100, plane: 1100, swoop: 1100, pressure: 1100, fishshooter: 2500, fishshooter2: 2500, reef: 2500, baccarat: 15 }; // baccarat: max legit zone return is 9× (tie) — 15× is generous headroom; labels ledger rows + future-proofs external clamping
 const PAYOUT_CAP_DEFAULT = 2500;
 function clampPayout(game, betUnits, payout) {
   const b = Number(betUnits) || 0;
