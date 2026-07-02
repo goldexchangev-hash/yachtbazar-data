@@ -92,19 +92,17 @@ function makeOnChainVerifier(rpcUrlFor, minConfirmations) {
     const receipt = await provider.getTransactionReceipt(o.txHash);
     if (!receipt || receipt.status !== 1) throw new Error("buy-in transaction is not confirmed");
     if (receipt.to && receipt.to.toLowerCase() !== o.contract.toLowerCase()) throw new Error("buy-in went to the wrong contract");
+    // CONFIRMATION DEPTH IS NOT A SYNCHRONOUS GATE. A buy-in request can't wait many Sepolia blocks (~12s each)
+    // without the client's fetch aborting ("fetch aborted"), and the LIVE on-chain bjLocked read below
+    // (currentLocked >= eventLocked) is a STRONGER reorg-safety gate than a confirmation count — it confirms the
+    // funds are locked in the CURRENT chain state, so a reorg that dropped the buy-in is already rejected there.
+    // A one-shot minConfirmations check rejected EVERY freshly-mined buy-in (conf=1); a long wait then made the
+    // client abort. So: retain minConfirmations only as a SHORT best-effort wait (bounded well under the client
+    // timeout) that NEVER rejects a genuinely mined+locked buy-in. The receipt.status===1 (above) + event parse +
+    // bjLocked read (below) are the real acceptance criteria.
     if (minConfirmations > 1) {
-      // The tx is MINED (status 1 above), but the client POSTs /start right after its own tx.wait() — which
-      // resolves at just 1 confirmation. A ONE-SHOT check here therefore rejected EVERY buy-in with "needs more
-      // confirmations" the instant it was mined (conf=1 < minConfirmations). WAIT (bounded) for the tx to reach
-      // the required depth instead of rejecting outright — waitForTransaction resolves with the receipt once it
-      // hits minConfirmations, or null on timeout, and only THEN do we reject. This never ACCEPTS an under-confirmed
-      // tx (strictly safer than before), it just gives a freshly-mined buy-in the extra blocks it needs. The 40s
-      // bound keeps the request from hanging (the FetchRequest per-call timeout still applies to each poll).
-      let conf = await receipt.confirmations();
-      if (conf < minConfirmations) {
-        const deeper = await provider.waitForTransaction(o.txHash, minConfirmations, 40000).catch(() => null);
-        if (!deeper || deeper.status !== 1) throw new Error("buy-in needs more confirmations — try again in a moment");
-      }
+      const conf = await receipt.confirmations().catch(() => 0);
+      if (conf < minConfirmations) { try { await provider.waitForTransaction(o.txHash, minConfirmations, 4000); } catch (e) {} } // best-effort only; never throws
     }
     const iface = new ethers.Interface(BUYIN_ABI);
     let eventLocked = null;
@@ -486,7 +484,7 @@ function makeTokenService(opts) {
     // branch and REFUNDS the stake (net 0) instead of losing — a free "peek"/re-roll (edge-erosion). The round-runner
     // already floors targets to 1.20x so it never hits this; only a hand-crafted direct /play can. An ABSENT target
     // uses the engine's valid DEFAULT_TARGET (≥1.20) and is unaffected — reject only an explicit below-floor target.
-    if (body.game === "pressure") { const _co = body.params && body.params.cashOutAt; if (_co != null && Number(_co) < 1.20) throw new Error("hold longer — Balloon Pop banks from 1.20x"); }
+    if (body.game === "pressure") { const _co = body.params && body.params.cashOutAt; if (_co != null && !(Number(_co) >= 1.20)) throw new Error("hold longer — Balloon Pop banks from 1.20x"); } // v11 #3 hardened: reject anything not >= 1.20 — a non-numeric cashOutAt ({}/"abc") coerces to NaN, and NaN < 1.20 is FALSE, so the old check let it through to the engine VOID (free outcome-peek / edge erosion)
     const r = bridge.play({ sessionId, game: body.game, betUnits: body.betUnits, params: body.params, clientSeed: body.clientSeed });
     return { ok: true, ...r }; // NOTE: never includes serverSeed — only the commit is exposed pre-settle
   }
@@ -965,6 +963,13 @@ function makeTokenService(opts) {
     const s = bridge.session(String(sessionId || ""));
     if (!s || s.closed || s.settlement) throw new Error("no open token session");
     if (String(s.player).toLowerCase() !== String(player || "").toLowerCase()) throw new Error("session does not belong to player");
+    // v12.99 (money-regression audit): a GENUINELY-LIVE server-paced crash round on this session must block a BJ
+    // net-apply. Otherwise applyExternal's orphan self-heal (finalizeOrphanRounds, added v12.95 for v9 #7) would
+    // FORCE-BUST the live round to payout 0 — silently yanking a would-be WIN. This is the reverse of the cr:start
+    // liveExternal gate (crash-rounds-ws), which was asymmetric (BJ→crash was unguarded because hasLiveHand needs
+    // seatStake>0, so a seated-no-bet player slips through). A true SIGKILL orphan has an EMPTY RAM map after a
+    // restart → liveCrashSession is false → the self-heal still runs and BJ is never permanently blocked.
+    if (liveCrashSession(s.id)) throw new Error("finish your live round before placing a blackjack bet");
     const r = bridge.applyExternal({ sessionId: s.id, game: "blackjack", betUnits: betUnits, payoutUnits: payoutUnits, ref: ref });
     return r.tokens;
   }
@@ -1383,6 +1388,15 @@ if (require.main === module) {
     eq("token-funded bj: rejects a net for the wrong player", bjWrong === 1);
     let bjOver = 0; try { bjSvc.applyBlackjackNet(bjp, bjStarted.sessionId, 1e9, 0); } catch (e) { bjOver = 1; }
     eq("token-funded bj: rejects a bet over the token balance", bjOver === 1);
+    // v12.99 (money-regression audit): a GENUINELY-LIVE crash round on this session MUST block a BJ net-apply —
+    // else applyExternal's orphan self-heal (finalizeOrphanRounds) would force-bust the live round to payout 0,
+    // silently yanking a would-be WIN. A true post-restart orphan (RAM empty → checker false) still self-heals.
+    bjSvc.setActiveCrashCheck((sid) => sid === bjStarted.sessionId); // pretend a live crash round is running on this session
+    let bjCrashBlocked = 0; try { bjSvc.applyBlackjackNet(bjp, bjStarted.sessionId, 10, 0, "hand2:bet"); } catch (e) { if (/live round/i.test(e.message)) bjCrashBlocked = 1; }
+    eq("v12.99: a BJ bet is REFUSED while a live crash round is on the same session (no live-round yank)", bjCrashBlocked === 1);
+    bjSvc.setActiveCrashCheck(null); // clear → post-restart orphan case (RAM empty): the BJ net-apply proceeds (self-heal not blocked)
+    const afterClear = bjSvc.applyBlackjackNet(bjp, bjStarted.sessionId, 0, 0, "hand2:probe"); // net-0 probe: proves the guard cleared (no throw) WITHOUT disturbing the balance for the downstream settle test
+    eq("v12.99: with NO live crash round the BJ net-apply proceeds (orphan self-heal path unblocked)", afterClear === afterWin);
     // cash-out / recover are REFUSED while a hand is live (else the settle locks in a debited stake)
     _liveHand = true;
     let bjSettleBlocked = 0; try { await bjSvc.doSettle({ player: bjp, sessionId: bjStarted.sessionId, signature: await bjSign("settle", { player: bjp, contract, chainId, sessionId: bjStarted.sessionId }) }); } catch (e) { if (/finish your blackjack hand/.test(e.message)) bjSettleBlocked = 1; }

@@ -41,12 +41,15 @@
     this.tokens = 0;
   }
 
-  TokenBridgeClient.prototype._post = async function (path, body) {
+  TokenBridgeClient.prototype._post = async function (path, body, timeoutMs) {
     const f = this.d.fetch || root.fetch.bind(root);
     const opts = { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body || {}) };
     // A hung request must NOT freeze the game forever (a per-shot bet that never resolves
     // leaves the balance stuck). Bound every call with a timeout so the caller's catch fires.
-    try { if (typeof AbortSignal !== "undefined" && AbortSignal.timeout) opts.signal = AbortSignal.timeout(12000); } catch (e) {}
+    // A per-call override (timeoutMs) lets a multi-RPC endpoint like /start (buy-in verification does
+    // getNetwork + getTransactionReceipt + a live bjLocked read, each server-bounded ~12s) use a longer
+    // bound so a healthy verification never aborts mid-flight ("fetch aborted") and re-locks funds.
+    try { if (typeof AbortSignal !== "undefined" && AbortSignal.timeout) opts.signal = AbortSignal.timeout(timeoutMs || 12000); } catch (e) {}
     const res = await f((this.d.apiBase || "") + path, opts);
     const j = await res.json().catch(() => ({}));
     // Surface the HTTP status in the message so a server 500 / HTML error page is diagnosable
@@ -128,7 +131,7 @@
     const tx = await d.contract.blackjackBuyIn(buyInWei, { gasLimit: 200000n });
     const receipt = await tx.wait();
     // 3) hand the server the confirmed txHash + the signature → it verifies + grants tokens
-    const r = await this._post("/api/token/start", { player, contract, chainId, txHash: receipt.hash, buyInWei, signature });
+    const r = await this._post("/api/token/start", { player, contract, chainId, txHash: receipt.hash, buyInWei, signature }, 45000); // 45s: /start does multiple sequential on-chain reads — must not abort mid-verify (was 12s → "fetch aborted" → re-lock)
     this.session = r; this.tokens = r.tokens;
     return r;
   };
