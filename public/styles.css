@@ -2763,3 +2763,60 @@ body.plane-real .plane-bets { grid-template-columns: 1fr; }
   .plane-bp { padding: 8px; }
   .plane-feed { max-height: 130px; }
 }
+
+/* ============================================================
+   DESIGN POLISH — v13.15 (Fable design hunt, feasibility+safety verified).
+   Appended overrides win by source order. CSS-only; no money/PF/token paths.
+   ============================================================ */
+
+/* #0 mobile: slim the retro-TV bezel → the 4:3 game screen gains ~14px/side at 380px */
+@media (max-width: 560px) {
+  .tv-screen-frame { padding: 9px; border-radius: 14px; box-shadow: inset 0 0 0 4px #1b1b1b, inset 0 0 22px rgba(0, 0, 0, 0.9); }
+}
+
+/* #1 mobile: demote the neon version pill to a quiet build stamp + drop the now-empty brand div */
+@media (max-width: 480px) {
+  .build-tag-m { display: inline-flex; align-items: center; flex: 0 0 auto; margin-right: auto;
+    font: 700 10px/1 var(--s-font); letter-spacing: .3px; color: var(--s-muted);
+    background: none; border: none; padding: 0 2px; }
+  .brand { display: none; }
+}
+
+/* #3 mobile: quick-bet chips (½/2×/Max) meet the 40px tap-target floor the rest of the UI uses */
+@media (max-width: 900px) {
+  .qbet { min-width: 40px; min-height: 40px; display: inline-flex; align-items: center; justify-content: center; }
+}
+
+/* #4 the single most important button's verb shouldn't be quieter than the readouts */
+.act-btn .ab-verb { font-size: 18px; }
+@media (max-width: 640px) { .act-btn .ab-verb { font-size: 16px; } }
+
+/* #5 give the dice odds-bar flag headroom so it stops overlapping the 'Target' label */
+.dice-oddsbar.is-draggable { margin: 28px 0 30px; }
+
+/* #6 dice odds bar: readable lose zone (was navy-on-navy) + neutral grip/frame on the Stake shell */
+.ob-lose { background: rgba(233, 17, 60, .28); }
+.dice-oddsbar { background: var(--s-bg-deep); border-color: var(--s-border); }
+.ob-grip { background: var(--s-text); box-shadow: 0 1px 5px rgba(0, 0, 0, .5), inset 0 0 0 2px rgba(0, 0, 0, .15); }
+.dice-oddsbar.is-draggable:focus-visible { box-shadow: inset 0 1px 4px rgba(0, 0, 0, .5), 0 0 0 2px var(--s-green); }
+
+/* #8 toasts must sit ABOVE modals (was z-50 vs modal z-120) + read clearly by type; never block taps */
+.toast { z-index: 230; pointer-events: none; }
+.toast.err { border-color: rgba(255, 91, 91, 0.55); background: rgba(58, 16, 22, 0.97); }
+.toast.ok  { border-color: rgba(69, 240, 166, 0.55); background: rgba(10, 40, 28, 0.97); }
+
+/* #11 bet-slider thumb: grab feedback on the most-touched control (display-only) */
+.slider::-webkit-slider-thumb, .bj-slider::-webkit-slider-thumb { transition: transform .12s ease, box-shadow .15s ease; }
+.slider::-moz-range-thumb, .bj-slider::-moz-range-thumb { transition: transform .12s ease, box-shadow .15s ease; }
+.slider:active::-webkit-slider-thumb, .bj-slider:active::-webkit-slider-thumb { transform: scale(1.25); box-shadow: 0 0 0 7px rgba(0, 231, 1, .16), 0 2px 8px rgba(0, 0, 0, .5); }
+.slider:active::-moz-range-thumb, .bj-slider:active::-moz-range-thumb { transform: scale(1.25); box-shadow: 0 0 0 7px rgba(0, 231, 1, .16); }
+
+/* #12 modal cards ease in instead of popping (replays on each open — show toggles .hidden{display:none}) */
+.modal-card { animation: modalIn .2s cubic-bezier(.2, .9, .3, 1); }
+@keyframes modalIn { from { opacity: 0; transform: translateY(10px) scale(.97); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .slider::-webkit-slider-thumb, .bj-slider::-webkit-slider-thumb,
+  .slider::-moz-range-thumb, .bj-slider::-moz-range-thumb { transition: none; }
+  .modal-card { animation: none; }
+}

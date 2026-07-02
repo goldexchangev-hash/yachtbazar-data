@@ -170,7 +170,8 @@
       var fc = frameCount(n), into = FSH_COMMON.indexOf(n) >= 0 ? critical : deferred;
       for (var i = 0; i < fc; i++) into.push({ alias: n + "_" + i, src: DIR + n + "_" + i + ".png" });
     });
-    ["background", "seaweed", "cannon_base", "cannon_barrel", "bullet", "muzzle", "net", "coin"].forEach(function (n) { critical.push({ alias: n, src: DIR + n + ".png" }); });
+    critical.push({ alias: "background", src: DIR + "background.jpg" }); // P7: opaque full-screen fill → JPG (696KB png → 276KB jpg); new filename auto-cache-busts, old .png kept one cycle for rollback
+    ["seaweed", "cannon_base", "cannon_barrel", "bullet", "muzzle", "net", "coin"].forEach(function (n) { critical.push({ alias: n, src: DIR + n + ".png" }); });
     for (var csp = 0; csp < 4; csp++) critical.push({ alias: "coinspin_" + csp, src: DIR + "coinspin_" + csp + ".png" }); // catch-coin FX — wanted on the very first catch
     deferred.push({ alias: "boss", src: DIR + "boss.png" });                          // dragon boss (jackpot round, ~45s+ in)
     ["bg_bonus", "bg_boss", "bg_vault", "bg_frenzy", "bg_storm"].forEach(function (n) { deferred.push({ alias: n, src: DIR + n + ".jpg" }); }); // world backgrounds (bonus rounds)
