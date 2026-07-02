@@ -43,6 +43,23 @@
     return r;
   }
 
+  // Clamp an on-chain lock (blackjackBuyIn) to the caller's CURRENT game-credit balance. The contract
+  // reverts InsufficientBalance when amount > balances[player]; a live-price USD→wei conversion, sub-gwei
+  // rounding, or a just-deposited display that leads chain by a hair can push the requested wei a touch
+  // over the real balance and revert a perfectly valid buy-in ("transaction execution reverted" with
+  // credits clearly showing). Reading balances via the signer's OWN provider (the node the lock executes
+  // against) and clamping to it makes amount <= balances always hold — never locks MORE than the real
+  // credits, so it's loss-safe. Read failure → return the requested amount unchanged (a flaky RPC must
+  // never block a legit buy-in; worst case is the prior behavior). Zero balance → the deposit isn't
+  // on-chain yet: say so plainly instead of a cryptic revert.
+  async function clampBuyIn(d, wantWei, verb) {
+    let bal;
+    try { bal = BigInt(await d.contract.balances(d.account)); }
+    catch (e) { return wantWei; } // couldn't read — don't block; fall through to the original path
+    if (bal <= 0n) throw new Error("Your deposit hasn't confirmed on-chain yet — give it a few seconds, then " + (verb || "buy in") + " again.");
+    return wantWei > bal ? bal : wantWei;
+  }
+
   // Decode the custom-error NAME from a reverted settleBlackjack simulation. ethers v6 puts ABI-known custom
   // errors in err.revert.name; fall back to scanning the message text.
   function settleRevertName(err) {
@@ -151,13 +168,17 @@
   TokenBridgeClient.prototype.buyIn = async function (amountWei) {
     const d = this.d;
     const player = d.account, contract = d.contractAddr, chainId = Number(d.chainId);
-    const buyInWei = (typeof amountWei === "bigint" ? amountWei : BigInt(amountWei)).toString();
+    let want = (typeof amountWei === "bigint" ? amountWei : BigInt(amountWei));
     // PRE-FLIGHT: price ready. A PRIOR on-chain lock NO LONGER blocks the buy-in — the server now AUTO-CLAIMS a
     // stranded lock (orphaned principal, no withheld loss) into this session, so a buy-in over your own stranded
     // funds just reclaims them instead of stranding the new lock on top (the $710→$1420 compounding trap). If a
     // withheld LOSS is on record the server still rejects with "tap Recover first" and the Recover button shows.
     const pre = await this._preflight(false);
     if (!pre.ok) throw new Error(pre.error);
+    // Clamp to the CURRENT on-chain credits BEFORE signing so the signature, the lock, and the /start
+    // buyInWei all agree — kills the "reverted with credits showing" buy-in failure (rate-drift / rounding).
+    want = await clampBuyIn(d, want, "buy in");
+    const buyInWei = want.toString();
     // 1) player authorizes the buy-in (off-chain signature — no gas)
     const signature = await d.signer.signMessage(tokenAuthMessage("start", { player, contract, chainId, buyInWei }, d.ethers.getAddress));
     // 2) lock the funds on-chain (the ONE popup) and wait for it to confirm
@@ -194,7 +215,9 @@
     if (!pre.ok) throw new Error(pre.error);
     const d = this.d, player = d.account, contract = d.contractAddr, chainId = Number(d.chainId);
     const sessionId = this.session.sessionId;
-    const addWei = (typeof amountWei === "bigint" ? amountWei : BigInt(amountWei)).toString();
+    let addWant = (typeof amountWei === "bigint" ? amountWei : BigInt(amountWei));
+    addWant = await clampBuyIn(d, addWant, "add"); // same clamp: never lock more than the REMAINING on-chain credits
+    const addWei = addWant.toString();
     const signature = await d.signer.signMessage(tokenAuthMessage("topup", { player, contract, chainId, sessionId, buyInWei: addWei }, d.ethers.getAddress));
     const tx = await d.contract.blackjackBuyIn(addWei, { gasLimit: 200000n });
     const receipt = await waitTx(tx);
