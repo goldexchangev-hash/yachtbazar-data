@@ -7,7 +7,14 @@
 // (no code push). `address` below is the fallback if the registry is unset or
 // unreachable.
 window.COINFLIP_CONFIG = {
-  address: "0xD7E584c341bDbF20848CFa162F65EfB406aA0Cbc",
+  // THE live game (== registry.activeGame() as of 2026-07-02). The fallback MUST equal the registry-active
+  // contract: a stale fallback here + a slow/lost registry read used to bind sessions to the OLD dead contract
+  // (deposits landed there, blackjackBuyIn reverted "transaction execution reverted", and the in-game balance
+  // flapped between the two contracts' balances on refresh).
+  address: "0x8d7fFC40AcF64793FA5175808Ee33FF242E59955",
+  // Our OWN previous contracts (trusted list — ours, not user-supplied). An explicit ?contract= matching one
+  // of these binds it in RECOVERY MODE so stranded deposits can still be withdrawn.
+  legacy: ["0xD7E584c341bDbF20848CFa162F65EfB406aA0Cbc"],
   registry: "0x21Fc88619753254D2Cd5D74A2102D4A876fc1Fa1",
   chainId: 11155111,
   network: "sepolia",

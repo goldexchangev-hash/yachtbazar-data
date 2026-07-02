@@ -30,6 +30,9 @@
     const a = params.get("contract"), c = params.get("chain");
     // Only adopt a shared ?contract= link when it is a valid address AND matches the canonical pinned contract.
     if (a && E && E.isAddress && E.isAddress(a) && sameAddr(a, cfg.address)) return { address: cfg.address, chainId: c ? Number(c) : (cfg.chainId || null) };
+    // RECOVERY MODE: adopt one of OUR OWN previous contracts (cfg.legacy — trusted hardcoded list) so a player
+    // with funds stranded on an old contract can connect to it and Withdraw. resolveActiveGame won't override it.
+    if (a && E && E.isAddress && E.isAddress(a) && (cfg.legacy || []).some((l) => sameAddr(a, l))) return { address: a, chainId: c ? Number(c) : (cfg.chainId || null) };
     if (cfg.address) return { address: cfg.address, chainId: cfg.chainId || null }; // local dev (deploy:local)
     const s = loadStored();
     if (s && s.address) return s;
@@ -648,6 +651,9 @@
       contract = new E.Contract(deployment.address, ABI, signer);
       read = new E.Contract(deployment.address, ABI, provider);
       walletReadReady = true; // W5: the wallet read-provider is live — a later failure won't strand the public poller
+      // RECOVERY MODE banner: bound to one of our OLD contracts (explicit ?contract= legacy pin) — the token
+      // bridge doesn't exist there; the player is here to Withdraw stranded funds, say so plainly.
+      try { if ((cfg.legacy || []).some((l) => sameAddr(deployment.address, l))) banner("⚠ RECOVERY MODE — connected to an OLD game contract. Withdraw your funds (Withdraw box), then return to the main site (remove ?contract= from the URL).", true); } catch (e) {}
       twoDiceSupported = null; // re-probe Dice #2 support for this contract
       crashSupported = null;   // re-probe Crash support for this contract
       slotsSupported = null;   // re-probe Slots support for this contract
@@ -1433,16 +1439,17 @@
   // An INDEPENDENT read-only contract on a PUBLIC RPC (not the injected wallet provider). The injected
   // provider can WEDGE while a mobile webview is suspended during a MetaMask confirm — reads through it
   // stall — so deposit/lock reconciliation also hits this to see the on-chain truth regardless. Lazy + cached.
-  let _roReadC = null;
+  let _roReadC = null, _roReadAddr = null;
   function roReadContract() {
-    if (_roReadC) return _roReadC;
+    if (_roReadC && sameAddr(_roReadAddr, deployment.address)) return _roReadC; // address-aware cache: never serve a contract built on a stale deployment.address
     try {
       const RO_RPC = { 11155111: "https://ethereum-sepolia-rpc.publicnode.com", 31337: "http://127.0.0.1:8545" };
       const chain = deployment.chainId || 11155111;
       const url = RO_RPC[chain];
       if (!url || !deployment.address) return null;
       _roReadC = new E.Contract(deployment.address, ABI, new E.JsonRpcProvider(url, chain));
-    } catch (e) { _roReadC = null; }
+      _roReadAddr = deployment.address;
+    } catch (e) { _roReadC = null; _roReadAddr = null; }
     return _roReadC;
   }
   async function waitBalanceIncrease(beforeWei, timeoutMs) {
@@ -2401,7 +2408,7 @@
     return new Promise((res, rej) => {
       // v13 #38: dedup by src so a watchdog re-kick (an ensure*Ready promise nulled) never appends a SECOND <script>
       // for the same file while the first is still downloading (the load race). The selector keys on the exact
-      // versioned src ("...?v=1328"), so a later ?v bump is a distinct file and still loads fresh — no stale cache.
+      // versioned src ("...?v=1329"), so a later ?v bump is a distinct file and still loads fresh — no stale cache.
       const sel = 'script[data-loadonce="' + src.replace(/"/g, "&quot;") + '"]';
       const existing = document.querySelector(sel);
       if (existing) {
@@ -2437,7 +2444,7 @@
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=1328"))
+      .then(() => loadScriptOnce("slots.js?v=1329"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -2447,11 +2454,11 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=1328"))
-      .then(() => loadScriptOnce("pressure-render.js?v=1328"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=1328"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=1329"))
+      .then(() => loadScriptOnce("pressure-render.js?v=1329"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=1329"))
       // optional 3D red balloon (Three.js) — falls back to the 2D balloon if it can't load
-      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1328")).catch(() => {}))
+      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1329")).catch(() => {}))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -2523,10 +2530,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=1328"))
-      .then(() => loadScriptOnce("plane-render.js?v=1328"))
-      .then(() => loadScriptOnce("plane-feed.js?v=1328"))
-      .then(() => loadScriptOnce("plane-ui.js?v=1328"))
+      .then(() => loadScriptOnce("plane-engine.js?v=1329"))
+      .then(() => loadScriptOnce("plane-render.js?v=1329"))
+      .then(() => loadScriptOnce("plane-feed.js?v=1329"))
+      .then(() => loadScriptOnce("plane-ui.js?v=1329"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2637,8 +2644,8 @@
     if (window.Slots3D) return Promise.resolve(true);
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("slots3d-engine.js?v=1328"))
-      .then(() => loadScriptOnce("slots3d.js?v=1328"))
+      .then(() => loadScriptOnce("slots3d-engine.js?v=1329"))
+      .then(() => loadScriptOnce("slots3d.js?v=1329"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2695,8 +2702,8 @@
     if (window.FishTable) return Promise.resolve(true);
     if (fishLoadPromise) return fishLoadPromise;
     fishLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishtable-engine.js?v=1328"))
-      .then(() => loadScriptOnce("fishtable.js?v=1328"))
+      .then(() => loadScriptOnce("fishtable-engine.js?v=1329"))
+      .then(() => loadScriptOnce("fishtable.js?v=1329"))
       .then(() => true)
       .catch((e) => { fishLoadPromise = null; throw e; });
     return fishLoadPromise;
@@ -2779,7 +2786,7 @@
     if (window.SwoopGame) return Promise.resolve(true);
     if (swoopLoadPromise) return swoopLoadPromise;
     swoopLoadPromise = loadPlayCanvasOnce()
-      .then(() => loadScriptOnce("swoop3d.js?v=1328"))
+      .then(() => loadScriptOnce("swoop3d.js?v=1329"))
       .then(() => true)
       .catch((e) => { swoopLoadPromise = null; throw e; });
     return swoopLoadPromise;
@@ -2860,8 +2867,8 @@
     if (window.FishShooter) return Promise.resolve(true);
     if (fishshooterLoadPromise) return fishshooterLoadPromise;
     fishshooterLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishshooter-engine.js?v=1328")) // OWN engine (decoupled from Reef's fishtable-engine.js)
-      .then(() => loadScriptOnce("fishshooter.js?v=1328"))
+      .then(() => loadScriptOnce("fishshooter-engine.js?v=1329")) // OWN engine (decoupled from Reef's fishtable-engine.js)
+      .then(() => loadScriptOnce("fishshooter.js?v=1329"))
       .then(() => true)
       .catch((e) => { fishshooterLoadPromise = null; throw e; });
     return fishshooterLoadPromise;
@@ -2946,7 +2953,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1328"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1329"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -2973,7 +2980,7 @@
   function loadRail3dOnce() {
     if (window.Rail3D) return Promise.resolve(true);
     if (rail3dLoadPromise) return rail3dLoadPromise;
-    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1328")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
+    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1329")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
     return rail3dLoadPromise;
   }
   function buildRail3d() {
@@ -2994,7 +3001,7 @@
   function loadDice2_3dOnce() {
     if (window.TwoDice3D) return Promise.resolve(true);
     if (d2_3dLoadPromise) return d2_3dLoadPromise;
-    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1328")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
+    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1329")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
     return d2_3dLoadPromise;
   }
   function buildDice2_3d() {
@@ -3766,7 +3773,7 @@
       const tableWallet = account || bjGuestId();
       // &r=<nonce> in the QUERY forces a real iframe reload (so the felt re-reads the #bjsession from the
       // hash and re-sends its hello → the server re-binds the table to the token session).
-      let src = "blackjack.html?tv=1&v=1328&r=" + (++bjFeltNonce) + "&guest=" + encodeURIComponent(tableWallet);
+      let src = "blackjack.html?tv=1&v=1329&r=" + (++bjFeltNonce) + "&guest=" + encodeURIComponent(tableWallet);
       let tokenHash = "";
       // PREFERRED real-money path: fund the table with the player's TOKEN session (chips = tokens, no lock step).
       if (account && window.TokenMode && TokenMode.active && TokenMode.active() && TokenMode.session) {
@@ -4014,7 +4021,7 @@
     // + dead-bridge screen), re-init it so it binds to the account + token session. Throttled so it can't loop.
     try {
       const f0 = $("bj-frame");
-      // v13.28: the felt is ALSO stale if it's bound to a DIFFERENT (or no) token bjsession than the live one —
+      // v13.29: the felt is ALSO stale if it's bound to a DIFFERENT (or no) token bjsession than the live one —
       // e.g. it loaded as a $0 GUEST and the post-buy-in re-bind raced the just-created session, so the seat
       // shows $0 and the bet controls never appear until a manual ⟳ Reload. Reloading it (via the proven
       // ensureBlackjackReady) re-funds the seat from the token session AUTOMATICALLY. Guarded by !bjDockLive
@@ -5653,25 +5660,36 @@
   // this the moment you connect (betting still requires connecting).
   // If a GameRegistry is configured, resolve the live game from it once (an
   // explicit ?contract= share link always wins). Falls back to config.address.
-  let registryResolved = false;
+  // THE CONTRACT-BINDING RACE FIX (the "$36↔$100 flap / buy-in reverts while deposits work" root): the old
+  // one-shot boolean latch set `registryResolved = true` BEFORE the registry read completed, so connect()'s
+  // await returned INSTANTLY while the boot-time read was still in flight — the session then bound contract/
+  // read to the stale config fallback, and when the read finally landed, deployment.address changed under a
+  // session already bound to the WRONG contract (deposits credited one contract, buy-ins locked on the other).
+  // A FAILED read also latched forever (no retry). Now: one SHARED in-flight promise — every caller awaits the
+  // SAME resolution (no bind-before-resolve), and a failure un-latches so the next caller retries.
+  let registryResolveP = null;
   async function resolveActiveGame(prov) {
-    if (registryResolved) return;
-    registryResolved = true;
-    try {
-      if (!cfg.registry || !E.isAddress(cfg.registry)) return;
-      const reg = new E.Contract(cfg.registry, ["function activeGame() view returns (address)"], prov);
-      const live = await reg.activeGame();
-      if (!live || !E.isAddress(live) || /^0x0+$/i.test(live)) return;
-      // v14 #89: a ?contract= param is honored ONLY if it matches the owner's on-chain active game (trusted
-      // allowlist). Otherwise ignore the param and stay on the registry-resolved / pinned address — never sign
-      // against an attacker-supplied address.
-      const urlWanted = params.get("contract");
-      if (urlWanted && E.isAddress(urlWanted) && !sameAddr(urlWanted, cfg.address)) {
-        if (sameAddr(urlWanted, live)) deployment.address = live; // param equals the trusted on-chain active game → OK
-        return; // param neither pinned nor registry-active → dropped
-      }
-      deployment.address = live;
-    } catch (e) { /* keep config.address fallback */ }
+    // RECOVERY MODE: an explicit ?contract= matching one of OUR OWN previous contracts (cfg.legacy, a trusted
+    // hardcoded list) stays bound so stranded deposits can be withdrawn — the registry never overrides it.
+    try { const uw = params.get("contract"); if (uw && (cfg.legacy || []).some((l) => sameAddr(uw, l)) && sameAddr(deployment.address, uw)) return; } catch (e) {}
+    if (!registryResolveP) {
+      registryResolveP = (async () => {
+        if (!cfg.registry || !E.isAddress(cfg.registry)) return;
+        const reg = new E.Contract(cfg.registry, ["function activeGame() view returns (address)"], prov);
+        const live = await reg.activeGame();
+        if (!live || !E.isAddress(live) || /^0x0+$/i.test(live)) return;
+        // v14 #89: a ?contract= param is honored ONLY if it matches the owner's on-chain active game (trusted
+        // allowlist). Otherwise ignore the param and stay on the registry-resolved / pinned address — never sign
+        // against an attacker-supplied address.
+        const urlWanted = params.get("contract");
+        if (urlWanted && E.isAddress(urlWanted) && !sameAddr(urlWanted, cfg.address)) {
+          if (sameAddr(urlWanted, live)) deployment.address = live; // param equals the trusted on-chain active game → OK
+          return; // param neither pinned nor registry-active → dropped
+        }
+        deployment.address = live;
+      })().catch(() => { registryResolveP = null; /* failed → un-latch so the NEXT caller retries; callers proceed on the (now-live) config fallback */ });
+    }
+    await registryResolveP;
   }
 
   async function setupReadOnly() {

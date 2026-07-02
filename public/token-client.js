@@ -55,8 +55,12 @@
   async function clampBuyIn(d, wantWei, verb) {
     let bal;
     try { bal = BigInt(await d.contract.balances(d.account)); }
-    catch (e) { return wantWei; } // couldn't read — don't block; fall through to the original path
-    if (bal <= 0n) throw new Error("No spendable game credits yet — if you just deposited, give it a few seconds and try again; if funds show as locked, tap Recover first.");
+    catch (e) { return wantWei; } // couldn't read — don't block; proceed with the requested amount
+    // FAIL-OPEN: never THROW a synthetic "no credits" here. If the read shows 0 (could be a stale/mismatched
+    // account or a flaky node — deposit works, so a true 0 is unlikely), just proceed with the requested amount
+    // and let the on-chain blackjackBuyIn surface the AUTHORITATIVE error. Only clamp when there's a real
+    // balance to clamp to (that's the rate-drift/rounding revert protection — kept intact).
+    if (bal <= 0n) return wantWei;
     return wantWei > bal ? bal : wantWei;
   }
 
@@ -69,13 +73,14 @@
   async function ensureGas(d, gasLimit) {
     try {
       var prov = (d.signer && d.signer.provider) || d.provider;
-      if (!prov || !prov.getFeeData || !prov.getBalance) return;
-      var res = await Promise.all([prov.getBalance(d.account), prov.getFeeData()]);
-      var bal = BigInt(res[0]), fee = res[1] || {};
-      var price = fee.maxFeePerGas || fee.gasPrice;
-      if (!price) return;
-      var need = BigInt(price) * BigInt(gasLimit || 200000);
-      if (bal < need) { var e = new Error("Not enough ETH in your wallet to cover the buy-in gas fee — your game credits are separate from gas. Keep a little Sepolia ETH in your wallet (get free Sepolia ETH at sepolia-faucet.pk910.de)."); e.gas = true; throw e; }
+      if (!prov || !prov.getBalance) return;
+      var bal = BigInt(await prov.getBalance(d.account));
+      // FAIL-OPEN: only block when the wallet is CLEARLY gasless (can't cover even a cheap tx). Do NOT gate on
+      // getFeeData()*gasLimit — Sepolia fee estimates are wildly inflated and would FALSE-BLOCK a funded wallet
+      // that MetaMask would happily accept (MetaMask is the real judge of the fee). A tiny fixed floor only
+      // catches the truly-empty "I deposited all my ETH into credits" case with a friendly faucet nudge.
+      var floor = null; try { floor = d.ethers.parseEther("0.0004"); } catch (e) {}
+      if (floor != null && bal < floor) { var e = new Error("Your wallet is out of Sepolia ETH for gas — a buy-in still needs a little ETH to pay the transaction fee (your game credits are separate from gas). Get free Sepolia ETH at sepolia-faucet.pk910.de, then buy in."); e.gas = true; throw e; }
     } catch (e) { if (e && e.gas) throw e; }
   }
 
@@ -201,32 +206,26 @@
     const d = this.d;
     const p = pbLoad(d);
     if (!p || !p.txHash) return null;
-    // Ignore a STALE record (a prior stall already resolved out-of-band via Recover / auto-claim). Left alone
-    // it would block a later legit buy-in with a "reload" throw. After 30 min, drop it and let the fresh buy-in
-    // proceed — any genuinely-still-locked funds are surfaced by checkStrandedLock/Recover, not this path.
+    // FAIL-OPEN. This helper may ONLY ever *finish* a CONFIRMED prior lock; in every other case it CLEARS the
+    // record and returns null so the fresh buy-in proceeds. It must NEVER throw or block — a fail-CLOSED dedupe
+    // (the old "still confirming"/"reload" throws) could permanently block EVERY buy-in on one stuck/unreadable
+    // record, which is far worse than the thing it prevents (a double-send, which is fully recoverable via the
+    // clamp + checkStrandedLock). Staleness, unreadable provider, unmined, dropped, reverted, or a failed finish
+    // → clear + proceed.
     try { if (p.ts && (Date.now() - p.ts) > 1800000) { pbClear(d); return null; } } catch (e) {}
     const prov = (d.signer && d.signer.provider) || d.provider;
-    if (!prov || !prov.getTransactionReceipt) return null; // can't check → let the normal path run
+    if (!prov || !prov.getTransactionReceipt) { pbClear(d); return null; }
     let rcpt = null;
-    try { rcpt = await prov.getTransactionReceipt(p.txHash); } catch (e) { return null; }
-    if (!rcpt) {
-      // no receipt yet — is the tx still in the mempool, or was it dropped/replaced?
-      let tx = null; try { tx = await prov.getTransaction(p.txHash); } catch (e) {}
-      if (!tx) { pbClear(d); return null; } // dropped → allow a fresh buy-in
-      throw new Error("Your previous buy-in is still confirming on-chain — give it a moment, it'll finish on its own (don't send another, or you'll pay gas twice).");
-    }
-    if (!rcpt.status) { pbClear(d); return null; } // prior tx REVERTED → nothing locked → a fresh buy-in is fine
-    // Prior tx CONFIRMED → the lock happened. Finish it by handing the server the ORIGINAL payload. The server
-    // dedupes txHash (usedBuyIns) so this is idempotent: a first-time finish grants the session; an already-used
-    // txHash rejects, in which case a session already exists and the normal resume / Recover path returns it.
+    try { rcpt = await prov.getTransactionReceipt(p.txHash); } catch (e) { pbClear(d); return null; }
+    if (!rcpt || !rcpt.status) { pbClear(d); return null; } // not-yet-mined / dropped / reverted → clear + fresh buy-in
+    // CONFIRMED → finish it via /start with the ORIGINAL payload (server dedupes txHash → idempotent).
     try {
       const r = await this._post("/api/token/start", { player: p.player, contract: p.contract, chainId: p.chainId, txHash: p.txHash, buyInWei: p.buyInWei, signature: p.signature }, 45000);
       pbClear(d);
       this.session = r; this.tokens = r.tokens;
       return r;
     } catch (e) {
-      pbClear(d); // don't loop on a poisoned record; the on-chain lock is safe + Recover-able
-      throw new Error("Your earlier buy-in already locked on-chain — reload the page if your session didn't open. Your funds are safe; the Recover button will return them.");
+      pbClear(d); return null; // couldn't finish (already claimed / hiccup) → clear + let the fresh buy-in proceed
     }
   };
 
@@ -475,7 +474,9 @@ if (typeof require !== "undefined" && require.main === module) {
     { let posted = null; const r = await mkC(mkProv({ status: 1 }, null), async (path, body) => { posted = { path, body }; return { sessionId: "s1", tokens: 42 }; })._resumePendingBuyIn();
       eq("resume: confirmed tx → finishes via /start with the ORIGINAL txHash", !!(r && r.tokens === 42 && posted && posted.path === "/api/token/start" && posted.body.txHash === rec().txHash && shim.getItem(pKey) === null)); }
     shim.setItem(pKey, JSON.stringify(rec()));
-    { let threw2 = false; try { await mkC(mkProv(null, { hash: rec().txHash }))._resumePendingBuyIn(); } catch (e) { threw2 = true; } eq("resume: still-confirming tx → throws + record kept (no double-send)", threw2 && shim.getItem(pKey) !== null); }
+    { const r = await mkC(mkProv(null, { hash: rec().txHash }))._resumePendingBuyIn(); eq("resume: unmined tx → null + record cleared (FAIL-OPEN, never blocks a buy-in)", r === null && shim.getItem(pKey) === null); }
+    shim.setItem(pKey, JSON.stringify(rec()));
+    { let threw3 = false; const r = await mkC(mkProv({ status: 1 }, null), async () => { throw new Error("already used"); })._resumePendingBuyIn().catch(() => { threw3 = true; return null; }); eq("resume: confirmed but /start fails → null + cleared (never throws/blocks)", r === null && threw3 === false && shim.getItem(pKey) === null); }
     delete globalThis.localStorage;
 
     console.log(ok ? "\nSELF-TEST OK — client auth is byte-identical to the server." : "\nSELF-TEST FAILED");
