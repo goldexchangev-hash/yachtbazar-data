@@ -414,9 +414,10 @@
     if (res.winUsd > 0) {
       this.balance = Math.round((this.balance + res.winUsd) * 100) / 100; this._save();
       this._showWinFx(res, bet);
+      if (!this._bonus) this._msg("💎 WIN $" + (Math.round(res.winUsd * 100) / 100).toFixed(2), "win"); // UX: show the result on the dock line (the only feedback visible WITH the TV on a phone)
     } else if (!this._bonus) {
       this._showWinBanner("", "miss"); if (this._wbAmt) this._wbAmt.textContent = "No win — spin again";
-      this._msg("", "");
+      this._msg("No win — tap SPIN", "lose"); // UX: was blank — tell the player the spin actually resolved
       const C = root.Chiptune; if (C && C.lose) try { C.lose(); } catch (e) {}
     }
     this.lastRound = { nonce: this.nonce, win: res.winUsd };

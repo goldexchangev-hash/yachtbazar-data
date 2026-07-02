@@ -985,8 +985,8 @@
     if (this.els.lockBtn) this.els.lockBtn.classList.remove("on");
     this._renderHud();
   };
-  FishTable.prototype.toggleAuto = function () { this.auto = !this.auto; this._holding = false; /* always clear a (possibly stuck) hold so the Auto button is a reliable stop */ if (this.els.autoBtn) this.els.autoBtn.classList.toggle("on", this.auto); this._renderHud(); };
-  FishTable.prototype.toggleLock = function () { this.lock = !this.lock; if (!this.lock) this.reticle.visible = false; if (this.els.lockBtn) this.els.lockBtn.classList.toggle("on", this.lock); this._renderHud(); };
+  FishTable.prototype.toggleAuto = function () { this.auto = !this.auto; this._holding = false; /* always clear a (possibly stuck) hold so the Auto button is a reliable stop */ if (this.els.autoBtn) { this.els.autoBtn.classList.toggle("on", this.auto); this.els.autoBtn.textContent = this.auto ? "🔥 Auto ON" : "🔥 Auto-fire"; } this._renderHud(); }; // UX: label confirms the toggle state, not just a subtle class
+  FishTable.prototype.toggleLock = function () { this.lock = !this.lock; if (!this.lock) this.reticle.visible = false; if (this.els.lockBtn) { this.els.lockBtn.classList.toggle("on", this.lock); this.els.lockBtn.textContent = this.lock ? "🎯 Locked" : "🎯 Lock-on"; } this._renderHud(); }; // UX: label confirms the toggle state
   // Fullscreen (immersive arcade mode). The real Fullscreen API does NOT work on
   // iPhone Safari for non-video elements, so we ALWAYS toggle a CSS class that
   // pins the layer to the whole viewport (works everywhere), AND additionally

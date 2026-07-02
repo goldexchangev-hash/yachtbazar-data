@@ -1,0 +1,54 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Fish Shooter — preview</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #05203a; overflow: hidden; font-family: system-ui, sans-serif; }
+    #stage { position: fixed; left: 0; right: 0; top: 0; bottom: 84px; }
+    #dock { position: fixed; left: 0; right: 0; bottom: 0; height: 84px; z-index: 5; display: flex; gap: 10px; align-items: center; justify-content: center;
+      padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); background: linear-gradient(transparent, rgba(3,28,50,.6)); color: #eaf6ff; flex-wrap: wrap; }
+    #dock input[type=range] { width: 160px; }
+    #dock button { border: 0; border-radius: 10px; padding: 10px 14px; font-weight: 700; background: #1d5a86; color: #eaf6ff; cursor: pointer; }
+    #dock button.on { background: #36e06f; color: #042818; }
+    #status { position: fixed; left: 8px; top: 8px; font: 12px monospace; color: #9be8ff; z-index: 6; pointer-events: none; }
+  </style>
+</head>
+<body>
+  <div id="stage"></div>
+  <div id="status">booting…</div>
+  <div id="dock">
+    <span>Bet <strong id="bv">$1</strong></span>
+    <input id="bet" type="range" min="1" max="50" step="1" value="1" />
+    <button id="pdn">– PWR</button><span id="pw">Power 1</span><button id="pup">PWR +</button>
+    <button id="auto">🔥 Auto</button><button id="lock">🎯 Lock</button><button id="fs">⛶ Full</button>
+  </div>
+  <script src="/vendor/pixi.min.js?v=1175"></script>
+  <script src="/fishtable-engine.js?v=1175"></script>
+  <script src="/chiptune.js?v=1175"></script>
+  <script src="/fishshooter.js?v=1175"></script>
+  <script>
+    (function () {
+      var status = function (m) { document.getElementById('status').textContent = m; };
+      var usd = function (n) { return '$' + (Math.round((+n||0)*100)/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); };
+      try {
+        var mount = document.getElementById('stage');
+        var g = new FishShooter({
+          mount: mount, ethUsd: 3400, initialBalance: 5000,
+          onBalance: function () {}, onWin: function () {},
+          els: { betSlider: document.getElementById('bet'), betVal: document.getElementById('bv'),
+                 power: document.getElementById('pw'), cost: null,
+                 powerUp: document.getElementById('pup'), powerDown: document.getElementById('pdn'),
+                 autoBtn: document.getElementById('auto'), lockBtn: document.getElementById('lock'), fsBtn: document.getElementById('fs') },
+        });
+        g.start();
+        window.__fs = g;
+        document.getElementById('fs').addEventListener('click', function () { try { g.toggleFullscreen(mount); } catch (e) {} });
+        var frames = 0; g.app.ticker.add(function () { frames++; window.__frames = frames; });
+        setTimeout(function () { status('Fish Shooter · ' + (window.__frames||0) + ' frames · fish:' + g.fish.length); }, 1200);
+      } catch (e) { status('ERROR: ' + e.message); console.error(e); window.__bootError = e.message; }
+    })();
+  </script>
+</body>
+</html>
