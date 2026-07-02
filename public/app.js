@@ -1430,11 +1430,42 @@
   // the page before it credited" report. The on-chain balance updates the instant the deposit mines
   // regardless of the receipt, so polling it credits the funds on its own. Read failures are ignored (keep
   // polling); resolves true on the first increase, false on timeout.
+  // An INDEPENDENT read-only contract on a PUBLIC RPC (not the injected wallet provider). The injected
+  // provider can WEDGE while a mobile webview is suspended during a MetaMask confirm — reads through it
+  // stall — so deposit/lock reconciliation also hits this to see the on-chain truth regardless. Lazy + cached.
+  let _roReadC = null;
+  function roReadContract() {
+    if (_roReadC) return _roReadC;
+    try {
+      const RO_RPC = { 11155111: "https://ethereum-sepolia-rpc.publicnode.com", 31337: "http://127.0.0.1:8545" };
+      const chain = deployment.chainId || 11155111;
+      const url = RO_RPC[chain];
+      if (!url || !deployment.address) return null;
+      _roReadC = new E.Contract(deployment.address, ABI, new E.JsonRpcProvider(url, chain));
+    } catch (e) { _roReadC = null; }
+    return _roReadC;
+  }
   async function waitBalanceIncrease(beforeWei, timeoutMs) {
     const deadline = Date.now() + (timeoutMs || 120000);
+    const ro = roReadContract(); // independent RPC in case the wallet provider wedges
     while (Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 3500));
-      try { const now = await read.balances(account); if (now > beforeWei) { await refreshBalances(); return true; } } catch (e) {}
+      const reads = [read.balances(account)];
+      if (ro) reads.push(ro.balances(account));
+      let landed = null;
+      try {
+        const vals = await Promise.allSettled(reads);
+        for (const v of vals) { if (v.status === "fulfilled" && typeof v.value === "bigint" && v.value > beforeWei) { landed = v.value; break; } }
+      } catch (e) {}
+      if (landed != null) {
+        // Paint the credit from whichever provider saw it (the wallet provider may be wedged), then best-effort
+        // refresh through the normal path.
+        gameWei = landed;
+        try { if (!revealLock) $("game-balance").textContent = usdOf(landed); } catch (e) {}
+        try { if (window.TokenMode && TokenMode._render) TokenMode._render(); } catch (e) {}
+        try { await refreshBalances(); } catch (e) {}
+        return true;
+      }
     }
     return false;
   }
@@ -2370,7 +2401,7 @@
     return new Promise((res, rej) => {
       // v13 #38: dedup by src so a watchdog re-kick (an ensure*Ready promise nulled) never appends a SECOND <script>
       // for the same file while the first is still downloading (the load race). The selector keys on the exact
-      // versioned src ("...?v=1327"), so a later ?v bump is a distinct file and still loads fresh — no stale cache.
+      // versioned src ("...?v=1328"), so a later ?v bump is a distinct file and still loads fresh — no stale cache.
       const sel = 'script[data-loadonce="' + src.replace(/"/g, "&quot;") + '"]';
       const existing = document.querySelector(sel);
       if (existing) {
@@ -2406,7 +2437,7 @@
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=1327"))
+      .then(() => loadScriptOnce("slots.js?v=1328"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -2416,11 +2447,11 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=1327"))
-      .then(() => loadScriptOnce("pressure-render.js?v=1327"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=1327"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=1328"))
+      .then(() => loadScriptOnce("pressure-render.js?v=1328"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=1328"))
       // optional 3D red balloon (Three.js) — falls back to the 2D balloon if it can't load
-      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1327")).catch(() => {}))
+      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1328")).catch(() => {}))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -2492,10 +2523,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=1327"))
-      .then(() => loadScriptOnce("plane-render.js?v=1327"))
-      .then(() => loadScriptOnce("plane-feed.js?v=1327"))
-      .then(() => loadScriptOnce("plane-ui.js?v=1327"))
+      .then(() => loadScriptOnce("plane-engine.js?v=1328"))
+      .then(() => loadScriptOnce("plane-render.js?v=1328"))
+      .then(() => loadScriptOnce("plane-feed.js?v=1328"))
+      .then(() => loadScriptOnce("plane-ui.js?v=1328"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2606,8 +2637,8 @@
     if (window.Slots3D) return Promise.resolve(true);
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("slots3d-engine.js?v=1327"))
-      .then(() => loadScriptOnce("slots3d.js?v=1327"))
+      .then(() => loadScriptOnce("slots3d-engine.js?v=1328"))
+      .then(() => loadScriptOnce("slots3d.js?v=1328"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2664,8 +2695,8 @@
     if (window.FishTable) return Promise.resolve(true);
     if (fishLoadPromise) return fishLoadPromise;
     fishLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishtable-engine.js?v=1327"))
-      .then(() => loadScriptOnce("fishtable.js?v=1327"))
+      .then(() => loadScriptOnce("fishtable-engine.js?v=1328"))
+      .then(() => loadScriptOnce("fishtable.js?v=1328"))
       .then(() => true)
       .catch((e) => { fishLoadPromise = null; throw e; });
     return fishLoadPromise;
@@ -2748,7 +2779,7 @@
     if (window.SwoopGame) return Promise.resolve(true);
     if (swoopLoadPromise) return swoopLoadPromise;
     swoopLoadPromise = loadPlayCanvasOnce()
-      .then(() => loadScriptOnce("swoop3d.js?v=1327"))
+      .then(() => loadScriptOnce("swoop3d.js?v=1328"))
       .then(() => true)
       .catch((e) => { swoopLoadPromise = null; throw e; });
     return swoopLoadPromise;
@@ -2829,8 +2860,8 @@
     if (window.FishShooter) return Promise.resolve(true);
     if (fishshooterLoadPromise) return fishshooterLoadPromise;
     fishshooterLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishshooter-engine.js?v=1327")) // OWN engine (decoupled from Reef's fishtable-engine.js)
-      .then(() => loadScriptOnce("fishshooter.js?v=1327"))
+      .then(() => loadScriptOnce("fishshooter-engine.js?v=1328")) // OWN engine (decoupled from Reef's fishtable-engine.js)
+      .then(() => loadScriptOnce("fishshooter.js?v=1328"))
       .then(() => true)
       .catch((e) => { fishshooterLoadPromise = null; throw e; });
     return fishshooterLoadPromise;
@@ -2915,7 +2946,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1327"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1328"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -2942,7 +2973,7 @@
   function loadRail3dOnce() {
     if (window.Rail3D) return Promise.resolve(true);
     if (rail3dLoadPromise) return rail3dLoadPromise;
-    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1327")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
+    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1328")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
     return rail3dLoadPromise;
   }
   function buildRail3d() {
@@ -2963,7 +2994,7 @@
   function loadDice2_3dOnce() {
     if (window.TwoDice3D) return Promise.resolve(true);
     if (d2_3dLoadPromise) return d2_3dLoadPromise;
-    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1327")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
+    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1328")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
     return d2_3dLoadPromise;
   }
   function buildDice2_3d() {
@@ -3735,7 +3766,7 @@
       const tableWallet = account || bjGuestId();
       // &r=<nonce> in the QUERY forces a real iframe reload (so the felt re-reads the #bjsession from the
       // hash and re-sends its hello → the server re-binds the table to the token session).
-      let src = "blackjack.html?tv=1&v=1327&r=" + (++bjFeltNonce) + "&guest=" + encodeURIComponent(tableWallet);
+      let src = "blackjack.html?tv=1&v=1328&r=" + (++bjFeltNonce) + "&guest=" + encodeURIComponent(tableWallet);
       let tokenHash = "";
       // PREFERRED real-money path: fund the table with the player's TOKEN session (chips = tokens, no lock step).
       if (account && window.TokenMode && TokenMode.active && TokenMode.active() && TokenMode.session) {
@@ -3983,7 +4014,7 @@
     // + dead-bridge screen), re-init it so it binds to the account + token session. Throttled so it can't loop.
     try {
       const f0 = $("bj-frame");
-      // v13.27: the felt is ALSO stale if it's bound to a DIFFERENT (or no) token bjsession than the live one —
+      // v13.28: the felt is ALSO stale if it's bound to a DIFFERENT (or no) token bjsession than the live one —
       // e.g. it loaded as a $0 GUEST and the post-buy-in re-bind raced the just-created session, so the seat
       // shows $0 and the bet controls never appear until a manual ⟳ Reload. Reloading it (via the proven
       // ensureBlackjackReady) re-funds the seat from the token session AUTOMATICALLY. Guarded by !bjDockLive
