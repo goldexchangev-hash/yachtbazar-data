@@ -92,7 +92,20 @@ function makeOnChainVerifier(rpcUrlFor, minConfirmations) {
     const receipt = await provider.getTransactionReceipt(o.txHash);
     if (!receipt || receipt.status !== 1) throw new Error("buy-in transaction is not confirmed");
     if (receipt.to && receipt.to.toLowerCase() !== o.contract.toLowerCase()) throw new Error("buy-in went to the wrong contract");
-    if (minConfirmations > 1) { const conf = await receipt.confirmations(); if (conf < minConfirmations) throw new Error("buy-in needs more confirmations"); }
+    if (minConfirmations > 1) {
+      // The tx is MINED (status 1 above), but the client POSTs /start right after its own tx.wait() — which
+      // resolves at just 1 confirmation. A ONE-SHOT check here therefore rejected EVERY buy-in with "needs more
+      // confirmations" the instant it was mined (conf=1 < minConfirmations). WAIT (bounded) for the tx to reach
+      // the required depth instead of rejecting outright — waitForTransaction resolves with the receipt once it
+      // hits minConfirmations, or null on timeout, and only THEN do we reject. This never ACCEPTS an under-confirmed
+      // tx (strictly safer than before), it just gives a freshly-mined buy-in the extra blocks it needs. The 40s
+      // bound keeps the request from hanging (the FetchRequest per-call timeout still applies to each poll).
+      let conf = await receipt.confirmations();
+      if (conf < minConfirmations) {
+        const deeper = await provider.waitForTransaction(o.txHash, minConfirmations, 40000).catch(() => null);
+        if (!deeper || deeper.status !== 1) throw new Error("buy-in needs more confirmations — try again in a moment");
+      }
+    }
     const iface = new ethers.Interface(BUYIN_ABI);
     let eventLocked = null;
     for (const log of receipt.logs || []) {
