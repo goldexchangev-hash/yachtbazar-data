@@ -1053,20 +1053,27 @@ function attachTokenBridge(app, opts) {
     if (xff) { const parts = String(xff).split(","); return parts[parts.length - 1].trim(); }
     return (req && req.socket && req.socket.remoteAddress) || "unknown";
   }
-  function ipRateOk(req) {
+  function ipRateOk(req, cost) {
+    // /api/token/play charges a FRACTIONAL cost (below): doPlay is synchronous + cheap (no chain call; a bad
+    // bearer fails at one Map lookup), but the full 1.0 cost gave /play the 5/s budget sized for the CHAIN-heavy
+    // routes — undercutting the per-session play limiter (PLAY_RATE=30/s) 6x. Fish Shooter/Reef "fast" fire is
+    // ~9 real-money shots/s of /play POSTs, so sustained fire 429'd ~40% of shots after ~4s (worse behind a
+    // shared NAT). 0.125 ⇒ 40 plays/s + 120-play burst per IP — still hard-bounds a bad-token flood, while a
+    // legitimate player can never out-fire it (the per-session 30/s limiter remains the real ceiling).
+    cost = (cost > 0 ? cost : 1);
     const ip = clientIp(req);
     const now = Date.now();
     let b = ipBuckets.get(ip);
     if (!b) { b = { tokens: IP_BURST, ts: now }; ipBuckets.set(ip, b); }
     b.tokens = Math.min(IP_BURST, b.tokens + ((now - b.ts) / 1000) * IP_RATE);
     b.ts = now;
-    if (b.tokens < 1) return false;
-    b.tokens -= 1;
+    if (b.tokens < cost) return false;
+    b.tokens -= cost;
     return true;
   }
   // occasionally evict idle buckets so the Map can't grow unbounded across many client IPs
   function sweepIpBuckets() { if (ipBuckets.size < 5000) return; const cutoff = Date.now() - 60000; for (const [ip, b] of ipBuckets) if (b.ts < cutoff) ipBuckets.delete(ip); }
-  const ipGuard = (req, res) => { sweepIpBuckets(); if (!ipRateOk(req)) { res.status(429).json({ ok: false, error: "too many requests — slow down a moment" }); return false; } return true; };
+  const ipGuard = (req, res) => { sweepIpBuckets(); if (!ipRateOk(req, req.path === "/api/token/play" ? 0.125 : 1)) { res.status(429).json({ ok: false, error: "too many requests — slow down a moment" }); return false; } return true; };
 
   app.get("/api/token/status", (req, res) => res.json(enabled() ? svc.status() : {
     ok: true, enabled: false,

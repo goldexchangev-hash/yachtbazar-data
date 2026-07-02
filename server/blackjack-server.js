@@ -192,7 +192,16 @@
     // Show ALL active tables so visitors can find in-progress/full ones to WATCH —
     // not just joinable ones. The lobby card disables JOIN when full; WATCH is always on.
     function lobbyList() { return Array.from(rooms.values()).map(roomPublic); }
-    function pushLobby() { const list = lobbyList(); for (const s of lobbySubs) send(s, { type: "bj:lobby:list", rooms: list }); }
+    let _lobbyJsonLast = "";
+    function pushLobby() {
+      const json = JSON.stringify({ type: "bj:lobby:list", rooms: lobbyList() });
+      // broadcastState fires per dealt card / dealer step — the lobby list is usually byte-identical between
+      // those, so skip exact duplicates (and stringify ONCE instead of per subscriber). A new subscriber is
+      // unaffected: bj:lobby:subscribe sends its own direct list before any pushLobby dedupe applies.
+      if (json === _lobbyJsonLast) return;
+      _lobbyJsonLast = json;
+      for (const s of lobbySubs) { if (s && s.send) { try { s.send(json); } catch (e) {} } }
+    }
 
     /* ---------------- room mgmt ---------------- */
     const NAMES = ["MIAMI", "VEGAS", "MONACO", "TOKYO", "RENO", "MACAU", "ASPEN", "IBIZA"];

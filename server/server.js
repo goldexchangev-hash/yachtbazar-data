@@ -65,8 +65,54 @@ app.use((req, res, next) => {
 // so mark it public+immutable for a year. Keyed strictly on ?v= — HTML and sw.js (no ?v=) keep the revalidate
 // default so deploys still land instantly.
 app.use((req, res, next) => {
-  if (!req.path.startsWith("/api/") && /[?&]v=[\w-]/.test(req.url)) res.setHeader("Cache-Control", "public, max-age=31536000, immutable"); // matches ?v=1309 AND the library-pinned ?v=pixi-1/three-1 tokens; [?&] anchors v= to a param boundary so ?nav=/?rev= never false-match
+  if (!req.path.startsWith("/api/") && /[?&](v|aud)=[\w-]/.test(req.url)) res.setHeader("Cache-Control", "public, max-age=31536000, immutable"); // matches ?v=1309, library pins (?v=pixi-1), AND the ?aud=N-pinned win/loss mp4s (1.9 MB each — max-age=0 forced a revalidate/re-download per celebration playback); [?&] anchors to a param boundary so ?nav=/?rev= never false-match
+  else if (req.path.startsWith("/assets/")) res.setHeader("Cache-Control", "public, max-age=3600, stale-while-revalidate=86400"); // unversioned sprites/scene images/mp3s: 1h fresh + SWR — the SW is network-first for these, so max-age=0 cost a network round-trip per asset per channel entry; 1h keeps owner asset swaps landing same-hour
   next();
+});
+// v13.32 origin brotli (q11) for text assets. The CDN edge only applies fast on-the-fly
+// brotli (measured live: app.js ships 110,358 B; q11 ships 87,046 B, -21%; ethers vendor
+// 162,016 -> 136,055 B). Lazy ASYNC cache keyed on size+mtime: the FIRST request for a file
+// falls through to express.static (identity — the edge still compresses it) while q11 runs
+// off the request path, so the event loop NEVER blocks on zlib (playcanvas takes ~2.2s at
+// q11) and no request ever waits on compression. ~1.2 MB RAM for all text under public/.
+// Conditional GETs answer 304 via a size+mtime weak ETag (mirrors express.static's scheme).
+const zlib = require("zlib");
+const brCache = new Map(); // abs path -> { key, buf } | { key, pending:true }
+const BR_TYPES = { js: "application/javascript; charset=UTF-8", css: "text/css; charset=UTF-8", html: "text/html; charset=UTF-8", json: "application/json; charset=UTF-8", svg: "image/svg+xml", txt: "text/plain; charset=UTF-8" };
+app.use((req, res, next) => {
+  if (req.method !== "GET" || !/\bbr\b/.test(String(req.headers["accept-encoding"] || ""))) return next();
+  const p = req.path === "/" ? "/index.html" : req.path;
+  const m = /\.(js|css|html|json|svg|txt)$/i.exec(p);
+  if (!m || p.includes("%")) return next(); // percent-encoded paths -> let express.static decode + serve identity
+  const abs = path.normalize(path.join(publicDir, p));
+  if (!abs.startsWith(publicDir + path.sep)) return next(); // never step outside public/
+  fs.stat(abs, (err, st) => {
+    if (err || !st.isFile() || st.size > 8 * 1024 * 1024) return next();
+    const key = st.size + ":" + st.mtimeMs;
+    const hit = brCache.get(abs);
+    if (!hit || hit.key !== key || !hit.buf) {
+      if (!hit || hit.key !== key) { // (re)compress in the background; serve identity meanwhile
+        brCache.set(abs, { key, pending: true });
+        fs.readFile(abs, (e2, raw) => {
+          if (e2) return void brCache.delete(abs);
+          zlib.brotliCompress(raw, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 11, [zlib.constants.BROTLI_PARAM_SIZE_HINT]: raw.length } }, (e3, buf) => {
+            if (e3 || !buf) return void brCache.delete(abs);
+            brCache.set(abs, { key, buf });
+          });
+        });
+      }
+      return next();
+    }
+    const etag = 'W/"' + st.size.toString(16) + "-" + Math.round(st.mtimeMs).toString(16) + '-br"';
+    res.setHeader("Vary", "Accept-Encoding");
+    res.setHeader("ETag", etag);
+    if (!res.getHeader("Cache-Control")) res.setHeader("Cache-Control", "public, max-age=0"); // the ?v= middleware above already set immutable for versioned URLs
+    if (req.headers["if-none-match"] === etag) { res.statusCode = 304; return res.end(); }
+    res.setHeader("Content-Type", BR_TYPES[m[1].toLowerCase()]);
+    res.setHeader("Content-Encoding", "br");
+    res.setHeader("Content-Length", hit.buf.length);
+    res.end(hit.buf);
+  });
 });
 app.use(express.static(publicDir));
 
@@ -367,7 +413,14 @@ function gracefulShutdown() {
 // for a mistyped endpoint makes token-client.status() and any fetch() parse garbage / mask a real outage).
 app.all("/api/*", (req, res) => { res.status(404).json({ ok: false, error: "not found" }); });
 // SPA-ish fallback so deep links like /?room=12 still serve index.html.
+// v13.32: a path that LOOKS like a static asset (has a file extension) must 404 here, not
+// serve HTML — and the fallback must never inherit the ?v= immutable header set by the
+// middleware above (a missing /foo.js?v=N used to cache index.html AS foo.js for a YEAR,
+// and sw.js's cache-first branch then pinned it; nosniff blocks the HTML-as-script, so the
+// lazy-loaded game/token script stayed broken for that client until a manual cache clear).
 app.get("*", (req, res) => {
+  res.setHeader("Cache-Control", "no-cache"); // override any immutable header set for a ?v= URL that missed a real file
+  if (/\.[a-z0-9]{2,5}$/i.test(req.path) && !/\.html$/i.test(req.path)) return res.status(404).end(); // missing asset -> visible 404, never cacheable HTML
   res.sendFile(path.join(publicDir, "index.html"));
 });
 
@@ -560,8 +613,14 @@ wss.on("connection", (ws, req) => {
       // Replay recent chat so the conversation is already there when they arrive
       // (and so a host who reconnects sees what players said while away).
       pruneChat();
-      if (chatHistory.length && ws.readyState === ws.OPEN) {
-        ws.send(JSON.stringify({ type: "chat-history", messages: chatHistory }));
+      // Payload diet: the ONLY consumer (app.js renderChatHistory) renders just the last 60 lines and ignores
+      // every replay after its first (chatHistoryLoaded guard); the blackjack felt's second socket has no
+      // chat-history consumer at all. So send at most 60 lines, ONCE per socket — a re-hello on the same
+      // socket (wallet connect re-identify) was re-shipping up to ~71KB of raw WS frames (no permessage-
+      // deflate) that the client always discarded. A reconnect is a NEW socket → fresh flag → still replayed.
+      if (!ws._chatHistorySent && chatHistory.length && ws.readyState === ws.OPEN) {
+        ws._chatHistorySent = true;
+        ws.send(JSON.stringify({ type: "chat-history", messages: chatHistory.slice(-60) }));
       }
     } else if (data.type === "rooms-updated" || data.type === "flip") {
       // Relay lobby/game changes so everyone refreshes from chain instantly.

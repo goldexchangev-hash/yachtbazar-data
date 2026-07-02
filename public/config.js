@@ -22,3 +22,7 @@ window.COINFLIP_CONFIG = {
   vrfCoordinator: null,
   abi: [],
 };
+// Fish Shooter loads the .webp sprite pack (10.2MB) instead of the PNGs (16.8MB) — siblings generated
+// at q90 (sharp), PNGs kept as the automatic per-file fallback (fishshooter.js tryLoad). Regenerate the
+// .webp pack whenever the sprite pipeline adds/changes PNGs, or new art silently loads the PNG path.
+window.FS_WEBP_PACK = true;

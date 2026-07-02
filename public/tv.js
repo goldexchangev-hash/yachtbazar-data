@@ -583,7 +583,7 @@
         };
         requestAnimationFrame(tick);
       });
-      if (seq !== this._seq) { try { window.__onTvReveal && window.__onTvReveal(res); } catch (e) {} return; }
+      if (seq !== this._seq) { try { window.__onTvReveal && window.__onTvReveal({}); } catch (e) {} return; } // stale (tuned away): release the frozen balance ONLY — never re-fire the outcome overlay/share/sound on the new channel
       await sleep(140);
       // 2) verdict
       const tier = res.youWon ? (res.tier || "normal") : "normal";
@@ -632,7 +632,7 @@
         };
         requestAnimationFrame(tick);
       });
-      if (seq !== this._seq) { try { window.__onTvReveal && window.__onTvReveal(res); } catch (e) {} return; }
+      if (seq !== this._seq) { try { window.__onTvReveal && window.__onTvReveal({}); } catch (e) {} return; } // stale (tuned away): balance release only
       d1El.classList.remove("rolling"); d2El.classList.remove("rolling");
       this._setDieFace(d1El, res.d1); this._setDieFace(d2El, res.d2);
       const sum = (res.d1 | 0) + (res.d2 | 0);
@@ -694,7 +694,7 @@
       });
       // If the player tuned away mid-flight, abandon the reveal but still release
       // the frozen balance now instead of waiting on the 20s safety timer.
-      if (seq !== this._seq) { try { window.__onTvReveal && window.__onTvReveal(res); } catch (e) {} return; }
+      if (seq !== this._seq) { try { window.__onTvReveal && window.__onTvReveal({}); } catch (e) {} return; } // stale (tuned away): balance release only
       // 2) settle: cash out (win) or bust (loss)
       const tier = res.won ? (res.tier || "normal") : "normal";
       if (multEl) { multEl.style.color = ""; multEl.style.textShadow = ""; } // hand color back to the win/bust CSS class
@@ -801,7 +801,7 @@
     async _doReveal(seq, res) {
       const wait = Math.max(0, this._spinReadyAt - now());
       await sleep(wait);
-      if (seq !== this._seq) { try { window.__onTvReveal && window.__onTvReveal(res); } catch (e) {} return; }
+      if (seq !== this._seq) { try { window.__onTvReveal && window.__onTvReveal({}); } catch (e) {} return; } // stale (tuned away): balance release only
 
       // DROP + LAND: the coin falls out of the air, decelerating onto the winning
       // face with a bounce. The wrapper plays the vertical drop (coinDrop), the
@@ -823,7 +823,7 @@
       }
       if (window.Chiptune) window.Chiptune.coin(); // the "catch" clink as it lands
       await sleep(940); // wait out the coinDrop arc so the coin is fully landed + DEAD FLAT
-      if (seq !== this._seq) { try { window.__onTvReveal && window.__onTvReveal(res); } catch (e) {} return; }
+      if (seq !== this._seq) { try { window.__onTvReveal && window.__onTvReveal({}); } catch (e) {} return; } // stale (tuned away): balance release only
       // HOLD on the clearly-landed, fully-facing coin so the player plainly sees which
       // side it landed on BEFORE the result overlay covers it.
       await sleep(1100);

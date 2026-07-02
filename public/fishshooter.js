@@ -199,7 +199,15 @@
     var self = this, n = list.length, i = 0, finished = 0, CONC = 6;
     if (!n) { if (done) done(); return; }
     function tryLoad(item, attempt) {
-      return PIXI.Assets.load(item.src + ASSET_Q).then(function (t) { self.tex[item.alias] = t; }, function (e) { // P5: ?v=fs1 → SW cache-first
+      // WEBP: once .webp siblings are generated for the pack (owner: cwebp -q 90 each PNG, keep the PNGs;
+      // then set window.FS_WEBP_PACK = true in config.js), prefer them — measured ~50% of the PNG bytes
+      // (pack 17.6MB → ~8.5MB; boss.png 1,317,811 → 552,027 @ q0.85). A missing/failed .webp falls back
+      // PER-ASSET to the original .png, so a half-generated pack or an old browser is never worse than today.
+      // Flag is OFF by default → behavior is byte-identical until the owner opts in. Art pipeline untouched.
+      if (tryLoad._w == null) { try { tryLoad._w = root.FS_WEBP_PACK === true && document.createElement("canvas").toDataURL("image/webp").indexOf("data:image/webp") === 0; } catch (e) { tryLoad._w = false; } }
+      var src = (tryLoad._w && !item.noWebp && /\.png$/.test(item.src)) ? item.src.replace(/\.png$/, ".webp") : item.src;
+      return PIXI.Assets.load(src + ASSET_Q).then(function (t) { self.tex[item.alias] = t; }, function (e) { // P5: ?v=fs1 → SW cache-first
+        if (src !== item.src) { item.noWebp = true; return tryLoad(item, attempt); } // .webp missing/broken → immediate fallback to the PNG, same retry budget
         if (attempt < 3) return new Promise(function (r) { setTimeout(r, 250 * attempt); }).then(function () { return tryLoad(item, attempt + 1); });
         if (root.console) console.warn("[fishshooter] asset failed after retries: " + item.alias, e && e.message);
         if (placeholderOnFail) self.tex[item.alias] = self._placeholderTex();

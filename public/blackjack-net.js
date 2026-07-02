@@ -34,6 +34,7 @@
     var self = this;
     if (this.ws && (this.ws.readyState === 0 || this.ws.readyState === 1)) return; // never stack a second live socket (ensureConnected — fired by visibilitychange AND pageshow — can race a pending _scheduleReconnect timer)
     var sock;
+    this._connectingAt = Date.now(); // handshake start — ensureConnected aborts a CONNECTING socket stuck past 10s
     try { sock = this.ws = new WebSocket(this.url); } catch (e) { this._scheduleReconnect(); return; }
     // v13.18 pattern from app.js: scope every handler to the CAPTURED sock so an orphaned
     // socket's late events can never flip _open, kill the live heartbeat, or double-emit.
@@ -70,7 +71,7 @@
   BJNet.prototype.ensureConnected = function () {
     if (this._closedByUs) return;
     var rs = this.ws ? this.ws.readyState : 3;
-    if (rs === 0) return; // CONNECTING → leave it
+    if (rs === 0) { if (this._connectingAt && Date.now() - this._connectingAt > 10000) { try { this.ws.close(); } catch (e) {} } return; } // CONNECTING → leave a fresh handshake alone, but abort one stuck >10s (healthy is <3s): close() fails the connection → onclose → _scheduleReconnect, so a wedged handshake can't starve reconnects
     if (rs === 1) {
       // OPEN — but possibly half-open after a background freeze: if we're already past the
       // heartbeat's own 35s staleness bound, drop it NOW (onclose reconnects and bj:net open

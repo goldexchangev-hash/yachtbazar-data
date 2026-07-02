@@ -622,10 +622,16 @@
     var _cbtns = ["connect-btn", "demo-connect"].map(function (id) { return $(id); }).filter(Boolean);
     var _cLabels = _cbtns.map(function (b) { return b.textContent; });
     _cbtns.forEach(function (b) { b.disabled = true; b.classList.add("is-busy"); b.textContent = "Connecting…"; });
+    // W9a: eth_accounts is SILENT — an empty result means the site isn't authorized yet, so a MetaMask popup
+    // is coming: tell the user to look for it (the #1 connect stall is a popup nobody noticed). Already
+    // authorized → no popup, keep "Connecting…". Guarded on `connecting` so a late landing can't scribble
+    // on a label the finally block already restored.
+    try { window.ethereum.request({ method: "eth_accounts" }).then(function (a) { if (connecting && (!a || !a.length)) _cbtns.forEach(function (b) { b.textContent = "Confirm in MetaMask…"; }); }).catch(function () {}); } catch (e) {}
     // Tear down the public read-only provider + its poller/listeners before the
     // wallet provider takes over (otherwise it keeps hammering the public RPC).
     try { if (read) read.removeAllListeners(); } catch {}
     try { if (provider && provider.destroy) provider.destroy(); } catch {}
+    read = null; // that contract was bound to the just-destroyed read-only provider — never leave the 12s poller / ws refreshers reading through it (success rebinds it at the wallet contract; the failure catch rebuilds the public one via setupReadOnly)
     try {
       provider = new E.BrowserProvider(window.ethereum, "any");
       provider.pollingInterval = 2000; // tighter polling for events on injected providers
@@ -635,11 +641,13 @@
         provider.send("eth_requestAccounts", []),
         new Promise(function (_, rej) { setTimeout(function () { rej(new Error("connect-timeout")); }, 60000); }),
       ]);
-      await ensureNetwork();
+      _cbtns.forEach(function (b) { b.textContent = "Checking network…"; }); // W9a: approval landed — next possible popup is the Sepolia switch
+      try { await ensureNetwork(); } catch (eNet) { try { eNet.__netStage = true; } catch (e2) {} throw eNet; } // tag network-stage failures so the catch can word a 4001 correctly
+      _cbtns.forEach(function (b) { b.textContent = "Loading game…"; }); // W9a: all popups answered — the rest is RPC reads
       signer = await provider.getSigner();
       account = await signer.getAddress();
       renderWallet(); // W6: show the wallet chip the INSTANT the account resolves — before the registry await; every downstream path repaints it once the address is final
-      await resolveActiveGame(provider); // honor the registry's active game
+      await Promise.race([resolveActiveGame(provider), new Promise(function (r) { setTimeout(r, 10000); })]); // honor the registry's active game — BOUNDED: a hung registry eth_call must never latch connect() ("Connecting…" + suppressed account/chain handlers) forever; on timeout proceed on the config/cached address — if the live read lands later the late-landing guard banners instead of rebinding
 
       if (!deployment.address) {
         // No game deployed here yet — let this user host one from the browser.
@@ -685,12 +693,26 @@
     } catch (err) {
       console.error(err);
       const code = err && (err.code || (err.info && err.info.error && err.info.error.code));
+      if (String(err && err.message) === "connect-timeout" || code === -32002) window.__cfPendingGrant = true; // the approval popup is still pending in the wallet — let a LATE approval complete the connect (consumed by the accountsChanged handler)
       const msg = (String(err && err.message) === "connect-timeout")
         ? "Wallet didn't respond — open MetaMask and tap Connect again."
-        : code === 4001 ? "Connection cancelled."
+        : code === 4001 ? (err && err.__netStage ? "Network switch declined — approve switching to Sepolia in MetaMask, then tap Connect again." : "Connection cancelled.")
         : code === -32002 ? "Check MetaMask — a connection request is already open."
         : (err?.info?.error?.message || err?.shortMessage || "Connection failed");
       toast(msg, "err");
+      // W9b: an approval can land AFTER we gave up — the 60s timeout fired, or MetaMask reported the request
+      // already open (-32002) and the user approves that pending popup a minute later. Without this the
+      // approval is a dead end (accountsChanged bails on !account) until they tap Connect again. Watch the
+      // silent eth_accounts grant for 2 minutes; the moment it appears, finish the connect — the grant already
+      // exists so eth_requestAccounts resolves instantly, no second popup.
+      if (code === -32002 || String(err && err.message) === "connect-timeout") {
+        try { clearInterval(window.__cfW9Poll); } catch (e2) {}
+        var _w9n = 0;
+        window.__cfW9Poll = setInterval(function () {
+          if (++_w9n > 80 || account || connecting) { clearInterval(window.__cfW9Poll); return; }
+          try { window.ethereum.request({ method: "eth_accounts" }).then(function (a) { if (a && a.length && !account && !connecting) { clearInterval(window.__cfW9Poll); connect(); } }).catch(function () {}); } catch (e3) {}
+        }, 1500);
+      }
       // W5: connect() destroyed the public read-only provider before the popup. If we never got the wallet
       // read-provider live (reject/cancel/timeout), rebuild the public one so lobby/rooms/house polling keeps
       // working instead of hammering a destroyed provider silently.
@@ -715,6 +737,7 @@
     } catch (e) {
       if (e.code === 4902 || (e.data && e.data.originalError && e.data.originalError.code === 4902)) {
         await window.ethereum.request({ method: "wallet_addEthereumChain", params: [target] });
+        try { await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: target.chainId }] }); } catch (e2) {} // EIP-3085 wallets MAY add WITHOUT switching — ask again (harmless no-op where the add already switched); otherwise connect proceeds on the wrong chain into a misleading 'No game found' + host-setup panel
       } else {
         throw e;
       }
@@ -957,6 +980,7 @@
     const chip = $("wallet-chip");
     chip.classList.remove("hidden");
     $("wallet-addr").textContent = short(account);
+    try { localStorage.setItem("cf_last_addr", account); } catch (e) {} // W10: remember that THIS browser has connected before — used only to label the button "Reconnect Wallet" for returning players whose locked wallet blocks the W7 silent autoconnect
     blockies(account, 8, 4, $("wallet-avatar"));
     { const f = $("bj-frame"); if (f && f.getAttribute("src") && !bjFrameMatchesWallet(f, account) && currentGame === "blackjack") ensureBlackjackReady(); } // v7 #2: delegate to the GUARDED ensureBlackjackReady (don't pre-strip src here — that bypassed its bjDockLive mid-hand guard → felt socket drop → auto-stand)
     const nb = $("net-badge");
@@ -1234,7 +1258,10 @@
     // (newer MetaMask) and reload so the page returns to the Connect state.
     try { localStorage.setItem("cf_no_autoconnect", "1"); } catch {} // W7: sticky so the silent reconnect-on-load doesn't immediately re-connect after a manual Disconnect (esp. legacy wallets that don't support revokePermissions)
     try {
-      await window.ethereum?.request?.({ method: "wallet_revokePermissions", params: [{ eth_accounts: {} }] });
+      await Promise.race([
+        window.ethereum?.request?.({ method: "wallet_revokePermissions", params: [{ eth_accounts: {} }] }),
+        new Promise(function (r) { setTimeout(r, 2500); }),
+      ]);
     } catch {}
     try { ws && ws.close(); } catch {}
     location.reload();
@@ -1299,10 +1326,12 @@
   // Cinematic reels: one of four per outcome, picked at random. Muted so they
   // always autoplay (the chiptune fanfare carries the sound); on end the TV's
   // landed-result shows underneath.
-  // ?aud=2 busts caches that still hold the earlier SILENT encodes of these reels.
+  // ?v=aud-2 busts caches that still hold the earlier SILENT encodes of these reels, AND (unlike the old
+  // ?aud=2 token) matches the server's [?&]v= immutable middleware + the SW's cache-first route, so each
+  // ~2MB reel downloads ONCE instead of with max-age=0 every session. Bump aud-2→aud-3 if re-encoded.
   const CINE = {
-    win: ["assets/wins/win1.mp4?aud=2", "assets/wins/win2.mp4?aud=2", "assets/wins/win3.mp4?aud=2", "assets/wins/win4.mp4?aud=2"],
-    loss: ["assets/losses/loss1.mp4?aud=2", "assets/losses/loss2.mp4?aud=2", "assets/losses/loss3.mp4?aud=2", "assets/losses/loss4.mp4?aud=2"],
+    win: ["assets/wins/win1.mp4?v=aud-2", "assets/wins/win2.mp4?v=aud-2", "assets/wins/win3.mp4?v=aud-2", "assets/wins/win4.mp4?v=aud-2"],
+    loss: ["assets/losses/loss1.mp4?v=aud-2", "assets/losses/loss2.mp4?v=aud-2", "assets/losses/loss3.mp4?v=aud-2", "assets/losses/loss4.mp4?v=aud-2"],
   };
   // Browsers block a video with sound from auto-playing a few seconds after a
   // click. So on the user's FIRST interaction we "bless" the reveal element with
@@ -1313,8 +1342,9 @@
   // sound is smooth even when the video streams/hesitates on mobile, and it plays
   // on every platform (muted video autoplays; Web Audio carries the audio).
   const CINE_AUDIO = {
-    win: ["assets/wins/win1.mp3", "assets/wins/win2.mp3", "assets/wins/win3.mp3", "assets/wins/win4.mp3"],
-    loss: ["assets/losses/loss1.mp3", "assets/losses/loss2.mp3", "assets/losses/loss3.mp3", "assets/losses/loss4.mp3"],
+    // ?v=aud-1 → server immutable header + SW cache-first (was bare/uncached, re-fetched each session). Bump if re-extracted.
+    win: ["assets/wins/win1.mp3?v=aud-1", "assets/wins/win2.mp3?v=aud-1", "assets/wins/win3.mp3?v=aud-1", "assets/wins/win4.mp3?v=aud-1"],
+    loss: ["assets/losses/loss1.mp3?v=aud-1", "assets/losses/loss2.mp3?v=aud-1", "assets/losses/loss3.mp3?v=aud-1", "assets/losses/loss4.mp3?v=aud-1"],
   };
   const reelAudio = {};        // url -> decoded AudioBuffer
   let reelsPreloaded = false;
@@ -2496,7 +2526,7 @@
     return new Promise((res, rej) => {
       // v13 #38: dedup by src so a watchdog re-kick (an ensure*Ready promise nulled) never appends a SECOND <script>
       // for the same file while the first is still downloading (the load race). The selector keys on the exact
-      // versioned src ("...?v=1331"), so a later ?v bump is a distinct file and still loads fresh — no stale cache.
+      // versioned src ("...?v=1332"), so a later ?v bump is a distinct file and still loads fresh — no stale cache.
       const sel = 'script[data-loadonce="' + src.replace(/"/g, "&quot;") + '"]';
       const existing = document.querySelector(sel);
       if (existing) {
@@ -2532,7 +2562,7 @@
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=1331"))
+      .then(() => loadScriptOnce("slots.js?v=1332"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -2542,11 +2572,11 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=1331"))
-      .then(() => loadScriptOnce("pressure-render.js?v=1331"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=1331"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=1332"))
+      .then(() => loadScriptOnce("pressure-render.js?v=1332"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=1332"))
       // optional 3D red balloon (Three.js) — falls back to the 2D balloon if it can't load
-      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1331")).catch(() => {}))
+      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1332")).catch(() => {}))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -2618,10 +2648,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=1331"))
-      .then(() => loadScriptOnce("plane-render.js?v=1331"))
-      .then(() => loadScriptOnce("plane-feed.js?v=1331"))
-      .then(() => loadScriptOnce("plane-ui.js?v=1331"))
+      .then(() => loadScriptOnce("plane-engine.js?v=1332"))
+      .then(() => loadScriptOnce("plane-render.js?v=1332"))
+      .then(() => loadScriptOnce("plane-feed.js?v=1332"))
+      .then(() => loadScriptOnce("plane-ui.js?v=1332"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2732,8 +2762,8 @@
     if (window.Slots3D) return Promise.resolve(true);
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("slots3d-engine.js?v=1331"))
-      .then(() => loadScriptOnce("slots3d.js?v=1331"))
+      .then(() => loadScriptOnce("slots3d-engine.js?v=1332"))
+      .then(() => loadScriptOnce("slots3d.js?v=1332"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2790,8 +2820,8 @@
     if (window.FishTable) return Promise.resolve(true);
     if (fishLoadPromise) return fishLoadPromise;
     fishLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishtable-engine.js?v=1331"))
-      .then(() => loadScriptOnce("fishtable.js?v=1331"))
+      .then(() => loadScriptOnce("fishtable-engine.js?v=1332"))
+      .then(() => loadScriptOnce("fishtable.js?v=1332"))
       .then(() => true)
       .catch((e) => { fishLoadPromise = null; throw e; });
     return fishLoadPromise;
@@ -2874,7 +2904,7 @@
     if (window.SwoopGame) return Promise.resolve(true);
     if (swoopLoadPromise) return swoopLoadPromise;
     swoopLoadPromise = loadPlayCanvasOnce()
-      .then(() => loadScriptOnce("swoop3d.js?v=1331"))
+      .then(() => loadScriptOnce("swoop3d.js?v=1332"))
       .then(() => true)
       .catch((e) => { swoopLoadPromise = null; throw e; });
     return swoopLoadPromise;
@@ -2955,8 +2985,8 @@
     if (window.FishShooter) return Promise.resolve(true);
     if (fishshooterLoadPromise) return fishshooterLoadPromise;
     fishshooterLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishshooter-engine.js?v=1331")) // OWN engine (decoupled from Reef's fishtable-engine.js)
-      .then(() => loadScriptOnce("fishshooter.js?v=1331"))
+      .then(() => loadScriptOnce("fishshooter-engine.js?v=1332")) // OWN engine (decoupled from Reef's fishtable-engine.js)
+      .then(() => loadScriptOnce("fishshooter.js?v=1332"))
       .then(() => true)
       .catch((e) => { fishshooterLoadPromise = null; throw e; });
     return fishshooterLoadPromise;
@@ -3041,7 +3071,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1331"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1332"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -3068,7 +3098,7 @@
   function loadRail3dOnce() {
     if (window.Rail3D) return Promise.resolve(true);
     if (rail3dLoadPromise) return rail3dLoadPromise;
-    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1331")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
+    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1332")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
     return rail3dLoadPromise;
   }
   function buildRail3d() {
@@ -3089,7 +3119,7 @@
   function loadDice2_3dOnce() {
     if (window.TwoDice3D) return Promise.resolve(true);
     if (d2_3dLoadPromise) return d2_3dLoadPromise;
-    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1331")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
+    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1332")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
     return d2_3dLoadPromise;
   }
   function buildDice2_3d() {
@@ -3765,7 +3795,7 @@
     if (game === "flip") { ensureCoinFlip3dReady(); }
     else if (game === "dice") { refreshDiceHouse(); diceReadouts(); ensureDice3dReady(); }
     else if (game === "twodice") { refreshDiceHouse(); twoDiceReadouts(); ensureTwoDiceSupport(); ensureDice2_3dReady(); }
-    else if (game === "crash") { refreshDiceHouse(); crashReadouts(); ensureCrashSupport(); }
+    else if (game === "crash") { if (!window.CrashRender) loadScriptOnce("crash-render.js?v=1332").then(() => { try { if (window.TV && TV._crashIdle && currentGame === "crash") TV._crashIdle(); } catch (e) {} }).catch(() => {}); refreshDiceHouse(); crashReadouts(); ensureCrashSupport(); }
     else if (game === "pressure") { ensurePressureReady(); }
     else if (game === "plane") { refreshDiceHouse(); ensurePlaneReady(); }
     else if (game === "slots3d") { ensureSlots3dReady(); }
@@ -3878,7 +3908,7 @@
       const tableWallet = account || bjGuestId();
       // &r=<nonce> in the QUERY forces a real iframe reload (so the felt re-reads the #bjsession from the
       // hash and re-sends its hello → the server re-binds the table to the token session).
-      let src = "blackjack.html?tv=1&v=1331&r=" + (++bjFeltNonce) + "&guest=" + encodeURIComponent(tableWallet);
+      let src = "blackjack.html?tv=1&v=1332&r=" + (++bjFeltNonce % 8) + "&guest=" + encodeURIComponent(tableWallet); // %8: consecutive nonces still ALWAYS differ (n vs n+1 mod 8) so the iframe truly reloads, but the URL set is bounded → the SW's ?v= cache-first path can actually HIT (instant felt load from cache) instead of storing a new never-reusable copy per open
       let tokenHash = "";
       // PREFERRED real-money path: fund the table with the player's TOKEN session (chips = tokens, no lock step).
       if (account && window.TokenMode && TokenMode.active && TokenMode.active() && TokenMode.session) {
@@ -4126,7 +4156,7 @@
     // + dead-bridge screen), re-init it so it binds to the account + token session. Throttled so it can't loop.
     try {
       const f0 = $("bj-frame");
-      // v13.31: the felt is ALSO stale if it's bound to a DIFFERENT (or no) token bjsession than the live one —
+      // v13.32: the felt is ALSO stale if it's bound to a DIFFERENT (or no) token bjsession than the live one —
       // e.g. it loaded as a $0 GUEST and the post-buy-in re-bind raced the just-created session, so the seat
       // shows $0 and the bet controls never appear until a manual ⟳ Reload. Reloading it (via the proven
       // ensureBlackjackReady) re-funds the seat from the token session AUTOMATICALLY. Guarded by !bjDockLive
@@ -4352,7 +4382,7 @@
     paintGameTabs(saved);
     if (saved === "poker" && window.PokerUI) PokerUI.show();
     if (window.TV) TV._activeChannel = GAME_CHANNEL[saved] || 8;
-    if (saved === "crash" && window.TV && TV._crashIdle) { try { TV._crashIdle(); } catch (e) {} }
+    if (saved === "crash") { if (window.TV && TV._crashIdle) { try { TV._crashIdle(); } catch (e) {} } if (!window.CrashRender) loadScriptOnce("crash-render.js?v=1332").then(() => { try { if (window.TV && TV._crashIdle && currentGame === "crash") TV._crashIdle(); } catch (e) {} }).catch(() => {}); }
     // Balloon Pop needs its engine built + activated on reload too (enterDemo,
     // which runs just after, flips it to enabled once it exists).
     if (saved === "pressure") ensurePressureReady();
@@ -4765,6 +4795,7 @@
     try { [rooms, dice, twoDice] = await Promise.all([
       recentRooms(2000).catch(() => []), recentDice(2000).catch(() => []), recentTwoDice(2000).catch(() => []),
     ]); } catch {}
+    if (profileAddr !== addr) return; // the modal moved on to another player while we awaited — never paint stale stats under their header
     const s = Profile.computeStats(addr, { rooms, dice, twoDice }, eq);
     const since = s.memberSinceSec ? new Date(s.memberSinceSec * 1000).toLocaleDateString() : "—";
     const cell = (k, v) => '<div class="ps-cell"><span class="ps-k muted">' + k + '</span><strong class="ps-v">' + v + "</strong></div>";
@@ -5700,12 +5731,12 @@
       // bug). Only reload on a *real* account/network change after connecting.
       window.ethereum.on?.("accountsChanged", (accs) => {
         if (connecting) return;
-        if (!account) return; // W8: never connected (demo play) → locking/unlocking MetaMask fires this; a reload would nuke the demo round mid-game
+        if (!account) { if (window.__cfPendingGrant && accs && accs.length) { window.__cfPendingGrant = false; connect(); } return; } // W8 preserved (plain lock/unlock during demo still never reloads or connects) + LATE GRANT: an approval landing after the 60s connect timeout / behind an -32002 already-open popup completes the connect instead of being silently dropped
         const next = (accs && accs[0]) || null;
         if (account && next && eq(next, account)) return; // same account → ignore
         location.reload();
       });
-      window.ethereum.on?.("chainChanged", () => { if (!connecting) location.reload(); });
+      window.ethereum.on?.("chainChanged", () => { if (connecting) return; if (!account) return; location.reload(); }); // W8 parity: never connected (demo play) → a chain flip in MetaMask must not reload mid-demo-round; the read-only lobby uses the public RPC pool (pinned chainId), not the injected chain
     }
     // learn our public share host (if the server was started with PUBLIC_HOST)
     fetch("/api/info").then((r) => r.json()).then((d) => { if (d.publicHost) window.__PUBLIC_HOST = d.publicHost; }).catch(() => {});
@@ -5781,7 +5812,7 @@
   // A FAILED read also latched forever (no retry). Now: one SHARED in-flight promise — every caller awaits the
   // SAME resolution (no bind-before-resolve), and a failure un-latches so the next caller retries.
   let registryResolveP = null;
-  function regCacheKey() { return "cf:activeGame:" + (deployment.chainId || 0) + ":" + String(cfg.registry || "").toLowerCase(); }
+  function regCacheKey() { return "cf:activeGame:" + (deployment.chainId || 0) + ":" + String(cfg.registry || "").toLowerCase() + ":" + String(cfg.address || "").toLowerCase(); }
   async function resolveActiveGame(prov) {
     // RECOVERY MODE: an explicit ?contract= matching one of OUR OWN previous contracts (cfg.legacy, a trusted
     // hardcoded list) stays bound so stranded deposits can be withdrawn — the registry never overrides it.
@@ -5797,7 +5828,12 @@
         // against an attacker-supplied address.
         const urlWanted = params.get("contract");
         if (urlWanted && E.isAddress(urlWanted) && !sameAddr(urlWanted, cfg.address)) {
-          if (sameAddr(urlWanted, live)) deployment.address = live; // param equals the trusted on-chain active game → OK
+          if (sameAddr(urlWanted, live)) { // param equals the trusted on-chain active game → OK
+            // LATE-LANDING GUARD (same as below): connect() may now proceed on the 10s-bounded race and bind
+            // the config address before this read lands — NEVER mutate deployment.address under the binding.
+            if (contract && !sameAddr(deployment.address, live)) { try { banner("⚠ The live game moved to a new contract — reload the page to play on it.", true); } catch (e) {} return; }
+            deployment.address = live;
+          }
           return; // param neither pinned nor registry-active → dropped
         }
         try { localStorage.setItem(regCacheKey(), live); } catch (e) {} // remember the VERIFIED active game for the next load
@@ -5914,6 +5950,13 @@
   window.addEventListener("DOMContentLoaded", () => {
     lockZoom();
     TV.init();
+    // Off-critical-path extras (see index.html): music + win-scene art are gesture/bet-gated, so fetch
+    // them AFTER first paint. loadScriptOnce dedupes; scenes.js self-boots on inject (readyState !== "loading").
+    // The window.* guards make this a no-op if the classic <script defer> tags are still in index.html
+    // (never double-execute the IIFEs — a second chiptune.js run would rebind window.Chiptune mid-song).
+    { const goExtras = () => { if (!window.WinScenes) loadScriptOnce("scenes.js?v=1332").catch(() => {}); if (!window.Chiptune) loadScriptOnce("chiptune.js?v=1332").then(() => { try { syncSoundBtn(); } catch (e) {} }).catch(() => {}); };
+      if (document.readyState === "complete") setTimeout(goExtras, 0);
+      else window.addEventListener("load", () => setTimeout(goExtras, 0), { once: true }); }
     wireUI();
     syncSoundBtn();
     setupSliders();
