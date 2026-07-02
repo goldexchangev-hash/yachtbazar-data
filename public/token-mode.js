@@ -22,6 +22,8 @@
   var enabled = null;  // cached /api/token/status.enabled (null = unknown)
   var busy = false;
   var stranded = 0;    // USD locked on-chain (bjLocked) with NO active session — set by app.js
+  var resumePending = false; // v12 #2: a saved session is mid-resume (client.resume in flight) — suppress the Recover
+                             // banner until it resolves, so a tap can't force-settle a session that's coming back.
   // Remember the amount the player slid to, so a background re-render (a balance poll calls render())
   // can't snap the slider + its label back to the default while they're choosing a buy-in / top-up.
   var amt = { buyin: null, topup: null };
@@ -60,13 +62,16 @@
           && Number(saved.chainId) === Number(d.chainId)
           && String(saved.contract || "").toLowerCase() === String(d.contractAddr || "").toLowerCase();
         if (client && sameCtx) {
-          client.resume(saved).then(function (okk) { if (okk === true) changed(); else if (okk === "gone") _clearSession(); /* #19: keep a saved session on a transient failure (don't wipe on a load-time blip) */ }).catch(function () {});
+          resumePending = true; try { render(); } catch (e) {} // v12 #2: mark the resume in-flight → Recover stays hidden until it lands
+          client.resume(saved).then(function (okk) { if (okk === true) changed(); else if (okk === "gone") _clearSession(); /* #19: keep a saved session on a transient failure (don't wipe on a load-time blip) */ }).catch(function () {}).then(function () { resumePending = false; try { render(); } catch (e) {} try { root.dispatchEvent && root.dispatchEvent(new Event("ctf:resume-done")); } catch (e) {} });
         } else if (saved) { _clearSession(); }
       } catch (e) {}
     },
 
     available: function () { return !!client && enabled !== false; },
     active: function () { return !!(client && client.session); },
+    resumePending: function () { return resumePending; }, // v12 #2: true while a saved session is mid-resume
+    hasSavedSession: function () { try { return !!_loadSession(); } catch (e) { return false; } },
     tokens: function () { return client ? Math.round((client.tokens || 0) * 100) / 100 : 0; },
 
     // The session handle the ws crash round-runner needs to authorize cr:start. Returns

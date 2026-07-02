@@ -3130,11 +3130,17 @@
   async function checkStrandedLock() {
     if (!window.TokenMode || !TokenMode.setStranded) return;
     try {
-      if (!account || !read || TokenMode.active()) { TokenMode.setStranded(0); return; }
+      // v12 #2: while a SAVED session is still resuming (client.resume in flight), NEVER offer Recover — active()
+      // is false mid-resume, so without this the banner flashed on reload and a tap would force-settle the very
+      // session that's coming back. checkStrandedLock re-runs on the ctf:resume-done event below once it resolves.
+      if (!account || !read || TokenMode.active() || (TokenMode.resumePending && TokenMode.resumePending())) { TokenMode.setStranded(0); return; }
       let locked = 0n; try { locked = await read.bjLocked(account); } catch (e) { return; }
       TokenMode.setStranded(locked > 0n ? weiToUsd(locked) : 0);
     } catch (e) {}
   }
+  // v12 #2: when a page-reload session resume finishes (success OR gone), re-evaluate the stranded lock so a
+  // genuinely-orphaned lock still surfaces Recover — but only AFTER the resume can no longer be clobbered.
+  try { window.addEventListener("ctf:resume-done", function () { try { checkStrandedLock(); } catch (e) {} }); } catch (e) {}
   function enterDemo() {
     if (demoOn || account) return; // never override a live wallet connection
     demoOn = true;
