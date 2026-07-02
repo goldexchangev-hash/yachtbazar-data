@@ -165,7 +165,7 @@
     const signature = await d.signer.signMessage(tokenAuthMessage("topup", { player, contract, chainId, sessionId, buyInWei: addWei }, d.ethers.getAddress));
     const tx = await d.contract.blackjackBuyIn(addWei, { gasLimit: 200000n });
     const receipt = await tx.wait();
-    const r = await this._post("/api/token/topup", { player, sessionId, sessionToken: this.session.sessionToken, txHash: receipt.hash, buyInWei: addWei, signature });
+    const r = await this._post("/api/token/topup", { player, sessionId, sessionToken: this.session.sessionToken, txHash: receipt.hash, buyInWei: addWei, signature }, 45000); // 45s: /topup does the same multiple sequential on-chain reads as /start — must not abort mid-verify (was 12s → "add more tokens" hung and never registered)
     this.tokens = r.tokens; this._playSeqApplied = (this._playSeq || 0); // v13 #3: a top-up establishes a NEWER authoritative balance — advance the play-seq watermark so a slow in-flight play() (issued before this top-up) can't roll the displayed tokens backward. A play issued AFTER gets a higher seq and still applies.
     if (this.session) this.session.tokens = r.tokens;
     return r;
