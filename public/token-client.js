@@ -43,6 +43,23 @@
     return r;
   }
 
+  // Decode the custom-error NAME from a reverted settleBlackjack simulation. ethers v6 puts ABI-known custom
+  // errors in err.revert.name; fall back to scanning the message text.
+  function settleRevertName(err) {
+    try { if (err && err.revert && err.revert.name) return err.revert.name; } catch (e) {}
+    var s = String((err && (err.shortMessage || err.reason || err.message)) || "");
+    var m = s.match(/HouseBankrollLow|NotOwner|InsufficientBalance/);
+    return m ? m[0] : "";
+  }
+  // Turn a settleBlackjack revert into a precise, actionable RECOVER message (funds are never at risk — the
+  // stake stays locked on-chain until a valid settle lands).
+  function recoverMsgFor(name) {
+    if (name === "HouseBankrollLow") return "Your funds are safe and still locked — but the on-chain house bankroll can't cover the payout right now. The operator needs to top it up; try Recover again shortly.";
+    if (name === "NotOwner") return "Your funds are safe and still locked — but the settlement signer isn't authorized on-chain yet. The operator must set it (setBlackjackSigner), then Recover will work.";
+    if (name === "InsufficientBalance") return "That settlement was already used — your balance should be up to date now. If funds still show as locked, tap Recover once more.";
+    return "Recovery couldn't be submitted right now — your funds are safe and still locked. Please try again in a moment.";
+  }
+
   // deps: { ethers, signer, contract, account, chainId, contractAddr, fetch?, apiBase? }
   //   signer   = ethers wallet signer (signMessage + the tx sender)
   //   contract = ethers Contract bound to the signer (blackjackBuyIn / settleBlackjack)
@@ -213,6 +230,22 @@
     const expiry = Math.floor(Date.now() / 1000) + 300; // 5-min window; the server enforces freshness
     const signature = await d.signer.signMessage(tokenAuthMessage("release", { player, contract, chainId, expiry }, d.ethers.getAddress));
     const r = await this._post("/api/token/release", { player, contract, chainId, expiry, signature }, 45000); // W3: /release does 2-4 sequential on-chain reads server-side — 45s so a slow-RPC Recover doesn't abort at 12s (v12.98 "fetch aborted" class)
+    // RECOVER-LOOP FIX: SIMULATE the settle first (eth_call, no gas) so we NEVER submit a tx that just reverts
+    // and leaves the user re-tapping forever with a useless "transaction execution reverted". If it would revert:
+    //   (a) the on-chain lock is already 0 ⇒ the funds are already out (a prior attempt landed) ⇒ succeed + stop.
+    //   (b) still locked ⇒ decode WHY (HouseBankrollLow / NotOwner / InsufficientBalance) and surface a precise,
+    //       actionable reason instead of the generic revert. Funds stay safely locked until a valid settle lands.
+    try {
+      await d.contract.settleBlackjack.staticCall(player, BigInt(r.netWei), BigInt(r.nonce), r.signature);
+    } catch (sim) {
+      let stillLocked = true;
+      try { stillLocked = (await d.contract.bjLocked(player)) > 0n; } catch (e) {}
+      if (!stillLocked) { this.session = null; this.tokens = 0; return { ...r, claimTx: null, alreadyRecovered: true }; }
+      const nm = settleRevertName(sim);
+      const err = new Error(recoverMsgFor(nm));
+      err.settleRevert = nm || "revert"; err.recoverBlocked = true;
+      throw err;
+    }
     const tx = await d.contract.settleBlackjack(player, BigInt(r.netWei), BigInt(r.nonce), r.signature, { gasLimit: 200000n });
     const receipt = await waitTx(tx);
     this.session = null; this.tokens = 0; // the server settled/freed it — drop any stale local session
