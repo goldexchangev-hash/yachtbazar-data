@@ -435,8 +435,10 @@
     //    into r.tokens. We render from the authoritative result; local money is never touched.
     if (this._tokenActive() && !b.free) {
       var self = this, shot = { unitBet: b.unitBet, power: b.power, cost: b.cost, free: false };
+      var epoch = (self._tokenEpoch = self._tokenEpoch || 0); // v11 #1: pin the epoch so an off-channel resolve (after setActive(false) bumps it) can't re-arm a bonus on a screen you already left
       this._net(b.s.x, b.s.y, fish.def.color); // immediate net FX (latency-friendly)
       root.TokenMode.bet("fishshooter", b.cost, { targetKey: fish.def.key, power: b.power }).then(function (r) {
+        if (epoch !== self._tokenEpoch || !self._active) { if (root.TokenMode && root.TokenMode.paintTokens) root.TokenMode.paintTokens(); return; } // v11 #1: left the channel / mode changed → keep the top token bar synced but suppress off-channel bonus/catch
         var bonus = r && r.win && r.outcome && r.outcome.bonus && r.outcome.bonus.total > 0 ? r.outcome.bonus : null;
         var inBonus = self._bonus || self._bonusFinale; // a bonus round is already animating → HOLD the HUD; it reveals at the finale
         if (!inBonus) {
@@ -456,7 +458,7 @@
         // win/loss before the fish bursts and spoils it. Skip the repaint entirely while a bonus is running so
         // the held balance can't flash the bonus total early. Sync the TOP token bar at the same beat.
         setTimeout(function () { if (!(self._bonus || self._bonusFinale)) { self._renderHud(); if (root.TokenMode && root.TokenMode.paintTokens) root.TokenMode.paintTokens(); } }, 480);
-      }).catch(function (e) { if (!(self._bonus || self._bonusFinale)) { self.balance = root.TokenMode.tokens(); self._renderHud(); if (root.TokenMode && root.TokenMode.paintTokens) root.TokenMode.paintTokens(); } }); // transactional bridge: a rejected bet cost nothing
+      }).catch(function (e) { if (epoch !== self._tokenEpoch || !self._active) { if (root.TokenMode && root.TokenMode.paintTokens) root.TokenMode.paintTokens(); return; } if (!(self._bonus || self._bonusFinale)) { self.balance = root.TokenMode.tokens(); self._renderHud(); if (root.TokenMode && root.TokenMode.paintTokens) root.TokenMode.paintTokens(); } }); // v11 #1: drop an off-channel resolve; transactional bridge: a rejected bet cost nothing
       return;
     }
     if (b.free) { // accumulate the EXPECTED value this connecting free shot delivers; the wave ends when it reaches the budget (variable realized payout)
@@ -1055,7 +1057,7 @@
       if (this._ready) this.app.ticker.start();
       setTimeout(function () { try { self._resize(); } catch (e) {} }, 50);   // re-measure once the layer is shown
       var C = root.Chiptune; if (C) { try { C.wake && C.wake(); } catch (e) {} if (C.playTrack && !this._musicPinned) { this._musicPinned = true; try { C.playTrack("coral"); } catch (e) {} } } // wake audio on entry; pin Coral ONCE so a user-chosen track isn't clobbered on re-entry
-    } else { try { this._teardownRounds(); } catch (e) {} this.app.ticker.stop(); this._holding = false; try { this._fsExit(this._fsTarget); } catch (e) {} }
+    } else { this._tokenEpoch = (this._tokenEpoch || 0) + 1; try { this._teardownRounds(); } catch (e) {} this.app.ticker.stop(); this._holding = false; try { this._fsExit(this._fsTarget); } catch (e) {} } // v11 #1: bump epoch on leave so an in-flight token bet's resolve is dropped (no off-channel bonus re-arm)
   };
   FishShooter.prototype.setEnabled = function (on) { this._enabled = !!on; this._renderHud(); };
   FishShooter.prototype.setBalance = function (usd) { this.balance = Math.max(0, Math.round((+usd || 0) * 100) / 100); this._renderHud(); };

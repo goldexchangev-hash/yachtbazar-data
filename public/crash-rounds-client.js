@@ -95,7 +95,11 @@
       // clear message + (the host's send wrapper) reconnect, instead of the misleading 12s ack hang (#86).
       // (undefined ⇒ a legacy transport that doesn't report ⇒ treat as sent and rely on the ack timeout.)
       if (sent === false) { failRound("Couldn't reach the table — connection lost. Reconnecting… tap LAUNCH again in a moment. (Your stake was not taken.)"); return p; }
-      pending.ackT = arm(ackMs, function () { failRound("Round didn't start — connection lost. Your stake was not taken."); });
+      // v12 #1: the ack timeout is AMBIGUOUS — the round may have STARTED server-side (reserve() debited the stake)
+      // with the cr:started frame merely lost/delayed. A local "stake not taken" refund would then be a FALSE REFUND
+      // (house pays a stake it already took). Use the reconcile sentinel so the channel refreshes from the authoritative
+      // ledger instead of locally refunding. (Line 97's sent===false is a PROVABLE not-sent → its local refund stays.)
+      pending.ackT = arm(ackMs, function () { failRound("CR_ROUND_TIMEOUT"); });
       return p;
     }
 
@@ -159,6 +163,12 @@
       var l = live; live = null;
       if (l.rafH) caf(l.rafH);
       clearTimers(l);
+      // v12 #3: a cash-out / owner error that arrives AFTER the round started (roundId set ⇒ cr:started came)
+      // means it already settled server-side (busted or cashed a moment ago) — the stake WAS taken. Reconcile from
+      // the ledger via the CR_ROUND_TIMEOUT sentinel; NEVER locally refund a taken stake (false-refund house drain).
+      // Pre-start errors (auth/live/seed/start) all arrive before cr:started, so roundId is null → real message +
+      // correct local refund (stake genuinely not taken).
+      if (l.roundId) { l.reject(new Error("CR_ROUND_TIMEOUT")); return; }
       l.reject(new Error((msg && msg.message) || "round error"));
     }
 

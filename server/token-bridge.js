@@ -178,6 +178,7 @@ function makeTokenBridge(opts) {
 
     const nonce = s.betNonce;                          // PEEK — don't burn the nonce until the bet commits
     const clientSeed = String(o.clientSeed == null ? "" : o.clientSeed);
+    if (clientSeed.length > 256) throw new Error("client seed is too long"); // v11 #5: bound the synchronous HMAC (event-loop DoS) — a legit seed is well under 256
     // TRANSACTIONAL: run the engine FIRST with NO state mutation. If it throws (e.g. an
     // invalid dice line — the contract would revert) or returns a non-finite payout, we
     // bail WITHOUT debiting the stake or burning the nonce — the bet is simply rejected,
@@ -236,7 +237,12 @@ function makeTokenBridge(opts) {
     // invariant. This is a bridge-LOCAL check (the open marker lives in s.bets) so it holds for every caller —
     // including applyBlackjackNet — and even survives a restart (an orphaned open round still blocks until
     // it's drained). Mirror of: cr:start refuses during a live BJ hand.
-    if (s.bets.some(function (b) { return b && b.kind === "crashRound" && b.open; })) throw new Error("finish your live crash round before settling blackjack");
+    // v9 #7: a stale SIGKILL-orphaned open crashRound must NOT permanently block token blackjack. No round is
+    // genuinely live here — cr:start refuses during a live BJ hand and doPlay/BJ refuses during a live crash round,
+    // so they can't coexist on one session; any open marker at applyExternal time is a dead orphan. Bust it
+    // (payout 0, stake stays gone — house-safe) instead of hard-throwing (which locked the player out of BJ forever).
+    // exceptNonce -1 ⇒ finalize EVERY open round. Mirrors the boot drainOrphanReservations; belt-and-suspenders.
+    finalizeOrphanRounds(s, -1);
     const bet = round2(o.betUnits || 0);
     const payout = round2(Math.max(0, o.payoutUnits || 0));
     if (!(bet >= 0) || !Number.isFinite(bet)) throw new Error("invalid external bet");
@@ -259,6 +265,12 @@ function makeTokenBridge(opts) {
     const s = sessions.get(o.sessionId);
     if (!s) throw new Error("no such session");
     if (s.settlement) return s.settlement;            // idempotent
+    // v9 #6: bust any SIGKILL-orphaned open crashRound (its stake was already debited at reserve) BEFORE we compute
+    // net and set closed — otherwise the orphan is silently forfeited from the ledger. No genuinely-live round can
+    // reach here (settle/recover gate on liveCrashSession() first), so this only ever finalizes a dead orphan.
+    // exceptNonce -1 ⇒ skip nothing real. Must precede the net math + s.closed so a retryable throw can't leave a
+    // closed session with an unfinalized orphan.
+    finalizeOrphanRounds(s, -1);
     // Cents-rounded figure for DISPLAY/ledger only. The SIGNED wei is derived from the un-rounded net
     // below so a sub-cent loss can't vanish (#21/#204).
     let netUnits = round2(s.tokens - s.buyInUnits);
@@ -412,6 +424,7 @@ function makeTokenBridge(opts) {
     if (!(bet > 0)) throw new Error("bet must be positive");
     if (Math.round(bet * 100) > Math.round(s.tokens * 100)) throw new Error("insufficient tokens"); // integer-cent (no float-epsilon overbet)
     const clientSeed = String(o.clientSeed == null ? "" : o.clientSeed);
+    if (clientSeed.length > 256) throw new Error("client seed is too long"); // v11 #5: bound the synchronous HMAC (event-loop DoS) — a legit seed is well under 256
     const nonce = s.betNonce;                 // PIN this nonce for the whole round
     const point = (game === "pressure")
       ? ENGINES.pressure.deriveBurst(s.serverSeed, clientSeed, nonce)
@@ -442,11 +455,17 @@ function makeTokenBridge(opts) {
     const cashOutAt = Number(o && o.cashOutAt);
     const params = { cashOutAt: cashOutAt };
     const res = ENGINES[rec.game].play({ serverSeed: s.serverSeed, clientSeed: rec.clientSeed, nonce: nonce, betUnits: rec.betUnits, params: params });
-    let payout = round2(Math.max(0, Number(res && res.payoutUnits)));
+    // v13 #1 (Scan 46): an ORPHAN finalize (forceBust) is an INTERRUPTED round with no cash-out → it MUST be a LOSS
+    // (payout 0), regardless of the derived crashPoint. The old cashOutAt:1e9 relied on "crashPoint < cashOutAt ⇒
+    // bust", but the engine clamps cashOutAt to MAX_CRASH_X (1000); at a 1000× crashPoint that made win=true →
+    // paid bet×1000 (a house drain on a path meant to bust). forceBust ignores the engine win and books payout 0.
+    // A LIVE bust (crash-rounds.js) is unaffected — it passes a real target and never sets forceBust.
+    const forceBust = !!(o && o.forceBust);
+    let payout = forceBust ? 0 : round2(Math.max(0, Number(res && res.payoutUnits)));
     if (!Number.isFinite(payout)) throw new Error("resolve rejected: non-finite payout");
     payout = clampPayout(rec.game, rec.betUnits, payout); // bridge-level backstop on the crash-round payout too
     s.tokens = capUp(round2(s.tokens + payout), s.buyInUnits); // v6 #14: bound the win side (crash rounds too)
-    rec.open = false; rec.params = params; rec.payoutUnits = payout; rec.win = !!res.win; rec.multiplier = res.multiplier;
+    rec.open = false; rec.params = params; rec.payoutUnits = payout; rec.win = forceBust ? false : !!res.win; rec.multiplier = forceBust ? 0 : res.multiplier;
     rec.outcome = res.outcome;                // persist {crashPoint,...} so the ledger entry exposes the settled point (audit + paced==ledger check)
     save();
     return { sessionId: s.id, nonce: nonce, game: rec.game, win: rec.win, multiplier: rec.multiplier, payoutUnits: payout, outcome: res.outcome, tokens: s.tokens };
@@ -471,7 +490,7 @@ function makeTokenBridge(opts) {
     if (!s || !s.bets || s._noOpenCrashRound) return;
     for (const b of s.bets) {
       if (b && b.kind === "crashRound" && b.open && Number(b.nonce) !== Number(exceptNonce)) {
-        try { resolveReserved({ sessionId: s.id, nonce: b.nonce, cashOutAt: 1e9 }); }
+        try { resolveReserved({ sessionId: s.id, nonce: b.nonce, cashOutAt: 1e9, forceBust: true }); } // v13 #1: forceBust ⇒ payout 0 even at a 1000× crashPoint (no cap-win drain)
         catch (e) { throw new Error("a previous crash round is still finalizing — try again in a moment"); } // leaves the flag unset → next retry re-scans
       }
     }
@@ -490,7 +509,7 @@ function makeTokenBridge(opts) {
       if (!s || s.closed) continue;
       for (const rec of (s.bets || [])) {
         if (rec && rec.kind === "crashRound" && rec.open) {
-          try { resolveReserved({ sessionId: s.id, nonce: rec.nonce, cashOutAt: 1e9 }); drained++; } catch (e) {}
+          try { resolveReserved({ sessionId: s.id, nonce: rec.nonce, cashOutAt: 1e9, forceBust: true }); drained++; } catch (e) {} // v13 #1: forceBust ⇒ payout 0 even at a 1000× crashPoint (no cap-win drain)
         }
       }
     }
@@ -706,6 +725,18 @@ if (require.main === module) {
     let ftMsg = ""; try { fb.reserve({ sessionId: fs, game: "crash", betUnits: 10, clientSeed: "y" }); } catch (e) { ftMsg = e.message; }
     eq("un-finalizable orphan → RETRYABLE error (not a permanent 'already live' strand)", /try again in a moment/.test(ftMsg));
     eq("session is NOT closed after the retryable throw (self-heals on retry)", !fb.session(fs).closed);
+
+    // ── v13 #1 (Scan 46) + v14 #93: an ORPHAN crashRound whose derived crashPoint hits the 1000× CAP must finalize
+    //    to payout 0 (forceBust), NOT pay bet×1000. The old cashOutAt:1e9 (clamped to MAX=1000) made win=true at a
+    //    1000× point → house drain. Deterministic repro: serverSeed 'seed' + clientSeed 'c486' @ nonce 0 → 1000×. ──
+    const capB = makeTokenBridge({ signer: signer2, toWei: (u) => BigInt(Math.round(u * 1e6)) });
+    const capS = capB.start({ player, chainId: 1, contract, buyInUnits: 1000 }).sessionId;
+    capB.session(capS).serverSeed = "seed"; // pin the seed that yields a 1000× crashPoint at nonce 0
+    const capTok0 = capB.session(capS).tokens;
+    capB.reserve({ sessionId: capS, game: "crash", betUnits: 10, clientSeed: "c486" }); // nonce 0 → crashPoint 1000, open (the orphan)
+    const capBust = capB.resolveReserved({ sessionId: capS, nonce: 0, cashOutAt: 1e9, forceBust: true });
+    eq("v13 #1: orphan finalize at a 1000× cap BUSTS (payout 0, win false) — not bet×1000", capBust.payoutUnits === 0 && capBust.win === false);
+    eq("v13 #1: the 1000×-cap orphan leaves the stake DEBITED (a loss, never a bet×1000 credit)", capB.session(capS).tokens === round2(capTok0 - 10));
 
     console.log(ok ? "\nSELF-TEST OK — token bridge: buy-in → provably-fair play → signed, verifiable settle." : "\nSELF-TEST FAILED");
     process.exit(ok ? 0 : 1);

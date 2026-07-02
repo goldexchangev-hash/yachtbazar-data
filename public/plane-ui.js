@@ -365,19 +365,28 @@
       if (epoch !== this._realEpoch) return; // superseded (mode switch / new idle) — drop a stale resolve
       this._realBusy = false;
       if (!res) { this.balance = Math.round((this.balance + stake) * 100) / 100; this._startTokenIdle(); return; }
-      this.crash = res.crashPoint;
       if (typeof res.tokens === "number") this.balance = Math.round(res.tokens * 100) / 100; // authoritative
-      this.history.unshift(res.crashPoint); this.history = this.history.slice(0, 20); this._renderHistory();
-      this.lastRound = { nonce: this.nonce, crash: res.crashPoint }; this._updatePfLast();
-      if (res.busted) {
-        const instant = res.crashPoint <= 1.01; this.r.crash(res.crashPoint, instant);
-        this._msg("✈️ Flew away @ " + res.crashPoint.toFixed(2) + "x — lost " + this._usd(stake), "lose"); this._sfx("lose");
+      // v9 #2: cr:noround (#94 offline-bust resume) carries NO crashPoint. Reading res.crashPoint.toFixed() would
+      // throw → the .catch below FALSE-REFUNDS a taken stake. Handle it as a stake-lost bust and skip pushing
+      // undefined into crash/history/PF. res.tokens is absent here so the locally-debited balance stays (stake lost),
+      // reconciled by TokenMode.refreshTokens() after resume.
+      if (res.resumedGone) {
+        this.r.crash(0, true);
+        this._msg("Round ended while you were away — stake lost.", "lose"); this._sfx("lose");
       } else {
-        const co = res.cashOutAt || 1, profit = Math.max(0, (res.payoutUnits || 0) - stake);
-        this.r.cashOut(profit, co, stake);
-        this._sfx("coin"); this._sfx(profit >= 300 ? "jackpot" : profit >= 100 ? "bigwin" : "win");
-        this._msg("💰 Cashed " + co.toFixed(2) + "x  →  +" + this._usd(profit) + " (tokens)", "win");
-        if (this.onWin && profit > 0) { try { this.onWin({ profitUsd: profit, mult: co }); } catch (e) {} }
+        this.crash = res.crashPoint;
+        this.history.unshift(res.crashPoint); this.history = this.history.slice(0, 20); this._renderHistory();
+        this.lastRound = { nonce: this.nonce, crash: res.crashPoint }; this._updatePfLast();
+        if (res.busted) {
+          const instant = res.crashPoint <= 1.01; this.r.crash(res.crashPoint, instant);
+          this._msg("✈️ Flew away @ " + res.crashPoint.toFixed(2) + "x — lost " + this._usd(stake), "lose"); this._sfx("lose");
+        } else {
+          const co = res.cashOutAt || 1, profit = Math.max(0, (res.payoutUnits || 0) - stake);
+          this.r.cashOut(profit, co, stake);
+          this._sfx("coin"); this._sfx(profit >= 300 ? "jackpot" : profit >= 100 ? "bigwin" : "win");
+          this._msg("💰 Cashed " + co.toFixed(2) + "x  →  +" + this._usd(profit) + " (tokens)", "win");
+          if (this.onWin && profit > 0) { try { this.onWin({ profitUsd: profit, mult: co }); } catch (e) {} }
+        }
       }
       this.state = "token-end"; this._pause = CRASH_PAUSE; Riser.stop();
       this._renderHud(); this._renderButtons();

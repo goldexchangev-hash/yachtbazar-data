@@ -380,8 +380,10 @@
     //    returns the catch + (v2) the disbursed bonus/splash total, all folded into r.tokens.
     if (this._tokenActive() && !b.free) {
       const self = this, shot = { unitBet: b.unitBet || this.unitBet, power: b.power || this.power, cost: b.cost || this.cost(), free: false };
+      var epoch = (self._tokenEpoch = self._tokenEpoch || 0); // v11 #1: pin the epoch so an off-channel resolve (after setActive(false) bumps it) can't re-arm a bonus/catch on a screen you already left
       this._net(b.s.x, b.s.y, fish.def.color); // immediate net FX
       root.TokenMode.bet("reef", shot.cost, { targetKey: fish.def.key, power: shot.power }).then(function (r) {
+        if (epoch !== self._tokenEpoch || !self._active) { if (root.TokenMode && root.TokenMode.paintTokens) root.TokenMode.paintTokens(); return; } // v11 #1: left the channel / mode changed → keep the top token bar synced but suppress off-channel bonus/catch side effects
         self.balance = root.TokenMode.tokens(); // authoritative
         self._tokenRevealUntil = Date.now() + 520; // hold the HUD balance briefly so the win reveals AFTER the catch (syncTokenGameBalances skips only during this window — a buy-in/top-up still updates immediately)
         if (r && r.win) {
@@ -391,7 +393,7 @@
         // Hold the balance HUD until the catch/blow-up plays out so it doesn't spoil the result.
         // Sync the top token bar at the same beat (light paint) so it tracks the balance live.
         setTimeout(function () { self._renderHud(); if (root.TokenMode && root.TokenMode.paintTokens) root.TokenMode.paintTokens(); }, 480);
-      }).catch(function (e) { self.balance = root.TokenMode.tokens(); self._renderHud(); if (root.TokenMode && root.TokenMode.paintTokens) root.TokenMode.paintTokens(); });
+      }).catch(function (e) { if (epoch !== self._tokenEpoch || !self._active) { if (root.TokenMode && root.TokenMode.paintTokens) root.TokenMode.paintTokens(); return; } self.balance = root.TokenMode.tokens(); self._renderHud(); if (root.TokenMode && root.TokenMode.paintTokens) root.TokenMode.paintTokens(); });
       return;
     }
     const shot = { unitBet: b.unitBet || this.unitBet, power: b.power || this.power, cost: b.cost || this.cost(), free: !!b.free, frenzyId: b.frenzyId || 0 };
@@ -947,7 +949,7 @@
     on = !!on; if (on === this._active) return; this._active = on;
     // #2: when leaving the channel, also clear AUTO + any held fire so the Reef can't keep auto-firing token
     // bets off-screen (parity with Fish Shooter's teardown). The ticker stop alone doesn't reset those flags.
-    if (on) { this.app.ticker.start(); } else { this.auto = false; this._holding = false; this.app.ticker.stop(); this._forceEndBonuses(); try { this._fsExit(this._fsTarget); } catch (e) {} }
+    if (on) { this.app.ticker.start(); } else { this._tokenEpoch = (this._tokenEpoch || 0) + 1; this.auto = false; this._holding = false; this.app.ticker.stop(); this._forceEndBonuses(); try { this._fsExit(this._fsTarget); } catch (e) {} } // v11 #1: bump the epoch on leave so an in-flight token bet's resolve is dropped (no off-channel bonus/catch re-arm)
   };
   FishTable.prototype.setEnabled = function (on) { this._enabled = !!on; this._renderHud(); };
   FishTable.prototype.setBalance = function (usd) { this.balance = Math.max(0, Math.round((+usd || 0) * 100) / 100); this._renderHud(); };

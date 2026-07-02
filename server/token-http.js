@@ -465,6 +465,15 @@ function makeTokenService(opts) {
     // the hand's debit/credit. (Mirrors the cash-out/recover liveExternal guard.)
     { const _s = bridge.session(sessionId); if (_s && liveExternal(_s.player)) throw new Error("finish your blackjack hand before placing another bet"); }
     if (!rateOk(sessionId)) throw new Error("too many bets too fast — slow down a moment");
+    // v11 #5: cap the client seed BEFORE bridge.play — an unbounded seed is HMAC'd synchronously (provablyfair),
+    // so a multi-MB seed is a CPU/event-loop DoS per request. A legit seed is well under 256. (Mirrors the WS cr:start cap;
+    // bridge.play/reserve also guard as defense-in-depth.)
+    if (body.clientSeed != null && String(body.clientSeed).length > 256) throw new Error("client seed is too long");
+    // v11 #3: on the direct HTTP path an EXPLICIT sub-1.20x Balloon Pop (pressure) target hits the engine's VOID
+    // branch and REFUNDS the stake (net 0) instead of losing — a free "peek"/re-roll (edge-erosion). The round-runner
+    // already floors targets to 1.20x so it never hits this; only a hand-crafted direct /play can. An ABSENT target
+    // uses the engine's valid DEFAULT_TARGET (≥1.20) and is unaffected — reject only an explicit below-floor target.
+    if (body.game === "pressure") { const _co = body.params && body.params.cashOutAt; if (_co != null && Number(_co) < 1.20) throw new Error("hold longer — Balloon Pop banks from 1.20x"); }
     const r = bridge.play({ sessionId, game: body.game, betUnits: body.betUnits, params: body.params, clientSeed: body.clientSeed });
     return { ok: true, ...r }; // NOTE: never includes serverSeed — only the commit is exposed pre-settle
   }
