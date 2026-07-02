@@ -2329,7 +2329,7 @@
     return new Promise((res, rej) => {
       // v13 #38: dedup by src so a watchdog re-kick (an ensure*Ready promise nulled) never appends a SECOND <script>
       // for the same file while the first is still downloading (the load race). The selector keys on the exact
-      // versioned src ("...?v=1322"), so a later ?v bump is a distinct file and still loads fresh — no stale cache.
+      // versioned src ("...?v=1323"), so a later ?v bump is a distinct file and still loads fresh — no stale cache.
       const sel = 'script[data-loadonce="' + src.replace(/"/g, "&quot;") + '"]';
       const existing = document.querySelector(sel);
       if (existing) {
@@ -2365,7 +2365,7 @@
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=1322"))
+      .then(() => loadScriptOnce("slots.js?v=1323"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -2375,11 +2375,11 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=1322"))
-      .then(() => loadScriptOnce("pressure-render.js?v=1322"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=1322"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=1323"))
+      .then(() => loadScriptOnce("pressure-render.js?v=1323"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=1323"))
       // optional 3D red balloon (Three.js) — falls back to the 2D balloon if it can't load
-      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1322")).catch(() => {}))
+      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1323")).catch(() => {}))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -2451,10 +2451,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=1322"))
-      .then(() => loadScriptOnce("plane-render.js?v=1322"))
-      .then(() => loadScriptOnce("plane-feed.js?v=1322"))
-      .then(() => loadScriptOnce("plane-ui.js?v=1322"))
+      .then(() => loadScriptOnce("plane-engine.js?v=1323"))
+      .then(() => loadScriptOnce("plane-render.js?v=1323"))
+      .then(() => loadScriptOnce("plane-feed.js?v=1323"))
+      .then(() => loadScriptOnce("plane-ui.js?v=1323"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2565,8 +2565,8 @@
     if (window.Slots3D) return Promise.resolve(true);
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("slots3d-engine.js?v=1322"))
-      .then(() => loadScriptOnce("slots3d.js?v=1322"))
+      .then(() => loadScriptOnce("slots3d-engine.js?v=1323"))
+      .then(() => loadScriptOnce("slots3d.js?v=1323"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2623,8 +2623,8 @@
     if (window.FishTable) return Promise.resolve(true);
     if (fishLoadPromise) return fishLoadPromise;
     fishLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishtable-engine.js?v=1322"))
-      .then(() => loadScriptOnce("fishtable.js?v=1322"))
+      .then(() => loadScriptOnce("fishtable-engine.js?v=1323"))
+      .then(() => loadScriptOnce("fishtable.js?v=1323"))
       .then(() => true)
       .catch((e) => { fishLoadPromise = null; throw e; });
     return fishLoadPromise;
@@ -2707,7 +2707,7 @@
     if (window.SwoopGame) return Promise.resolve(true);
     if (swoopLoadPromise) return swoopLoadPromise;
     swoopLoadPromise = loadPlayCanvasOnce()
-      .then(() => loadScriptOnce("swoop3d.js?v=1322"))
+      .then(() => loadScriptOnce("swoop3d.js?v=1323"))
       .then(() => true)
       .catch((e) => { swoopLoadPromise = null; throw e; });
     return swoopLoadPromise;
@@ -2788,8 +2788,8 @@
     if (window.FishShooter) return Promise.resolve(true);
     if (fishshooterLoadPromise) return fishshooterLoadPromise;
     fishshooterLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishshooter-engine.js?v=1322")) // OWN engine (decoupled from Reef's fishtable-engine.js)
-      .then(() => loadScriptOnce("fishshooter.js?v=1322"))
+      .then(() => loadScriptOnce("fishshooter-engine.js?v=1323")) // OWN engine (decoupled from Reef's fishtable-engine.js)
+      .then(() => loadScriptOnce("fishshooter.js?v=1323"))
       .then(() => true)
       .catch((e) => { fishshooterLoadPromise = null; throw e; });
     return fishshooterLoadPromise;
@@ -2874,7 +2874,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1322"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1323"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -2901,7 +2901,7 @@
   function loadRail3dOnce() {
     if (window.Rail3D) return Promise.resolve(true);
     if (rail3dLoadPromise) return rail3dLoadPromise;
-    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1322")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
+    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1323")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
     return rail3dLoadPromise;
   }
   function buildRail3d() {
@@ -2922,7 +2922,7 @@
   function loadDice2_3dOnce() {
     if (window.TwoDice3D) return Promise.resolve(true);
     if (d2_3dLoadPromise) return d2_3dLoadPromise;
-    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1322")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
+    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1323")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
     return d2_3dLoadPromise;
   }
   function buildDice2_3d() {
@@ -3694,7 +3694,7 @@
       const tableWallet = account || bjGuestId();
       // &r=<nonce> in the QUERY forces a real iframe reload (so the felt re-reads the #bjsession from the
       // hash and re-sends its hello → the server re-binds the table to the token session).
-      let src = "blackjack.html?tv=1&v=1322&r=" + (++bjFeltNonce) + "&guest=" + encodeURIComponent(tableWallet);
+      let src = "blackjack.html?tv=1&v=1323&r=" + (++bjFeltNonce) + "&guest=" + encodeURIComponent(tableWallet);
       let tokenHash = "";
       // PREFERRED real-money path: fund the table with the player's TOKEN session (chips = tokens, no lock step).
       if (account && window.TokenMode && TokenMode.active && TokenMode.active() && TokenMode.session) {
@@ -3942,7 +3942,20 @@
     // + dead-bridge screen), re-init it so it binds to the account + token session. Throttled so it can't loop.
     try {
       const f0 = $("bj-frame");
-      if (account && f0 && f0.getAttribute("src") && !bjFrameMatchesWallet(f0, account) && !bjDockLive && Date.now() - bjHealAt > 3000) {
+      // v13.23: the felt is ALSO stale if it's bound to a DIFFERENT (or no) token bjsession than the live one —
+      // e.g. it loaded as a $0 GUEST and the post-buy-in re-bind raced the just-created session, so the seat
+      // shows $0 and the bet controls never appear until a manual ⟳ Reload. Reloading it (via the proven
+      // ensureBlackjackReady) re-funds the seat from the token session AUTOMATICALLY. Guarded by !bjDockLive
+      // (never mid-hand) + the 3s throttle; once the felt carries the right bjsession the mismatch clears, so no loop.
+      let feltStale = false;
+      try {
+        if (f0 && f0.getAttribute("src") && window.TokenMode && TokenMode.active && TokenMode.active() && TokenMode.session) {
+          const _si = TokenMode.session(); const _want = (_si && _si.sessionId) || "";
+          const _cur = new URLSearchParams(((new URL(f0.src, location.href)).hash || "").replace(/^#/, "")).get("bjsession") || "";
+          feltStale = !!(_want && _cur !== _want);
+        }
+      } catch (e) {}
+      if (account && f0 && f0.getAttribute("src") && !bjDockLive && Date.now() - bjHealAt > 3000 && (!bjFrameMatchesWallet(f0, account) || feltStale)) {
         bjHealAt = Date.now();
         const wl = $("bj-wallet"); if (wl) wl.textContent = "🪪 " + short(account);
         f0.removeAttribute("src"); ensureBlackjackReady();
