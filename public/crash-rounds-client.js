@@ -146,7 +146,7 @@
     // onResult nulls when the round settles (bust or cash) — so it always resets for the next round, and even a
     // lost frame clears when the server timer resolves the round. (Duplicates are already a harmless server
     // no-op — crash-rounds.js refuses a settled round — so this is just network hygiene.)
-    function cashOut() { if (live && live.roundId && !live.cashoutRequested) { live.cashoutRequested = true; send({ type: "cr:cashout", roundId: live.roundId }); } }
+    function cashOut() { if (live && live.roundId && !live.cashoutRequested) { live.cashoutRequested = true; var sent = send({ type: "cr:cashout", roundId: live.roundId }); if (sent === false) live.cashoutRequested = false; } } // M1: a PROVABLY dropped frame (socket closed) must clear the latch so a retry after reconnect can re-request the cash-out — else the latch sticks and the round can ride to bust despite the player banking (duplicates are a server no-op)
 
     function onResult(msg) {
       if (!live) return;

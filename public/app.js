@@ -57,6 +57,7 @@
     } catch { return null; }
   })();
   let connecting = false; // true while connect() runs, to suppress the auto-reload
+  let walletReadReady = false; // W5: true once the wallet read-provider is live; if connect() fails before that, rebuild the public read-only provider (else lobby/rooms/house poll a destroyed provider forever)
   let contract = null; // connected to signer
   let twoDiceSupported = null; // null=unknown, true/false — does the active contract have Dice #2?
   let crashSupported = null;   // null=unknown, true/false — does the active contract have Crash?
@@ -590,6 +591,7 @@
 
   // ---------------------------------------------------------- connect
   async function connect() {
+    if (connecting) return; // W1: re-entrancy guard — a double-click must not launch a 2nd connect (the 2nd finally would clear `connecting` while the 1st grant is still in flight, re-arming the mid-connect auto-reload bug)
     if (!window.ethereum) {
       const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
       if (isMobile) {
@@ -611,6 +613,11 @@
     // listeners don't reload the page on the *initial* grant or network switch
     // (that reload is what made people click Connect twice).
     connecting = true;
+    walletReadReady = false; // W5: reset — set true once the wallet read-contract is live below
+    // W1: busy state so the user sees progress and can't re-tap (restored in finally).
+    var _cbtns = ["connect-btn", "demo-connect"].map(function (id) { return $(id); }).filter(Boolean);
+    var _cLabels = _cbtns.map(function (b) { return b.textContent; });
+    _cbtns.forEach(function (b) { b.disabled = true; b.classList.add("is-busy"); b.textContent = "Connecting…"; });
     // Tear down the public read-only provider + its poller/listeners before the
     // wallet provider takes over (otherwise it keeps hammering the public RPC).
     try { if (read) read.removeAllListeners(); } catch {}
@@ -618,11 +625,17 @@
     try {
       provider = new E.BrowserProvider(window.ethereum, "any");
       provider.pollingInterval = 2000; // tighter polling for events on injected providers
-      await provider.send("eth_requestAccounts", []);
+      // W1: a wallet popup the user never answers must not hang connect() forever (leaves `connecting`
+      // latched → account/chain handlers suppressed for the session). Bound the approval at 60s.
+      await Promise.race([
+        provider.send("eth_requestAccounts", []),
+        new Promise(function (_, rej) { setTimeout(function () { rej(new Error("connect-timeout")); }, 60000); }),
+      ]);
       await ensureNetwork();
       signer = await provider.getSigner();
       account = await signer.getAddress();
       await resolveActiveGame(provider); // honor the registry's active game
+      renderWallet(); // W6: show the wallet chip the instant the account resolves, before the (now parallel) on-chain reads — the header stops looking stuck
 
       if (!deployment.address) {
         // No game deployed here yet — let this user host one from the browser.
@@ -633,19 +646,23 @@
       }
       contract = new E.Contract(deployment.address, ABI, signer);
       read = new E.Contract(deployment.address, ABI, provider);
+      walletReadReady = true; // W5: the wallet read-provider is live — a later failure won't strand the public poller
       twoDiceSupported = null; // re-probe Dice #2 support for this contract
       crashSupported = null;   // re-probe Crash support for this contract
       slotsSupported = null;   // re-probe Slots support for this contract
-      try {
-        maxBet = await read.maxBet();
-      } catch (e) {
+      // W6: fire the three post-approval reads CONCURRENTLY (were 3 sequential RPC round-trips). Preserve the
+      // exact per-read semantics: maxBet failure ⇒ "no game here" banner + host setup + bail; treasury/owner
+      // failures stay swallowed.
+      const [_mb, _tr, _ow] = await Promise.allSettled([read.maxBet(), read.treasury(), read.owner()]);
+      if (_mb.status !== "fulfilled") {
         banner("⚠ No game found at this address on this network — switch networks, or deploy a new game.", true);
         renderWallet();
         showHostSetup();
         return;
       }
-      try { hostTreasury = await read.treasury(); } catch {}
-      try { ownerAddr = await read.owner(); } catch {}
+      maxBet = _mb.value;
+      if (_tr.status === "fulfilled") hostTreasury = _tr.value;
+      if (_ow.status === "fulfilled") ownerAddr = _ow.value;
 
       await startGameUI();
       // Wallet is live: TV switches from static to the game room, profile unlocks.
@@ -660,9 +677,20 @@
       if (inviteHostId) loadHostTable(inviteHostId);
     } catch (err) {
       console.error(err);
-      toast(err?.info?.error?.message || err?.shortMessage || "Connection failed", "err");
+      const code = err && (err.code || (err.info && err.info.error && err.info.error.code));
+      const msg = (String(err && err.message) === "connect-timeout")
+        ? "Wallet didn't respond — open MetaMask and tap Connect again."
+        : code === 4001 ? "Connection cancelled."
+        : code === -32002 ? "Check MetaMask — a connection request is already open."
+        : (err?.info?.error?.message || err?.shortMessage || "Connection failed");
+      toast(msg, "err");
+      // W5: connect() destroyed the public read-only provider before the popup. If we never got the wallet
+      // read-provider live (reject/cancel/timeout), rebuild the public one so lobby/rooms/house polling keeps
+      // working instead of hammering a destroyed provider silently.
+      if (!walletReadReady) { try { read = null; } catch (e) {} chainOK = false; try { setupReadOnly(); } catch (e) {} }
     } finally {
       connecting = false;
+      _cbtns.forEach(function (b, i) { b.disabled = false; b.classList.remove("is-busy"); b.textContent = _cLabels[i]; }); // W1: restore the connect button(s) (harmless when hidden on success)
     }
   }
 
@@ -1197,6 +1225,7 @@
   async function disconnect() {
     // MetaMask has no true "log out" from the dApp side; revoke the permission
     // (newer MetaMask) and reload so the page returns to the Connect state.
+    try { localStorage.setItem("cf_no_autoconnect", "1"); } catch {} // W7: sticky so the silent reconnect-on-load doesn't immediately re-connect after a manual Disconnect (esp. legacy wallets that don't support revokePermissions)
     try {
       await window.ethereum?.request?.({ method: "wallet_revokePermissions", params: [{ eth_accounts: {} }] });
     } catch {}
@@ -1557,7 +1586,7 @@
     try {
       toast("Confirm the deposit in MetaMask…");
       const tx = await contract.deposit({ value, gasLimit: await estGas("deposit", [], { value }, 130_000n) });
-      await tx.wait();
+      await tx.wait(1, 180000); // W2: bound the wait so a dropped/stuck deposit tx can't latch the button busy forever (catch+finally restore it)
       toast("Deposited " + usd(weiToUsd(value)), "ok");
       refreshBalances();
     } catch (e) { txErr(e); }
@@ -1597,7 +1626,7 @@
       const tx = weiAmtOrNull == null
         ? await contract.withdrawAll()
         : await contract.withdraw(weiAmtOrNull, { gasLimit: await estGas("withdraw", [weiAmtOrNull], null, 120_000n) });
-      await tx.wait();
+      await tx.wait(1, 180000); // W2: bound the wait so a dropped/stuck withdraw tx can't latch the button busy forever
       toast("Withdrawn to your wallet", "ok");
       withdrawTouched = false; // snap back to "all" default next time
       refreshBalances();
@@ -2296,7 +2325,7 @@
     return new Promise((res, rej) => {
       // v13 #38: dedup by src so a watchdog re-kick (an ensure*Ready promise nulled) never appends a SECOND <script>
       // for the same file while the first is still downloading (the load race). The selector keys on the exact
-      // versioned src ("...?v=1308"), so a later ?v bump is a distinct file and still loads fresh — no stale cache.
+      // versioned src ("...?v=1309"), so a later ?v bump is a distinct file and still loads fresh — no stale cache.
       const sel = 'script[data-loadonce="' + src.replace(/"/g, "&quot;") + '"]';
       const existing = document.querySelector(sel);
       if (existing) {
@@ -2318,21 +2347,21 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1308").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1309").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   // PlayCanvas engine (~2.2MB) — only loaded when the Sky Swoop channel is first opened.
   function loadPlayCanvasOnce() {
     if (window.pc) return Promise.resolve();
     if (playcanvasLoadPromise) return playcanvasLoadPromise;
-    playcanvasLoadPromise = loadScriptOnce("vendor/playcanvas.min.js?v=1308").catch((e) => { playcanvasLoadPromise = null; throw e; });
+    playcanvasLoadPromise = loadScriptOnce("vendor/playcanvas.min.js?v=1309").catch((e) => { playcanvasLoadPromise = null; throw e; });
     return playcanvasLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=1308"))
+      .then(() => loadScriptOnce("slots.js?v=1309"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -2342,11 +2371,11 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=1308"))
-      .then(() => loadScriptOnce("pressure-render.js?v=1308"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=1308"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=1309"))
+      .then(() => loadScriptOnce("pressure-render.js?v=1309"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=1309"))
       // optional 3D red balloon (Three.js) — falls back to the 2D balloon if it can't load
-      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1308")).catch(() => {}))
+      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1309")).catch(() => {}))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -2418,10 +2447,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=1308"))
-      .then(() => loadScriptOnce("plane-render.js?v=1308"))
-      .then(() => loadScriptOnce("plane-feed.js?v=1308"))
-      .then(() => loadScriptOnce("plane-ui.js?v=1308"))
+      .then(() => loadScriptOnce("plane-engine.js?v=1309"))
+      .then(() => loadScriptOnce("plane-render.js?v=1309"))
+      .then(() => loadScriptOnce("plane-feed.js?v=1309"))
+      .then(() => loadScriptOnce("plane-ui.js?v=1309"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2525,15 +2554,15 @@
   function loadThreeOnce() {
     if (window.THREE) return Promise.resolve();
     if (threeLoadPromise) return threeLoadPromise;
-    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1308").catch((e) => { threeLoadPromise = null; throw e; });
+    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1309").catch((e) => { threeLoadPromise = null; throw e; });
     return threeLoadPromise;
   }
   function ensureSlots3dLoaded() {
     if (window.Slots3D) return Promise.resolve(true);
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("slots3d-engine.js?v=1308"))
-      .then(() => loadScriptOnce("slots3d.js?v=1308"))
+      .then(() => loadScriptOnce("slots3d-engine.js?v=1309"))
+      .then(() => loadScriptOnce("slots3d.js?v=1309"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2590,8 +2619,8 @@
     if (window.FishTable) return Promise.resolve(true);
     if (fishLoadPromise) return fishLoadPromise;
     fishLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishtable-engine.js?v=1308"))
-      .then(() => loadScriptOnce("fishtable.js?v=1308"))
+      .then(() => loadScriptOnce("fishtable-engine.js?v=1309"))
+      .then(() => loadScriptOnce("fishtable.js?v=1309"))
       .then(() => true)
       .catch((e) => { fishLoadPromise = null; throw e; });
     return fishLoadPromise;
@@ -2674,7 +2703,7 @@
     if (window.SwoopGame) return Promise.resolve(true);
     if (swoopLoadPromise) return swoopLoadPromise;
     swoopLoadPromise = loadPlayCanvasOnce()
-      .then(() => loadScriptOnce("swoop3d.js?v=1308"))
+      .then(() => loadScriptOnce("swoop3d.js?v=1309"))
       .then(() => true)
       .catch((e) => { swoopLoadPromise = null; throw e; });
     return swoopLoadPromise;
@@ -2755,8 +2784,8 @@
     if (window.FishShooter) return Promise.resolve(true);
     if (fishshooterLoadPromise) return fishshooterLoadPromise;
     fishshooterLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishshooter-engine.js?v=1308")) // OWN engine (decoupled from Reef's fishtable-engine.js)
-      .then(() => loadScriptOnce("fishshooter.js?v=1308"))
+      .then(() => loadScriptOnce("fishshooter-engine.js?v=1309")) // OWN engine (decoupled from Reef's fishtable-engine.js)
+      .then(() => loadScriptOnce("fishshooter.js?v=1309"))
       .then(() => true)
       .catch((e) => { fishshooterLoadPromise = null; throw e; });
     return fishshooterLoadPromise;
@@ -2841,7 +2870,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1308"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1309"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -2868,7 +2897,7 @@
   function loadRail3dOnce() {
     if (window.Rail3D) return Promise.resolve(true);
     if (rail3dLoadPromise) return rail3dLoadPromise;
-    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1308")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
+    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1309")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
     return rail3dLoadPromise;
   }
   function buildRail3d() {
@@ -2889,7 +2918,7 @@
   function loadDice2_3dOnce() {
     if (window.TwoDice3D) return Promise.resolve(true);
     if (d2_3dLoadPromise) return d2_3dLoadPromise;
-    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1308")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
+    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1309")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
     return d2_3dLoadPromise;
   }
   function buildDice2_3d() {
@@ -3661,7 +3690,7 @@
       const tableWallet = account || bjGuestId();
       // &r=<nonce> in the QUERY forces a real iframe reload (so the felt re-reads the #bjsession from the
       // hash and re-sends its hello → the server re-binds the table to the token session).
-      let src = "blackjack.html?tv=1&v=1308&r=" + (++bjFeltNonce) + "&guest=" + encodeURIComponent(tableWallet);
+      let src = "blackjack.html?tv=1&v=1309&r=" + (++bjFeltNonce) + "&guest=" + encodeURIComponent(tableWallet);
       let tokenHash = "";
       // PREFERRED real-money path: fund the table with the player's TOKEN session (chips = tokens, no lock step).
       if (account && window.TokenMode && TokenMode.active && TokenMode.active() && TokenMode.session) {
@@ -4823,7 +4852,7 @@
         else if (d.type && d.type.indexOf("cr:") === 0 && CrashRounds) CrashRounds.handle(d); // live token crash rounds
       };
       // Retry a few times, then give up (e.g. static host with no chat server).
-      ws.onclose = () => { stopWsHeartbeat(); if (wsTries++ < 5) setTimeout(connectWS, 2500); };
+      ws.onclose = () => { stopWsHeartbeat(); setTimeout(connectWS, Math.min(600 * Math.pow(1.6, Math.min(wsTries++, 10)), 8000)); }; // M2: never permanently give up — 5 tries (~12.5s) was shorter than a Render redeploy, killing chat/presence/rooms/cr:* for the whole session. Capped exponential backoff (0.6s→8s) reconnects forever; wsTries resets to 0 on open.
       ws.onerror = () => { try { ws.close(); } catch {} };
     } catch (e) { console.warn("ws unavailable", e); }
   }
@@ -5209,10 +5238,10 @@
 
   function wireUI() {
     wireSideToggles();
-    $("connect-btn").onclick = connect;
+    $("connect-btn").onclick = () => { try { localStorage.removeItem("cf_no_autoconnect"); } catch (e) {} connect(); }; // W7: a manual Connect clears the sticky no-autoconnect flag
     $("disconnect-btn").onclick = disconnect;
     { const dr = $("demo-reset"); if (dr) dr.onclick = demoReset; }
-    { const dc = $("demo-connect"); if (dc) dc.onclick = connect; }
+    { const dc = $("demo-connect"); if (dc) dc.onclick = () => { try { localStorage.removeItem("cf_no_autoconnect"); } catch (e) {} connect(); }; } // W7: manual Connect clears the sticky flag
     { const bs = $("bj-share"); if (bs) bs.onclick = bjShareTable; } // copy a link to the current blackjack table
     { const br = $("bj-reload"); if (br) br.onclick = () => { bjReanchorNext = true; bjReload(); if (!account) toast("Table chips synced to your $" + Math.round(demoUsd).toLocaleString() + " demo balance 💰", "ok"); }; } // #97 / cluster-a: reflect the real demo balance, not a stale "$1,000": a reload is a DEPOSIT → re-anchor the session net, don't count it as a win
     { const bc = $("bj-cashout"); if (bc) bc.onclick = bjCashout; }
@@ -5467,6 +5496,7 @@
       // bug). Only reload on a *real* account/network change after connecting.
       window.ethereum.on?.("accountsChanged", (accs) => {
         if (connecting) return;
+        if (!account) return; // W8: never connected (demo play) → locking/unlocking MetaMask fires this; a reload would nuke the demo round mid-game
         const next = (accs && accs[0]) || null;
         if (account && next && eq(next, account)) return; // same account → ignore
         location.reload();
@@ -5625,6 +5655,17 @@
     enterDemo();
     initNoticeDismiss(); // wire the ✕ close buttons on the demo / phone notices
     connectWS(); // connect the live socket for everyone (guest chat + presence + blackjack), not just connected wallets
+    document.addEventListener("visibilitychange", () => { if (!document.hidden && (!ws || ws.readyState >= 2)) { try { wsTries = 0; connectWS(); } catch (e) {} } }); // M2: coming back to the tab after the socket died (backgrounded through a redeploy) reconnects immediately instead of waiting on backoff
+    // W7: silent reconnect. The app's own forced reloads (account/network change) otherwise dump a connected
+    // real-money player into demo. If MetaMask still holds the grant (eth_accounts, no popup) AND the user
+    // didn't manually Disconnect, reconnect quietly. Demo stays the fallback if anything is off.
+    try {
+      if (window.ethereum && !localStorage.getItem("cf_no_autoconnect")) {
+        Promise.resolve(window.ethereum.request({ method: "eth_accounts" }))
+          .then((accs) => { if (accs && accs.length && !account && !connecting) connect(); })
+          .catch(() => {});
+      }
+    } catch (e) {}
     // Register the PWA service worker (after load, best-effort).
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => { try { navigator.serviceWorker.register("sw.js"); } catch (e) {} });

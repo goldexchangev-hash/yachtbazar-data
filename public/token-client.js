@@ -32,6 +32,17 @@
     return lines.join("\n");
   }
 
+  // W2: a stuck/dropped on-chain tx must never leave the token bar frozen forever. tx.wait() with no
+  // timeout can hang indefinitely (mempool drop, wallet never broadcasts) → the caller's `busy` flag
+  // latches → every token button reads "…" until reload. Bound EVERY wait at 180s; on timeout the caller's
+  // catch fires (surfaces Recover) without clearing session state. ethers v6: wait(confirms, timeoutMs)
+  // rejects on timeout; some replaced-tx paths resolve null → treat that as a timeout too.
+  async function waitTx(tx) {
+    const r = await tx.wait(1, 180000);
+    if (!r) throw new Error("tx-wait-timeout");
+    return r;
+  }
+
   // deps: { ethers, signer, contract, account, chainId, contractAddr, fetch?, apiBase? }
   //   signer   = ethers wallet signer (signMessage + the tx sender)
   //   contract = ethers Contract bound to the signer (blackjackBuyIn / settleBlackjack)
@@ -70,10 +81,15 @@
   // a top-up) the session must still be alive on the server. If the check can't be confirmed, we
   // ABORT rather than risk a lock the server would refuse.
   TokenBridgeClient.prototype._preflight = async function (needSession) {
-    let st = null;
-    try { st = await this.status(); } catch (e) { return { ok: false, error: "Can't reach the server right now — try again in a moment." }; }
-    if (st && st.enabled && st.priceReady === false) return { ok: false, error: "Price is still syncing — try again in a few seconds." };
-    if (needSession && !(await this._sessionAlive())) return { ok: false, error: "invalid session token" };
+    // W10: fire status() and the session-liveness check CONCURRENTLY (top-up path) instead of serially —
+    // halves preflight latency before the on-chain lock. Error precedence is preserved: a dead server
+    // reports "can't reach the server" FIRST (never masquerades as "invalid session").
+    const stP = this.status().then((s) => ({ s: s })).catch(() => ({ err: true }));
+    const aliveP = needSession ? this._sessionAlive() : Promise.resolve(true);
+    const st = await stP;
+    if (st.err) return { ok: false, error: "Can't reach the server right now — try again in a moment." };
+    if (st.s && st.s.enabled && st.s.priceReady === false) return { ok: false, error: "Price is still syncing — try again in a few seconds." };
+    if (needSession && !(await aliveP)) return { ok: false, error: "invalid session token" };
     return { ok: true };
   };
   TokenBridgeClient.prototype._sessionAlive = async function () {
@@ -129,7 +145,7 @@
     const signature = await d.signer.signMessage(tokenAuthMessage("start", { player, contract, chainId, buyInWei }, d.ethers.getAddress));
     // 2) lock the funds on-chain (the ONE popup) and wait for it to confirm
     const tx = await d.contract.blackjackBuyIn(buyInWei, { gasLimit: 200000n });
-    const receipt = await tx.wait();
+    const receipt = await waitTx(tx);
     // 3) hand the server the confirmed txHash + the signature → it verifies + grants tokens
     const r = await this._post("/api/token/start", { player, contract, chainId, txHash: receipt.hash, buyInWei, signature }, 45000); // 45s: /start does multiple sequential on-chain reads — must not abort mid-verify (was 12s → "fetch aborted" → re-lock)
     this.session = r; this.tokens = r.tokens;
@@ -164,7 +180,7 @@
     const addWei = (typeof amountWei === "bigint" ? amountWei : BigInt(amountWei)).toString();
     const signature = await d.signer.signMessage(tokenAuthMessage("topup", { player, contract, chainId, sessionId, buyInWei: addWei }, d.ethers.getAddress));
     const tx = await d.contract.blackjackBuyIn(addWei, { gasLimit: 200000n });
-    const receipt = await tx.wait();
+    const receipt = await waitTx(tx);
     const r = await this._post("/api/token/topup", { player, sessionId, sessionToken: this.session.sessionToken, txHash: receipt.hash, buyInWei: addWei, signature }, 45000); // 45s: /topup does the same multiple sequential on-chain reads as /start — must not abort mid-verify (was 12s → "add more tokens" hung and never registered)
     this.tokens = r.tokens; this._playSeqApplied = (this._playSeq || 0); // v13 #3: a top-up establishes a NEWER authoritative balance — advance the play-seq watermark so a slow in-flight play() (issued before this top-up) can't roll the displayed tokens backward. A play issued AFTER gets a higher seq and still applies.
     if (this.session) this.session.tokens = r.tokens;
@@ -180,7 +196,7 @@
     const s = await this._post("/api/token/settle", { player, sessionId, signature });
     // s = { netWei, nonce, signature (house), serverSeedReveal, commit, ... }
     const tx = await d.contract.settleBlackjack(player, BigInt(s.netWei), BigInt(s.nonce), s.signature, { gasLimit: 200000n });
-    const receipt = await tx.wait();
+    const receipt = await waitTx(tx);
     const settled = { ...s, claimTx: receipt.hash };
     this.session = null; this.tokens = 0;
     return settled;
@@ -196,9 +212,9 @@
     // #10: bind the release to a short Expiry so a captured signature can't be replayed indefinitely.
     const expiry = Math.floor(Date.now() / 1000) + 300; // 5-min window; the server enforces freshness
     const signature = await d.signer.signMessage(tokenAuthMessage("release", { player, contract, chainId, expiry }, d.ethers.getAddress));
-    const r = await this._post("/api/token/release", { player, contract, chainId, expiry, signature });
+    const r = await this._post("/api/token/release", { player, contract, chainId, expiry, signature }, 45000); // W3: /release does 2-4 sequential on-chain reads server-side — 45s so a slow-RPC Recover doesn't abort at 12s (v12.98 "fetch aborted" class)
     const tx = await d.contract.settleBlackjack(player, BigInt(r.netWei), BigInt(r.nonce), r.signature, { gasLimit: 200000n });
-    const receipt = await tx.wait();
+    const receipt = await waitTx(tx);
     this.session = null; this.tokens = 0; // the server settled/freed it — drop any stale local session
     return { ...r, claimTx: receipt.hash };
   };
@@ -211,9 +227,9 @@
     const player = d.ethers.getAddress(targetPlayer);
     const expiry = Math.floor(Date.now() / 1000) + 600; // v6 #19: 10-min anti-replay window on the owner admin signature
     const signature = await d.signer.signMessage(tokenAuthMessage("admin-release", { player: owner, contract, chainId, target: player, expiry }, d.ethers.getAddress));
-    const r = await this._post("/api/token/admin-release", { owner, contract, chainId, player, signature, expiry });
+    const r = await this._post("/api/token/admin-release", { owner, contract, chainId, player, signature, expiry }, 45000); // W3: same multi-read latency as /release
     const tx = await d.contract.settleBlackjack(player, BigInt(r.netWei), BigInt(r.nonce), r.signature, { gasLimit: 200000n });
-    const receipt = await tx.wait();
+    const receipt = await waitTx(tx);
     return { ...r, claimTx: receipt.hash };
   };
 
@@ -237,7 +253,7 @@
     const player = d.ethers.getAddress(targetPlayer);
     const expiry = Math.floor(Date.now() / 1000) + 600; // v6 #19: 10-min anti-replay window on the owner admin signature
     const signature = await d.signer.signMessage(tokenAuthMessage("admin-player", { player: owner, contract, chainId, target: player, expiry }, d.ethers.getAddress));
-    return await this._post("/api/token/admin-player", { owner, contract, chainId, player, signature, expiry });
+    return await this._post("/api/token/admin-player", { owner, contract, chainId, player, signature, expiry }, 45000); // W3: multiple sequential on-chain diagnostics reads
   };
 
   const API = { TokenBridgeClient: TokenBridgeClient, tokenAuthMessage: tokenAuthMessage };
