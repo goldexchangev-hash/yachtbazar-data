@@ -2880,3 +2880,27 @@ body.plane-real .plane-bets { grid-template-columns: 1fr; }
   .toast.err.show { animation: none; }
   .bbs-step, .bbs-preset, .fish-step, .fish-pill, .fish-seg-btn, .fish-fs, .bn-ic { transition: none; }
 }
+
+/* ============================================================
+   DESIGN POLISH 4 — v13.21 (Fable design hunt, batch 5). Appended overrides; CSS-only.
+   ============================================================ */
+
+/* #37 modal close button: shell-token styling + hover/focus feedback (position/cursor kept from the base rule) */
+.modal-close { background: var(--s-surface); border: 1px solid var(--s-border); color: var(--s-text-2); width: 34px; height: 34px; border-radius: 50%; font-size: 15px; line-height: 1; transition: background .15s, color .15s; }
+.modal-close:hover { background: var(--s-border); color: var(--s-text); }
+.modal-close:focus-visible { outline: 2px solid var(--s-border); outline-offset: 2px; }
+
+/* #40 topbar icons / sidebar links / music rows ease on hover instead of snapping (matches the .12s the game rows use) */
+.btn-icon, .rail-link, .mm-track, .mm-ctrl, .chat-drawer-close { transition: background .12s ease, color .12s ease, border-color .12s ease, transform .08s ease; }
+.btn-icon:active, .chat-drawer-close:active { transform: scale(.92); }
+
+/* #34 phone modals: tighter padding reclaims ~40px of usable width on a 380px screen (kept centered, not a bottom sheet) */
+@media (max-width: 480px) {
+  .modal { padding: 10px; padding-bottom: max(10px, env(safe-area-inset-bottom)); }
+  .modal-card { padding: 20px 16px; max-height: 88vh; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-icon, .rail-link, .mm-track, .mm-ctrl, .chat-drawer-close { transition: none; }
+  .btn-icon:active, .chat-drawer-close:active { transform: none; }
+}
