@@ -312,6 +312,27 @@
     const signature = await d.signer.signMessage(tokenAuthMessage("settle", { player, contract, chainId, sessionId }, d.ethers.getAddress));
     const s = await this._post("/api/token/settle", { player, sessionId, signature });
     // s = { netWei, nonce, signature (house), serverSeedReveal, commit, ... }
+    // SIMULATE first (eth_call, no gas), same as releaseStuck: a settle that can't execute right now (e.g. the
+    // on-chain house bankroll can't cover the win) otherwise becomes a STUCK reverting tx with a useless generic
+    // error. On a genuine revert: the server has already closed this session on /settle, so drop the local view
+    // (kills the phantom-active-session) — if the lock is already 0 the funds are out (succeed); else surface the
+    // precise reason (HouseBankrollLow / NotOwner / …) and let checkStrandedLock's Recover return the funds.
+    try {
+      await d.contract.settleBlackjack.staticCall(player, BigInt(s.netWei), BigInt(s.nonce), s.signature);
+    } catch (sim) {
+      var isRevert = !!(sim && (sim.code === "CALL_EXCEPTION" || sim.revert != null || sim.data != null || settleRevertName(sim)));
+      if (isRevert) {
+        let stillLocked = true;
+        try { stillLocked = (await d.contract.bjLocked(player)) > 0n; } catch (e) {}
+        this.session = null; this.tokens = 0; // server closed it on /settle — never leave a phantom "active" session
+        if (!stillLocked) return { ...s, claimTx: null, alreadySettled: true }; // funds already out (a prior claim landed)
+        const nm = settleRevertName(sim);
+        const err = new Error(recoverMsgFor(nm));
+        err.settleRevert = nm || "revert"; err.recoverBlocked = true;
+        throw err;
+      }
+      // transient/non-revert simulation error → don't block; submit the real tx below.
+    }
     const tx = await d.contract.settleBlackjack(player, BigInt(s.netWei), BigInt(s.nonce), s.signature, { gasLimit: 200000n });
     const receipt = await waitTx(tx);
     const settled = { ...s, claimTx: receipt.hash };
