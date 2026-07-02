@@ -1,0 +1,19 @@
+Cursor Pass 14 / Bug Hunt v11 — v12.91 baseline. Full report: CursorBugHunt-v11/REPORT.md
+
+MONEY: still CLEAN (0 Critical/High house-drain). Ship client/liveness + HTTP edge fixes.
+
+WAVE 0 (v10 still open — do first if not shipped):
+  0A. Cold crash resume: resumeCold(sessionId, token) on ws.onopen when live=null; never local-refund on "already live" (crash-rounds-client.js, app.js, plane-ui.js). Probe: CursorBugHunt-v10/crash-cold-resume-probe.js
+  0B. Defer plane token-flying + local debit until cr:started (plane-ui.js, app.js switchGame)
+  0C. Reef _bombSplash/_eelChain: token paid = visual only (port fishshooter guard). Probe: CursorBugHunt-v10/reef-splash-token-probe.js
+
+WAVE 1 (Pass 14 NEW):
+  1A. Fish epoch guard: add _tokenEpoch to fishtable.js + fishshooter.js (mirror pressure-ui.js setActive bump + .then bail). Probe: CursorBugHunt-v11/fish-token-epoch-probe.js
+  1B. slots3d off-channel spin: call TokenMode.paintTokens() in !_active .then branch (slots3d.js:304-307). Probe: CursorBugHunt-v11/slots3d-offchannel-bar-probe.js
+  1C. pressure HTTP void: reject game=pressure on doPlay OR treat cashOutAt<1.20 as bust not refund (pressure.js / token-http.js)
+  1D. Cap clientSeed to 256 chars on HTTP doPlay + bridge.play (match crash-rounds-ws.js:97)
+
+WAVE 2:
+  demoSyncBalance force bug (app.js:3039), guest BJ identity (blackjack-server.js), wallet norm(), fish betUnits validation, slots3d _awaitingServer HUD flash, bjReload demoUsd.
+
+After fixes: run full probe gate in AGENTS.md + npm test. Bump public ?v=1292 / ctf-v12.92.
