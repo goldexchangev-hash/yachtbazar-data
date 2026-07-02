@@ -341,20 +341,8 @@ function makeTokenService(opts) {
     // txHash) can no longer both pass their checks and mint two sessions (#4 / #16 DUAL-SESSION). Shares
     // the settle/release per-player chain, so a buy-in can't race a settlement for the same wallet either.
     return withPlayerLock(player, async () => {
-    // Only a GENUINELY-OPEN session may block a new buy-in. A GHOST slot — a prior session that closed/settled or
-    // was GC-pruned but whose openByPlayer entry was never swept (a net=0 limbo gcClosed pruned from `sessions`
-    // without touching this map, or a crash between close and saveHttp) — would otherwise reject EVERY future
-    // buy-in forever and strand each on-chain lock. THIS is the live "every buy-in locks the funds / $X stuck in a
-    // past session" trap (v7 #11 / the tail of the v12.66 stranded-lock trap). Sweep a dead slot and fall through
-    // to the guarded auto-claim below — which is STILL loss-escape-safe: a closed-loss session is found by
-    // findSettledSessionForPlayer (gcClosed KEEPS losing sessions), so a withheld loss still forces Recover, and a
-    // GC-pruned/vanished session can't be a loss. Mirrors the recover-path ghost-sweep in doRelease/doAdminRelease.
-    if (openByPlayer.has(player)) {
-      const _sid = openByPlayer.get(player);
-      const _s = bridge.session(_sid);
-      if (_s && !_s.closed) throw new Error("finish your open token session before buying in again"); // truly live → keep the single-session guard
-      openByPlayer.delete(player); // dead/ghost slot → clear it; the batchWrite commit (or the next attempt) persists
-    }
+    // Validate the buy-in tx FIRST (format + replay) so a REUSED or malformed txHash still rejects cleanly and
+    // NEVER mutates an existing session; only a genuinely-NEW, well-formed buy-in may settle/sweep the open slot.
     const contract = address(body && body.contract, "contract");
     const chainId = Number(body && body.chainId);
     if (!Number.isSafeInteger(chainId) || chainId <= 0) throw new Error("chain id is invalid");
@@ -362,6 +350,18 @@ function makeTokenService(opts) {
     if (!/^0x[0-9a-fA-F]{64}$/.test(txHash)) throw new Error("buy-in transaction hash is invalid");
     const txKey = txHash.toLowerCase();
     if (usedBuyIns.has(txKey) || pendingBuyIns.has(txKey)) throw new Error("buy-in transaction was already used");
+    // A GENUINELY-OPEN session normally blocks a second buy-in (single-session rule). But a GHOST/DEAD slot — a
+    // prior session that closed/settled or was GC-pruned yet whose openByPlayer entry was never swept (a net=0
+    // limbo gcClosed removed from bridge.sessions without touching this map, or a crash between close and saveHttp)
+    // — would otherwise reject EVERY future buy-in forever and strand each on-chain lock (v7 #11 / the tail of the
+    // v12.66 trap). Sweep a dead slot here; a live one is handled after verifyBuyIn (v12.94 stale-zombie reclaim).
+    let _openZombieSid = null; // v12.94: an OPEN slot we keep for the post-verify stacked-lock check (see below)
+    if (openByPlayer.has(player)) {
+      const _sid = openByPlayer.get(player);
+      const _s = bridge.session(_sid);
+      if (_s && !_s.closed) _openZombieSid = _sid; // still-open → decide AFTER we know the on-chain lock (stacked ⇒ abandoned)
+      else openByPlayer.delete(player);            // dead/ghost slot → clear it; the batchWrite commit (or next attempt) persists
+    }
     // RESERVE the txHash NOW, before the await — a second concurrent request (even a different player)
     // sees it pending and is rejected. Released in finally if we never commit it.
     pendingBuyIns.add(txKey);
@@ -374,8 +374,35 @@ function makeTokenService(opts) {
     verifyWalletSignature("start", body, { player, contract, chainId, buyInWei: buyInWei.toString() });
     const proof = await verifyBuyIn({ txHash, player, contract, chainId, buyInWei });
     const lockedWei = BigInt(proof.lockedWei);
+    // v12.94 STALE-ZOMBIE RECLAIM. An open slot survived the top-of-doStart check. Decide now that we know the
+    // on-chain lock. Two cases:
+    //   • the on-chain bjLocked did NOT grow past this session's own recorded lock (proof.eventLocked <= _s.lockedWei):
+    //     no NEW money was staked, so this is a legit second buy-in against a session the client still holds — keep
+    //     the single-session block (a plain "finish your open session" is correct here; nothing is stranded).
+    //   • the on-chain bjLocked STACKED above this session's lock (proof.eventLocked > _s.lockedWei): the ONLY way
+    //     that happens is the player's PRIOR buy-in confirmed on-chain but its /start response was lost (the client
+    //     never got a bearer) and they re-locked to try again. That prior session is a BEARER-LESS ZOMBIE the player
+    //     can never touch except through us — the recurring "$X locked in a past session / every buy-in locks the
+    //     funds / can't play" strand, which the pre-v12.94 sweep (CLOSED/GONE only) never freed. Settle it IN PLACE
+    //     (exactly what recover branch (1) does) so its lock is freed and its REAL net is recorded, then fall through
+    //     to the loss-safe auto-claim below. Loss-escape-safe: bridge.settle signs the ACTUAL net (a losing session
+    //     settles at its loss, floored at -lockedWei) and recordObligation pins it, so the auto-claim then FORCES
+    //     Recover for a withheld loss — a loss can never be reclaimed as fresh principal. We refuse to settle under a
+    //     LIVE crash round / blackjack hand (that state is genuinely in play); those throw and the round/hand finishes.
+    if (_openZombieSid) {
+      const _s = bridge.session(_openZombieSid);
+      const stacked = _s && proof.eventLocked != null && _s.lockedWei != null && (BigInt(proof.eventLocked) - BigInt(_s.lockedWei)) > 0n;
+      if (!stacked) throw new Error("finish your open token session before buying in again"); // no new stake ⇒ single-session block stands
+      if (liveCrashSession(_openZombieSid) || liveExternal(player)) throw new Error("finish your live round before buying in again"); // in-play ⇒ can't settle under it
+      const staleSettle = await bridge.settle({ sessionId: _openZombieSid }); // closes + signs the actual net (loss stays a loss)
+      recordObligation(player, (_s && _s.contract) || contract, (_s && _s.chainId) || chainId, staleSettle);
+      openByPlayer.delete(player);
+      tokenForSession.delete(_openZombieSid);
+      playBuckets.delete(_openZombieSid);
+      saveHttp(); // durably free the slot + record the obligation before continuing (the auto-claim reads pendingSettle)
+    }
     // CROSS-SESSION-DRAIN GUARD + STRANDED-LOCK AUTO-CLAIM. bjLocked is ONE per-player accumulator. openByPlayer
-    // (checked at the top of doStart) already guarantees NO open token session here, so any PRIOR lock
+    // (any still-open slot was just settled+freed by the v12.94 stale-zombie reclaim above), so any PRIOR lock
     // (eventLocked > this buy-in's lockedWei) is one of two things:
     //   (a) the player's OWN STRANDED principal — a previous buy-in whose doStart failed AFTER the on-chain lock
     //       (price-sync/RPC blip, or this very guard rejecting). Harmless to reclaim.
@@ -588,6 +615,7 @@ function makeTokenService(opts) {
     const key = player.toLowerCase();
     // Serialize per player so the branch decision + obligation record can't interleave (no race-minted net=0).
     return withPlayerLock(player, async () => {
+      finalizeStaleCrashForPlayer(player); // self-heal a stale timer-bust orphan so a dead round can't strand Recover FOREVER
       if (liveExternal(player)) throw new Error("finish your blackjack hand before recovering");
       if (liveCrashPlayer(player)) throw new Error("finish your live round before recovering"); // #3
       // (1) Open session → cash it out (returns full bjLocked + its real net).
@@ -728,6 +756,7 @@ function makeTokenService(opts) {
     const key = player.toLowerCase();
     return withPlayerLock(player, async () => {
       await requireOwner(owner, contract, chainId);
+      finalizeStaleCrashForPlayer(player); // self-heal a stale timer-bust orphan (mirror doRelease) so admin-release can't be stranded either
       // (#210/#216) NEVER force-release while a blackjack hand is in flight against this player's token
       // session — settling mid-hand would lock in a debited stake before the hand resolves. Same guard
       // doSettle/doRelease enforce; admin-release was missing it.
@@ -934,9 +963,35 @@ function makeTokenService(opts) {
   // the round is mid-flight). No-op when no checker is injected (tests / bridge disabled) → behaviour is
   // byte-identical to today, so this can never weaken the loss-escape machinery below.
   let _hasActiveCrashRound = null;
-  function setActiveCrashCheck(fn) { _hasActiveCrashRound = (typeof fn === "function") ? fn : null; }
+  let _finalizeStaleCrashRound = null;
+  function setActiveCrashCheck(fn, finalizeStaleFn) {
+    _hasActiveCrashRound = (typeof fn === "function") ? fn : null;
+    if (arguments.length > 1) _finalizeStaleCrashRound = (typeof finalizeStaleFn === "function") ? finalizeStaleFn : null;
+  }
   function liveCrashSession(sessionId) { try { return !!(_hasActiveCrashRound && _hasActiveCrashRound(String(sessionId || ""))); } catch (e) { return false; } }
   function liveCrashPlayer(player) { const sid = openByPlayer.get(String(player)); return sid ? liveCrashSession(sid) : false; }
+  // RECOVER SELF-HEAL: before the liveCrash* guard refuses a settle/recover, retire any RAM crash round
+  // for this session that can no longer be genuinely live — i.e. whose bridge session is closed/gone OR
+  // whose reserved ledger record is already finalized (b.open === false). A timer-bust that threw
+  // (session closed mid-round) leaves the RAM round live with NO retry and NO prune sweep, so hasActive()
+  // would block Recover FOREVER. This clears exactly those dead orphans and NEVER a genuinely-live round
+  // (the isLive probe below returns true only while the ledger record is still open on an open session),
+  // so a lock with no genuinely-live round can ALWAYS be recovered. No-op when no finalizer is injected.
+  function finalizeStaleCrashForSession(sessionId) {
+    if (!_finalizeStaleCrashRound) return;
+    try {
+      _finalizeStaleCrashRound(String(sessionId || ""), (round) => {
+        try {
+          const s = bridge.session(String(sessionId || ""));
+          if (!s || s.closed) return false; // session gone/closed → the round can't be live (resolveReserved would throw)
+          // genuinely live ⇔ the reserved crashRound record is still OPEN on this (open) session
+          const rec = (s.bets || []).find((b) => b && b.kind === "crashRound" && Number(b.nonce) === Number(round.nonce));
+          return !!(rec && rec.open);
+        } catch (e) { return false; }
+      });
+    } catch (e) {}
+  }
+  function finalizeStaleCrashForPlayer(player) { const sid = openByPlayer.get(String(player)); if (sid) finalizeStaleCrashForSession(sid); }
 
   // SHUTDOWN/CRASH FLUSH (audit #143/#144): force the current HTTP-guard state (usedBuyIns,
   // openByPlayer, bearers, pendingSettle) to disk. Every mutating op already saveHttp()'s synchronously,
@@ -1370,6 +1425,71 @@ if (require.main === module) {
     oaB2.signature = await oaSg("start", { player: oaP, contract, chainId, buyInWei: lockedWei.toString() });
     try { await oaSvc.doStart(oaB2); } catch (e) { if (/finish your open/i.test(e.message)) openBlocks = 1; }
     eq("a genuinely-open session still blocks a second buy-in (single-session rule intact)", openBlocks === 1);
+
+    // (4) v12.94 STALE-ZOMBIE RECLAIM: a prior buy-in confirmed ON-CHAIN but its /start response was lost, so the
+    // server holds an OPEN session the CLIENT never got a bearer for (active()===false client-side, UI shows only
+    // "Recover", $0 balance). The next buy-in STACKS the on-chain lock (eventLocked > the open session's lock). The
+    // OLD code threw "finish your open session" forever here and never reached the auto-claim = a PERMANENT strand
+    // ("every buy-in locks the funds"). Now doStart settles the stale zombie in place and the loss-safe auto-claim runs.
+    // (4a) BREAK-EVEN zombie (no plays): buy#1 opens session A; the client loses its bearer. buy#2 stacks the lock.
+    let zLocked = lockedWei; // the on-chain accumulator: each blackjackBuyIn ADDS to bjLocked
+    const zSvc = makeTokenService({ signer, ethUsd: () => 4000, verifyBuyIn: async (o) => ({ lockedWei: o.buyInWei, eventLocked: zLocked.toString() }), readBjLocked: async () => zLocked });
+    const zW = ethers.Wallet.createRandom(); const zP = zW.address; const zSg = (i, o) => zW.signMessage(tokenAuthMessage(i, o));
+    const zB1 = { player: zP, contract, chainId, txHash: "0x" + "41".repeat(32), buyInWei: lockedWei.toString() };
+    zB1.signature = await zSg("start", { player: zP, contract, chainId, buyInWei: lockedWei.toString() });
+    const zStarted = await zSvc.doStart(zB1); // opens session A (client then "loses" this bearer)
+    zLocked = lockedWei * 2n; // the player re-locks on-chain to try again → bjLocked stacks
+    const zB2 = { player: zP, contract, chainId, txHash: "0x" + "42".repeat(32), buyInWei: lockedWei.toString() };
+    zB2.signature = await zSg("start", { player: zP, contract, chainId, buyInWei: lockedWei.toString() });
+    let zForced = 0; try { await zSvc.doStart(zB2); } catch (e) { if (/Recover|locked in another session/i.test(e.message)) zForced = 1; }
+    eq("v12.94: a stacked buy-in over a bearer-less zombie settles it + forces Recover (no permanent strand)", zForced === 1);
+    // the stale open session A is now CLOSED (freed) — the strand is gone, not thrown-forever
+    eq("v12.94: the bearer-less zombie session is settled/closed (slot freed)", zSvc._bridge.session(zStarted.sessionId).closed === true);
+    // and Recover returns the FULL stacked lock back
+    const zRelBody = { player: zP, contract, chainId, expiry: Math.floor(Date.now() / 1000) + 300 };
+    zRelBody.signature = await zSg("release", { player: zP, contract, chainId, expiry: String(zRelBody.expiry) });
+    const zRel = await zSvc.doRelease(zRelBody);
+    eq("v12.94: Recover returns the full stacked on-chain lock (2x)", BigInt(zRel.lockedWei) === lockedWei * 2n);
+    // after the on-chain settle consumes the lock, a fresh buy-in works again (recovery is not one-shot-broken)
+    zLocked = lockedWei; // settleBlackjack zeroed bjLocked, then a NEW lock for the next buy-in
+    const zB3 = { player: zP, contract, chainId, txHash: "0x" + "43".repeat(32), buyInWei: lockedWei.toString() };
+    zB3.signature = await zSg("start", { player: zP, contract, chainId, buyInWei: lockedWei.toString() });
+    let zAgainOk = false; try { const r = await zSvc.doStart(zB3); zAgainOk = r.tokens === 1000; } catch (e) {}
+    eq("v12.94: after Recover + on-chain consume, a fresh buy-in opens a normal session", zAgainOk === true);
+    // (4b) LOSING zombie: the stale session lost money → settling it in place must PRESERVE the loss (never net=0).
+    let zL2 = lockedWei;
+    const zSvc2 = makeTokenService({ signer, ethUsd: () => 4000, verifyBuyIn: async (o) => ({ lockedWei: o.buyInWei, eventLocked: zL2.toString() }), readBjLocked: async () => zL2 });
+    const zW2 = ethers.Wallet.createRandom(); const zP2 = zW2.address; const zSg2 = (i, o) => zW2.signMessage(tokenAuthMessage(i, o));
+    const zLB1 = { player: zP2, contract, chainId, txHash: "0x" + "44".repeat(32), buyInWei: lockedWei.toString() };
+    zLB1.signature = await zSg2("start", { player: zP2, contract, chainId, buyInWei: lockedWei.toString() });
+    const zLStarted = await zSvc2.doStart(zLB1);
+    zSvc2._bridge.session(zLStarted.sessionId).tokens = 500; // DETERMINISTIC $500 loss (don't rely on random coinflip outcomes)
+    const zLbal = zSvc2._bridge.session(zLStarted.sessionId).tokens;
+    zL2 = lockedWei * 2n; // re-lock stacks
+    const zLB2 = { player: zP2, contract, chainId, txHash: "0x" + "45".repeat(32), buyInWei: lockedWei.toString() };
+    zLB2.signature = await zSg2("start", { player: zP2, contract, chainId, buyInWei: lockedWei.toString() });
+    let zLForced = 0; try { await zSvc2.doStart(zLB2); } catch (e) { if (/Recover|locked in another session/i.test(e.message)) zLForced = 1; }
+    eq("v12.94: a LOSING zombie forces Recover (never auto-claims over the loss)", zLForced === 1 && zLbal < 1000);
+    const zLrel = { player: zP2, contract, chainId, expiry: Math.floor(Date.now() / 1000) + 300 };
+    zLrel.signature = await zSg2("release", { player: zP2, contract, chainId, expiry: String(zLrel.expiry) });
+    const zLR = await zSvc2.doRelease(zLrel);
+    eq("v12.94: Recover re-issues the stale zombie's LOSING settlement (netWei < 0, loss preserved)", BigInt(zLR.netWei) < 0n);
+    // (4c) LIVE guard: an OPEN session with a live crash round must STILL block (never settle under live play).
+    let zL3 = lockedWei;
+    const liveMap = new Set();
+    const zSvc3 = makeTokenService({ signer, ethUsd: () => 4000, verifyBuyIn: async (o) => ({ lockedWei: o.buyInWei, eventLocked: zL3.toString() }), readBjLocked: async () => zL3 });
+    zSvc3.setActiveCrashCheck((sid) => liveMap.has(sid));
+    const zW3 = ethers.Wallet.createRandom(); const zP3 = zW3.address; const zSg3 = (i, o) => zW3.signMessage(tokenAuthMessage(i, o));
+    const zLV1 = { player: zP3, contract, chainId, txHash: "0x" + "46".repeat(32), buyInWei: lockedWei.toString() };
+    zLV1.signature = await zSg3("start", { player: zP3, contract, chainId, buyInWei: lockedWei.toString() });
+    const zLVs = await zSvc3.doStart(zLV1);
+    liveMap.add(zLVs.sessionId); // a server-paced round is mid-flight on this session
+    zL3 = lockedWei * 2n;
+    const zLV2 = { player: zP3, contract, chainId, txHash: "0x" + "47".repeat(32), buyInWei: lockedWei.toString() };
+    zLV2.signature = await zSg3("start", { player: zP3, contract, chainId, buyInWei: lockedWei.toString() });
+    let zLiveBlocked = 0; try { await zSvc3.doStart(zLV2); } catch (e) { if (/live round|finish your/i.test(e.message)) zLiveBlocked = 1; }
+    eq("v12.94: a stacked buy-in during a LIVE crash round is refused (never settles under live play)", zLiveBlocked === 1);
+    eq("v12.94: the live session is NOT closed by the refused buy-in", zSvc3._bridge.session(zLVs.sessionId).closed === false);
 
     // ── PERSISTED replay guard survives a restart ───────────────────────────
     // A single in-memory store stands in for the durable persist sink (e.g. a JSON file).

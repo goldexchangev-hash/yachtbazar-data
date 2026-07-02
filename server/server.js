@@ -301,7 +301,7 @@ const crashWs = makeCrashWs({ bridge: tokenSvc._bridge, verifySession: tokenSvc.
 // doSettle/doRelease/doAdminRelease/doPlay now refuse while a server-paced crash/plane/swoop/pressure round
 // is live on that session — a mid-round cash-out can't close the session out from under the pending
 // resolveReserved, and an instant HTTP bet can't burn a fresh nonce while the round is in flight (#3/#15).
-try { tokenSvc.setActiveCrashCheck((sessionId) => crashWs.hasActiveRound(sessionId)); } catch (e) {}
+try { tokenSvc.setActiveCrashCheck((sessionId) => crashWs.hasActiveRound(sessionId), (sessionId, isLive) => crashWs.finalizeStaleRound(sessionId, isLive)); } catch (e) {}
 
 // LAST-RESORT process guards: even with every engine timer wrapped (blackjack-server.js setT), a
 // stray throw/rejection anywhere must NOT silently exit and wipe the in-memory bank. Log it, flush

@@ -136,11 +136,23 @@ function makeCrashRounds(opts) {
       // LEDGER FIRST — credit the gross payout at the PINNED nonce (stake was debited at reserve).
       res = bridge.resolveReserved({ sessionId: round.sessionId, nonce: round.nonce, cashOutAt: target });
     } catch (e) {
-      // Ledger failed → DO NOT settle/clear. Surface to a synchronous caller (manual cash-out);
-      // for a timer-fired bust there's no caller, so just log — the round stays live and will be
-      // retried on the next tick / cleaned up by the prune sweep. (Was: maps cleared before the
-      // debit, so a throw here orphaned the round with the stake already gone.)
-      if (busted) { try { console.error("crash _resolve ledger error:", (e && e.message) || e); } catch (_) {} return null; }
+      // Ledger failed. For a WIN cash-out there's a synchronous caller — surface it so the player
+      // keeps holding (the round stays live; the stake is intact, reserved at start). But for a
+      // timer-fired BUST there is NO caller and NO retry (the one-shot timer already fired, and there
+      // is no prune sweep). If we leave the round live, activeBySession/hasActive stay TRUE forever →
+      // liveCrashPlayer blocks settle/RECOVER permanently, stranding the on-chain lock (the "$X locked
+      // in a past session — Recover doesn't work" trap). A bust that can't book is a LOSS THAT ALREADY
+      // STANDS: the stake was debited at reserve(); resolveReserved throws here only when the record is
+      // already finalized (idempotent → wouldn't throw) or the session is closed/gone (nothing left to
+      // credit anyway). So RETIRE the RAM round — freeing the liveness guard, house-safe (payout stays 0).
+      if (busted) {
+        try { console.error("crash _resolve bust ledger error (retiring stale round):", (e && e.message) || e); } catch (_) {}
+        round.settled = true;
+        if (round.timer != null) { try { clearTimer(round.timer); } catch (_) {} round.timer = null; }
+        activeBySession.delete(round.sessionId);
+        rounds.delete(round.id);
+        return null;
+      }
       throw e;
     }
     // Ledger committed — NOW finalize round state.
@@ -159,6 +171,24 @@ function makeCrashRounds(opts) {
   // Is a live (unsettled) round running for this session? Used by the token-http liveness guard to
   // refuse settle/recover/play while a server-paced round is in flight (#3/#15).
   function hasActive(sessionId) { const r = active(sessionId); return !!(r && !r.settled); }
+  // RECOVER SELF-HEAL: retire a RAM round whose ledger side can NO LONGER be a genuinely-live round —
+  // its bridge session is closed/gone or its reserved record is already finalized (b.open === false).
+  // A timer-bust whose resolveReserved threw (session closed mid-round) leaves the RAM round live with
+  // NO retry, so hasActive() would block Recover FOREVER; doRelease calls this first so a lock with no
+  // genuinely-live round can ALWAYS be recovered. Returns true if it cleared a stale round. Never throws.
+  // isLive(round) → the caller's authority on whether the underlying ledger round is still live.
+  function finalizeStale(sessionId, isLive) {
+    try {
+      const r = active(sessionId);
+      if (!r || r.settled) return false;
+      if (typeof isLive === "function" && isLive(r)) return false; // genuinely live → leave it (don't yank a real round)
+      r.settled = true;
+      if (r.timer != null) { try { clearTimer(r.timer); } catch (_) {} r.timer = null; }
+      activeBySession.delete(r.sessionId);
+      rounds.delete(r.id);
+      return true;
+    } catch (_) { return false; }
+  }
   // #94 RESUME: a SAFE, crashPoint-FREE snapshot of the session's live round, for re-binding a reconnecting
   // socket after a mobile app-switch / network blip so the player can resume the animation and still cash out
   // (the round keeps ticking on the server after a drop — onClose only detaches the dead socket). NEVER exposes
@@ -192,7 +222,7 @@ function makeCrashRounds(opts) {
     }
     return outs;
   }
-  return { startRound: startRound, cashOut: cashOut, active: active, hasActive: hasActive, liveView: liveView, drain: drain, K: K, _rounds: rounds };
+  return { startRound: startRound, cashOut: cashOut, active: active, hasActive: hasActive, finalizeStale: finalizeStale, liveView: liveView, drain: drain, K: K, _rounds: rounds };
 }
 
 module.exports = { makeCrashRounds: makeCrashRounds, K: K };

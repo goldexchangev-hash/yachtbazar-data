@@ -159,8 +159,12 @@ function makeCrashWs(opts) {
 
   // Passthroughs for the token-http liveness guard (hasActiveRound) and graceful-shutdown drain (#3/#141).
   function hasActiveRound(sessionId) { return rounds.hasActive ? rounds.hasActive(sessionId) : false; }
+  // RECOVER SELF-HEAL passthrough: retire a RAM round that can no longer be genuinely live (its bridge
+  // session is closed/gone → resolveReserved would throw). doRelease calls this before the liveness guard
+  // so a stale timer-bust orphan can't strand the on-chain lock. isLive(round) decides "genuinely live".
+  function finalizeStaleRound(sessionId, isLive) { return rounds.finalizeStale ? rounds.finalizeStale(sessionId, isLive) : false; }
   function drain() { return rounds.drain ? rounds.drain() : []; }
-  return { handle: handle, onClose: onClose, hasActiveRound: hasActiveRound, drain: drain, _rounds: rounds, _wsByRound: wsByRound };
+  return { handle: handle, onClose: onClose, hasActiveRound: hasActiveRound, finalizeStaleRound: finalizeStaleRound, drain: drain, _rounds: rounds, _wsByRound: wsByRound };
 }
 
 module.exports = { makeCrashWs: makeCrashWs, CRASH_GAMES: CRASH_GAMES };
