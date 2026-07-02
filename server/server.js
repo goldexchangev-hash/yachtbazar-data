@@ -59,6 +59,15 @@ app.use((req, res, next) => {
   if (/\/_[^/]*\.html$/i.test(req.path) || /-preview\.html$/i.test(req.path)) return res.status(404).end();
   next();
 });
+// P4: express.static defaults to `max-age=0`, so every versioned asset (app.js?v=NNNN, vendor libs, etc.)
+// costs a revalidation round-trip on each load — ~20 per page, and non-SW browsers (iOS SW eviction, private
+// mode) never long-cache at all. Any URL carrying a ?v= is immutable by construction (the query IS the version),
+// so mark it public+immutable for a year. Keyed strictly on ?v= — HTML and sw.js (no ?v=) keep the revalidate
+// default so deploys still land instantly.
+app.use((req, res, next) => {
+  if (!req.path.startsWith("/api/") && /[?&]v=[\w-]/.test(req.url)) res.setHeader("Cache-Control", "public, max-age=31536000, immutable"); // matches ?v=1309 AND the library-pinned ?v=pixi-1/three-1 tokens; [?&] anchors v= to a param boundary so ?nav=/?rev= never false-match
+  next();
+});
 app.use(express.static(publicDir));
 
 // Tiny health/info endpoint the frontend can use to learn its share base.

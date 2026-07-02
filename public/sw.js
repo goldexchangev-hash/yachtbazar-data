@@ -3,7 +3,13 @@
    are picked up immediately and users never get a stale build online), caching
    each response, and falls back to cache only when offline. Cross-origin
    requests (RPC node, fonts, price API, MetaMask) are left untouched. */
-const CACHE = "ctf-v13.09";
+const CACHE = "ctf-v13.10";
+// P1: the vendor libs (PIXI/Three/PlayCanvas/ethers, ~3.9MB) NEVER change between deploys, yet the old
+// single-cache design deleted them on every version bump → returning players re-downloaded the lot each deploy.
+// Keep them in a SEPARATE long-lived cache that the activate purge whitelists; paired with library-pinned ?v
+// tokens (e.g. ?v=three-1) on the vendor URLs so a build bump can't cache-bust them. Bump ctf-vendor-vN only
+// when an actual file in /vendor/ is replaced.
+const VENDOR_CACHE = "ctf-vendor-v1";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 
 self.addEventListener("install", (e) => {
@@ -17,7 +23,7 @@ self.addEventListener("install", (e) => {
 self.addEventListener("activate", (e) => {
   e.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE && k !== VENDOR_CACHE).map((k) => caches.delete(k)))) // P1: keep the long-lived vendor cache across deploys
       .then(() => self.clients.claim())
   );
 });
@@ -34,14 +40,16 @@ self.addEventListener("fetch", (e) => {
   // bumped, so a cache hit is always correct AND instant on refresh — this is what
   // makes the big Three.js bundle + lazy 3D modules load fast instead of being
   // re-fetched over the network every time.
-  const immutable = /[?&]v=/.test(url.search) || url.pathname.includes("/vendor/"); // v6 #15: anchor v= to a query-param boundary so ?nav=/?rev= don't false-match as immutable → stale-cache forever
+  const isVendor = url.pathname.includes("/vendor/"); // P1: route these to the long-lived VENDOR_CACHE
+  const immutable = /[?&]v=/.test(url.search) || isVendor; // v6 #15: anchor v= to a query-param boundary so ?nav=/?rev= don't false-match as immutable → stale-cache forever
   if (immutable) {
+    const store = isVendor ? VENDOR_CACHE : CACHE;
     e.respondWith(
-      caches.match(req).then((hit) =>
+      caches.match(req).then((hit) => // caches.match() searches ALL caches, so a vendor hit is found regardless of which store it's in
         hit || fetch(req).then((res) => {
           if (res && res.ok && res.type === "basic") {
             const copy = res.clone();
-            caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
+            caches.open(store).then((c) => c.put(req, copy)).catch(() => {});
           }
           return res;
         }).catch(() => new Response("", { status: 503, statusText: "Offline asset unavailable" }))

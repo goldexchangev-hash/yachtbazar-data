@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#0c0d16" />
     <meta name="referrer" content="same-origin" />
-    <link rel="manifest" href="manifest.webmanifest?v=1309" />
+    <link rel="manifest" href="manifest.webmanifest?v=1310" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -23,12 +23,19 @@
     <meta name="twitter:description" content="Flip an ETH coin against the house or a friend. Settled on-chain on the Sepolia testnet — play-money only." />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- P10: load the Google Fonts stylesheet ASYNCHRONOUSLY (print-media swap) so it never blocks first paint;
+         &display=swap already avoids invisible text, and the <noscript> keeps it working with JS disabled. -->
     <link
       href="https://fonts.googleapis.com/css2?family=Bungee&family=Press+Start+2P&family=Space+Grotesk:wght@400;500;600;700&display=swap"
       rel="stylesheet"
+      media="print"
+      onload="this.media='all'"
     />
+    <noscript>
+      <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Press+Start+2P&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    </noscript>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=1309" />
+    <link rel="stylesheet" href="styles.css?v=1310" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -38,13 +45,13 @@
     <!-- ───────────────────────── Header ───────────────────────── -->
     <header class="topbar">
       <button id="rail-toggle" class="rail-toggle" aria-label="Open menu" title="Menu">☰</button>
-      <span class="build-tag-m" id="build-tag-m" title="Live build version — confirms the deploy is up to date">v13.09</span>
+      <span class="build-tag-m" id="build-tag-m" title="Live build version — confirms the deploy is up to date">v13.10</span>
       <div class="brand">
         <span class="brand-tv">📺</span>
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v13.09</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v13.10</span>
       </div>
       <div class="topbar-right">
         <div class="tb-tools">
@@ -437,7 +444,7 @@
                 <!-- Promo intro reel — autoplays once (muted) on first load, then fades
                      to black and hands off to the game. Replay button under the TV. -->
                 <!-- promo DISABLED for now (owner) — preload none so the reel isn't even downloaded; re-enable via PROMO_ENABLED in app.js -->
-                <video id="promo-video" class="promo-video hidden" playsinline preload="none" muted src="promo.mp4?v=1309"></video>
+                <video id="promo-video" class="promo-video hidden" playsinline preload="none" muted src="promo.mp4?v=1310"></video>
 
                 <!-- Shown while a bet tx is being signed + mined (esp. slow on mobile) -->
                 <div id="tv-pending" class="tv-pending hidden">⏳ SENDING BET…<br />confirm in your wallet, then hold tight</div>
@@ -1549,21 +1556,24 @@
       </div>
     </aside>
 
-    <script defer src="vendor/ethers.umd.min.js?v=1309"></script>
-    <script defer src="config.js?v=1309"></script>
-    <script defer src="contract.js?v=1309"></script>
-    <script defer src="chiptune.js?v=1309"></script>
-    <script defer src="scenes.js?v=1309"></script>
-    <script defer src="tv.js?v=1309"></script>
-    <script defer src="poker-engine.js?v=1309"></script>
-    <script defer src="poker-bots.js?v=1309"></script>
-    <script defer src="poker-ui.js?v=1309"></script>
-    <script defer src="crash-engine.js?v=1309"></script>
-    <script defer src="crash-render.js?v=1309"></script>
-    <script defer src="profile.js?v=1309"></script>
-    <script defer src="token-client.js?v=1309"></script>
-    <script defer src="token-mode.js?v=1309"></script>
-    <script defer src="crash-rounds-client.js?v=1309"></script>
-    <script defer src="app.js?v=1309"></script>
+    <script defer src="vendor/ethers.umd.min.js?v=ethers-1"></script>
+    <script defer src="config.js?v=1310"></script>
+    <script defer src="contract.js?v=1310"></script>
+    <script defer src="chiptune.js?v=1310"></script>
+    <script defer src="scenes.js?v=1310"></script>
+    <script defer src="tv.js?v=1310"></script>
+    <!-- P6: poker is a hidden, unopenable channel (absent from GAME_CHANNEL, no UI/URL entry) — its 3 scripts
+         (~42KB) were parsed by every visitor for nothing. Removed. Every PokerUI call site is `if (window.PokerUI)`
+         -guarded, so this is inert. To re-enable: lazy-load these via loadScriptOnce + add a GAME_CHANNEL entry.
+    <script defer src="poker-engine.js?v=1310"></script>
+    <script defer src="poker-bots.js?v=1310"></script>
+    <script defer src="poker-ui.js?v=1310"></script> -->
+    <script defer src="crash-engine.js?v=1310"></script>
+    <script defer src="crash-render.js?v=1310"></script>
+    <script defer src="profile.js?v=1310"></script>
+    <script defer src="token-client.js?v=1310"></script>
+    <script defer src="token-mode.js?v=1310"></script>
+    <script defer src="crash-rounds-client.js?v=1310"></script>
+    <script defer src="app.js?v=1310"></script>
   </body>
 </html>
