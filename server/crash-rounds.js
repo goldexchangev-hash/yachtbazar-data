@@ -31,6 +31,12 @@ const K = CE.DEFAULT_K; // curve constant — the CLIENT animates with the ident
 // keep the 1.01x floor. (For a bust we also floor the target to gameFloor so a low pop can't VOID-refund.)
 function gameFloor(gameKey) { return gameKey === "pressure" ? pressureEngine.MIN_CASHOUT : crashEngine.MIN_TARGET_X; }
 
+// M5: server-side stake ceilings for the crash family (TOKEN units = USD). The client caps these too, but a
+// raw `cr:start` WS frame could bypass client validation — so enforce here as the real boundary. Checked
+// BEFORE bridge.reserve() so a rejected bet never debits tokens or burns a nonce. Owner-set: plane $500.
+// Blackjack + the shooters do NOT run on this round-runner. Unknown key → the conservative crash cap.
+const MAX_STAKE = { crash: 100, pressure: 500, plane: 500, swoop: 1000 };
+
 function makeCrashRounds(opts) {
   opts = opts || {};
   const bridge = opts.bridge;
@@ -53,6 +59,8 @@ function makeCrashRounds(opts) {
     const gameKey = o.gameKey || "crash";
     const bet = Math.round((Number(o.betUnits) || 0) * 100) / 100;
     if (!(bet > 0)) throw new Error("bet must be positive");
+    const _cap = MAX_STAKE[gameKey] != null ? MAX_STAKE[gameKey] : MAX_STAKE.crash; // M5: reject over-cap BEFORE reserve() (no debit, no burned nonce)
+    if (bet > _cap + 1e-9) throw new Error("bet above the " + gameKey + " max of " + _cap);
     const clientSeed = String(o.clientSeed || ("rnd-" + (++_seq)));
     // RESERVE up front: PIN the nonce + DEBIT the full stake + balance-check, all atomically
     // in the ledger. This is the atomic fix for the nonce-desync (#1 — an interleaved play()

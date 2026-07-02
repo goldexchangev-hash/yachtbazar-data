@@ -50,6 +50,12 @@ const ENGINES = {
 function games() { return Object.keys(ENGINES); }
 function hasGame(g) { return Object.prototype.hasOwnProperty.call(ENGINES, g); }
 
+// M5: server-side per-bet stake ceilings for the instant (play()) path (TOKEN units = USD). Mirrors the client
+// caps so a raw /api/token/play can't bet past them. The SHOOTERS (fishshooter/reef) are DELIBERATELY absent —
+// they're continuous per-shot micro-bets with their own in-engine limits, and a cap here would clip legit fire.
+// Blackjack isn't a play() game (it settles via applyExternal), so it's naturally excluded. Owner-set: plane $500.
+const PLAY_MAX = { coinflip: 100, dice: 100, dice2: 100, slots: 100, slots3d: 100, crash: 100, pressure: 500, plane: 500, swoop: 1000 };
+
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
 // mega-hunt: BRIDGE-LEVEL payout cap (defense-in-depth against the reef/slots/pressure class — an engine that
@@ -171,6 +177,7 @@ function makeTokenBridge(opts) {
     finalizeOrphanRounds(s, s.betNonce); // v8 #4: self-heal an orphaned crashRound (bust) so it can't linger blocking BJ or stack a reservation
     const bet = round2(o.betUnits);
     if (!(bet > 0)) throw new Error("bet must be positive");
+    if (PLAY_MAX[o.game] != null && bet > PLAY_MAX[o.game] + 1e-9) throw new Error("bet above the max of " + PLAY_MAX[o.game] + " for " + o.game); // M5: server cap (shooters excluded; rejected before any debit/nonce burn)
     // #41: integer-cent overbet check (no float-epsilon tolerance) — mirrors reserve()'s hardened test so
     // a bet can never slip a sub-cent over the balance. Both bet and tokens are already round2'd to cents,
     // so this is exact and never false-rejects a legitimate all-in.
