@@ -50,11 +50,15 @@ const ENGINES = {
 function games() { return Object.keys(ENGINES); }
 function hasGame(g) { return Object.prototype.hasOwnProperty.call(ENGINES, g); }
 
-// M5: server-side per-bet stake ceilings for the instant (play()) path (TOKEN units = USD). Mirrors the client
-// caps so a raw /api/token/play can't bet past them. The SHOOTERS (fishshooter/reef) are DELIBERATELY absent —
-// they're continuous per-shot micro-bets with their own in-engine limits, and a cap here would clip legit fire.
-// Blackjack isn't a play() game (it settles via applyExternal), so it's naturally excluded. Owner-set: plane $500.
-const PLAY_MAX = { coinflip: 100, dice: 100, dice2: 100, slots: 100, slots3d: 100, crash: 100, pressure: 500, plane: 500, swoop: 1000 };
+// M5: server-side per-bet stake ceilings for the instant (play()) path (TOKEN units = USD). These MUST equal
+// the client's per-game token slider maxes so a legit UI bet never bounces while a raw /api/token/play still
+// can't exceed them. MIRROR (do not drift): coinflip = app.js HARD_MAX_USD ($100); dice/dice2/crash =
+// app.js CORE_TOKEN_SLIDER_MAX ($500); slots/slots3d = slots3d.js MAX_BET ($100); pressure = pressure-ui MAX_BET
+// ($500); plane = plane-ui TOKEN cap ($500, owner-set); swoop $1000. SHOOTERS (fishshooter/reef) are DELIBERATELY
+// absent (continuous per-shot micro-bets). Blackjack settles via applyExternal, not play().
+// v13.18: dice/dice2/crash were wrongly $100 in v13.14 — that REJECTED the UI-legal $100–$500 token bets those
+// channels offer (a real-money regression). Restored to $500 to match the client.
+const PLAY_MAX = { coinflip: 100, dice: 500, dice2: 500, slots: 100, slots3d: 100, crash: 500, pressure: 500, plane: 500, swoop: 1000 };
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 

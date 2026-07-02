@@ -571,7 +571,11 @@ wss.on("connection", (ws, req) => {
       // client-supplied one, and cap the length.
       const from = clients.get(ws)?.address || null;
       const text = cleanChat(data.text).slice(0, 240);            // v7 #14: NFKC + strip zero-width/bidi/zalgo
-      const name = (cleanChat(data.name).replace(/\(\s*host\s*\)/ig, "").slice(0, 24).trim()) || null; // S1: strip a literal "(host)" suffix so a player can't impersonate the house in chat (parens required so real names like "Ghostrider" are untouched)
+      // S1: strip a literal "(host)" so a player can't impersonate the house. v13.18: loop until stable — a single
+      // pass left "(host)" from a nested "((host))". Parens still required so real names ("Ghostrider") are untouched.
+      let _nm = cleanChat(data.name); let _prev;
+      do { _prev = _nm; _nm = _nm.replace(/\(\s*host\s*\)/ig, ""); } while (_nm !== _prev);
+      const name = (_nm.slice(0, 24).trim()) || null;
       if (from && text.trim()) {
         const line = { type: "chat", from, name, text, ts: Date.now() };
         chatHistory.push({ from, name, text, ts: line.ts });

@@ -445,7 +445,7 @@
       // deducts at launch but cashes out on the current stake). Edit only while
       // betting / idle; the controls are also disabled in those states.
       if (!this._canEditBet()) { this._syncPanel(b); return; }
-      const cap = this.mode === "demo" ? DEMO_BET_CAP : Math.max(DEMO_MAX_BET, this.balance || DEMO_MAX_BET);
+      const cap = this.mode === "demo" ? DEMO_BET_CAP : DEMO_MAX_BET; // v13.18: TOKEN cap is a FIXED $500 (mirrors server MAX_STAKE.plane) — was max($500,balance) which let MAX exceed the cap and every launch >$500 got server-rejected
       b.stake = Math.max(MIN_BET, Math.min(cap, Math.round(v * 100) / 100)); b.baseStake = b.stake; this._syncPanel(b); this._renderButtons();
     };
     if (e.action) e.action.addEventListener("click", () => this._onAction(b));
@@ -453,7 +453,7 @@
     if (e.betDown) e.betDown.addEventListener("click", () => setBet(b.stake - step(b.stake - 0.01)));
     if (e.betHalf) e.betHalf.addEventListener("click", () => setBet(b.stake / 2));
     if (e.betDouble) e.betDouble.addEventListener("click", () => setBet(b.stake * 2));
-    if (e.betMax) e.betMax.addEventListener("click", () => setBet(this.mode === "demo" ? Math.min(DEMO_BET_CAP, this.balance) : this.balance));
+    if (e.betMax) e.betMax.addEventListener("click", () => setBet(this.mode === "demo" ? Math.min(DEMO_BET_CAP, this.balance) : Math.min(DEMO_MAX_BET, this.balance))); // v13.18: token MAX clamps to the $500 server cap
     if (e.betInput) { e.betInput.addEventListener("change", () => setBet(parseFloat(e.betInput.value) || MIN_BET)); e.betInput.addEventListener("input", () => setBet(parseFloat(e.betInput.value) || MIN_BET)); }
     const setAuto = (v) => { b.autoTarget = Math.max(1.01, Math.min(MAX_AUTO, Math.round(v * 100) / 100)); this._syncPanel(b); };
     if (e.autoSlider) e.autoSlider.addEventListener("input", () => setAuto(parseFloat(e.autoSlider.value)));

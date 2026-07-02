@@ -238,13 +238,21 @@
     try {
       await d.contract.settleBlackjack.staticCall(player, BigInt(r.netWei), BigInt(r.nonce), r.signature);
     } catch (sim) {
-      let stillLocked = true;
-      try { stillLocked = (await d.contract.bjLocked(player)) > 0n; } catch (e) {}
-      if (!stillLocked) { this.session = null; this.tokens = 0; return { ...r, claimTx: null, alreadyRecovered: true }; }
-      const nm = settleRevertName(sim);
-      const err = new Error(recoverMsgFor(nm));
-      err.settleRevert = nm || "revert"; err.recoverBlocked = true;
-      throw err;
+      // v13.18: ONLY a genuine contract REVERT means the settle can't execute. A transient RPC/network error on
+      // the simulation must NOT block a valid recover (that would recreate the loop on a flaky RPC — the exact
+      // day this bites). Detect a real revert (ethers v6 CALL_EXCEPTION / decoded revert / a known custom error);
+      // anything else → fall through and submit the real tx (pre-v13.13 behavior).
+      var isRevert = !!(sim && (sim.code === "CALL_EXCEPTION" || sim.revert != null || sim.data != null || settleRevertName(sim)));
+      if (isRevert) {
+        let stillLocked = true;
+        try { stillLocked = (await d.contract.bjLocked(player)) > 0n; } catch (e) {}
+        if (!stillLocked) { this.session = null; this.tokens = 0; return { ...r, claimTx: null, alreadyRecovered: true }; }
+        const nm = settleRevertName(sim);
+        const err = new Error(recoverMsgFor(nm));
+        err.settleRevert = nm || "revert"; err.recoverBlocked = true;
+        throw err;
+      }
+      // transient/non-revert simulation error → don't block; submit the real tx below.
     }
     const tx = await d.contract.settleBlackjack(player, BigInt(r.netWei), BigInt(r.nonce), r.signature, { gasLimit: 200000n });
     const receipt = await waitTx(tx);

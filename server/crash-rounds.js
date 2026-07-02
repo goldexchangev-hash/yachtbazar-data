@@ -35,7 +35,7 @@ function gameFloor(gameKey) { return gameKey === "pressure" ? pressureEngine.MIN
 // raw `cr:start` WS frame could bypass client validation — so enforce here as the real boundary. Checked
 // BEFORE bridge.reserve() so a rejected bet never debits tokens or burns a nonce. Owner-set: plane $500.
 // Blackjack + the shooters do NOT run on this round-runner. Unknown key → the conservative crash cap.
-const MAX_STAKE = { crash: 100, pressure: 500, plane: 500, swoop: 1000 };
+const MAX_STAKE = { crash: 500, pressure: 500, plane: 500, swoop: 1000 }; // v13.18: crash was $100 in v13.14 → rejected the UI-legal $100–$500 crash bets (crash-stake slider max=500). Restored to match the client; a raw cr:start still can't exceed $500.
 
 function makeCrashRounds(opts) {
   opts = opts || {};
