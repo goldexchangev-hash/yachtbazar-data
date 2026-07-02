@@ -354,6 +354,14 @@ function makeTokenBridge(opts) {
         ledger = capUp(round2(ledger - round2(b.betUnits) + round2(Math.max(0, b.payoutUnits))), buyInUnits); // v6 #14: same win-cap as the live ledger so a capped session re-derives exactly
         continue;
       }
+      if (b.kind === "crashRound" && b.forceBust) {
+        // v14 #2: an interrupted-orphan bust (forceBust) is booked at payout 0 REGARDLESS of the derived crashPoint.
+        // Its recorded cashOutAt (1e9) would engine-re-derive to a CLAMPED 1000× WIN at a cap seed (a false-fail),
+        // so DON'T replay it — assert the honest invariant instead: a forceBust record must have payout 0.
+        if (round2(b.payoutUnits) !== 0) payoutsMatch = false;
+        ledger = capUp(round2(ledger - round2(b.betUnits)), buyInUnits);
+        continue;
+      }
       if (!hasGame(b.game)) { payoutsMatch = false; continue; }
       const res = ENGINES[b.game].play({ serverSeed: revealedSeed, clientSeed: b.clientSeed, nonce: b.nonce, betUnits: b.betUnits, params: b.params });
       const payout = clampPayout(b.game, b.betUnits, round2(Math.max(0, Number(res && res.payoutUnits) || 0))); // same cap as play() so a capped payout re-derives to the same value
@@ -465,7 +473,7 @@ function makeTokenBridge(opts) {
     if (!Number.isFinite(payout)) throw new Error("resolve rejected: non-finite payout");
     payout = clampPayout(rec.game, rec.betUnits, payout); // bridge-level backstop on the crash-round payout too
     s.tokens = capUp(round2(s.tokens + payout), s.buyInUnits); // v6 #14: bound the win side (crash rounds too)
-    rec.open = false; rec.params = params; rec.payoutUnits = payout; rec.win = forceBust ? false : !!res.win; rec.multiplier = forceBust ? 0 : res.multiplier;
+    rec.open = false; rec.params = params; rec.payoutUnits = payout; rec.win = forceBust ? false : !!res.win; rec.multiplier = forceBust ? 0 : res.multiplier; if (forceBust) rec.forceBust = true; // v14 #2: mark an interrupted-orphan bust so verifyRederive asserts payout 0 (never engine-re-derives its clamped-cap win → no auditor false-fail)
     rec.outcome = res.outcome;                // persist {crashPoint,...} so the ledger entry exposes the settled point (audit + paced==ledger check)
     save();
     return { sessionId: s.id, nonce: nonce, game: rec.game, win: rec.win, multiplier: rec.multiplier, payoutUnits: payout, outcome: res.outcome, tokens: s.tokens };
@@ -737,6 +745,10 @@ if (require.main === module) {
     const capBust = capB.resolveReserved({ sessionId: capS, nonce: 0, cashOutAt: 1e9, forceBust: true });
     eq("v13 #1: orphan finalize at a 1000× cap BUSTS (payout 0, win false) — not bet×1000", capBust.payoutUnits === 0 && capBust.win === false);
     eq("v13 #1: the 1000×-cap orphan leaves the stake DEBITED (a loss, never a bet×1000 credit)", capB.session(capS).tokens === round2(capTok0 - 10));
+    // v14 #2: the auditor must NOT false-fail on the forceBust cap orphan (its cashOutAt:1e9 would engine-re-derive
+    // to a clamped 1000× WIN). verifyRederive keys off rec.forceBust → asserts payout 0 instead of replaying.
+    const capRd = capB.rederive(capS);
+    eq("v14 #2: a forceBust cap orphan re-derives CLEAN (payoutsMatch + ledger) — no auditor false-fail", capRd.payoutsMatch === true && capRd.ledgerMatches === true);
 
     console.log(ok ? "\nSELF-TEST OK — token bridge: buy-in → provably-fair play → signed, verifiable settle." : "\nSELF-TEST FAILED");
     process.exit(ok ? 0 : 1);

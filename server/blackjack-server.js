@@ -360,7 +360,7 @@
       const dealerBJ = Rules.handValue(r.dealer).blackjack;
       for (const s of r.seats) if (inRound(s) && s.insurance > 0) {
         const amount = s.insurance;
-        if (dealerBJ) { const win = r2(amount * 3); const ok = bank.credit(s.wallet, win); if (ok === false) { try { err(s.sock, "credit_failed", "Your insurance payout couldn't be credited — please contact support (your funds are safe).", "insurance"); } catch (e) {} } s.insuranceResult = { taken: true, amount, won: true, payout: win }; pushWallet(s.sock, s.wallet); } // #9: surface a failed token credit (was silent on the insurance path)
+        if (dealerBJ) { const win = r2(amount * 3); const ok = bank.credit(s.wallet, win); if (ok === false) { try { err(s.sock, "credit_failed", "Your insurance payout couldn't be credited — please contact support (your funds are safe).", "insurance"); } catch (e) {} } s.insuranceResult = ok === false ? { taken: true, amount, won: false, payout: 0 } : { taken: true, amount, won: true, payout: win }; pushWallet(s.sock, s.wallet); } // #9 + v14 #57: surface a failed token credit AND record NO phantom win when it failed — the wallet wasn't credited (premium already debited), so the honest settle net is a loss of the premium (mirrors the settle-path invariant)
         else s.insuranceResult = { taken: true, amount, won: false, payout: 0 };
         s.insurance = 0; // resolved → no longer an in-flight escrow (closeRoom must not refund a lost insurance)
       }
@@ -420,16 +420,21 @@
       for (const r of rooms.values()) {
         const i = seatOf(r, sock); if (i < 0) continue;
         if (r.phase === "turns" && r.turnIdx === i) {
-          // Re-arm the turn clock so a top-up tapped near the buzzer doesn't get
-          // auto-stood before you can use the now-affordable double/split.
-          clrT(r.timers.turn); r.deadline = now() + T.turn;
-          r.timers.turn = setT(() => applyAction(r, r.turnIdx, "stand", true), T.turn);
-          emitTurn(r);
+          // Re-arm the turn clock so a top-up tapped near the buzzer doesn't get auto-stood before you can use the
+          // now-affordable double/split. v14 #85: re-arm AT MOST ONCE per turn — otherwise a guest could spam tiny
+          // top-ups to reset the auto-stand deadline forever (table stall). A legit "top up to double" needs just one.
+          if (!r.turnToppedUp) {
+            r.turnToppedUp = true;
+            clrT(r.timers.turn); r.deadline = now() + T.turn;
+            r.timers.turn = setT(() => applyAction(r, r.turnIdx, "stand", true), T.turn);
+          }
+          emitTurn(r); // always re-emit so the client sees the new balance (deadline unchanged when not re-armed)
         } else broadcastState(r);
         break;
       }
     }
     function startTurn(r) {
+      r.turnToppedUp = false; // v14 #85: reset the per-turn top-up re-arm guard (one legit re-arm allowed per hand-turn)
       const s = r.seats[r.turnIdx], h = s.hands[s.active];
       if (h.cards.length === 1) {                    // a freshly-split hand: deal its second card now
         h.cards.push(draw(r));
