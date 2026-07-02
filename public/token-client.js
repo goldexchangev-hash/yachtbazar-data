@@ -79,6 +79,16 @@
     } catch (e) { if (e && e.gas) throw e; }
   }
 
+  // Pending-buy-in persistence (per account+chain), so a stalled buy-in is never double-sent. The stall trap:
+  // tx1 sits unmined, waitTx gives up at 180s, the user retries, tx2 lands AFTER tx1 mines and reverts
+  // InsufficientBalance (clampBuyIn can't catch it — at retry time tx1 is unmined, so credits still look full).
+  // Stored in localStorage so a page reload mid-buy-in can also resume. Browser-only; a no-op under node.
+  function _ls() { try { return root.localStorage || null; } catch (e) { return null; } }
+  function pbKey(d) { return "ctf_pendingBuyIn_" + String(d.account || "").toLowerCase() + "_" + Number(d.chainId || 0); }
+  function pbLoad(d) { try { var ls = _ls(); return ls ? JSON.parse(ls.getItem(pbKey(d)) || "null") : null; } catch (e) { return null; } }
+  function pbSave(d, o) { try { var ls = _ls(); if (ls) ls.setItem(pbKey(d), JSON.stringify(o)); } catch (e) {} }
+  function pbClear(d) { try { var ls = _ls(); if (ls) ls.removeItem(pbKey(d)); } catch (e) {} }
+
   // Decode the custom-error NAME from a reverted settleBlackjack simulation. ethers v6 puts ABI-known custom
   // errors in err.revert.name; fall back to scanning the message text.
   function settleRevertName(err) {
@@ -184,10 +194,50 @@
   };
 
   // BUY IN: lock `amountWei` on-chain (ONE popup) → open a server token session.
+  // Resume a still-pending / just-confirmed prior buy-in instead of sending a SECOND lock (the stall→retry→
+  // revert trap). Returns a session (finished the prior buy-in) OR null (nothing pending, or the prior tx
+  // dropped/reverted → a fresh buy-in may proceed). Throws only when a prior tx is genuinely still confirming.
+  TokenBridgeClient.prototype._resumePendingBuyIn = async function () {
+    const d = this.d;
+    const p = pbLoad(d);
+    if (!p || !p.txHash) return null;
+    // Ignore a STALE record (a prior stall already resolved out-of-band via Recover / auto-claim). Left alone
+    // it would block a later legit buy-in with a "reload" throw. After 30 min, drop it and let the fresh buy-in
+    // proceed — any genuinely-still-locked funds are surfaced by checkStrandedLock/Recover, not this path.
+    try { if (p.ts && (Date.now() - p.ts) > 1800000) { pbClear(d); return null; } } catch (e) {}
+    const prov = (d.signer && d.signer.provider) || d.provider;
+    if (!prov || !prov.getTransactionReceipt) return null; // can't check → let the normal path run
+    let rcpt = null;
+    try { rcpt = await prov.getTransactionReceipt(p.txHash); } catch (e) { return null; }
+    if (!rcpt) {
+      // no receipt yet — is the tx still in the mempool, or was it dropped/replaced?
+      let tx = null; try { tx = await prov.getTransaction(p.txHash); } catch (e) {}
+      if (!tx) { pbClear(d); return null; } // dropped → allow a fresh buy-in
+      throw new Error("Your previous buy-in is still confirming on-chain — give it a moment, it'll finish on its own (don't send another, or you'll pay gas twice).");
+    }
+    if (!rcpt.status) { pbClear(d); return null; } // prior tx REVERTED → nothing locked → a fresh buy-in is fine
+    // Prior tx CONFIRMED → the lock happened. Finish it by handing the server the ORIGINAL payload. The server
+    // dedupes txHash (usedBuyIns) so this is idempotent: a first-time finish grants the session; an already-used
+    // txHash rejects, in which case a session already exists and the normal resume / Recover path returns it.
+    try {
+      const r = await this._post("/api/token/start", { player: p.player, contract: p.contract, chainId: p.chainId, txHash: p.txHash, buyInWei: p.buyInWei, signature: p.signature }, 45000);
+      pbClear(d);
+      this.session = r; this.tokens = r.tokens;
+      return r;
+    } catch (e) {
+      pbClear(d); // don't loop on a poisoned record; the on-chain lock is safe + Recover-able
+      throw new Error("Your earlier buy-in already locked on-chain — reload the page if your session didn't open. Your funds are safe; the Recover button will return them.");
+    }
+  };
+
   TokenBridgeClient.prototype.buyIn = async function (amountWei) {
     const d = this.d;
     const player = d.account, contract = d.contractAddr, chainId = Number(d.chainId);
     let want = (typeof amountWei === "bigint" ? amountWei : BigInt(amountWei));
+    // RESUME a still-pending prior buy-in rather than double-sending (the stall→retry→revert trap). No-op +
+    // no RPC when nothing is pending (a fast localStorage read returns null).
+    const resumed = await this._resumePendingBuyIn();
+    if (resumed) return resumed;
     // PRE-FLIGHT: price ready. A PRIOR on-chain lock NO LONGER blocks the buy-in — the server now AUTO-CLAIMS a
     // stranded lock (orphaned principal, no withheld loss) into this session, so a buy-in over your own stranded
     // funds just reclaims them instead of stranding the new lock on top (the $710→$1420 compounding trap). If a
@@ -205,9 +255,13 @@
     const signature = await d.signer.signMessage(tokenAuthMessage("start", { player, contract, chainId, buyInWei }, d.ethers.getAddress));
     // 2) lock the funds on-chain (the ONE popup) and wait for it to confirm
     const tx = await d.contract.blackjackBuyIn(buyInWei, { gasLimit: 200000n });
+    // Persist the in-flight lock BEFORE waiting, so a stall (waitTx timeout) or a reload can resume it on the
+    // next buy-in instead of firing a second lock that would revert once tx1 mines.
+    pbSave(d, { txHash: tx.hash, buyInWei: buyInWei, signature: signature, player: player, contract: contract, chainId: chainId, ts: Date.now() });
     const receipt = await waitTx(tx);
     // 3) hand the server the confirmed txHash + the signature → it verifies + grants tokens
     const r = await this._post("/api/token/start", { player, contract, chainId, txHash: receipt.hash, buyInWei, signature }, 45000); // 45s: /start does multiple sequential on-chain reads — must not abort mid-verify (was 12s → "fetch aborted" → re-lock)
+    pbClear(d); // committed on the server → the pending record is done
     this.session = r; this.tokens = r.tokens;
     return r;
   };
@@ -381,6 +435,28 @@ if (typeof require !== "undefined" && require.main === module) {
     const sig = await w.signMessage(client.tokenAuthMessage("start", o, ethers.getAddress));
     let threw = false; try { server.verifyWalletSignature("start", { signature: sig }, o); } catch (e) { threw = true; }
     eq("client signature verifies on the server", !threw);
+
+    // ---- pending-buy-in dedupe (v13.26): resume a stalled/confirmed prior lock instead of double-sending ----
+    const shim = (() => { const m = {}; return { getItem: (k) => (k in m ? m[k] : null), setItem: (k, v) => { m[k] = String(v); }, removeItem: (k) => { delete m[k]; } }; })();
+    globalThis.localStorage = shim;
+    const { TokenBridgeClient } = client;
+    const pKey = "ctf_pendingBuyIn_" + player + "_11155111";
+    const mkProv = (rcpt, tx) => ({ getTransactionReceipt: async () => rcpt, getTransaction: async () => tx });
+    const mkC = (prov, postFn) => { const c = new TokenBridgeClient({ account: player, chainId: 11155111, contractAddr: contract, signer: { provider: prov } }); if (postFn) c._post = postFn; return c; };
+    const rec = () => ({ txHash: "0x" + "ab".repeat(32), buyInWei: "1000", signature: "0xsig", player, contract, chainId: 11155111 });
+    shim.removeItem(pKey);
+    eq("resume: no pending record → null", (await mkC(mkProv(null, null))._resumePendingBuyIn()) === null);
+    shim.setItem(pKey, JSON.stringify(rec()));
+    { const r = await mkC(mkProv(null, null))._resumePendingBuyIn(); eq("resume: dropped tx → null + record cleared", r === null && shim.getItem(pKey) === null); }
+    shim.setItem(pKey, JSON.stringify(rec()));
+    { const r = await mkC(mkProv({ status: 0 }, null))._resumePendingBuyIn(); eq("resume: reverted tx → null + record cleared", r === null && shim.getItem(pKey) === null); }
+    shim.setItem(pKey, JSON.stringify(rec()));
+    { let posted = null; const r = await mkC(mkProv({ status: 1 }, null), async (path, body) => { posted = { path, body }; return { sessionId: "s1", tokens: 42 }; })._resumePendingBuyIn();
+      eq("resume: confirmed tx → finishes via /start with the ORIGINAL txHash", !!(r && r.tokens === 42 && posted && posted.path === "/api/token/start" && posted.body.txHash === rec().txHash && shim.getItem(pKey) === null)); }
+    shim.setItem(pKey, JSON.stringify(rec()));
+    { let threw2 = false; try { await mkC(mkProv(null, { hash: rec().txHash }))._resumePendingBuyIn(); } catch (e) { threw2 = true; } eq("resume: still-confirming tx → throws + record kept (no double-send)", threw2 && shim.getItem(pKey) !== null); }
+    delete globalThis.localStorage;
+
     console.log(ok ? "\nSELF-TEST OK — client auth is byte-identical to the server." : "\nSELF-TEST FAILED");
     process.exit(ok ? 0 : 1);
   })();
