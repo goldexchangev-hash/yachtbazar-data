@@ -2851,3 +2851,7 @@ body.plane-real .plane-bets { grid-template-columns: 1fr; }
   border: 1px dashed var(--s-border); border-radius: var(--r-md); background: rgba(255, 255, 255, .02);
 }
 .profile-history > .muted { text-align: center; padding: 14px 10px; border: 1px dashed var(--s-border); border-radius: var(--r-sm); margin: 0; }
+
+/* #19 the help "?" reads as a designed gold glyph, not stray body text between two emoji buttons (Bungee ships weight 400 only) */
+#help-btn { font-family: var(--display); font-weight: 400; font-size: 15px; color: var(--s-gold); }
+#help-btn:hover { color: var(--s-text); }

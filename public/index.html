@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#0c0d16" />
     <meta name="referrer" content="same-origin" />
-    <link rel="manifest" href="manifest.webmanifest?v=1316" />
+    <link rel="manifest" href="manifest.webmanifest?v=1317" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -35,7 +35,7 @@
       <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Press+Start+2P&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
     </noscript>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=1316" />
+    <link rel="stylesheet" href="styles.css?v=1317" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -45,13 +45,13 @@
     <!-- ───────────────────────── Header ───────────────────────── -->
     <header class="topbar">
       <button id="rail-toggle" class="rail-toggle" aria-label="Open menu" title="Menu">☰</button>
-      <span class="build-tag-m" id="build-tag-m" title="Live build version — confirms the deploy is up to date">v13.16</span>
+      <span class="build-tag-m" id="build-tag-m" title="Live build version — confirms the deploy is up to date">v13.17</span>
       <div class="brand">
         <span class="brand-tv">📺</span>
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v13.16</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v13.17</span>
       </div>
       <div class="topbar-right">
         <div class="tb-tools">
@@ -120,7 +120,7 @@
               <g fill="currentColor" stroke="none"><circle cx="9" cy="9" r="1.3"/><circle cx="15" cy="9" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="9" cy="15" r="1.3"/><circle cx="15" cy="15" r="1.3"/></g>
             </svg>
           </span>
-          <span class="gc-name">0-100</span>
+          <span class="gc-name">Dice 0-100</span>
         </button>
 
         <button type="button" class="game-card twodice" id="ch-twodice" role="tab" aria-selected="false" data-game="twodice">
@@ -131,7 +131,7 @@
               <g fill="currentColor" stroke="none"><circle cx="6" cy="11" r="1.05"/><circle cx="10.2" cy="15" r="1.05"/><circle cx="16" cy="9.6" r="1.05"/></g>
             </svg>
           </span>
-          <span class="gc-name">Dice #2</span>
+          <span class="gc-name">Two Dice</span>
         </button>
 
         <button type="button" class="game-card crash" id="ch-crash" role="tab" aria-selected="false" data-game="crash">
@@ -444,7 +444,7 @@
                 <!-- Promo intro reel — autoplays once (muted) on first load, then fades
                      to black and hands off to the game. Replay button under the TV. -->
                 <!-- promo DISABLED for now (owner) — preload none so the reel isn't even downloaded; re-enable via PROMO_ENABLED in app.js -->
-                <video id="promo-video" class="promo-video hidden" playsinline preload="none" muted src="promo.mp4?v=1316"></video>
+                <video id="promo-video" class="promo-video hidden" playsinline preload="none" muted src="promo.mp4?v=1317"></video>
 
                 <!-- Shown while a bet tx is being signed + mined (esp. slow on mobile) -->
                 <div id="tv-pending" class="tv-pending hidden">⏳ SENDING BET…<br />confirm in your wallet, then hold tight</div>
@@ -747,7 +747,7 @@
         <!-- Dice game (CH 09) -->
         <div class="card dice-panel" id="dice-panel" data-game="dice" hidden>
           <div class="ph-head">
-            <h2 class="card-title">🎲 0-100 <span class="ch-tag">CH 09</span></h2>
+            <h2 class="card-title">🎲 Dice 0-100 <span class="ch-tag">CH 09</span></h2>
             <span class="ph-bankroll muted">House: <strong id="dice-house-bankroll">—</strong> · edge 2%</span>
           </div>
 
@@ -792,11 +792,11 @@
         <!-- Dice #2 game (CH 10) — two d6 dice, bet the total -->
         <div class="card dice-panel" id="twodice-panel" data-game="twodice" hidden>
           <div class="ph-head">
-            <h2 class="card-title">🎲🎲 Dice #2 <span class="ch-tag">CH 10</span></h2>
+            <h2 class="card-title">🎲🎲 Two Dice <span class="ch-tag">CH 10</span></h2>
             <span class="ph-bankroll muted">House: <strong id="td-house-bankroll">—</strong> · edge 2%</span>
           </div>
 
-          <p class="muted td-intro">Two dice are thrown (each 1–6). Pick a target total and bet whether the sum lands <strong>under</strong> or <strong>over</strong> it. Odds follow the real 2-dice distribution (7 is the most common).</p>
+          <p class="muted td-intro">Two dice, totals 2–12 — bet the sum lands <strong>under</strong> or <strong>over</strong> your target. 7 is the most common roll.</p>
 
           <label class="field-label">Target total <strong id="td-target-val">7</strong> <span class="muted" id="td-mode-hint">— roll under to win</span></label>
           <div class="td-slider-wrap">
@@ -815,7 +815,7 @@
           <div class="dice-readouts">
             <div class="ro-cell"><span class="ro-k muted">Win Chance</span><strong class="ro-v" id="td-chance">41.67%</strong></div>
             <div class="ro-cell ro-mult"><span class="ro-k muted">Multiplier</span><strong class="ro-v" id="td-mult">2.35×</strong></div>
-            <div class="ro-cell ro-profit"><span class="ro-k muted">Profit on Win</span><strong class="ro-v" id="td-profit">+$0.00</strong></div>
+            <div class="ro-cell ro-profit"><span class="ro-k muted">Profit on Win</span><strong class="ro-v" id="td-profit">+$33.75</strong></div>
           </div>
 
           <label class="field-label">Stake</label>
@@ -1557,23 +1557,23 @@
     </aside>
 
     <script defer src="vendor/ethers.umd.min.js?v=ethers-1"></script>
-    <script defer src="config.js?v=1316"></script>
-    <script defer src="contract.js?v=1316"></script>
-    <script defer src="chiptune.js?v=1316"></script>
-    <script defer src="scenes.js?v=1316"></script>
-    <script defer src="tv.js?v=1316"></script>
+    <script defer src="config.js?v=1317"></script>
+    <script defer src="contract.js?v=1317"></script>
+    <script defer src="chiptune.js?v=1317"></script>
+    <script defer src="scenes.js?v=1317"></script>
+    <script defer src="tv.js?v=1317"></script>
     <!-- P6: poker is a hidden, unopenable channel (absent from GAME_CHANNEL, no UI/URL entry) — its 3 scripts
          (~42KB) were parsed by every visitor for nothing. Removed. Every PokerUI call site is `if (window.PokerUI)`
          -guarded, so this is inert. To re-enable: lazy-load these via loadScriptOnce + add a GAME_CHANNEL entry.
-    <script defer src="poker-engine.js?v=1316"></script>
-    <script defer src="poker-bots.js?v=1316"></script>
-    <script defer src="poker-ui.js?v=1316"></script> -->
-    <script defer src="crash-engine.js?v=1316"></script>
-    <script defer src="crash-render.js?v=1316"></script>
-    <script defer src="profile.js?v=1316"></script>
-    <script defer src="token-client.js?v=1316"></script>
-    <script defer src="token-mode.js?v=1316"></script>
-    <script defer src="crash-rounds-client.js?v=1316"></script>
-    <script defer src="app.js?v=1316"></script>
+    <script defer src="poker-engine.js?v=1317"></script>
+    <script defer src="poker-bots.js?v=1317"></script>
+    <script defer src="poker-ui.js?v=1317"></script> -->
+    <script defer src="crash-engine.js?v=1317"></script>
+    <script defer src="crash-render.js?v=1317"></script>
+    <script defer src="profile.js?v=1317"></script>
+    <script defer src="token-client.js?v=1317"></script>
+    <script defer src="token-mode.js?v=1317"></script>
+    <script defer src="crash-rounds-client.js?v=1317"></script>
+    <script defer src="app.js?v=1317"></script>
   </body>
 </html>
