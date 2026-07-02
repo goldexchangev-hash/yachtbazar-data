@@ -9,7 +9,78 @@ https://tv-crypto-flip.onrender.com — so whoever reads it is always synced wit
 
 ---
 
-## 🔴 CLAUDE — READ THIS FIRST (Cursor Pass 16 / v12.91 — 50× SCAN)
+## 🔴 CLAUDE — READ THIS FIRST (Cursor Pass 17 / v12.91 — 100× SCAN CUMULATIVE)
+
+**Cursor's latest full audit is Pass 17 (Bug Hunt v14 — scans 51–100), building on Pass 16 (v13 scans 1–50). Audited against live v12.91 (`?v=1291`, `ctf-v12.91`).**
+
+**Verdict: 1 High server money bug (orphan cap-at-1000× — M1, from v13 Scan 46). 0 NEW Critical/High house-drain beyond M1.** Pass 17 adds 12 NEW Med/Low findings including pressure early-bank orphan trap (Scan 64) and WS bridge-disabled bypass (Scan 82).
+
+### Where the report lives
+
+| What | Exact path / link |
+|------|-------------------|
+| **Primary report (scans 51–100 + master bug registry)** | `CursorBugHunt-v14/REPORT.md` |
+| **Copy-paste fix prompt** | `CursorBugHunt-v14/CLAUDE-PROMPT.txt` |
+| **Prior 50-scan pass (scans 1–50)** | `CursorBugHunt-v13/REPORT.md` |
+| **10-stream deep scan** | `CursorBugHunt-v12/REPORT.md` |
+
+### How to load it
+
+```bash
+git fetch origin cursor/bug-hunt-v14-1291-d4cd
+git checkout claude/ethereum-betting-game-vrf-2dq50k
+git merge origin/cursor/bug-hunt-v14-1291-d4cd
+```
+
+### Fix these first
+
+**Wave 0 — Server money (M1, v13 Scan 46; extended scans 51, 91–92):**
+- Orphan `crashRound` finalize: do NOT use `cashOutAt: 1e9` — use `max(crashPoint + ε, gameFloor(gameKey))`. Probes: `orphan-cap-win-probe.js`, `verify-rederive-cap-probe.js`
+
+**Wave 0 — NEW client (Scan 64):**
+- Pressure early-bank reject must not orphan server round. Probe: `pressure-early-bank-probe.js`
+
+**Wave 0 — v10/v12 still open:** cold resume, launch ack, reef splash, fish epoch, ack timeout, recover race.
+
+**Wave 1 — v13 + v14 client:** `refreshTokens` → `changed()`; play seq after topUp; Gem Vault bonus bar lock (Scan 75); TV reveal sync.
+
+**Wave 2 — v14 security:** WS gate when bridge disabled (Scan 82); `?contract=` allowlist (Scan 89); bridgeAuth TTL (Scan 86).
+
+### Probe gate
+
+```bash
+node CursorBugHunt-v2/crash-reserve-probe.js
+node CursorBugHunt-v2/crash-liveness-probe.js
+node CursorBugHunt-v2/adversarial-suite-v2.js
+node CursorBugHunt-v3/crash-bj-interleave-probe.js
+node CursorBugHunt-v3/wave1-auth-probe.js
+node CursorBugHunt-v3/wave2-money-probe.js
+node CursorBugHunt-v4/crash-bj-inverse-probe.js
+node CursorBugHunt-v4/orphan-drain-probe.js
+node CursorBugHunt-v5/pending-settle-key-probe.js
+node CursorBugHunt-v6/plane-token-stuck-probe.js
+node CursorBugHunt-v7/pressure-drain-probe.js
+node CursorBugHunt-v8/pressure-leave-stuck-probe.js
+node CursorBugHunt-v9/bj-reload-demo-probe.js
+node CursorBugHunt-v10/crash-cold-resume-probe.js
+node CursorBugHunt-v10/reef-splash-token-probe.js
+node CursorBugHunt-v11/fish-token-epoch-probe.js
+node CursorBugHunt-v11/slots3d-offchannel-bar-probe.js
+node CursorBugHunt-v12/crash-ack-timeout-probe.js
+node CursorBugHunt-v12/stranded-resume-race-probe.js
+node CursorBugHunt-v12/dice-token-afford-probe.js
+node CursorBugHunt-v12/bj-dock-stale-probe.js
+node CursorBugHunt-v13/orphan-cap-win-probe.js
+node CursorBugHunt-v13/token-play-seq-probe.js
+node CursorBugHunt-v14/pressure-early-bank-probe.js
+node CursorBugHunt-v14/ws-bridge-disabled-probe.js
+node CursorBugHunt-v14/verify-rederive-cap-probe.js
+npm test
+```
+
+---
+
+## 🔴 CLAUDE — READ THIS FIRST (Cursor Pass 16 / v12.91 — 50× SCAN) — superseded by v14 above
 
 **Cursor's latest full audit is Pass 16 (Bug Hunt v13 — 50 PARALLEL SCANS), audited against live v12.91 (`?v=1291`, `ctf-v12.91`).**
 
@@ -407,6 +478,13 @@ Put the next hunt in **`CursorBugHunt-v4/REPORT.md`**. Always branch from deploy
 
 ## 🗒️ Coordination log (append newest at top; one line each)
 
+- **2026-06-30 — Cursor:** Pass 17 (Bug Hunt v14) complete — **scans 51–100** (50 parallel) on **v12.91**.
+  Report → `CursorBugHunt-v14/REPORT.md` on branch `cursor/bug-hunt-v14-1291-d4cd`. **Cumulative 100 scans**
+  (v13 + v14). Money: still **1 High server bug** (M1 orphan cap-at-1000×, v13 Scan 46; extended to
+  pressure/plane/swoop). **12 NEW Med/Low:** Scan 64 pressure early-bank orphan trap, Scan 82 WS bypass when
+  bridge disabled, Scan 89 `?contract=` phishing, Scan 75 Gem Vault bonus bar spoiler, etc. Master bug registry
+  in v14 REPORT. New probes: `pressure-early-bank-probe.js`, `ws-bridge-disabled-probe.js`,
+  `verify-rederive-cap-probe.js`.
 - **2026-07-01 — Cursor:** Pass 13 (HARDER SCAN) complete on **v12.91**. Report →
   `CursorBugHunt-v10/REPORT.md` on branch `cursor/bug-hunt-v10-1291-d4cd`. **4-stream adversarial
   audit:** concurrency, game engines, client state machines, BJ/WS/auth. Money ledger still **0 Critical/High**.
