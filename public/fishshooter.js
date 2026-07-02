@@ -384,20 +384,21 @@
     var su = free ? this._frenzyUnit : this.unitBet, sp = free ? this._frenzyPow : this.power;
     var paid = Math.round(su * sp * 100) / 100, cost = free ? 0 : paid;
     if (!free && this.balance < cost) { this._flashBanner("INSUFFICIENT", "add funds", 0xff5d72); return; }
-    // v6 #12: TOKEN mode debits on the SERVER at HIT (not at fire), so rapid taps could queue more paid shots
-    // than the balance covers → the server rejects the extras (wasted round-trips). Require the balance to also
-    // cover the stakes of paid shots STILL IN FLIGHT. Derived from the bullets array (not a running counter) so
-    // it can NEVER leak and soft-lock firing. Demo debits at fire, so its balance already reflects this.
+    // v6 #12: TOKEN debits on the SERVER when a bullet CONNECTS (in _resolveHit), not at fire — so require the
+    // balance to also cover the stakes of paid shots STILL IN FLIGHT (unsettled), else rapid taps queue more than
+    // the balance covers. Derived from the bullets array (never leaks). Demo debits at fire so its balance already
+    // reflects this. (v12.99: the DISPLAY also subtracts this same in-flight sum so the charge shows the INSTANT you
+    // tap — see _renderTv balShow — while this.balance stays the authoritative server value.)
     if (!free && this._tokenActive()) {
       var pend = 0;
-      for (var pi = 0; pi < this.bullets.length; pi++) { var pb = this.bullets[pi]; if (pb && !pb.free && !pb.hit && (pb.cost || 0) > 0) pend += pb.cost; }
+      for (var pi = 0; pi < this.bullets.length; pi++) { var pb = this.bullets[pi]; if (pb && !pb.free && !pb.settled && (pb.cost || 0) > 0) pend += pb.cost; }
       if (this.balance < cost + pend) { this._flashBanner("EASY!", "let your shots land", 0xffd23f); return; }
     }
     if (cost > 0) {
       this._sesSpent = Math.round((this._sesSpent + cost) * 100) / 100;
-      // TOKEN: the server debits the stake on each per-shot bet (in _resolveHit) and there is
-      // no client jackpot rake — the server's flat RTP already includes everything. DEMO: debit
-      // the play-money stake + skim the rake into the self-funded jackpot pool, as before.
+      // TOKEN: the server debits the stake on each per-shot bet (in _resolveHit) and there is no client jackpot rake
+      // — the server's flat RTP already includes everything (the DISPLAY shows the debit instantly via the in-flight
+      // subtraction). DEMO: debit the play-money stake at fire + skim the rake into the self-funded jackpot pool.
       if (!this._tokenActive()) { this.balance = Math.round((this.balance - cost) * 100) / 100; this._jackpotPool = Math.round((this._jackpotPool + cost * JACKPOT_RAKE) * 100) / 100; }
       this._save(); this._renderHud();
     }
@@ -438,6 +439,7 @@
       var epoch = (self._tokenEpoch = self._tokenEpoch || 0); // v11 #1: pin the epoch so an off-channel resolve (after setActive(false) bumps it) can't re-arm a bonus on a screen you already left
       this._net(b.s.x, b.s.y, fish.def.color); // immediate net FX (latency-friendly)
       root.TokenMode.bet("fishshooter", b.cost, { targetKey: fish.def.key, power: b.power }).then(function (r) {
+        b.settled = true; // v12.99: server resolved this shot → it leaves the in-flight display sum (balShow) + the over-bet pend, and the bullet loop may now remove it
         if (epoch !== self._tokenEpoch || !self._active) { if (root.TokenMode && root.TokenMode.paintTokens) root.TokenMode.paintTokens(); return; } // v11 #1: left the channel / mode changed → keep the top token bar synced but suppress off-channel bonus/catch
         var bonus = r && r.win && r.outcome && r.outcome.bonus && r.outcome.bonus.total > 0 ? r.outcome.bonus : null;
         var inBonus = self._bonus || self._bonusFinale; // a bonus round is already animating → HOLD the HUD; it reveals at the finale
@@ -458,7 +460,7 @@
         // win/loss before the fish bursts and spoils it. Skip the repaint entirely while a bonus is running so
         // the held balance can't flash the bonus total early. Sync the TOP token bar at the same beat.
         setTimeout(function () { if (!(self._bonus || self._bonusFinale)) { self._renderHud(); if (root.TokenMode && root.TokenMode.paintTokens) root.TokenMode.paintTokens(); } }, 480);
-      }).catch(function (e) { if (epoch !== self._tokenEpoch || !self._active) { if (root.TokenMode && root.TokenMode.paintTokens) root.TokenMode.paintTokens(); return; } if (!(self._bonus || self._bonusFinale)) { self.balance = root.TokenMode.tokens(); self._renderHud(); if (root.TokenMode && root.TokenMode.paintTokens) root.TokenMode.paintTokens(); } }); // v11 #1: drop an off-channel resolve; transactional bridge: a rejected bet cost nothing
+      }).catch(function (e) { b.settled = true; if (epoch !== self._tokenEpoch || !self._active) { if (root.TokenMode && root.TokenMode.paintTokens) root.TokenMode.paintTokens(); return; } if (!(self._bonus || self._bonusFinale)) { self.balance = root.TokenMode.tokens(); self._renderHud(); if (root.TokenMode && root.TokenMode.paintTokens) root.TokenMode.paintTokens(); } }); // v11 #1: drop an off-channel resolve; transactional bridge: a rejected bet cost nothing (settled ⇒ leaves the in-flight sum, balance recovers)
       return;
     }
     if (b.free) { // accumulate the EXPECTED value this connecting free shot delivers; the wave ends when it reaches the budget (variable realized payout)
@@ -896,11 +898,15 @@
           this._shake = Math.max(this._shake, 2);
         }
       }
-      if (b.hit) { this._rmBullet(b); continue; }
+      // v12.99: a PAID token shot that has connected but whose server bet hasn't RESOLVED yet stays in the array
+      // (hidden, no re-collision) so it keeps counting toward the in-flight display sum until settled — that keeps
+      // the tapped-instant debit steady with no flicker. Free/boss bullets (no server bet) are removed normally.
+      var awaitSettle = this._tokenActive() && b.hit && !b.free && !b.bossId && !b.settled && (b.cost || 0) > 0;
+      if (b.hit) { if (awaitSettle) { if (b.s) b.s.visible = false; continue; } this._rmBullet(b); continue; }
       var hit = null;
       for (var fj = 0; fj < this.fish.length; fj++) { var ff = this.fish[fj]; if (!ff.alive) continue; if (Math.hypot(b.s.x - ff.cont.x, b.s.y - ff.cont.y) < ff.r + b.r) { hit = ff; break; } }
       if (hit) this._resolveHit(b, hit);
-      if (b.hit) this._rmBullet(b);
+      if (b.hit) { var aw2 = this._tokenActive() && !b.free && !b.bossId && !b.settled && (b.cost || 0) > 0; if (aw2) { if (b.s) b.s.visible = false; } else this._rmBullet(b); }
     }
 
     // coins
@@ -953,8 +959,11 @@
     // TOKEN: there is NO self-funded jackpot/boss meter in token play (the pool is a client-side rake, gated
     // off in _catch). So a token player in NORMAL play (no bonus wave / countdown / finale) sees NOTHING here
     // rather than a permanently-stuck "JACKPOT ROUND 0%" meter. The bonus-WAVE meter still renders normally.
-    var tokenIdle = this._tokenActive() && this._frenzy <= 0 && !counting && !finale && !inBoss;
-    if (tokenIdle) { this.jpText.text = ""; }
+    // v12.99: the idle "JACKPOT ROUND %" progress meter is HIDDEN in BOTH modes (owner disabled it). A top meter now
+    // renders ONLY for an ACTIVE bonus feature — bonus wave (frenzy), the 3-2-1 countdown, the finale reveal, or a
+    // boss HP bar. In plain play there's no top meter (token play was already hidden; this extends it to demo too).
+    var idleNoMeter = this._frenzy <= 0 && !counting && !finale && !inBoss;
+    if (idleNoMeter) { this.jpText.text = ""; }
     else {
       g.beginFill(0x041326, 0.7); g.drawRoundedRect(x - 3, y - 3, bw + 6, bh + 6, 6); g.endFill();
       g.beginFill(0x0c2840); g.drawRoundedRect(x, y, bw, bh, 5); g.endFill();
@@ -983,7 +992,11 @@
     // During the bonus finale the banked total COUNTS UP into the balance (so the deposit reads clearly),
     // and the balance label PULSES when the coins land. Normal play shows the live balance unchanged.
     var balShow = this.balance, fz2 = this._bonusFinale;
-    if (fz2 && fz2.paid && fz2.won > 0) { var dpp = clamp((fz2.t - 1.95) / 1.3, 0, 1); balShow = this.balance - fz2.won * (1 - dpp); }
+    // v12.99: TOKEN shows the per-shot debit the INSTANT you tap — subtract paid shots STILL IN FLIGHT (fired but
+    // not yet settled by the server). A culled/cleared bullet leaves the array → the balance recovers; a settled hit
+    // leaves this sum AND is already reflected in this.balance → no flicker. this.balance stays the authoritative value.
+    if (this._tokenActive()) { var infl = 0; for (var qi = 0; qi < this.bullets.length; qi++) { var qb = this.bullets[qi]; if (qb && !qb.free && !qb.bossId && !qb.settled && (qb.cost || 0) > 0) infl += qb.cost; } if (infl > 0) balShow = Math.max(0, Math.round((balShow - infl) * 100) / 100); }
+    if (fz2 && fz2.paid && fz2.won > 0) { var dpp = clamp((fz2.t - 1.95) / 1.3, 0, 1); balShow = balShow - fz2.won * (1 - dpp); }
     this.balText.text = "💰 " + this._usd(balShow);
     this.balText.scale.set(1 + (this._depositPulse || 0) * 0.5);
     if (this.winText) this.winText.visible = false;
