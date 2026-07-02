@@ -100,12 +100,17 @@
       if (deps.isHouseWallet && deps.isHouseWallet()) return note("You're the HOUSE wallet — switch to a player account in MetaMask to play with tokens (the house can't bet against itself).", "err");
       var usd = Math.round((+amountUsd || 0) * 100) / 100;
       if (!(usd > 0)) return note("Enter how much to buy in", "err");
-      // blackjackBuyIn locks from your PRE-DEPOSITED game credits (not raw ETH), so make
-      // sure they're funded first — otherwise the lock reverts InsufficientBalance.
-      if (deps.gameBalanceUsd && usd > deps.gameBalanceUsd() + 0.001)
-        return note("Deposit at least " + fmt(usd) + " into game credits first (the Deposit box), then buy in.", "err");
-      busy = true; render();
+      busy = true; render(); // set busy BEFORE any await below — the gate's refresh must not open a double-tap re-entrancy window
       try {
+        // blackjackBuyIn locks from your PRE-DEPOSITED game credits (not raw ETH), so make
+        // sure they're funded first — otherwise the lock reverts InsufficientBalance.
+        // v14 #16: the cached credits can be STALE-LOW right after a cash-out/recover (the settle returns the
+        // funds on-chain but the cache hasn't repolled) — refresh ONCE before refusing a legit buy-in.
+        if (deps.gameBalanceUsd && usd > deps.gameBalanceUsd() + 0.001) {
+          try { if (deps.refreshCredits) await deps.refreshCredits(); } catch (e) {}
+          if (usd > deps.gameBalanceUsd() + 0.001)
+            return note("Deposit at least " + fmt(usd) + " into game credits first (the Deposit box), then buy in.", "err");
+        }
         var amountWei = deps.usdToWei(usd);
         note("Confirm the buy-in in your wallet (one time)…", "ok");
         var r = await client.buyIn(amountWei);
