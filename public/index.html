@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#0c0d16" />
     <meta name="referrer" content="same-origin" />
-    <link rel="manifest" href="manifest.webmanifest?v=1307" />
+    <link rel="manifest" href="manifest.webmanifest?v=1308" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -28,7 +28,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=1307" />
+    <link rel="stylesheet" href="styles.css?v=1308" />
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -38,13 +38,13 @@
     <!-- ───────────────────────── Header ───────────────────────── -->
     <header class="topbar">
       <button id="rail-toggle" class="rail-toggle" aria-label="Open menu" title="Menu">☰</button>
-      <span class="build-tag-m" id="build-tag-m" title="Live build version — confirms the deploy is up to date">v13.07</span>
+      <span class="build-tag-m" id="build-tag-m" title="Live build version — confirms the deploy is up to date">v13.08</span>
       <div class="brand">
         <span class="brand-tv">📺</span>
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v13.07</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v13.08</span>
       </div>
       <div class="topbar-right">
         <div class="tb-tools">
@@ -437,7 +437,7 @@
                 <!-- Promo intro reel — autoplays once (muted) on first load, then fades
                      to black and hands off to the game. Replay button under the TV. -->
                 <!-- promo DISABLED for now (owner) — preload none so the reel isn't even downloaded; re-enable via PROMO_ENABLED in app.js -->
-                <video id="promo-video" class="promo-video hidden" playsinline preload="none" muted src="promo.mp4?v=1307"></video>
+                <video id="promo-video" class="promo-video hidden" playsinline preload="none" muted src="promo.mp4?v=1308"></video>
 
                 <!-- Shown while a bet tx is being signed + mined (esp. slow on mobile) -->
                 <div id="tv-pending" class="tv-pending hidden">⏳ SENDING BET…<br />confirm in your wallet, then hold tight</div>
@@ -1192,8 +1192,8 @@
 
         <!-- Trash-talk chat now lives in the slide-in right drawer (#chat-drawer) -->
 
-        <!-- Create room (collapsible) -->
-        <div class="card">
+        <!-- Create room (collapsible) — DISABLED: legacy on-chain 1-v-1 PvP, retired in favor of the server token bridge -->
+        <div class="card hidden" id="create-room-card">
           <details class="dropdown">
             <summary class="card-title dd-summary"><span>Create a room</span><span class="dd-arrow" aria-hidden="true">▾</span></summary>
             <p class="muted ph-note">A 1-v-1 flip with a friend. You both wager the <strong>same</strong> amount — set it here, then share your link.</p>
@@ -1223,8 +1223,8 @@
           </details>
         </div>
 
-        <!-- Host your own table (collapsible) -->
-        <div class="card">
+        <!-- Host your own table (collapsible) — DISABLED: legacy on-chain host-bank PvP, retired in favor of the server token bridge -->
+        <div class="card hidden" id="host-table-card">
           <details class="dropdown">
             <summary class="card-title dd-summary"><span>🏦 Host your own table</span><span class="dd-arrow" aria-hidden="true">▾</span></summary>
             <p class="muted ph-note">Share one link — <strong>many players</strong> can flip against <strong>your</strong> bank at once, each for any amount they pick (no wait line). You're the house: you keep <strong>half</strong> the 3% rake (1.5%), the platform takes the other 1.5%. Auto-refunds you if idle for 5 minutes.</p>
@@ -1549,21 +1549,21 @@
       </div>
     </aside>
 
-    <script defer src="vendor/ethers.umd.min.js?v=1307"></script>
-    <script defer src="config.js?v=1307"></script>
-    <script defer src="contract.js?v=1307"></script>
-    <script defer src="chiptune.js?v=1307"></script>
-    <script defer src="scenes.js?v=1307"></script>
-    <script defer src="tv.js?v=1307"></script>
-    <script defer src="poker-engine.js?v=1307"></script>
-    <script defer src="poker-bots.js?v=1307"></script>
-    <script defer src="poker-ui.js?v=1307"></script>
-    <script defer src="crash-engine.js?v=1307"></script>
-    <script defer src="crash-render.js?v=1307"></script>
-    <script defer src="profile.js?v=1307"></script>
-    <script defer src="token-client.js?v=1307"></script>
-    <script defer src="token-mode.js?v=1307"></script>
-    <script defer src="crash-rounds-client.js?v=1307"></script>
-    <script defer src="app.js?v=1307"></script>
+    <script defer src="vendor/ethers.umd.min.js?v=1308"></script>
+    <script defer src="config.js?v=1308"></script>
+    <script defer src="contract.js?v=1308"></script>
+    <script defer src="chiptune.js?v=1308"></script>
+    <script defer src="scenes.js?v=1308"></script>
+    <script defer src="tv.js?v=1308"></script>
+    <script defer src="poker-engine.js?v=1308"></script>
+    <script defer src="poker-bots.js?v=1308"></script>
+    <script defer src="poker-ui.js?v=1308"></script>
+    <script defer src="crash-engine.js?v=1308"></script>
+    <script defer src="crash-render.js?v=1308"></script>
+    <script defer src="profile.js?v=1308"></script>
+    <script defer src="token-client.js?v=1308"></script>
+    <script defer src="token-mode.js?v=1308"></script>
+    <script defer src="crash-rounds-client.js?v=1308"></script>
+    <script defer src="app.js?v=1308"></script>
   </body>
 </html>

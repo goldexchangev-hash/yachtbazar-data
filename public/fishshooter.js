@@ -749,7 +749,7 @@
         // dragon). They never got to resolve, so REFUND their cost — the boss round must never "cost
         // you shots". Then drop all pre-boss bullets.
         var refund = 0;
-        for (var bi = this.bullets.length - 1; bi >= 0; bi--) { var pbb = this.bullets[bi]; if (this._boss && pbb.bossId !== this._boss.id) { if (!pbb.free && pbb.cost > 0) refund += pbb.cost; this._rmBullet(pbb); } }
+        for (var bi = this.bullets.length - 1; bi >= 0; bi--) { var pbb = this.bullets[bi]; if (this._boss && pbb.bossId !== this._boss.id) { if (!this._tokenActive() && !pbb.free && pbb.cost > 0) refund += pbb.cost; this._rmBullet(pbb); } }
         if (refund > 0) { refund = Math.round(refund * 100) / 100; this.balance = Math.round((this.balance + refund) * 100) / 100; this._sesSpent = Math.round((this._sesSpent - refund) * 100) / 100; this._save(); this._renderHud(); this._floatText("shots refunded +$" + refund.toFixed(2), this.W / 2, this.H * 0.58, 0x45f0a6); }
         var Cg = root.Chiptune; if (Cg && Cg.bigwin) try { Cg.bigwin(); } catch (e) {}
       }

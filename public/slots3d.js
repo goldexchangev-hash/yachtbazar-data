@@ -11,7 +11,8 @@
 (function (root) {
   "use strict";
   const THREE = root.THREE, E = root.Slots3DEngine;
-  const REELS = 5, ROWS = 3, MIN_BET = 10, MAX_BET = 100; // $100 ceiling, matching the site-wide HARD_MAX_USD
+  const REELS = 5, ROWS = 3, MIN_BET = 10, MAX_BET = 100; // TOKEN (real-money) $100 ceiling, matching the site-wide HARD_MAX_USD
+  const DEMO_BET_MAX = 1000; // DEMO (play-money) ceiling — higher so demo play feels unlimited (real money keeps MAX_BET)
   const PANY = 0.55; // shift the reels UP in frame, leaving a black shelf at the bottom for the win/bonus banners
 
   /* palette per symbol id (0..7) */
@@ -700,11 +701,13 @@
     else if (!this._enabled) { b.textContent = "CONNECT TO PLAY"; b.dataset.kind = "wait"; b.disabled = true; }
     else { b.textContent = "🎰 SPIN  " + this._usd(this.bet); b.dataset.kind = "spin"; b.disabled = this.balance < this.bet; }
   };
+  // TOKEN (real-money) keeps the $100 ceiling; DEMO play-money lifts it to $1,000.
+  Slots3D.prototype._capBet = function () { return (root.TokenMode && root.TokenMode.active()) ? MAX_BET : DEMO_BET_MAX; };
   Slots3D.prototype._syncBet = function () { const e = this.els;
-    if (e.betSlider) e.betSlider.value = this.bet;
+    if (e.betSlider) { e.betSlider.max = String(this._capBet()); e.betSlider.value = this.bet; }
     this._renderHud(); this._renderSpinBtn();
   };
-  Slots3D.prototype._setBet = function (v) { this.bet = Math.max(MIN_BET, Math.min(MAX_BET, Math.round((+v || MIN_BET) * 100) / 100)); this._syncBet(); };
+  Slots3D.prototype._setBet = function (v) { this.bet = Math.max(MIN_BET, Math.min(this._capBet(), Math.round((+v || MIN_BET) * 100) / 100)); this._syncBet(); };
   Slots3D.prototype._updatePf = function () { if (this.els.pfNonce) this.els.pfNonce.textContent = String(this.nonce); if (this.els.pfLast && this.lastRound) this.els.pfLast.textContent = "round #" + this.lastRound.nonce + " · win " + this._usd(this.lastRound.win); };
   Slots3D.prototype._verifyLast = function () {
     if (!this.lastRound) { this._msg("Spin once, then verify", ""); return; }
@@ -722,7 +725,7 @@
     if (e.betSlider) e.betSlider.addEventListener("input", () => this._setBet(parseFloat(e.betSlider.value) || MIN_BET));
     if (e.betHalf) e.betHalf.addEventListener("click", () => this._setBet(this.bet / 2));
     if (e.betDouble) e.betDouble.addEventListener("click", () => this._setBet(this.bet * 2));
-    if (e.betMax) e.betMax.addEventListener("click", () => this._setBet(Math.min(MAX_BET, this.balance)));
+    if (e.betMax) e.betMax.addEventListener("click", () => this._setBet(Math.min(this._capBet(), this.balance)));
     if (e.pfClient) e.pfClient.addEventListener("change", () => { this.clientSeed = e.pfClient.value || E.randomSeed(8); });
     if (e.pfVerify) e.pfVerify.addEventListener("click", () => this._verifyLast());
     // SPACE spins (only while this is the live channel + no modal/typing)

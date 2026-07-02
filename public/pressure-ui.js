@@ -18,7 +18,8 @@
   const RESET_MS = 1500;
   const ETH_USD = 3400;          // demo ETH price; the live site uses the real feed
   const MIN_BET = 10;            // $10 minimum, settled in the equivalent ETH
-  const MAX_BET = 500;           // demo stake cap
+  const MAX_BET = 500;           // TOKEN (real-money) stake cap
+  const DEMO_BET_MAX = 1000;     // DEMO (play-money) stake cap — higher so demo play feels unlimited
   const MIN_CASHOUT = 1.20;      // must inflate past this to bank — earlier release = refund
                                  // (kills the "tap at ~1.0x for tiny risk-free-feeling wins" exploit feel)
 
@@ -102,9 +103,10 @@
     if (this.els.balance) this.els.balance.textContent = this._usd(this.balance);
     if (this.els.balanceEth) this.els.balanceEth.textContent = "≈ " + this._eth(this.balance);
     if (this.els.bet) this.els.bet.value = this.bet;
-    // Bet slider: span $10 -> demo max cap.
+    // Bet slider: span $10 -> stake cap (demo lifts it to $1,000; token keeps $500).
     if (this.els.betSlider) {
-      this.els.betSlider.max = String(Math.max(MIN_BET, Math.min(MAX_BET, Math.round(this.balance) || MIN_BET)));
+      var _capBet = this._tokenActive() ? MAX_BET : DEMO_BET_MAX;
+      this.els.betSlider.max = String(Math.max(MIN_BET, Math.min(_capBet, Math.round(this.balance) || MIN_BET)));
       this.els.betSlider.value = String(Math.min(this.bet, +this.els.betSlider.max));
     }
     if (this.els.betVal) this.els.betVal.textContent = this._usd(this.bet);
@@ -166,13 +168,13 @@
       // mid-pump would change the payout (stake is deducted at press, but the
       // win is computed on the current stake). Editable while armed/idle/result.
       if (!this._canEditBet()) { this._renderHud(); return; }
-      this.bet = Math.max(MIN_BET, Math.min(MAX_BET, Math.round(v * 100) / 100)); this._renderHud();
+      this.bet = Math.max(MIN_BET, Math.min(this._tokenActive() ? MAX_BET : DEMO_BET_MAX, Math.round(v * 100) / 100)); this._renderHud();
     };
     if (els.betUp) els.betUp.addEventListener("click", () => setBet(this.bet + betStep(this.bet)));
     if (els.betDown) els.betDown.addEventListener("click", () => setBet(this.bet - betStep(this.bet - 0.01)));
     if (els.betHalf) els.betHalf.addEventListener("click", () => setBet(this.bet / 2));
     if (els.betDouble) els.betDouble.addEventListener("click", () => setBet(this.bet * 2));
-    if (els.betMax) els.betMax.addEventListener("click", () => setBet(Math.min(MAX_BET, this.balance)));
+    if (els.betMax) els.betMax.addEventListener("click", () => setBet(Math.min(this._tokenActive() ? MAX_BET : DEMO_BET_MAX, this.balance)));
     if (els.bet) els.bet.addEventListener("change", () => setBet(parseFloat(els.bet.value) || MIN_BET));
     if (els.betSlider) els.betSlider.addEventListener("input", () => setBet(parseFloat(els.betSlider.value) || MIN_BET));
     if (els.addCredits) els.addCredits.addEventListener("click", () => { this.balance += 1000; this._saveBalance(); this._renderHud(); this._msg("+$1,000.00 added"); });

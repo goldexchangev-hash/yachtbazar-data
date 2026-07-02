@@ -10,6 +10,7 @@
   "use strict";
   const E = root.PlaneEngine;
   const ETH_USD = 3400, MIN_BET = 10, DEMO_MAX_BET = 500, MAX_AUTO = 999.99;
+  const DEMO_BET_CAP = 1000; // DEMO (play-money) stake cap — higher than the token cap so demo play feels unlimited
   const BET_WINDOW = 4.0, TAKEOFF_BEAT = 0.7, CRASH_PAUSE = 1.6;
 
   /* Self-contained rising "engine" tone (own AudioContext; never touches the
@@ -94,7 +95,7 @@
   };
   PlaneGame.prototype._syncPanel = function (b) {
     const e = b.els;
-    if (e.betInput) e.betInput.value = b.stake;
+    if (e.betInput) { e.betInput.max = String(this.mode === "demo" ? DEMO_BET_CAP : DEMO_MAX_BET); e.betInput.value = b.stake; }
     if (e.betVal) e.betVal.textContent = this._usd(b.stake);
     if (e.betEth) e.betEth.textContent = "≈ " + this._eth(b.stake);
     if (e.autoSlider) e.autoSlider.value = b.autoTarget;
@@ -444,7 +445,7 @@
       // deducts at launch but cashes out on the current stake). Edit only while
       // betting / idle; the controls are also disabled in those states.
       if (!this._canEditBet()) { this._syncPanel(b); return; }
-      const cap = this.mode === "demo" ? DEMO_MAX_BET : Math.max(DEMO_MAX_BET, this.balance || DEMO_MAX_BET);
+      const cap = this.mode === "demo" ? DEMO_BET_CAP : Math.max(DEMO_MAX_BET, this.balance || DEMO_MAX_BET);
       b.stake = Math.max(MIN_BET, Math.min(cap, Math.round(v * 100) / 100)); b.baseStake = b.stake; this._syncPanel(b); this._renderButtons();
     };
     if (e.action) e.action.addEventListener("click", () => this._onAction(b));
@@ -452,7 +453,7 @@
     if (e.betDown) e.betDown.addEventListener("click", () => setBet(b.stake - step(b.stake - 0.01)));
     if (e.betHalf) e.betHalf.addEventListener("click", () => setBet(b.stake / 2));
     if (e.betDouble) e.betDouble.addEventListener("click", () => setBet(b.stake * 2));
-    if (e.betMax) e.betMax.addEventListener("click", () => setBet(this.mode === "demo" ? Math.min(DEMO_MAX_BET, this.balance) : this.balance));
+    if (e.betMax) e.betMax.addEventListener("click", () => setBet(this.mode === "demo" ? Math.min(DEMO_BET_CAP, this.balance) : this.balance));
     if (e.betInput) { e.betInput.addEventListener("change", () => setBet(parseFloat(e.betInput.value) || MIN_BET)); e.betInput.addEventListener("input", () => setBet(parseFloat(e.betInput.value) || MIN_BET)); }
     const setAuto = (v) => { b.autoTarget = Math.max(1.01, Math.min(MAX_AUTO, Math.round(v * 100) / 100)); this._syncPanel(b); };
     if (e.autoSlider) e.autoSlider.addEventListener("input", () => setAuto(parseFloat(e.autoSlider.value)));
