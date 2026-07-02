@@ -203,11 +203,16 @@ function makeTokenBridge(opts) {
 
     // Commit atomically now that the result is valid: burn the nonce + move tokens together.
     s.betNonce = nonce + 1;
+    const preBet = round2(s.tokens - bet); // balance after the stake, before the win lands
     s.tokens = capUp(round2(s.tokens - bet + payout), s.buyInUnits); // v6 #14: bound the session win side to the max-win ceiling
     const rec = { nonce: nonce, game: o.game, betUnits: bet, params: o.params || {}, clientSeed: clientSeed, payoutUnits: payout, win: !!res.win, multiplier: res.multiplier };
     s.bets.push(rec);
     save();
-    return { sessionId: s.id, nonce: nonce, game: o.game, win: rec.win, multiplier: rec.multiplier, payoutUnits: payout, outcome: res.outcome, detail: res.detail, tokens: s.tokens, commit: s.commit };
+    // M4: bankedUnits = the payout ACTUALLY credited after the max-win cap (ledger delta). The ledger
+    // record above keeps the RAW payout — verifyRederive re-derives against it — this field is display-only
+    // so a capped win never banners money that wasn't banked.
+    const banked = round2(Math.max(0, s.tokens - preBet));
+    return { sessionId: s.id, nonce: nonce, game: o.game, win: rec.win, multiplier: rec.multiplier, payoutUnits: payout, bankedUnits: banked, capped: banked < payout, outcome: res.outcome, detail: res.detail, tokens: s.tokens, commit: s.commit };
   }
 
   // TOP UP an OPEN session: the player locked MORE on-chain (a second blackjackBuyIn, which
@@ -717,6 +722,24 @@ if (require.main === module) {
     eq("max-win cap never touches the loss side", cap.session(cs2.sessionId).tokens === 550);
     const cstl = await cap.settle({ sessionId: cs2.sessionId });
     eq("capped session settles (net bounded to the cap)", cstl.netUnits === 450); // 550 − 100 buyIn
+
+    // ── M4: play() response reports the BANKED payout (post-cap ledger delta), never just raw game math ──
+    // All-in coinflips on FRESH tiny-cap sessions: a WIN pays 1.94×buyIn > buyIn+0.01 ⇒ always capped;
+    // a LOSS asserts the uncapped shape. New session per attempt = independent seeds (P(miss either in 50) ≈ 2⁻⁴⁹).
+    const capP = makeTokenBridge({ signer: signer2, maxWinUnits: 0.01, toWei: (u) => BigInt(Math.round(u * 1e6)) });
+    let capWin = null, capLoss = null, capWinSid = null;
+    for (let i = 0; i < 50 && !(capWin && capLoss); i++) {
+      const sid = capP.start({ player, chainId: 1, contract, buyInUnits: 100, settleNonce: NONCE + 10n + BigInt(i) }).sessionId;
+      const r = capP.play({ sessionId: sid, game: "coinflip", betUnits: 100, params: { side: "heads" }, clientSeed: "m4" + i });
+      eq("M4 bankedUnits equals the ledger delta (attempt " + i + ")", r.bankedUnits === r.tokens); // all-in: post-stake balance is 0, so banked == final tokens
+      if (r.win && !capWin) { capWin = r; capWinSid = sid; }
+      if (!r.win && !capLoss) capLoss = r;
+    }
+    eq("M4 saw both a win and a loss under the tiny cap", !!(capWin && capLoss));
+    eq("M4 capped win: bankedUnits < raw payoutUnits and capped=true", capWin.bankedUnits < capWin.payoutUnits && capWin.capped === true);
+    eq("M4 capped win banks exactly buyIn+cap", capWin.tokens === 100.01);
+    eq("M4 loss: bankedUnits 0 and capped=false", capLoss.bankedUnits === 0 && capLoss.capped === false);
+    eq("M4 capped session still re-derives exactly", capP.rederive(capWinSid).ledgerMatches);
 
     // ── v8 #4: DRAIN-ON-DETECT — an orphaned open crashRound (SIGKILL that the boot drain missed) must NOT let a
     //    fresh reserve()/play() stack a 2nd live round (double-debit); it is bust-finalized first. A NORMAL
