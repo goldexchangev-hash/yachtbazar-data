@@ -268,7 +268,7 @@
             // (network blip) keeps the session and just repaints, so a redeploy can't strand a live balance
             // as a phantom while a blip can't wipe a real one.
             if (okk === "gone") { try { client.session = null; client.tokens = 0; } catch (e) {} _clearSession(); changed(); }
-            else { try { TokenMode.paintTokens(); } catch (e) {} }
+            else { try { changed(); } catch (e) {} } // v13 #2: changed() runs onChange→syncTokenGameBalances (updates the CANVAS HUD) then render() (top bar) — was paintTokens() alone, which left the destination canvas showing the pre-resume balance
           }).catch(function () {});
         }
       } catch (e) {}

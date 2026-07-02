@@ -288,7 +288,11 @@ const tokenSvc = attachTokenBridge(app, {
 // TOKEN-FUNDED BLACKJACK wiring: a real wallet's blackjack chips ARE their token session. Hand bets/wins
 // route through the hardened token ledger; cash-out is the normal token settle. (Late-bound here because
 // tokenSvc is created after blackjack.) The OLD experimental on-chain blackjack bridge stays optional.
-try { blackjack.setTokenLedger({ tokensOf: tokenSvc.tokensOf, applyNet: tokenSvc.applyBlackjackNet }); } catch (e) {}
+// v14 #3 (Scan 82): gate token BJ on the SAME enabled() predicate as the HTTP 503 guard. When the bridge is
+// disabled, tokensOf returns null → blackjack-server treats it as "no token session" → a real-money token BJ bet
+// is refused (never placed), matching the HTTP posture. Demo BJ (guest bank) doesn't consult tokensOf → unaffected.
+const _tokenBridgeEnabled = () => process.env.ENABLE_TOKEN_BRIDGE === "1" && realmoney.enabled();
+try { blackjack.setTokenLedger({ tokensOf: (sid) => (_tokenBridgeEnabled() ? tokenSvc.tokensOf(sid) : null), applyNet: tokenSvc.applyBlackjackNet }); } catch (e) {}
 
 // ── Live crash rounds over the ws (cr:* sub-protocol) ───────────────────────────
 // The server-paced round-runner that makes MANUAL tap-to-cash-out provably fair for the
@@ -296,7 +300,7 @@ try { blackjack.setTokenLedger({ tokensOf: tokenSvc.tokensOf, applyNet: tokenSvc
 // HTTP /api/token/* path (tokenSvc._bridge) and reuses its per-session bearer for auth
 // (tokenSvc.verifySession). Dormant until ENABLE_TOKEN_BRIDGE=1 — with no open session,
 // verifySession returns null and every cr:start is rejected, so the live demo is untouched.
-const crashWs = makeCrashWs({ bridge: tokenSvc._bridge, verifySession: tokenSvc.verifySession, liveExternal: (player) => tokenSvc.liveExternal(player) }); // v3 #1: WS cr:start refuses during a live BJ hand
+const crashWs = makeCrashWs({ bridge: tokenSvc._bridge, verifySession: tokenSvc.verifySession, liveExternal: (player) => tokenSvc.liveExternal(player), enabled: _tokenBridgeEnabled }); // v3 #1: WS cr:start refuses during a live BJ hand; v14 #3: and while the token bridge is disabled
 // Wire the crash-round liveness guard into the token service (late-bound: crashWs is built after tokenSvc).
 // doSettle/doRelease/doAdminRelease/doPlay now refuse while a server-paced crash/plane/swoop/pressure round
 // is live on that session — a mid-round cash-out can't close the session out from under the pending

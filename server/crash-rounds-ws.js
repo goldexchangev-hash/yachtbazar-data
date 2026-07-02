@@ -56,6 +56,12 @@ function makeCrashWs(opts) {
   // doPlay/doTopUp guards already do, but without this the WS start would reserve+debit a crash stake
   // mid-hand, draining the frozen funding pool the hand needs → applyExternal throws → hand stuck (v3 #1).
   const liveExternal = typeof opts.liveExternal === "function" ? opts.liveExternal : function () { return false; };
+  // v14 #3 (Scan 82): reject NEW crash rounds when the token bridge is DISABLED — mirrors the HTTP 503 guard.
+  // Sessions + bearers persist across a disable+restart, so without this cr:start would still open rounds on a
+  // reloaded session. Default true so the CLI self-test and any existing caller keep working. Only cr:start is
+  // gated (new exposure); cashout/resume settle an already-live round and must NOT be blocked (that would strand
+  // a stake / be a loss-escape).
+  const bridgeEnabled = typeof opts.enabled === "function" ? opts.enabled : function () { return true; };
   const send = typeof opts.send === "function" ? opts.send : defaultSend;
   const nowOf = typeof opts.now === "function" ? opts.now : function () { return Date.now(); };
   const wsByRound = new Map(); // roundId -> ws to push the result to (null once the socket drops)
@@ -86,6 +92,7 @@ function makeCrashWs(opts) {
   }
 
   function start(ws, data) {
+    if (!bridgeEnabled()) { send(ws, { type: "cr:error", code: "disabled", message: "token bridge is not enabled" }); return; } // v14 #3: no new rounds while the bridge is off
     const sess = verifySession(data && data.sessionId, data && data.sessionToken);
     if (!sess) { send(ws, { type: "cr:error", code: "auth", message: "buy in with tokens first" }); return; }
     // v3 #1: refuse a crash round while this player has a LIVE blackjack hand on the same token session —
@@ -128,7 +135,13 @@ function makeCrashWs(opts) {
     try {
       rounds.cashOut({ roundId: roundId }); // result is pushed via onResolve (one settlement path)
     } catch (e) {
-      send(ws, { type: "cr:error", code: "cashout", message: (e && e.message) || "already crashed", roundId: roundId });
+      var _m = (e && e.message) || "already crashed";
+      // v14 #1 (Scan 64): a below-floor pressure tap ("hold longer — Balloon Pop banks from 1.20x") is RECOVERABLE —
+      // the server keeps the round LIVE (never settled), the player must keep inflating. Tag it with a DISTINCT
+      // non-terminal code so the client does NOT tear down its live round (which would orphan the still-live server
+      // round + stranded stake). Everything else stays the terminal "cashout" code.
+      var _code = /^hold longer/.test(_m) ? "holdlonger" : "cashout";
+      send(ws, { type: "cr:error", code: _code, message: _m, roundId: roundId });
     }
   }
 

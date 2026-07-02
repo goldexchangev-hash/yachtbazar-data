@@ -98,6 +98,10 @@
     const rooms = new Map(); let seq = 0; const lobbySubs = new Set();
     const bridgeAuth = new Map();
     const norm = (w) => String(w || "").toLowerCase();
+    const BRIDGE_AUTH_TTL_MS = 24 * 60 * 60 * 1000; // v14 #86: legacy-bridge token expiry — a captured token can't authorize real-money BJ forever
+    // Returns the live token for a wallet, sweeping an expired entry (so reads stay honest post-expiry). Each
+    // authorize() refreshes exp, so a live session (re-buy / reconnect within the day) is never broken.
+    const bridgeAuthToken = (w) => { const e = bridgeAuth.get(norm(w)); if (!e) return null; if (e.exp <= Date.now()) { bridgeAuth.delete(norm(w)); return null; } return e.token; };
     const realWallet = (w) => /^0x[0-9a-fA-F]{40}$/.test(String(w || ""));
 
     const inRound = (s) => !!(s && s.baseBet > 0);
@@ -208,7 +212,7 @@
     // REAL money = ANY real-money funding path (the token bridge OR the legacy on-chain bridge's authorize),
     // mirroring authStillValid so the two can never diverge. Everyone else (guests/anon) is DEMO. A future
     // re-enable of the legacy bridge therefore can't accidentally seat its real players with play-money guests.
-    const isRealMoney = (wallet) => isTokenWallet(wallet) || bridgeAuth.has(norm(wallet));
+    const isRealMoney = (wallet) => isTokenWallet(wallet) || !!bridgeAuthToken(wallet); // v14 #86: expired legacy-bridge token no longer counts as real-money
     const playerKind = (wallet) => (isRealMoney(wallet) ? "real" : "demo");
     // An OPEN seat in a room of the right kind (an EMPTY room takes either kind; its kind is set on the first sit).
     function openRoom(kind) {
@@ -812,7 +816,7 @@
       // for the life of a hand (bindToken/unbindToken refuse while hasLiveHand), so it can't be swapped to a
       // different session between a bet's debit and the hand's credit.
       if (isTokenWallet(w)) return true;
-      if (bridgeAuth.get(norm(w)) === String(sock.bjToken || "")) return true;
+      { const bt = bridgeAuthToken(w); if (bt && bt === String(sock.bjToken || "")) return true; } // v14 #86: reject an expired legacy-bridge token
       sock.wallet = "";
       sock.bjAuthDenied = true;
       return false;
@@ -855,9 +859,9 @@
       bindToken, unbindToken, hasLiveHand, hasDealtHand, isTokenWallet,
       bridge: {
         fund: bridgeFund, setBalance: bridgeSetBalance, balance: bridgeBalance, clear: bridgeClear, hasOpenExposure, openExposure,
-        authorize: (wallet, token) => { if (realWallet(wallet) && token) bridgeAuth.set(norm(wallet), String(token)); },
+        authorize: (wallet, token) => { if (realWallet(wallet) && token) bridgeAuth.set(norm(wallet), { token: String(token), exp: Date.now() + BRIDGE_AUTH_TTL_MS }); }, // v14 #86: store with a TTL; each authorize refreshes it
         deauthorize: (wallet) => bridgeAuth.delete(norm(wallet)),
-        isAuthorized: (wallet, token) => !realWallet(wallet) || (!!token && bridgeAuth.get(norm(wallet)) === String(token)),
+        isAuthorized: (wallet, token) => !realWallet(wallet) || (!!token && bridgeAuthToken(wallet) === String(token)), // v14 #86: reject an expired token
         onBalanceChange: (fn) => { if (typeof fn === "function") balanceWatchers.add(fn); return () => balanceWatchers.delete(fn); },
       },
       _mgr: { rooms, openRoom, createRoom, closeRoom, lobbyList },

@@ -160,6 +160,10 @@
 
     function onError(msg) {
       if (!live) return;
+      // v14 #1 (Scan 64): a below-floor pressure cash-out reject ("holdlonger") is NON-TERMINAL — the SERVER round
+      // is STILL LIVE (never settled). Keep the round live + keep inflating; just clear the cash-out latch so a
+      // later past-floor tap can bank. NEVER tear down here (that would orphan the live server round + strand the stake).
+      if (msg && msg.code === "holdlonger" && live.roundId) { live.cashoutRequested = false; try { live.onTick(null, null, { holdLonger: true, message: (msg && msg.message) || "hold longer" }); } catch (e) {} return; }
       var l = live; live = null;
       if (l.rafH) caf(l.rafH);
       clearTimers(l);

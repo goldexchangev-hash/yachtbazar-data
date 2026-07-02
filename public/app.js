@@ -20,12 +20,16 @@
   function shareBase() { return onLocalhost ? (location.origin + location.pathname) : CANONICAL_URL; }
 
   // Which contract + chain are we using?  URL link > local config.js > saved > none.
+  // SECURITY (v14 #89 / Scan 89): a ?contract= link may ONLY select the KNOWN canonical contract (cfg.address).
+  // We never sign against an arbitrary address handed to us in a URL — that is a phishing vector (attacker points
+  // the dApp at their own contract and the victim deposits / buys in into it). A ?contract= that does NOT match the
+  // pinned address is dropped here; if it happens to match the owner's on-chain registry.activeGame() it is re-adopted
+  // later in resolveActiveGame() (a trusted allowlist), never blindly.
+  const sameAddr = (x, y) => !!x && !!y && String(x).toLowerCase() === String(y).toLowerCase();
   let deployment = (() => {
     const a = params.get("contract"), c = params.get("chain");
-    // Only adopt a shared ?contract= link if ethers is loaded AND it's a valid address. (Was:
-    // `!E || !E.isAddress || E.isAddress(a)` — which ACCEPTED an arbitrary ?contract= param during
-    // the window before ethers loads. Matches the safe REF-param pattern below.)
-    if (a && E && E.isAddress && E.isAddress(a)) return { address: a, chainId: c ? Number(c) : null };
+    // Only adopt a shared ?contract= link when it is a valid address AND matches the canonical pinned contract.
+    if (a && E && E.isAddress && E.isAddress(a) && sameAddr(a, cfg.address)) return { address: cfg.address, chainId: c ? Number(c) : (cfg.chainId || null) };
     if (cfg.address) return { address: cfg.address, chainId: cfg.chainId || null }; // local dev (deploy:local)
     const s = loadStored();
     if (s && s.address) return s;
@@ -2290,21 +2294,21 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1295").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1296").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   // PlayCanvas engine (~2.2MB) — only loaded when the Sky Swoop channel is first opened.
   function loadPlayCanvasOnce() {
     if (window.pc) return Promise.resolve();
     if (playcanvasLoadPromise) return playcanvasLoadPromise;
-    playcanvasLoadPromise = loadScriptOnce("vendor/playcanvas.min.js?v=1295").catch((e) => { playcanvasLoadPromise = null; throw e; });
+    playcanvasLoadPromise = loadScriptOnce("vendor/playcanvas.min.js?v=1296").catch((e) => { playcanvasLoadPromise = null; throw e; });
     return playcanvasLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=1295"))
+      .then(() => loadScriptOnce("slots.js?v=1296"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -2314,11 +2318,11 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=1295"))
-      .then(() => loadScriptOnce("pressure-render.js?v=1295"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=1295"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=1296"))
+      .then(() => loadScriptOnce("pressure-render.js?v=1296"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=1296"))
       // optional 3D red balloon (Three.js) — falls back to the 2D balloon if it can't load
-      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1295")).catch(() => {}))
+      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1296")).catch(() => {}))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -2390,10 +2394,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=1295"))
-      .then(() => loadScriptOnce("plane-render.js?v=1295"))
-      .then(() => loadScriptOnce("plane-feed.js?v=1295"))
-      .then(() => loadScriptOnce("plane-ui.js?v=1295"))
+      .then(() => loadScriptOnce("plane-engine.js?v=1296"))
+      .then(() => loadScriptOnce("plane-render.js?v=1296"))
+      .then(() => loadScriptOnce("plane-feed.js?v=1296"))
+      .then(() => loadScriptOnce("plane-ui.js?v=1296"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2497,15 +2501,15 @@
   function loadThreeOnce() {
     if (window.THREE) return Promise.resolve();
     if (threeLoadPromise) return threeLoadPromise;
-    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1295").catch((e) => { threeLoadPromise = null; throw e; });
+    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1296").catch((e) => { threeLoadPromise = null; throw e; });
     return threeLoadPromise;
   }
   function ensureSlots3dLoaded() {
     if (window.Slots3D) return Promise.resolve(true);
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("slots3d-engine.js?v=1295"))
-      .then(() => loadScriptOnce("slots3d.js?v=1295"))
+      .then(() => loadScriptOnce("slots3d-engine.js?v=1296"))
+      .then(() => loadScriptOnce("slots3d.js?v=1296"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2551,8 +2555,8 @@
     if (window.FishTable) return Promise.resolve(true);
     if (fishLoadPromise) return fishLoadPromise;
     fishLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishtable-engine.js?v=1295"))
-      .then(() => loadScriptOnce("fishtable.js?v=1295"))
+      .then(() => loadScriptOnce("fishtable-engine.js?v=1296"))
+      .then(() => loadScriptOnce("fishtable.js?v=1296"))
       .then(() => true)
       .catch((e) => { fishLoadPromise = null; throw e; });
     return fishLoadPromise;
@@ -2635,7 +2639,7 @@
     if (window.SwoopGame) return Promise.resolve(true);
     if (swoopLoadPromise) return swoopLoadPromise;
     swoopLoadPromise = loadPlayCanvasOnce()
-      .then(() => loadScriptOnce("swoop3d.js?v=1295"))
+      .then(() => loadScriptOnce("swoop3d.js?v=1296"))
       .then(() => true)
       .catch((e) => { swoopLoadPromise = null; throw e; });
     return swoopLoadPromise;
@@ -2716,8 +2720,8 @@
     if (window.FishShooter) return Promise.resolve(true);
     if (fishshooterLoadPromise) return fishshooterLoadPromise;
     fishshooterLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishshooter-engine.js?v=1295")) // OWN engine (decoupled from Reef's fishtable-engine.js)
-      .then(() => loadScriptOnce("fishshooter.js?v=1295"))
+      .then(() => loadScriptOnce("fishshooter-engine.js?v=1296")) // OWN engine (decoupled from Reef's fishtable-engine.js)
+      .then(() => loadScriptOnce("fishshooter.js?v=1296"))
       .then(() => true)
       .catch((e) => { fishshooterLoadPromise = null; throw e; });
     return fishshooterLoadPromise;
@@ -2802,7 +2806,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1295"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1296"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -2829,7 +2833,7 @@
   function loadRail3dOnce() {
     if (window.Rail3D) return Promise.resolve(true);
     if (rail3dLoadPromise) return rail3dLoadPromise;
-    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1295")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
+    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1296")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
     return rail3dLoadPromise;
   }
   function buildRail3d() {
@@ -2850,7 +2854,7 @@
   function loadDice2_3dOnce() {
     if (window.TwoDice3D) return Promise.resolve(true);
     if (d2_3dLoadPromise) return d2_3dLoadPromise;
-    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1295")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
+    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1296")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
     return d2_3dLoadPromise;
   }
   function buildDice2_3d() {
@@ -3600,7 +3604,7 @@
       const tableWallet = account || bjGuestId();
       // &r=<nonce> in the QUERY forces a real iframe reload (so the felt re-reads the #bjsession from the
       // hash and re-sends its hello → the server re-binds the table to the token session).
-      let src = "blackjack.html?tv=1&v=1295&r=" + (++bjFeltNonce) + "&guest=" + encodeURIComponent(tableWallet);
+      let src = "blackjack.html?tv=1&v=1296&r=" + (++bjFeltNonce) + "&guest=" + encodeURIComponent(tableWallet);
       let tokenHash = "";
       // PREFERRED real-money path: fund the table with the player's TOKEN session (chips = tokens, no lock step).
       if (account && window.TokenMode && TokenMode.active && TokenMode.active() && TokenMode.session) {
@@ -4490,7 +4494,7 @@
     box.innerHTML = '<h3 class="profile-h3">🏦 House view</h3><p class="muted">Reading on-chain token state…</p>';
     let info = null;
     try { info = await TokenMode.adminPlayerInfo(addr); }
-    catch (e) { box.innerHTML = '<h3 class="profile-h3">🏦 House view</h3><p class="muted">Couldn\'t read on-chain state — ' + ((e && e.message) || "error") + "</p>"; return; }
+    catch (e) { box.innerHTML = '<h3 class="profile-h3">🏦 House view</h3><p class="muted">Couldn\'t read on-chain state — ' + escapeHtml((e && e.message) || "error") + "</p>"; return; } // v14 #88: escape the error string before innerHTML
     if (profileAddr !== addr) return; // the modal moved on while we awaited
     const usd = (n) => "$" + (Math.round((+n || 0) * 100) / 100).toLocaleString();
     const row = (k, v, cls) => '<div class="hd-row"><span class="muted">' + k + '</span><strong' + (cls ? ' class="' + cls + '"' : "") + ">" + v + "</strong></div>";
@@ -5445,10 +5449,19 @@
     if (registryResolved) return;
     registryResolved = true;
     try {
-      if (!cfg.registry || !E.isAddress(cfg.registry) || params.get("contract")) return;
+      if (!cfg.registry || !E.isAddress(cfg.registry)) return;
       const reg = new E.Contract(cfg.registry, ["function activeGame() view returns (address)"], prov);
       const live = await reg.activeGame();
-      if (live && E.isAddress(live) && !/^0x0+$/i.test(live)) deployment.address = live;
+      if (!live || !E.isAddress(live) || /^0x0+$/i.test(live)) return;
+      // v14 #89: a ?contract= param is honored ONLY if it matches the owner's on-chain active game (trusted
+      // allowlist). Otherwise ignore the param and stay on the registry-resolved / pinned address — never sign
+      // against an attacker-supplied address.
+      const urlWanted = params.get("contract");
+      if (urlWanted && E.isAddress(urlWanted) && !sameAddr(urlWanted, cfg.address)) {
+        if (sameAddr(urlWanted, live)) deployment.address = live; // param equals the trusted on-chain active game → OK
+        return; // param neither pinned nor registry-active → dropped
+      }
+      deployment.address = live;
     } catch (e) { /* keep config.address fallback */ }
   }
 
@@ -5507,7 +5520,14 @@
     // stale it returns false and kicks a reconnect (which re-binds on ws.onopen). Then refresh the authoritative
     // token balance so the top bar reflects anything that settled while we were away.
     try { if (CrashRounds && CrashRounds.resume) CrashRounds.resume(); } catch (e) {}
-    try { if (window.TokenMode && TokenMode.active && TokenMode.active() && TokenMode.refreshTokens) TokenMode.refreshTokens(); } catch (e) {}
+    // v14 #4 (Scan 75): don't reconcile the top bar mid Gem Vault free-spin — refreshTokens()→paintTokens() would
+    // paint the FINAL base+bonus total (server credits it in one bet) while the bonus overlay is still counting up
+    // (spoiler). client.tokens is already authoritative, so deferring is loss-safe: slots3d reconciles at
+    // _endBonus→syncBalance and the syncTokenGameBalances poll respects the same _bonus/_spinning/_awaitingServer hold.
+    try {
+      var _s3dBusy = slots3dGame && currentGame === "slots3d" && (slots3dGame._bonus || slots3dGame._spinning || slots3dGame._awaitingServer);
+      if (!_s3dBusy && window.TokenMode && TokenMode.active && TokenMode.active() && TokenMode.refreshTokens) TokenMode.refreshTokens();
+    } catch (e) {}
   });
 
   window.addEventListener("DOMContentLoaded", () => {
