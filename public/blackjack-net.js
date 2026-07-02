@@ -23,35 +23,46 @@
     this._closedByUs = false;
     this._backoff = 600;
     this._lastRx = 0; this._hb = null; // heartbeat: detect a half-open (silently dead) socket
+    // Network back after a flap → reconnect NOW instead of waiting out the backoff (ensureConnected
+    // no-ops when healthy, and also drops a half-open socket past the 35s staleness bound).
+    var self = this;
+    try { if (root.addEventListener) root.addEventListener("online", function () { self.ensureConnected(); }); } catch (e) {}
     this.connect();
   }
 
   BJNet.prototype.connect = function () {
     var self = this;
-    try { this.ws = new WebSocket(this.url); } catch (e) { this._scheduleReconnect(); return; }
-    this.ws.onopen = function () {
+    if (this.ws && (this.ws.readyState === 0 || this.ws.readyState === 1)) return; // never stack a second live socket (ensureConnected — fired by visibilitychange AND pageshow — can race a pending _scheduleReconnect timer)
+    var sock;
+    try { sock = this.ws = new WebSocket(this.url); } catch (e) { this._scheduleReconnect(); return; }
+    // v13.18 pattern from app.js: scope every handler to the CAPTURED sock so an orphaned
+    // socket's late events can never flip _open, kill the live heartbeat, or double-emit.
+    sock.onopen = function () {
+      if (self.ws !== sock) { try { sock.close(); } catch (e) {} return; } // orphaned by a newer connect
       self._open = true; self._backoff = 600; self._lastRx = Date.now(); self._startHeartbeat();
       // Identify to the hub UNCONDITIONALLY (was: only when a wallet was loaded). The server gates all bj:*
       // intents (room list / join) behind a seen `hello`, so a guest — or a player whose wallet/token hasn't
       // loaded yet when the felt's socket opens (common on a phone) — was silently blocked from SEEING or
       // JOINING any room. Sending hello with an empty address marks the socket identified; the server binds the
       // token session when bjToken/bjSession are present, else treats it as a guest (play-money). No guard weakened.
-      try { self.ws.send(JSON.stringify({ type: "hello", address: self.wallet || "", bjToken: self.bjToken || undefined, bjSession: self.bjSession || undefined })); } catch (e) {}
+      try { sock.send(JSON.stringify({ type: "hello", address: self.wallet || "", bjToken: self.bjToken || undefined, bjSession: self.bjSession || undefined })); } catch (e) {}
       var q = self.queue; self.queue = [];
       for (var i = 0; i < q.length; i++) self._raw(q[i]);
       self._emit({ type: "bj:net", state: "open" });
     };
-    this.ws.onmessage = function (ev) {
+    sock.onmessage = function (ev) {
+      if (self.ws !== sock) return; // orphaned socket must not double-emit
       self._lastRx = Date.now(); // any inbound traffic (incl. bj:pong) means the socket is alive
       var m; try { m = JSON.parse(ev.data); } catch (e) { return; }
       if (m && typeof m.type === "string") { if (m.type === "bj:pong") return; self._emit(m); }
     };
-    this.ws.onclose = function () {
+    sock.onclose = function () {
+      if (self.ws !== sock) return; // a late close of an orphaned socket must not flip _open / kill the live heartbeat / schedule another reconnect
       self._open = false; self._stopHeartbeat();
       self._emit({ type: "bj:net", state: "closed" });
       if (!self._closedByUs) self._scheduleReconnect();
     };
-    this.ws.onerror = function () { try { self.ws.close(); } catch (e) {} };
+    sock.onerror = function () { try { sock.close(); } catch (e) {} }; // close the SPECIFIC socket that errored
   };
 
   // Force an immediate reconnect if the socket is dead/closing (e.g. the OS froze it
@@ -59,7 +70,14 @@
   BJNet.prototype.ensureConnected = function () {
     if (this._closedByUs) return;
     var rs = this.ws ? this.ws.readyState : 3;
-    if (rs === 1 || rs === 0) return; // OPEN or CONNECTING → leave it
+    if (rs === 0) return; // CONNECTING → leave it
+    if (rs === 1) {
+      // OPEN — but possibly half-open after a background freeze: if we're already past the
+      // heartbeat's own 35s staleness bound, drop it NOW (onclose reconnects and bj:net open
+      // re-joins the table) instead of waiting up to 15s for the next heartbeat tick.
+      if (this._lastRx && Date.now() - this._lastRx > 35000) { try { this.ws.close(); } catch (e) {} }
+      return;
+    }
     this._backoff = 600; this.connect();
   };
 
@@ -78,8 +96,9 @@
 
   BJNet.prototype._scheduleReconnect = function () {
     var self = this;
+    var d = this._backoff; // schedule at the CURRENT rung (first retry = 600ms, matching app.js), THEN grow
     this._backoff = Math.min(this._backoff * 1.6, 8000);
-    setTimeout(function () { if (!self._closedByUs) self.connect(); }, this._backoff);
+    setTimeout(function () { if (!self._closedByUs) self.connect(); }, d);
   };
 
   BJNet.prototype._raw = function (obj) { try { this.ws.send(JSON.stringify(obj)); } catch (e) { this.queue.push(obj); } };

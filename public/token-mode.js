@@ -98,6 +98,9 @@
       // The house wallet IS the bankroll/dealer — letting it buy in means betting against itself
       // (no real win/loss) and locks the house's OWN credits into a self-play session. Block it.
       if (deps.isHouseWallet && deps.isHouseWallet()) return note("You're the HOUSE wallet — switch to a player account in MetaMask to play with tokens (the house can't bet against itself).", "err");
+      // v13.29 RECOVERY MODE (?contract=<legacy>): the old contract has NO token bridge — a buy-in here would
+      // just re-lock the funds the player came to withdraw. Block it with a plain explanation.
+      if (deps.recovery && deps.recovery()) return note("RECOVERY MODE — this is an old game contract. Use the Withdraw box to get your funds out; buying in here would just re-lock them on the dead contract.", "err");
       var usd = Math.round((+amountUsd || 0) * 100) / 100;
       if (!(usd > 0)) return note("Enter how much to buy in", "err");
       busy = true; render(); // set busy BEFORE any await below — the gate's refresh must not open a double-tap re-entrancy window
@@ -200,6 +203,7 @@
       if (busy) return;
       if (!client) return note("Connect your wallet first", "err");
       if (deps.isHouseWallet && deps.isHouseWallet()) return note("You're the HOUSE wallet — switch to a player account to play with tokens.", "err");
+      if (deps.recovery && deps.recovery()) return note("RECOVERY MODE — this is an old game contract. Use the Withdraw box to get your funds out; adding funds here would just re-lock them on the dead contract.", "err"); // v13.29 recovery-mode gate (mirrors buyIn)
       if (!this.active()) return note("Buy in first, then you can top up", "err");
       var usd = Math.round((+amountUsd || 0) * 100) / 100;
       if (!(usd > 0)) return note("Enter how much to add", "err");

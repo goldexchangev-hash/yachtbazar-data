@@ -37,10 +37,51 @@
   // latches → every token button reads "…" until reload. Bound EVERY wait at 180s; on timeout the caller's
   // catch fires (surfaces Recover) without clearing session state. ethers v6: wait(confirms, timeoutMs)
   // rejects on timeout; some replaced-tx paths resolve null → treat that as a timeout too.
-  async function waitTx(tx) {
-    const r = await tx.wait(1, 180000);
-    if (!r) throw new Error("tx-wait-timeout");
-    return r;
+  // v13.31: RACE the injected provider's wait against a getTransactionReceipt poll on an INDEPENDENT
+  // public RPC (d.roProvider — the same node the deposit path already polls). The injected provider
+  // WEDGES while a mobile webview is suspended during the wallet confirm; without the race a MINED
+  // buy-in/cash-out sits on "confirming…" for up to 180s even though the chain has the receipt. First
+  // receipt wins; a REAL revert/replacement from either arm still throws; only when BOTH arms come up
+  // empty does the 180s "tx-wait-timeout" fire. No roProvider in deps → exactly the old single-path wait.
+  function _roProvOf(d) {
+    try { var p = d && d.roProvider; if (typeof p === "function") p = p(); return (p && p.getTransactionReceipt) ? p : null; } catch (e) { return null; }
+  }
+  async function waitTx(tx, d) {
+    const ro = _roProvOf(d);
+    // Injected arm. FINAL failures (on-chain revert / replaced tx) reject the whole wait; anything else
+    // (TIMEOUT, network blip, the replaced-tx null-receipt quirk) is INCONCLUSIVE — the RO arm may still win.
+    const injected = tx.wait(1, 180000).then(
+      (r) => ({ r: r || null }),
+      (e) => ((e && (e.code === "CALL_EXCEPTION" || e.code === "TRANSACTION_REPLACED")) ? { e: e } : { r: null })
+    );
+    let done = false;
+    const out = await new Promise((resolve, reject) => {
+      let open = ro ? 2 : 1;
+      const settle = (o) => {
+        if (done) return;
+        if (o && o.e) { done = true; reject(o.e); }
+        else if (o && o.r) { done = true; resolve(o.r); }
+        else if (--open <= 0) { done = true; resolve(null); }
+      };
+      injected.then(settle, () => settle({ r: null }));
+      if (ro) (async () => {
+        const until = Date.now() + 180000;
+        while (!done && Date.now() < until) {
+          await new Promise((t) => setTimeout(t, 4000));
+          if (done) return;
+          let rc = null;
+          try { rc = await ro.getTransactionReceipt(tx.hash); } catch (e) {} // read failure → keep polling
+          if (rc && rc.blockNumber != null) {
+            if (Number(rc.status) === 0) { const err = new Error("transaction execution reverted"); err.code = "CALL_EXCEPTION"; err.receipt = rc; settle({ e: err }); }
+            else settle({ r: rc });
+            return;
+          }
+        }
+        settle({ r: null });
+      })().catch(() => settle({ r: null }));
+    });
+    if (!out) throw new Error("tx-wait-timeout");
+    return out;
   }
 
   // Clamp an on-chain lock (blackjackBuyIn) to the caller's CURRENT game-credit balance. The contract
@@ -218,6 +259,20 @@
     let rcpt = null;
     try { rcpt = await prov.getTransactionReceipt(p.txHash); } catch (e) { pbClear(d); return null; }
     if (!rcpt || !rcpt.status) { pbClear(d); return null; } // not-yet-mined / dropped / reverted → clear + fresh buy-in
+    // v13.31: a pending TOP-UP record may only be finished into the SAME still-open session, via /topup ONLY
+    // (its signature covers intent "topup"+sessionId, so it can never be replayed as a /start). Anything else
+    // → clear + null (FAIL-OPEN; the confirmed lock is reclaimed by the server's stacked-lock path / Recover).
+    if (p.kind === "topup") {
+      if (!this.session || this.session.sessionId !== p.sessionId || !p.sessionToken) { pbClear(d); return null; }
+      try {
+        const r = await this._post("/api/token/topup", { player: p.player, sessionId: p.sessionId, sessionToken: p.sessionToken, txHash: p.txHash, buyInWei: p.buyInWei, signature: p.signature }, 45000);
+        pbClear(d);
+        this.tokens = r.tokens; this._playSeqApplied = (this._playSeq || 0); // same v13 #3 watermark as topUp
+        if (this.session) this.session.tokens = r.tokens;
+        r.__resumedTopUp = true; // tag so topUp RETURNS it and buyIn never mistakes it for a session
+        return r;
+      } catch (e) { pbClear(d); return null; } // already-used / dead session / mid-hand defer / blip → today's behavior (server reclaim); NEVER keep the record (fail-closed risk outweighs it)
+    }
     // CONFIRMED → finish it via /start with the ORIGINAL payload (server dedupes txHash → idempotent).
     try {
       const r = await this._post("/api/token/start", { player: p.player, contract: p.contract, chainId: p.chainId, txHash: p.txHash, buyInWei: p.buyInWei, signature: p.signature }, 45000);
@@ -236,19 +291,26 @@
     // RESUME a still-pending prior buy-in rather than double-sending (the stall→retry→revert trap). No-op +
     // no RPC when nothing is pending (a fast localStorage read returns null).
     const resumed = await this._resumePendingBuyIn();
-    if (resumed) return resumed;
+    if (resumed && !resumed.__resumedTopUp) return resumed; // a resumed TOP-UP is not a session — fall through
     // PRE-FLIGHT: price ready. A PRIOR on-chain lock NO LONGER blocks the buy-in — the server now AUTO-CLAIMS a
     // stranded lock (orphaned principal, no withheld loss) into this session, so a buy-in over your own stranded
     // funds just reclaims them instead of stranding the new lock on top (the $710→$1420 compounding trap). If a
     // withheld LOSS is on record the server still rejects with "tap Recover first" and the Recover button shows.
-    const pre = await this._preflight(false);
-    if (!pre.ok) throw new Error(pre.error);
-    // The lock tx costs ETH gas even though it spends CREDITS — fail clearly (with a faucet) if the wallet
-    // can't cover the gas, instead of a cryptic reject or a stalled tx.
-    await ensureGas(d, 200000n);
+    // W-PAR: the three pre-checks are INDEPENDENT reads (server HTTP status / wallet ETH balance / on-chain
+    // credits) — fire them CONCURRENTLY, then await in the ORIGINAL order so error precedence is unchanged:
+    // server-unreachable surfaces first, then the gas-floor error, and clampBuyIn never rejects (fail-open).
+    // gasP captures its rejection at creation so an earlier preflight throw can't leave an unhandled rejection.
+    // signMessage still signs the FINAL post-clamp buyInWei — clamp resolves BEFORE the signature, as before.
+    const preP = this._preflight(false);
+    const gasP = ensureGas(d, 200000n).then(function () { return null; }, function (e) { return e; });
     // Clamp to the CURRENT on-chain credits BEFORE signing so the signature, the lock, and the /start
     // buyInWei all agree — kills the "reverted with credits showing" buy-in failure (rate-drift / rounding).
-    want = await clampBuyIn(d, want, "buy in");
+    const clampP = clampBuyIn(d, want, "buy in");
+    const pre = await preP;
+    if (!pre.ok) throw new Error(pre.error);
+    const gasErr = await gasP;
+    if (gasErr) throw gasErr;
+    want = await clampP;
     const buyInWei = want.toString();
     // 1) player authorizes the buy-in (off-chain signature — no gas)
     const signature = await d.signer.signMessage(tokenAuthMessage("start", { player, contract, chainId, buyInWei }, d.ethers.getAddress));
@@ -257,7 +319,7 @@
     // Persist the in-flight lock BEFORE waiting, so a stall (waitTx timeout) or a reload can resume it on the
     // next buy-in instead of firing a second lock that would revert once tx1 mines.
     pbSave(d, { txHash: tx.hash, buyInWei: buyInWei, signature: signature, player: player, contract: contract, chainId: chainId, ts: Date.now() });
-    const receipt = await waitTx(tx);
+    const receipt = await waitTx(tx, d);
     // 3) hand the server the confirmed txHash + the signature → it verifies + grants tokens
     const r = await this._post("/api/token/start", { player, contract, chainId, txHash: receipt.hash, buyInWei, signature }, 45000); // 45s: /start does multiple sequential on-chain reads — must not abort mid-verify (was 12s → "fetch aborted" → re-lock)
     pbClear(d); // committed on the server → the pending record is done
@@ -284,20 +346,34 @@
   // ACCUMULATES bjLocked, so the server just adds the new value to the live session's tokens.
   TokenBridgeClient.prototype.topUp = async function (amountWei) {
     if (!this.session) throw new Error("no open session");
+    // RESUME a still-pending prior top-up rather than double-locking (same v13.26 stall→retry trap, top-up path).
+    // A finished resume IS the retried top-up — return it; never send a second lock on top.
+    const resumed = await this._resumePendingBuyIn();
+    if (resumed && resumed.__resumedTopUp) return resumed;
     // PRE-FLIGHT (prevents fund-stranding): confirm the session is ALIVE on the server + price ready
     // BEFORE locking on-chain — a top-up into a dead session locks funds the server then refuses.
-    const pre = await this._preflight(true);
-    if (!pre.ok) throw new Error(pre.error);
     const d = this.d, player = d.account, contract = d.contractAddr, chainId = Number(d.chainId);
     const sessionId = this.session.sessionId;
     let addWant = (typeof amountWei === "bigint" ? amountWei : BigInt(amountWei));
-    await ensureGas(d, 200000n); // top-up lock also costs ETH gas — fail clearly if the wallet can't cover it
-    addWant = await clampBuyIn(d, addWant, "add"); // same clamp: never lock more than the REMAINING on-chain credits
+    // W-PAR (mirror of buyIn): fire the three independent pre-checks concurrently; await in the original
+    // order so error precedence is unchanged (server/session first, then gas; clamp never rejects).
+    const preP = this._preflight(true);
+    const gasP = ensureGas(d, 200000n).then(function () { return null; }, function (e) { return e; }); // top-up lock also costs ETH gas — fail clearly if the wallet can't cover it
+    const clampP = clampBuyIn(d, addWant, "add"); // same clamp: never lock more than the REMAINING on-chain credits
+    const pre = await preP;
+    if (!pre.ok) throw new Error(pre.error);
+    const gasErr = await gasP;
+    if (gasErr) throw gasErr;
+    addWant = await clampP;
     const addWei = addWant.toString();
     const signature = await d.signer.signMessage(tokenAuthMessage("topup", { player, contract, chainId, sessionId, buyInWei: addWei }, d.ethers.getAddress));
     const tx = await d.contract.blackjackBuyIn(addWei, { gasLimit: 200000n });
-    const receipt = await waitTx(tx);
+    // Persist BEFORE waiting (mirrors buyIn v13.26): a stall/reload resumes this lock instead of double-sending.
+    // kind:"topup" routes the resume to /api/token/topup only — never replayable as a /start.
+    pbSave(d, { kind: "topup", txHash: tx.hash, buyInWei: addWei, signature: signature, player: player, contract: contract, chainId: chainId, sessionId: sessionId, sessionToken: this.session.sessionToken, ts: Date.now() });
+    const receipt = await waitTx(tx, d);
     const r = await this._post("/api/token/topup", { player, sessionId, sessionToken: this.session.sessionToken, txHash: receipt.hash, buyInWei: addWei, signature }, 45000); // 45s: /topup does the same multiple sequential on-chain reads as /start — must not abort mid-verify (was 12s → "add more tokens" hung and never registered)
+    pbClear(d); // committed on the server → the pending record is done
     this.tokens = r.tokens; this._playSeqApplied = (this._playSeq || 0); // v13 #3: a top-up establishes a NEWER authoritative balance — advance the play-seq watermark so a slow in-flight play() (issued before this top-up) can't roll the displayed tokens backward. A play issued AFTER gets a higher seq and still applies.
     if (this.session) this.session.tokens = r.tokens;
     return r;
@@ -332,8 +408,19 @@
       }
       // transient/non-revert simulation error → don't block; submit the real tx below.
     }
-    const tx = await d.contract.settleBlackjack(player, BigInt(s.netWei), BigInt(s.nonce), s.signature, { gasLimit: 200000n });
-    const receipt = await waitTx(tx);
+    // The server CLOSED this session at /settle above — from here on ANY failure (user rejects the popup,
+    // waitTx timeout on a wedged provider, dropped tx) must STILL drop the local session view. Keeping it
+    // makes TokenMode.active() stay true, which suppresses the Recover banner (checkStrandedLock early-
+    // returns on an active session) precisely when the player needs Recover to reclaim the locked funds.
+    // /release re-issues the SAME recorded obligation, so Recover returns exactly what this claim would have.
+    let tx, receipt;
+    try {
+      tx = await d.contract.settleBlackjack(player, BigInt(s.netWei), BigInt(s.nonce), s.signature, { gasLimit: 200000n });
+      receipt = await waitTx(tx, d);
+    } catch (e) {
+      this.session = null; this.tokens = 0; // phantom-session kill: it is already closed server-side
+      throw e;
+    }
     const settled = { ...s, claimTx: receipt.hash };
     this.session = null; this.tokens = 0;
     return settled;
@@ -375,7 +462,7 @@
       // transient/non-revert simulation error → don't block; submit the real tx below.
     }
     const tx = await d.contract.settleBlackjack(player, BigInt(r.netWei), BigInt(r.nonce), r.signature, { gasLimit: 200000n });
-    const receipt = await waitTx(tx);
+    const receipt = await waitTx(tx, d);
     this.session = null; this.tokens = 0; // the server settled/freed it — drop any stale local session
     return { ...r, claimTx: receipt.hash };
   };
@@ -390,7 +477,7 @@
     const signature = await d.signer.signMessage(tokenAuthMessage("admin-release", { player: owner, contract, chainId, target: player, expiry }, d.ethers.getAddress));
     const r = await this._post("/api/token/admin-release", { owner, contract, chainId, player, signature, expiry }, 45000); // W3: same multi-read latency as /release
     const tx = await d.contract.settleBlackjack(player, BigInt(r.netWei), BigInt(r.nonce), r.signature, { gasLimit: 200000n });
-    const receipt = await waitTx(tx);
+    const receipt = await waitTx(tx, d);
     return { ...r, claimTx: receipt.hash };
   };
 
@@ -477,6 +564,16 @@ if (typeof require !== "undefined" && require.main === module) {
     { const r = await mkC(mkProv(null, { hash: rec().txHash }))._resumePendingBuyIn(); eq("resume: unmined tx → null + record cleared (FAIL-OPEN, never blocks a buy-in)", r === null && shim.getItem(pKey) === null); }
     shim.setItem(pKey, JSON.stringify(rec()));
     { let threw3 = false; const r = await mkC(mkProv({ status: 1 }, null), async () => { throw new Error("already used"); })._resumePendingBuyIn().catch(() => { threw3 = true; return null; }); eq("resume: confirmed but /start fails → null + cleared (never throws/blocks)", r === null && threw3 === false && shim.getItem(pKey) === null); }
+    // ---- top-up pending dedupe (v13.31): kind:"topup" resumes via /topup ONLY, into the SAME session ----
+    const trec = () => ({ ...rec(), kind: "topup", sessionId: "s1", sessionToken: "tok1" });
+    shim.setItem(pKey, JSON.stringify(trec()));
+    { const c = mkC(mkProv({ status: 1 }, null), async (path) => { c._paths = (c._paths || []).concat(path); return { tokens: 55 }; }); c.session = { sessionId: "s1", sessionToken: "tok1", tokens: 10 };
+      const r = await c._resumePendingBuyIn();
+      eq("resume: topup-kind + matching session → finishes via /topup, tagged, cleared", !!(r && r.__resumedTopUp && r.tokens === 55 && c._paths && c._paths[0] === "/api/token/topup" && shim.getItem(pKey) === null && c.session.tokens === 55)); }
+    shim.setItem(pKey, JSON.stringify(trec()));
+    { const c = mkC(mkProv({ status: 1 }, null), async () => { throw new Error("must not be called"); }); c.session = { sessionId: "OTHER", sessionToken: "tok2" };
+      const r = await c._resumePendingBuyIn();
+      eq("resume: topup-kind + mismatched session → null + cleared, /topup never called", r === null && shim.getItem(pKey) === null); }
     delete globalThis.localStorage;
 
     console.log(ok ? "\nSELF-TEST OK — client auth is byte-identical to the server." : "\nSELF-TEST FAILED");

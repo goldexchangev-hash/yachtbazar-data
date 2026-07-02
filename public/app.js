@@ -638,8 +638,8 @@
       await ensureNetwork();
       signer = await provider.getSigner();
       account = await signer.getAddress();
+      renderWallet(); // W6: show the wallet chip the INSTANT the account resolves — before the registry await; every downstream path repaints it once the address is final
       await resolveActiveGame(provider); // honor the registry's active game
-      renderWallet(); // W6: show the wallet chip the instant the account resolves, before the (now parallel) on-chain reads — the header stops looking stuck
 
       if (!deployment.address) {
         // No game deployed here yet — let this user host one from the browser.
@@ -675,7 +675,7 @@
       // Wallet is live: TV switches from static to the game room, profile unlocks.
       if (window.TV && TV.setConnected) TV.setConnected(true);
       // Hand the live signer/contract to the TOKEN-mode controller (the bridge client).
-      try { if (window.TokenMode) TokenMode.init({ ethers: E, signer: signer, contract: contract, account: account, chainId: deployment.chainId, contractAddr: deployment.address, usdToWei: usdToWei, toast: toast, gameBalanceUsd: function () { try { return weiToUsd(gameWei); } catch (e) { return 0; } }, refreshCredits: async function () { try { await refreshBalances(); } catch (e) {} }, isHouseWallet: function () { try { return !!(account && hostTreasury && eq(account, hostTreasury)); } catch (e) { return false; } }, onChange: function (force) { try { syncTokenGameBalances(force); } catch (e) {} try { if (typeof refreshHouse === "function") refreshHouse(); } catch (e) {} try { checkStrandedLock(); } catch (e) {} try { if (currentGame === "blackjack") ensureBlackjackReady(); } catch (e) {} } }); } catch (e) {}
+      try { if (window.TokenMode) TokenMode.init({ ethers: E, signer: signer, contract: contract, account: account, chainId: deployment.chainId, contractAddr: deployment.address, roProvider: roProvider, recovery: function () { try { return (cfg.legacy || []).some(function (l) { return sameAddr(deployment.address, l); }); } catch (e) { return false; } }, usdToWei: usdToWei, toast: toast, gameBalanceUsd: function () { try { return weiToUsd(gameWei); } catch (e) { return 0; } }, refreshCredits: async function () { try { await refreshBalances(); } catch (e) {} }, isHouseWallet: function () { try { return !!(account && hostTreasury && eq(account, hostTreasury)); } catch (e) { return false; } }, onChange: function (force) { try { syncTokenGameBalances(force); } catch (e) {} try { if (typeof refreshHouse === "function") refreshHouse(); } catch (e) {} try { checkStrandedLock(); } catch (e) {} try { if (currentGame === "blackjack") ensureBlackjackReady(); } catch (e) {} } }); } catch (e) {}
       { const rp = $("rail-profile"); if (rp) rp.hidden = false; }
       // Show Host tools to the contract owner OR the locked house wallet — so the
       // house can always reach "Start a fresh game" even on a game someone else deployed.
@@ -1244,7 +1244,15 @@
   async function refreshAll() {
     if (!read || !chainOK) return;
     updateHouseWalletBanner();
-    await Promise.all([refreshBalances(), refreshRooms(), refreshStats(), refreshHouse(), refreshPlayers(), refreshMyTables(), refreshMyHistory(), refreshHostPanel()]);
+    // Only what actually gates "playable": the player's credits (refreshBalances -> gameWei/walletWei,
+    // which depositCapUsd()/setupSliders read right after) and the house-bet cap (refreshHouse -> house-bet
+    // slider max). One parallel round trip.
+    await Promise.all([refreshBalances(), refreshHouse()]);
+    // Heavy lobby/history scans — refreshPlayers/refreshMyHistory pull getRecentRooms(2000), a multi-second
+    // eth_call via the injected provider — come OFF the connect critical path: fire-and-forget. Every
+    // refresher self-guards (read/chainOK/account) and self-paints when it lands, and the 12s poll (L5623)
+    // re-runs them all anyway.
+    Promise.all([refreshRooms(), refreshStats(), refreshPlayers(), refreshMyTables(), refreshMyHistory(), refreshHostPanel()]).catch(function () {});
   }
 
   // While a flip/dice result is animating, freeze the in-game balance display so
@@ -1408,10 +1416,30 @@
   function flipBuildup(betWei) { try { window.WinScenes && WinScenes.flipStart && WinScenes.flipStart({ betUsd: weiToUsd(betWei) }); } catch (e) {} }
   function cancelBuildup() { try { window.WinScenes && WinScenes.flipCancel && WinScenes.flipCancel(); } catch (e) {} }
 
-  async function refreshBalances() {
+  // Coalesce concurrent refresh callers: one in-flight run + at most one trailing re-run when
+  // callers arrive mid-flight. The trailing run STARTS after the last request, so freshness is
+  // never worse than the old parallel duplicate reads - and the older-read-paints-stale race
+  // goes away. Bodies swallow their own errors, so the shared promise never rejects.
+  let _rbP = null, _rbAgain = false;
+  function refreshBalances() {
+    if (_rbP) { _rbAgain = true; return _rbP; }
+    _rbP = (async () => { do { _rbAgain = false; await _refreshBalancesOnce(); } while (_rbAgain); })().finally(() => { _rbP = null; });
+    return _rbP;
+  }
+  async function _refreshBalancesOnce() {
     if (demoOn) { demoPaint(); return; }
     try {
-      const [gb, wb] = await Promise.all([read.balances(account), provider.getBalance(account)]);
+      let gb, wb;
+      try {
+        [gb, wb] = await Promise.all([read.balances(account), provider.getBalance(account)]);
+      } catch (e) {
+        // Injected-provider wedge (mobile webview suspended during a MetaMask confirm): retry once via the
+        // INDEPENDENT public-RPC contract (v13.28 pattern) so the credit/withdraw paint isn't frozen exactly
+        // when the player returns from the wallet app. Fires ONLY when the primary read throws.
+        const roc = roReadContract();
+        if (!roc || !roc.runner || !roc.runner.getBalance) throw e;
+        [gb, wb] = await Promise.all([roc.balances(account), roc.runner.getBalance(account)]);
+      }
       const gameWeiChanged = gb !== gameWei;
       gameWei = gb; // cached so "Max" can read the live in-game balance instantly
       if (!revealLock) $("game-balance").textContent = usdOf(gb); // hold until the result is revealed
@@ -1439,29 +1467,55 @@
   // An INDEPENDENT read-only contract on a PUBLIC RPC (not the injected wallet provider). The injected
   // provider can WEDGE while a mobile webview is suspended during a MetaMask confirm — reads through it
   // stall — so deposit/lock reconciliation also hits this to see the on-chain truth regardless. Lazy + cached.
+  // RO RPC POOL: one hardcoded endpoint was a single point of failure — a publicnode outage/rate-limit
+  // silently killed the lobby (setupReadOnly never retried), the deposit reconciler's independent leg,
+  // and every roReadContract read (the cache kept serving the dead provider forever). roRpcFailed()
+  // rotates to the next endpoint; the cached provider/contract rebuild lazily on the next read.
+  // Rotation changes WHERE we read, never WHAT (same address + ABI); every money tx still goes through
+  // the injected signer. staticNetwork skips the eth_chainId auto-detect round-trip (chain is pinned).
+  const RO_RPC_URLS = {
+    11155111: ["https://ethereum-sepolia-rpc.publicnode.com", "https://sepolia.drpc.org", "https://1rpc.io/sepolia"],
+    31337: ["http://127.0.0.1:8545"],
+  };
+  let _roIdx = 0, _roProv = null, _roProvUrl = null;
+  function roRpcUrl() { const l = RO_RPC_URLS[deployment.chainId || 11155111]; return l ? l[_roIdx % l.length] : null; }
+  function roRpcFailed() { _roIdx++; _roProv = null; _roProvUrl = null; _roReadC = null; _roReadAddr = null; }
+  function roProvider() {
+    const url = roRpcUrl();
+    if (!url) return null;
+    if (!_roProv || _roProvUrl !== url) {
+      try { _roProv = new E.JsonRpcProvider(url, deployment.chainId || 11155111, { staticNetwork: true }); _roProvUrl = url; }
+      catch (e) { _roProv = null; _roProvUrl = null; }
+    }
+    return _roProv;
+  }
   let _roReadC = null, _roReadAddr = null;
   function roReadContract() {
-    if (_roReadC && sameAddr(_roReadAddr, deployment.address)) return _roReadC; // address-aware cache: never serve a contract built on a stale deployment.address
+    if (_roReadC && sameAddr(_roReadAddr, deployment.address)) return _roReadC; // address-aware cache: never serve a contract built on a stale deployment.address (roRpcFailed() also invalidates it on rotation)
     try {
-      const RO_RPC = { 11155111: "https://ethereum-sepolia-rpc.publicnode.com", 31337: "http://127.0.0.1:8545" };
-      const chain = deployment.chainId || 11155111;
-      const url = RO_RPC[chain];
-      if (!url || !deployment.address) return null;
-      _roReadC = new E.Contract(deployment.address, ABI, new E.JsonRpcProvider(url, chain));
+      const prov = roProvider();
+      if (!prov || !deployment.address) return null;
+      _roReadC = new E.Contract(deployment.address, ABI, prov);
       _roReadAddr = deployment.address;
     } catch (e) { _roReadC = null; _roReadAddr = null; }
     return _roReadC;
   }
   async function waitBalanceIncrease(beforeWei, timeoutMs) {
     const deadline = Date.now() + (timeoutMs || 120000);
-    const ro = roReadContract(); // independent RPC in case the wallet provider wedges
+    const delays = [1200, 2000, 3000]; // ramp-in: catch an already-mined / fast-mined deposit early, then settle to the steady 3.5s cadence
     while (Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 3500));
-      const reads = [read.balances(account)];
-      if (ro) reads.push(ro.balances(account));
+      await new Promise((r) => setTimeout(r, delays.shift() || 3500));
+      const ro = roReadContract(); // re-resolved EACH poll: cached when healthy, picks up a pool rotation after a failure (and heals a null-at-t0)
+      // Bound each read: a WEDGED injected provider hangs (never rejects), and allSettled would then
+      // block the whole poll loop on it — exactly the failure this RO-backed poller exists to survive.
+      // A timed-out read is treated like a failed read (ignored; next cycle retries).
+      const tmo = (p) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error("read timeout")), 4000))]);
+      const reads = [tmo(read.balances(account))];
+      if (ro) reads.push(tmo(ro.balances(account)));
       let landed = null;
       try {
         const vals = await Promise.allSettled(reads);
+        if (ro && vals[1] && vals[1].status === "rejected") roRpcFailed(); // dead/limited public endpoint → rotate for the next poll
         for (const v of vals) { if (v.status === "fulfilled" && typeof v.value === "bigint" && v.value > beforeWei) { landed = v.value; break; } }
       } catch (e) {}
       if (landed != null) {
@@ -1470,7 +1524,7 @@
         gameWei = landed;
         try { if (!revealLock) $("game-balance").textContent = usdOf(landed); } catch (e) {}
         try { if (window.TokenMode && TokenMode._render) TokenMode._render(); } catch (e) {}
-        try { await refreshBalances(); } catch (e) {}
+        try { refreshBalances(); } catch (e) {} // fire-and-forget: goes through the wallet provider, which may be the wedged one — must not block resolution
         return true;
       }
     }
@@ -1544,7 +1598,13 @@
     updateDepositBtn();
   }
 
-  async function refreshStats() {
+  let _rsP = null, _rsAgain = false; // coalesced like refreshBalances
+  function refreshStats() {
+    if (_rsP) { _rsAgain = true; return _rsP; }
+    _rsP = (async () => { do { _rsAgain = false; await _refreshStatsOnce(); } while (_rsAgain); })().finally(() => { _rsP = null; });
+    return _rsP;
+  }
+  async function _refreshStatsOnce() {
     try {
       const [g, w, f] = await Promise.all([read.totalGamesPlayed(), read.totalWagered(), read.totalFeesCollected()]);
       $("stat-games").textContent = g.toString();
@@ -1553,7 +1613,13 @@
     } catch {}
   }
 
-  async function refreshRooms() {
+  let _rrP = null, _rrAgain = false; // coalesced like refreshBalances - also stops the 3x innerHTML rebuild per settle burst
+  function refreshRooms() {
+    if (_rrP) { _rrAgain = true; return _rrP; }
+    _rrP = (async () => { do { _rrAgain = false; await _refreshRoomsOnce(); } while (_rrAgain); })().finally(() => { _rrP = null; });
+    return _rrP;
+  }
+  async function _refreshRoomsOnce() {
     try {
       const rooms = await read.getOpenRooms();
       const list = $("rooms-list");
@@ -1636,6 +1702,10 @@
     if (value <= 0n) return toast("Not enough ETH to deposit after leaving gas. Top up your wallet first.", "err");
     // Confirm the exact amount + direction before opening MetaMask.
     const ethStr = (() => { try { return (+E.formatEther(value)).toFixed(4); } catch { return ethApprox(weiToUsd(value)); } })();
+    // Pre-warm the gas estimate WHILE the user reads the confirm modal — estGas never rejects (falls
+    // back to 130k internally), so a cancelled modal leaves no unhandled rejection, and a gas LIMIT
+    // can't go stale (deposit()'s gas usage is constant; +30% headroom unchanged).
+    const gasP = estGas("deposit", [], { value }, 130_000n);
     const ok = await confirmTransfer({
       title: "Add game credits", sub: "Move money from your wallet into the game so you can play.",
       usd: usd(weiToUsd(value)), eth: "≈ " + ethStr + " ETH", from: "Your wallet", to: "Game credits",
@@ -1646,24 +1716,36 @@
     setBtnBusy(btn, "Depositing Funds…");
     try {
       toast("Confirm the deposit in MetaMask…");
-      const before = await read.balances(account).catch(() => null); // credits BEFORE this deposit (on-chain)
-      const tx = await contract.deposit({ value, gasLimit: await estGas("deposit", [], { value }, 130_000n) });
+      const [before, gasLimit] = await Promise.all([
+        read.balances(account).catch(() => null), // credits BEFORE this deposit (on-chain)
+        gasP,
+      ]);
+      const tx = await contract.deposit({ value, gasLimit });
       toast("Deposit submitted — confirming on-chain…");
       if (before != null) {
         // Don't hang on tx.wait alone: an injected/mobile wallet often stalls delivering the receipt, which
         // left the credit uncredited until the user tapped the wallet notice or refreshed. Resolve on WHICHEVER
         // lands first — the receipt OR the on-chain balance actually rising — so the credit shows the instant
         // chain reflects it. W2: still bounded so a dropped tx can't latch the button busy forever.
-        await Promise.race([
-          tx.wait(1, 180000).catch(() => null),
-          waitBalanceIncrease(before, 180000),
+        const rose = await Promise.race([
+          tx.wait(1, 180000).then(() => false).catch(() => false), // a receipt alone NEVER grants success — the balance re-check below still gates it
+          waitBalanceIncrease(before, 180000), // resolves true ONLY after an on-chain read actually exceeded `before`
         ]);
-        await refreshBalances();
+        refreshBalances(); // fire-and-forget: goes through the wallet provider, which may be the WEDGED one — must not latch the button busy (the bounded re-check below paints the authoritative result)
         // Gate the success toast on the AUTHORITATIVE on-chain balance actually rising — a dropped/never-mined
-        // tx must NOT falsely report "Deposited" (the old bare `await tx.wait` threw + surfaced an error; keep
-        // that guarantee). If it didn't credit yet, say so neutrally — the periodic balance poll still lands it.
-        const after = await read.balances(account).catch(() => before);
-        if (after > before) toast("Deposited " + usd(weiToUsd(value)), "ok");
+        // tx must NOT falsely report "Deposited". Trust waitBalanceIncrease's already-verified rise; otherwise
+        // re-check through BOTH providers, bounded, so a wedged injected provider can neither hang the button
+        // nor fake a "stuck transaction" warning after a successful credit.
+        let credited = rose === true;
+        if (!credited) {
+          const tmo2 = (p) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error("read timeout")), 5000))]);
+          const ro2 = roReadContract();
+          const reads2 = [tmo2(read.balances(account))];
+          if (ro2) reads2.push(tmo2(ro2.balances(account)));
+          const vals2 = await Promise.allSettled(reads2);
+          for (const v of vals2) { if (v.status === "fulfilled" && typeof v.value === "bigint" && v.value > before) { credited = true; break; } }
+        }
+        if (credited) toast("Deposited " + usd(weiToUsd(value)), "ok");
         else toast("Deposit sent — it’ll credit automatically the moment it confirms. If it doesn’t show shortly, check MetaMask for a stuck transaction.", "err");
       } else {
         // Couldn't read the pre-balance — fall back to the receipt as the confirmation signal (old behavior:
@@ -1874,7 +1956,13 @@
     }, 2800);
   }
 
-  async function refreshHouse() {
+  let _rhP = null, _rhAgain = false; // coalesced like refreshBalances
+  function refreshHouse() {
+    if (_rhP) { _rhAgain = true; return _rhP; }
+    _rhP = (async () => { do { _rhAgain = false; await _refreshHouseOnce(); } while (_rhAgain); })().finally(() => { _rhP = null; });
+    return _rhP;
+  }
+  async function _refreshHouseOnce() {
     if (demoOn) return;
     try {
       const b = await read.houseBankroll();
@@ -2408,7 +2496,7 @@
     return new Promise((res, rej) => {
       // v13 #38: dedup by src so a watchdog re-kick (an ensure*Ready promise nulled) never appends a SECOND <script>
       // for the same file while the first is still downloading (the load race). The selector keys on the exact
-      // versioned src ("...?v=1330"), so a later ?v bump is a distinct file and still loads fresh — no stale cache.
+      // versioned src ("...?v=1331"), so a later ?v bump is a distinct file and still loads fresh — no stale cache.
       const sel = 'script[data-loadonce="' + src.replace(/"/g, "&quot;") + '"]';
       const existing = document.querySelector(sel);
       if (existing) {
@@ -2444,7 +2532,7 @@
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=1330"))
+      .then(() => loadScriptOnce("slots.js?v=1331"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -2454,11 +2542,11 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=1330"))
-      .then(() => loadScriptOnce("pressure-render.js?v=1330"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=1330"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=1331"))
+      .then(() => loadScriptOnce("pressure-render.js?v=1331"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=1331"))
       // optional 3D red balloon (Three.js) — falls back to the 2D balloon if it can't load
-      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1330")).catch(() => {}))
+      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1331")).catch(() => {}))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -2530,10 +2618,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=1330"))
-      .then(() => loadScriptOnce("plane-render.js?v=1330"))
-      .then(() => loadScriptOnce("plane-feed.js?v=1330"))
-      .then(() => loadScriptOnce("plane-ui.js?v=1330"))
+      .then(() => loadScriptOnce("plane-engine.js?v=1331"))
+      .then(() => loadScriptOnce("plane-render.js?v=1331"))
+      .then(() => loadScriptOnce("plane-feed.js?v=1331"))
+      .then(() => loadScriptOnce("plane-ui.js?v=1331"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2644,8 +2732,8 @@
     if (window.Slots3D) return Promise.resolve(true);
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("slots3d-engine.js?v=1330"))
-      .then(() => loadScriptOnce("slots3d.js?v=1330"))
+      .then(() => loadScriptOnce("slots3d-engine.js?v=1331"))
+      .then(() => loadScriptOnce("slots3d.js?v=1331"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2702,8 +2790,8 @@
     if (window.FishTable) return Promise.resolve(true);
     if (fishLoadPromise) return fishLoadPromise;
     fishLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishtable-engine.js?v=1330"))
-      .then(() => loadScriptOnce("fishtable.js?v=1330"))
+      .then(() => loadScriptOnce("fishtable-engine.js?v=1331"))
+      .then(() => loadScriptOnce("fishtable.js?v=1331"))
       .then(() => true)
       .catch((e) => { fishLoadPromise = null; throw e; });
     return fishLoadPromise;
@@ -2786,7 +2874,7 @@
     if (window.SwoopGame) return Promise.resolve(true);
     if (swoopLoadPromise) return swoopLoadPromise;
     swoopLoadPromise = loadPlayCanvasOnce()
-      .then(() => loadScriptOnce("swoop3d.js?v=1330"))
+      .then(() => loadScriptOnce("swoop3d.js?v=1331"))
       .then(() => true)
       .catch((e) => { swoopLoadPromise = null; throw e; });
     return swoopLoadPromise;
@@ -2867,8 +2955,8 @@
     if (window.FishShooter) return Promise.resolve(true);
     if (fishshooterLoadPromise) return fishshooterLoadPromise;
     fishshooterLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishshooter-engine.js?v=1330")) // OWN engine (decoupled from Reef's fishtable-engine.js)
-      .then(() => loadScriptOnce("fishshooter.js?v=1330"))
+      .then(() => loadScriptOnce("fishshooter-engine.js?v=1331")) // OWN engine (decoupled from Reef's fishtable-engine.js)
+      .then(() => loadScriptOnce("fishshooter.js?v=1331"))
       .then(() => true)
       .catch((e) => { fishshooterLoadPromise = null; throw e; });
     return fishshooterLoadPromise;
@@ -2953,7 +3041,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1330"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1331"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -2980,7 +3068,7 @@
   function loadRail3dOnce() {
     if (window.Rail3D) return Promise.resolve(true);
     if (rail3dLoadPromise) return rail3dLoadPromise;
-    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1330")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
+    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1331")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
     return rail3dLoadPromise;
   }
   function buildRail3d() {
@@ -3001,7 +3089,7 @@
   function loadDice2_3dOnce() {
     if (window.TwoDice3D) return Promise.resolve(true);
     if (d2_3dLoadPromise) return d2_3dLoadPromise;
-    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1330")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
+    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1331")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
     return d2_3dLoadPromise;
   }
   function buildDice2_3d() {
@@ -3312,7 +3400,15 @@
       // is false mid-resume, so without this the banner flashed on reload and a tap would force-settle the very
       // session that's coming back. checkStrandedLock re-runs on the ctf:resume-done event below once it resolves.
       if (!account || !read || TokenMode.active() || (TokenMode.resumePending && TokenMode.resumePending()) || (TokenMode.pendingBuyIn && TokenMode.pendingBuyIn())) { TokenMode.setStranded(0); return; } // don't flash Recover while a buy-in is mid-lock/mid-verify (bjLocked can already be >0 before the session opens)
-      let locked = 0n; try { locked = await read.bjLocked(account); } catch (e) { return; }
+      let locked = 0n;
+      try { locked = await read.bjLocked(account); }
+      catch (e) {
+        // Injected-provider wedge (mobile webview suspended during a MetaMask confirm): fall back to the
+        // INDEPENDENT public-RPC contract (v13.28 pattern) — otherwise the stranded-lock safety net is
+        // dead exactly when the wallet provider is, which is exactly when a late-mined lock strands funds.
+        const roc = roReadContract(); if (!roc) return;
+        try { locked = await roc.bjLocked(account); } catch (e2) { return; }
+      }
       TokenMode.setStranded(locked > 0n ? weiToUsd(locked) : 0);
     } catch (e) {}
   }
@@ -3782,7 +3878,7 @@
       const tableWallet = account || bjGuestId();
       // &r=<nonce> in the QUERY forces a real iframe reload (so the felt re-reads the #bjsession from the
       // hash and re-sends its hello → the server re-binds the table to the token session).
-      let src = "blackjack.html?tv=1&v=1330&r=" + (++bjFeltNonce) + "&guest=" + encodeURIComponent(tableWallet);
+      let src = "blackjack.html?tv=1&v=1331&r=" + (++bjFeltNonce) + "&guest=" + encodeURIComponent(tableWallet);
       let tokenHash = "";
       // PREFERRED real-money path: fund the table with the player's TOKEN session (chips = tokens, no lock step).
       if (account && window.TokenMode && TokenMode.active && TokenMode.active() && TokenMode.session) {
@@ -4030,7 +4126,7 @@
     // + dead-bridge screen), re-init it so it binds to the account + token session. Throttled so it can't loop.
     try {
       const f0 = $("bj-frame");
-      // v13.30: the felt is ALSO stale if it's bound to a DIFFERENT (or no) token bjsession than the live one —
+      // v13.31: the felt is ALSO stale if it's bound to a DIFFERENT (or no) token bjsession than the live one —
       // e.g. it loaded as a $0 GUEST and the post-buy-in re-bind raced the just-created session, so the seat
       // shows $0 and the bet controls never appear until a manual ⟳ Reload. Reloading it (via the proven
       // ensureBlackjackReady) re-funds the seat from the token session AUTOMATICALLY. Guarded by !bjDockLive
@@ -5632,14 +5728,22 @@
 
   // Shared short-TTL cache for getRecentRooms so the players / history / host-panel
   // scans in one cycle don't each fire their own (expensive) RPC fetch.
-  let _recent = { t: 0, n: 0, rooms: null };
+  let _recent = { t: 0, n: 0, rooms: null, p: null, pn: 0 };
   async function recentRooms(n) {
     const now = Date.now();
     if (_recent.rooms && _recent.n >= n && now - _recent.t < 5000) return _recent.rooms.slice(0, n);
+    if (_recent.p && _recent.pn >= n) return (await _recent.p).slice(0, n); // share the IN-FLIGHT fetch — the heavy tick / ws bursts fire refreshPlayers+refreshMyHistory+refreshHostPanel concurrently
     const want = Math.max(n, 150);
-    const rooms = await read.getRecentRooms(want);
-    _recent = { t: now, n: want, rooms };
-    return rooms.slice(0, n);
+    const p = read.getRecentRooms(want);
+    _recent.p = p; _recent.pn = want;
+    try {
+      const rooms = await p;
+      _recent = { t: Date.now(), n: want, rooms, p: null, pn: 0 };
+      return rooms.slice(0, n);
+    } catch (e) {
+      if (_recent.p === p) { _recent.p = null; _recent.pn = 0; }
+      throw e;
+    }
   }
   let _recentDice = { t: 0, n: 0, dice: null };
   async function recentDice(n) {
@@ -5677,6 +5781,7 @@
   // A FAILED read also latched forever (no retry). Now: one SHARED in-flight promise — every caller awaits the
   // SAME resolution (no bind-before-resolve), and a failure un-latches so the next caller retries.
   let registryResolveP = null;
+  function regCacheKey() { return "cf:activeGame:" + (deployment.chainId || 0) + ":" + String(cfg.registry || "").toLowerCase(); }
   async function resolveActiveGame(prov) {
     // RECOVERY MODE: an explicit ?contract= matching one of OUR OWN previous contracts (cfg.legacy, a trusted
     // hardcoded list) stays bound so stranded deposits can be withdrawn — the registry never overrides it.
@@ -5695,34 +5800,63 @@
           if (sameAddr(urlWanted, live)) deployment.address = live; // param equals the trusted on-chain active game → OK
           return; // param neither pinned nor registry-active → dropped
         }
+        try { localStorage.setItem(regCacheKey(), live); } catch (e) {} // remember the VERIFIED active game for the next load
+        // LATE-LANDING GUARD: if this session already bound `contract` (we proceeded on the cached address
+        // below and the live read landed afterwards), NEVER mutate deployment.address under the binding —
+        // that is exactly the v13.29 race class. The cache above is updated so the NEXT load binds right.
+        if (contract && !sameAddr(deployment.address, live)) { try { banner("⚠ The live game moved to a new contract — reload the page to play on it.", true); } catch (e) {} return; }
         deployment.address = live;
       })().catch(() => { registryResolveP = null; /* failed → un-latch so the NEXT caller retries; callers proceed on the (now-live) config fallback */ });
+    }
+    // SPEED + ROBUSTNESS: don't gate connect on a slow registry RPC forever. If we hold a last-VERIFIED
+    // active address from a previous load (written ONLY after a successful, allowlist-checked registry read),
+    // bound the await at 3.5s; on timeout OR failure adopt the cached address (fresher than the bundled
+    // config fallback). An explicit ?contract= link keeps today's full-await path untouched.
+    let cached = null; try { cached = localStorage.getItem(regCacheKey()); } catch (e) {}
+    if (cached && E.isAddress(cached) && !params.get("contract")) {
+      const p = registryResolveP;
+      const done = await Promise.race([p.then(() => true), new Promise((r) => setTimeout(() => r(false), 3500))]);
+      const failed = done && registryResolveP === null; // the read failed (the catch un-latched it)
+      if ((!done || failed) && sameAddr(deployment.address, cfg.address)) deployment.address = cached;
+      return;
     }
     await registryResolveP;
   }
 
   async function setupReadOnly() {
     if (read || !deployment.address) return;
-    const RO_RPC = {
-      11155111: "https://ethereum-sepolia-rpc.publicnode.com",
-      31337: "http://127.0.0.1:8545",
-    };
-    const chain = deployment.chainId || 11155111;
-    const url = RO_RPC[chain];
-    if (!url) return;
-    try {
-      const ro = new E.JsonRpcProvider(url, chain);
-      ro.pollingInterval = 8000;
-      await resolveActiveGame(ro); // may update deployment.address from the registry
-      const code = await ro.getCode(deployment.address);
-      if (!code || code === "0x") return; // nothing deployed there to read
-      if (read || walletReadReady || account || connecting) return; // #4 (v13.18) + #8: a wallet connect landed OR is IN PROGRESS during our awaits — don't clobber the live wallet provider with this read-only one
-      provider = ro;
-      read = new E.Contract(deployment.address, ABI, ro);
-      chainOK = true;
-      try { hostTreasury = await read.treasury(); } catch {}
-      refreshStats(); refreshHouse(); refreshRooms(); refreshPlayers();
-    } catch {}
+    // Endpoint ROTATION: try each pool URL in order — a dead/rate-limited public endpoint used to silently
+    // kill the whole read-only boot (no lobby, no registry resolution) with no retry.
+    const urls = RO_RPC_URLS[deployment.chainId || 11155111] || [];
+    for (let attempt = 0; attempt < urls.length; attempt++) {
+      const url = roRpcUrl();
+      if (!url) return;
+      try {
+        const ro = new E.JsonRpcProvider(url, deployment.chainId || 11155111, { staticNetwork: true }); // chain is pinned per URL — skip the eth_chainId detect round-trip
+        ro.pollingInterval = 8000;
+        // SPEED (boot → lobby / tap-Connect): overlap the getCode round-trip with the registry read using the
+        // LAST-KNOWN active game (written below after each resolution). The cache is a PREFETCH HINT ONLY —
+        // binding always follows the verified deployment.address: if the registry resolves elsewhere, the
+        // prefetch is discarded and getCode re-runs on the real address. Nothing binds before resolveActiveGame
+        // returns, so the v13.29 binding race cannot re-open. Worst case of a stale cache = one wasted eth_getCode.
+        const LKA = "ctf_lastActive_" + (deployment.chainId || 11155111);
+        let lka = null; try { lka = localStorage.getItem(LKA); } catch (e) {}
+        const preCodeP = (lka && E.isAddress(lka)) ? ro.getCode(lka).catch(() => null) : null;
+        await resolveActiveGame(ro); // may update deployment.address from the registry (self-catches; a failed read un-latches and retries on the next endpoint)
+        try { if (deployment.address) localStorage.setItem(LKA, deployment.address); } catch (e) {}
+        let code = null;
+        if (preCodeP && lka && sameAddr(lka, deployment.address)) code = await preCodeP; // hit: the round-trip already ran in parallel
+        if (!code) code = await ro.getCode(deployment.address); // miss / mismatch / prefetch failure → verify on the REAL address, exactly as before
+        if (!code || code === "0x") return; // the RPC ANSWERED: nothing deployed there — not an RPC failure, don't rotate
+        if (read || walletReadReady || account || connecting) return; // #4 (v13.18) + #8: a wallet connect landed OR is IN PROGRESS during our awaits — don't clobber the live wallet provider with this read-only one
+        provider = ro;
+        read = new E.Contract(deployment.address, ABI, ro);
+        chainOK = true;
+        try { hostTreasury = await read.treasury(); } catch {}
+        refreshStats(); refreshHouse(); refreshRooms(); refreshPlayers();
+        return;
+      } catch (e) { roRpcFailed(); } // this endpoint is down → rotate and try the next
+    }
   }
 
   // Hard-disable browser zoom gestures across every mobile browser + Safari:
@@ -5790,7 +5924,13 @@
     enterDemo();
     initNoticeDismiss(); // wire the ✕ close buttons on the demo / phone notices
     connectWS(); // connect the live socket for everyone (guest chat + presence + blackjack), not just connected wallets
-    document.addEventListener("visibilitychange", () => { if (!document.hidden && (!ws || ws.readyState >= 2)) { try { wsTries = 0; connectWS(); } catch (e) {} } }); // M2: coming back to the tab after the socket died (backgrounded through a redeploy) reconnects immediately instead of waiting on backoff
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) return;
+      if (!ws || ws.readyState >= 2) { try { wsTries = 0; connectWS(); } catch (e) {} return; } // M2: dead socket → reconnect immediately instead of waiting on backoff
+      if (ws.readyState === 1 && wsLastRx && Date.now() - wsLastRx > 35000) { try { ws.close(); } catch (e) {} } // OPEN but half-open after a background freeze (same 35s bound the heartbeat enforces) → drop now; onclose reconnects, onopen re-hellos + CrashRounds.resume() re-binds any live crash round
+    });
+    window.addEventListener("online", () => { if (!ws || ws.readyState >= 2) { try { wsTries = 0; connectWS(); } catch (e) {} } }); // network back → reconnect NOW instead of waiting out the backoff cap (8s)
+    window.addEventListener("pageshow", (e) => { if (e.persisted && (!ws || ws.readyState >= 2)) { try { wsTries = 0; connectWS(); } catch (e2) {} } }); // iOS bfcache restore: sockets are dead but visibilitychange may not fire — same guarded kick, persisted-only so fresh loads don't double-connect
     // W7: silent reconnect. The app's own forced reloads (account/network change) otherwise dump a connected
     // real-money player into demo. If MetaMask still holds the grant (eth_accounts, no popup) AND the user
     // didn't manually Disconnect, reconnect quietly. Demo stays the fallback if anything is off.
@@ -5816,7 +5956,7 @@
     // Music NEVER auto-plays — it only starts when the user taps the Music button.
     // Live ETH→USD price: fetch now, refresh labels, and re-poll every 60s.
     fetchEthUsd().then(() => { setupSliders(); if (demoOn) demoSyncBalance(); if (read && chainOK) { refreshBalances(); refreshStats(); refreshHouse(); refreshRooms(); } });
-    setInterval(() => { if (document.hidden) return; fetchEthUsd().then(() => { setupSliders(); if (demoOn) demoSyncBalance(); if (read && chainOK) { refreshBalances(); refreshStats(); refreshHouse(); refreshRooms(); } }); }, 60000);
+    setInterval(() => { if (document.hidden) return; fetchEthUsd().then(() => { setupSliders(); if (demoOn) demoSyncBalance(); if (read && chainOK) refreshStats(); }); }, 60000); // balances/house/rooms are on the 12s backstop under the SAME guard — the fresh ETH-USD price repaints them on the next tick (<=12s); only refreshStats is unique here
     $("connect-btn").classList.add("cta-pulse");
     // On a phone with no injected wallet, nudge users into the MetaMask browser.
     if (/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) && !window.ethereum) {
