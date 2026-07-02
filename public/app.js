@@ -2284,7 +2284,7 @@
     return new Promise((res, rej) => {
       // v13 #38: dedup by src so a watchdog re-kick (an ensure*Ready promise nulled) never appends a SECOND <script>
       // for the same file while the first is still downloading (the load race). The selector keys on the exact
-      // versioned src ("...?v=1301"), so a later ?v bump is a distinct file and still loads fresh — no stale cache.
+      // versioned src ("...?v=1302"), so a later ?v bump is a distinct file and still loads fresh — no stale cache.
       const sel = 'script[data-loadonce="' + src.replace(/"/g, "&quot;") + '"]';
       const existing = document.querySelector(sel);
       if (existing) {
@@ -2306,21 +2306,21 @@
   function loadPixiOnce() {
     if (window.PIXI) return Promise.resolve();
     if (pixiLoadPromise) return pixiLoadPromise;
-    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1301").catch((e) => { pixiLoadPromise = null; throw e; });
+    pixiLoadPromise = loadScriptOnce("vendor/pixi.min.js?v=1302").catch((e) => { pixiLoadPromise = null; throw e; });
     return pixiLoadPromise;
   }
   // PlayCanvas engine (~2.2MB) — only loaded when the Sky Swoop channel is first opened.
   function loadPlayCanvasOnce() {
     if (window.pc) return Promise.resolve();
     if (playcanvasLoadPromise) return playcanvasLoadPromise;
-    playcanvasLoadPromise = loadScriptOnce("vendor/playcanvas.min.js?v=1301").catch((e) => { playcanvasLoadPromise = null; throw e; });
+    playcanvasLoadPromise = loadScriptOnce("vendor/playcanvas.min.js?v=1302").catch((e) => { playcanvasLoadPromise = null; throw e; });
     return playcanvasLoadPromise;
   }
   function ensureSlotsLoaded() {
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=1301"))
+      .then(() => loadScriptOnce("slots.js?v=1302"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -2330,11 +2330,11 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=1301"))
-      .then(() => loadScriptOnce("pressure-render.js?v=1301"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=1301"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=1302"))
+      .then(() => loadScriptOnce("pressure-render.js?v=1302"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=1302"))
       // optional 3D red balloon (Three.js) — falls back to the 2D balloon if it can't load
-      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1301")).catch(() => {}))
+      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1302")).catch(() => {}))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -2406,10 +2406,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=1301"))
-      .then(() => loadScriptOnce("plane-render.js?v=1301"))
-      .then(() => loadScriptOnce("plane-feed.js?v=1301"))
-      .then(() => loadScriptOnce("plane-ui.js?v=1301"))
+      .then(() => loadScriptOnce("plane-engine.js?v=1302"))
+      .then(() => loadScriptOnce("plane-render.js?v=1302"))
+      .then(() => loadScriptOnce("plane-feed.js?v=1302"))
+      .then(() => loadScriptOnce("plane-ui.js?v=1302"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2513,15 +2513,15 @@
   function loadThreeOnce() {
     if (window.THREE) return Promise.resolve();
     if (threeLoadPromise) return threeLoadPromise;
-    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1301").catch((e) => { threeLoadPromise = null; throw e; });
+    threeLoadPromise = loadScriptOnce("vendor/three.min.js?v=1302").catch((e) => { threeLoadPromise = null; throw e; });
     return threeLoadPromise;
   }
   function ensureSlots3dLoaded() {
     if (window.Slots3D) return Promise.resolve(true);
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("slots3d-engine.js?v=1301"))
-      .then(() => loadScriptOnce("slots3d.js?v=1301"))
+      .then(() => loadScriptOnce("slots3d-engine.js?v=1302"))
+      .then(() => loadScriptOnce("slots3d.js?v=1302"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2567,8 +2567,8 @@
     if (window.FishTable) return Promise.resolve(true);
     if (fishLoadPromise) return fishLoadPromise;
     fishLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishtable-engine.js?v=1301"))
-      .then(() => loadScriptOnce("fishtable.js?v=1301"))
+      .then(() => loadScriptOnce("fishtable-engine.js?v=1302"))
+      .then(() => loadScriptOnce("fishtable.js?v=1302"))
       .then(() => true)
       .catch((e) => { fishLoadPromise = null; throw e; });
     return fishLoadPromise;
@@ -2651,7 +2651,7 @@
     if (window.SwoopGame) return Promise.resolve(true);
     if (swoopLoadPromise) return swoopLoadPromise;
     swoopLoadPromise = loadPlayCanvasOnce()
-      .then(() => loadScriptOnce("swoop3d.js?v=1301"))
+      .then(() => loadScriptOnce("swoop3d.js?v=1302"))
       .then(() => true)
       .catch((e) => { swoopLoadPromise = null; throw e; });
     return swoopLoadPromise;
@@ -2732,8 +2732,8 @@
     if (window.FishShooter) return Promise.resolve(true);
     if (fishshooterLoadPromise) return fishshooterLoadPromise;
     fishshooterLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishshooter-engine.js?v=1301")) // OWN engine (decoupled from Reef's fishtable-engine.js)
-      .then(() => loadScriptOnce("fishshooter.js?v=1301"))
+      .then(() => loadScriptOnce("fishshooter-engine.js?v=1302")) // OWN engine (decoupled from Reef's fishtable-engine.js)
+      .then(() => loadScriptOnce("fishshooter.js?v=1302"))
       .then(() => true)
       .catch((e) => { fishshooterLoadPromise = null; throw e; });
     return fishshooterLoadPromise;
@@ -2818,7 +2818,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1301"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1302"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -2845,7 +2845,7 @@
   function loadRail3dOnce() {
     if (window.Rail3D) return Promise.resolve(true);
     if (rail3dLoadPromise) return rail3dLoadPromise;
-    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1301")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
+    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1302")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
     return rail3dLoadPromise;
   }
   function buildRail3d() {
@@ -2866,7 +2866,7 @@
   function loadDice2_3dOnce() {
     if (window.TwoDice3D) return Promise.resolve(true);
     if (d2_3dLoadPromise) return d2_3dLoadPromise;
-    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1301")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
+    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1302")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
     return d2_3dLoadPromise;
   }
   function buildDice2_3d() {
@@ -3034,9 +3034,21 @@
     if (wn) wn.textContent = usd(sesWon);
     if (nt) { const net = Math.round((bal - sessionBase) * 100) / 100; nt.textContent = (net >= 0 ? "+" : "−") + usd(Math.abs(net)); nt.className = "ds-net " + (net > 0 ? "up" : net < 0 ? "down" : ""); }
   }
+  // Bottom-right TV balance readout, on EVERY channel (Fish Shooter parity — same spot, same spendable figure via
+  // tokenStateBalanceUsd). HIDDEN on channels that draw their OWN in-canvas balance (Reef "fish", "fishshooter") or
+  // run in an iframe ("blackjack"). Display-only; never mutates money. Called on channel switch + every balance
+  // event (token onChange, demo/ethUsd refresh) and polled by the interval below (canvas token bets that skip onChange).
+  function paintTvBalance() {
+    var el = document.getElementById("tv-balance"); if (!el) return;
+    if (currentGame === "fish" || currentGame === "fishshooter" || currentGame === "blackjack") { el.classList.add("hidden"); return; }
+    var v = document.getElementById("tv-balance-val");
+    var bal; try { bal = tokenStateBalanceUsd(); } catch (e) { bal = 0; }
+    if (v) v.textContent = "$" + (Math.round((+bal || 0) * 100) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    el.classList.remove("hidden");
+  }
   // Token bets in canvas games (fish/slots3d/…) move TokenMode.tokens() without always firing onChange, so
   // poll lightly to keep the tracker live; the delta-watcher dedupes via _sesBal so this never double-counts.
-  setInterval(function () { try { if ((window.TokenMode && TokenMode.active()) || currentGame === "blackjack") paintSession(); } catch (e) {} }, 1500);
+  setInterval(function () { try { if ((window.TokenMode && TokenMode.active()) || currentGame === "blackjack") paintSession(); } catch (e) {} try { paintTvBalance(); } catch (e) {} }, 1500);
   // Mirror demo credits into the same guards the live readouts use, so the
   // per-game affordability hints ("not enough credits") work unchanged.
   function demoSyncBalance() {
@@ -3058,6 +3070,7 @@
     // paintSession(force) threw a (swallowed) ReferenceError → the tracker silently never repainted here. A plain
     // repaint is correct in this demo-sync context (no deposit/withdrawal re-anchor intent to pass through).
     try { paintSession(); } catch (e) {}
+    try { paintTvBalance(); } catch (e) {}
     try {
       setupSliders();
       if (currentGame === "dice") diceReadouts();
@@ -3076,6 +3089,7 @@
     try { return weiToUsd(gameWei); } catch (e) { return 0; }
   }
   function syncTokenGameBalances(force) {
+    try { paintTvBalance(); } catch (e) {} // keep the bottom-right TV balance readout live on every token event (buy-in/bet/cash-out)
     // force=true (a buy-in / top-up / cash-out — see TokenMode.changed) must update the canvas HUD NOW,
     // even inside the fish reveal-window hold (#19). A bare poll/resync respects the hold.
     var bal = tokenStateBalanceUsd();
@@ -3474,6 +3488,7 @@
     unlockReveal(); // clear any pending reveal-lock so the new channel's balance isn't frozen for ~20s after a bet-then-switch
     currentGame = game;
     paintGameTabs(game);
+    try { paintTvBalance(); } catch (e) {} // update the bottom-right TV balance readout instantly on channel change (show/hide + value)
     try { localStorage.setItem("ctf_game", game); } catch {}
     // leaving canvas-heavy channels? pause their tickers so they don't burn CPU off-channel.
     if (game !== "slots" && window.CryptoReels && CryptoReels.setActive) CryptoReels.setActive(false);
@@ -3616,7 +3631,7 @@
       const tableWallet = account || bjGuestId();
       // &r=<nonce> in the QUERY forces a real iframe reload (so the felt re-reads the #bjsession from the
       // hash and re-sends its hello → the server re-binds the table to the token session).
-      let src = "blackjack.html?tv=1&v=1301&r=" + (++bjFeltNonce) + "&guest=" + encodeURIComponent(tableWallet);
+      let src = "blackjack.html?tv=1&v=1302&r=" + (++bjFeltNonce) + "&guest=" + encodeURIComponent(tableWallet);
       let tokenHash = "";
       // PREFERRED real-money path: fund the table with the player's TOKEN session (chips = tokens, no lock step).
       if (account && window.TokenMode && TokenMode.active && TokenMode.active() && TokenMode.session) {

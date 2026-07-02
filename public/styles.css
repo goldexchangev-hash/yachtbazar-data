@@ -2153,6 +2153,16 @@ body.connected .wallet-cluster #disconnect-btn { border-radius: var(--r-full); p
   box-shadow: 0 0 12px rgba(255, 196, 60, 0.6); opacity: .92;
 }
 
+/* Balance readout, bottom-right of the TV — mirrors the Fish Shooter in-canvas "💰 $X" so every channel
+   shows your spendable balance in the same spot. pointer-events:none so it never blocks a tap. */
+.tv-balance {
+  position: absolute; right: 12px; bottom: 10px; z-index: 46; pointer-events: none;
+  font-family: var(--display, monospace); font-weight: 800; letter-spacing: .5px;
+  font-size: clamp(13px, 3.2vw, 18px); color: #ffe08a;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .95), 0 0 10px rgba(0, 0, 0, .6);
+}
+.tv-balance strong, .tv-balance span { color: #fff2c4; }
+
 /* In demo we drive plays from the panels but there's no wallet to deposit to —
    keep the deposit/withdraw bankroll card out of the way. */
 body.demo-mode #bankroll { display: none !important; }
