@@ -9,7 +9,85 @@ https://tv-crypto-flip.onrender.com — so whoever reads it is always synced wit
 
 ---
 
-## 🔴 CLAUDE — READ THIS FIRST (Cursor Pass 17 / v12.91 — 100× SCAN CUMULATIVE)
+## 🔴 CLAUDE — READ THIS FIRST (Cursor Pass 18 / v12.91 — 200× SCAN CUMULATIVE)
+
+**Cursor's latest full audit is Pass 18 (Bug Hunt v15 — scans 101–200), building on Pass 17 (v14 scans 51–100) and Pass 16 (v13 scans 1–50). Audited against live v12.91 (`?v=1291`, `ctf-v12.91`).**
+
+**Verdict: 1 NEW Critical server bug (Scan 114 doSettle loss-escape) + 1 prior High money bug (M1 orphan cap-at-1000×). 4 NEW High client bugs.** Cumulative **200 scans**.
+
+### Where the report lives
+
+| What | Exact path / link |
+|------|-------------------|
+| **Primary report (scans 101–200 + 200-scan master registry)** | `CursorBugHunt-v15/REPORT.md` |
+| **Copy-paste fix prompt** | `CursorBugHunt-v15/CLAUDE-PROMPT.txt` |
+| **Prior pass (scans 51–100)** | `CursorBugHunt-v14/REPORT.md` |
+| **Prior pass (scans 1–50)** | `CursorBugHunt-v13/REPORT.md` |
+
+### How to load it
+
+```bash
+git fetch origin cursor/bug-hunt-v15-1291-d4cd
+git checkout claude/ethereum-betting-game-vrf-2dq50k
+git merge origin/cursor/bug-hunt-v15-1291-d4cd
+```
+
+### Fix these first
+
+**Wave 0 — NEW Critical server (Scan 114):**
+- `doSettle` on closed session must NOT clear `openByPlayer` for a different live session. Probe: `dosettle-closed-session-probe.js`
+
+**Wave 0 — Prior High money (M1, v13 Scan 46):**
+- Orphan bust: `max(crashPoint + ε, gameFloor(gameKey))`, not `1e9`
+
+**Wave 0 — NEW High client:**
+- Scan 176 Fish Shooter bonus double-credit
+- Scan 173 Pressure `_tick` `_roundToken` guard
+- Scans 171–172 Plane timeout refresh + pending TX stuck
+- v14 Scan 64 pressure early-bank orphan
+
+**Wave 1 — Reliability:** Scan 107 silent `save()`; Scan 124 crash lockout; v13/v14 client items.
+
+**Wave 2 — Security:** Scan 188 WS impersonation; Scan 187 chat XSS; Scan 161 localStorage contract validation.
+
+### Probe gate
+
+```bash
+node CursorBugHunt-v2/crash-reserve-probe.js
+node CursorBugHunt-v2/crash-liveness-probe.js
+node CursorBugHunt-v2/adversarial-suite-v2.js
+node CursorBugHunt-v3/crash-bj-interleave-probe.js
+node CursorBugHunt-v3/wave1-auth-probe.js
+node CursorBugHunt-v3/wave2-money-probe.js
+node CursorBugHunt-v4/crash-bj-inverse-probe.js
+node CursorBugHunt-v4/orphan-drain-probe.js
+node CursorBugHunt-v5/pending-settle-key-probe.js
+node CursorBugHunt-v6/plane-token-stuck-probe.js
+node CursorBugHunt-v7/pressure-drain-probe.js
+node CursorBugHunt-v8/pressure-leave-stuck-probe.js
+node CursorBugHunt-v9/bj-reload-demo-probe.js
+node CursorBugHunt-v10/crash-cold-resume-probe.js
+node CursorBugHunt-v10/reef-splash-token-probe.js
+node CursorBugHunt-v11/fish-token-epoch-probe.js
+node CursorBugHunt-v11/slots3d-offchannel-bar-probe.js
+node CursorBugHunt-v12/crash-ack-timeout-probe.js
+node CursorBugHunt-v12/stranded-resume-race-probe.js
+node CursorBugHunt-v12/dice-token-afford-probe.js
+node CursorBugHunt-v12/bj-dock-stale-probe.js
+node CursorBugHunt-v13/orphan-cap-win-probe.js
+node CursorBugHunt-v13/token-play-seq-probe.js
+node CursorBugHunt-v14/pressure-early-bank-probe.js
+node CursorBugHunt-v14/ws-bridge-disabled-probe.js
+node CursorBugHunt-v14/verify-rederive-cap-probe.js
+node CursorBugHunt-v15/dosettle-closed-session-probe.js
+node CursorBugHunt-v15/bridge-save-silent-probe.js
+node CursorBugHunt-v15/slots3d-spin-gen-probe.js
+npm test
+```
+
+---
+
+## 🔴 CLAUDE — READ THIS FIRST (Cursor Pass 17 / v12.91 — 100× SCAN CUMULATIVE) — superseded by v15 above
 
 **Cursor's latest full audit is Pass 17 (Bug Hunt v14 — scans 51–100), building on Pass 16 (v13 scans 1–50). Audited against live v12.91 (`?v=1291`, `ctf-v12.91`).**
 
