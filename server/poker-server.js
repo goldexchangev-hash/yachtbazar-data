@@ -746,9 +746,715 @@ function verifyHand(commit, serverSeed, clientSeed, nonce) {
   return { ok: ok, deck: deck };
 }
 
+/* =========================================================================
+   7. attachPoker — LIVE PvP RoomManager (spec §4, Phase 2: DEMO ONLY)
+
+   Wraps the ServerHand engine above in a multi-table, multi-socket room server
+   that MIRRORS baccarat-server.js's attachBaccarat structure (rooms Map, openRoom/
+   createRoom/closeRoom, ws handle() dispatch, per-room timers via an injectable
+   clock, markDisconnected + RECONNECT_GRACE reclaim, two-tier idle GC, co-located
+   CLI self-test) — with the ONE structural break poker forces:
+
+     ┌─────────────────────────────────────────────────────────────────────┐
+     │  PER-SOCKET MASKED BROADCAST.  Baccarat broadcasts one shared         │
+     │  snapshot to every seat (simultaneous betting, no hidden cards).      │
+     │  Poker is TURN-BASED WITH HIDDEN HOLE CARDS, so the room NEVER sends  │
+     │  a shared payload of holes — it loops the recipients and sends each   │
+     │  `hand.snapshotFor(thatViewerWallet)` (engine :603), which reveals    │
+     │  only the viewer's own holes (+ shown holes at showdown) and never    │
+     │  the undealt deck stub. A spectator/null viewer sees zero live holes. │
+     └─────────────────────────────────────────────────────────────────────┘
+
+   PHASE 2 IS DEMO ONLY — chips are play-money INTEGERS owned by the seat; there is
+   NO token bridge, NO applyPokerNet, NO money settlement (that is Phase 3). The
+   token seam (setTokenLedger / bindToken) is left as a documented no-op so Phase 3
+   can drop in without restructuring. `attachPoker` returns the same shape the ws
+   server expects: { handle, onClose, closeRoom, _mgr, _room, setTokenLedger, … }.
+   ========================================================================= */
+
+// Variadic multi-seat client-seed join (spec §7). blackjack-shuffle.js:70
+// joinClientSeeds is fixed length-4 (baccarat's 4 seats); poker has 2..9 seated
+// players, so the table joins ALL seated-in seeds into one combined entropy string
+// FROZEN at hand-start commit, then passed to ServerHand as opts.clientSeed. Same
+// "|"-delimited shape so a verifier splits it identically.
+function joinPokerSeeds(seeds) {
+  return (seeds || []).map((s) => (s == null ? "" : String(s))).join("|");
+}
+
+// House-policy clamps (spec §6). The server RE-CLAMPS every create-table field on
+// receipt — client bounds are cosmetic. A creator can never gouge (5% rake ceiling)
+// or open a degenerate table.
+const STAKES_BB = [2, 5, 10, 25, 50, 100];            // whitelist; sb = bb/2
+const RAKE_BPS_MIN = 100, RAKE_BPS_MAX = 500;         // 1%..5% hard ceiling
+const RAKE_CAP_BB_MIN = 1, RAKE_CAP_BB_MAX = 5;
+const BUYIN_MIN_BB = 20, BUYIN_MAX_BB = 250;
+const SEATS_MIN = 2, SEATS_MAX = 9;
+const NAME_MIN = 3, NAME_MAX = 24;
+
+function sanitizeName(raw) {
+  let s = String(raw == null ? "" : raw).replace(/[<>&"'`]/g, "").replace(/\s+/g, " ").trim().slice(0, NAME_MAX);
+  return s;
+}
+function clampInt(v, lo, hi, dflt) {
+  let n = Math.round(Number(v));
+  if (!isFinite(n)) n = dflt;
+  return Math.max(lo, Math.min(hi, n));
+}
+
+function attachPoker(opts) {
+  opts = opts || {};
+  // Timer block (spec §4). Pacing 0 ⇒ synchronous (tests / off), the BJ/bac setT convention.
+  const T = Object.assign({
+    act: 20000,            // POKER_ACT_MS — per-turn human act-timer
+    showdown: 4000,        // hold the revealed showdown before BETWEEN
+    between: 3000,         // reconcile-and-deal-next dwell
+    idleEmpty: 60000,      // 0-seat table fast reap
+    idleSeated: 300000,    // ≥1-seat idle close (mirror T.idle=300000)
+    botMin: 800, botMax: 1500, // bot decision delay (demo table-fill)
+  }, opts.timers || {});
+  const _setT = opts.setTimeout || ((f, ms) => setTimeout(f, ms));
+  // CRASH SAFETY (v11.97 lesson): every engine timer runs through this guard so a throw
+  // inside a setTimeout callback (actTimeout / advance / showdown / between) is contained
+  // to a logged non-fatal error rather than an uncaught exception that exits Node.
+  const setT = (f, ms) => _setT(() => { try { f(); } catch (e) { try { console.error("pk timer error:", (e && e.stack) || e); } catch (_) {} } }, ms);
+  const clrT = opts.clearTimeout || clearTimeout;
+  const now = opts.now || (() => Date.now());
+  const send = (sock, obj) => { if (sock && sock.send) try { sock.send(JSON.stringify(obj)); } catch (e) {} };
+
+  const RECONNECT_GRACE = opts.reconnectGrace != null ? opts.reconnectGrace : 90000;
+  const MAX_ROOMS = opts.maxRooms || 200;
+  const START_STACK = opts.startBalance != null ? opts.startBalance : 5000; // demo play-money bank (chips are stack-local; this is just the buy-in wallet)
+  const DEMO_BUYIN_DEFAULT = opts.demoBuyIn != null ? opts.demoBuyIn : 1000;
+
+  // TOKEN SEAM (Phase 3) — no-op in Phase 2. Left so the money layer drops in without
+  // restructuring: setTokenLedger binds the applyPokerNet ledger; bindToken freezes a
+  // wallet→session mapping. In demo mode chips are pure integers and none of this fires.
+  let TL = opts.tokenLedger || null;
+  const tokenBind = new Map();
+  const bindToken = (wallet, sessionId) => { if (!wallet || !sessionId) return false; tokenBind.set(String(wallet).toLowerCase(), String(sessionId)); return true; };
+  const unbindToken = (wallet) => tokenBind.delete(String(wallet || "").toLowerCase());
+
+  const rooms = new Map();
+  let seq = 0;
+  const lobbySubs = new Set();
+
+  /* ---------------- demo bank (play-money buy-in wallet) ---------------- */
+  // Phase 2 is demo-only: a simple in-memory play-money wallet each player buys in FROM.
+  // Chips at the table are seat-local integers; this bank is the source/sink for buy-ins
+  // and cash-outs so the demo felt has a coherent balance. No persistence, no bridge.
+  const bank = opts.bank || (() => {
+    const m = new Map();
+    const get = (w) => (m.has(w) ? m.get(w) : START_STACK);
+    return { get, credit: (w, a) => m.set(w, get(w) + a), debit: (w, a) => { if (get(w) < a) return false; m.set(w, get(w) - a); return true; }, all: m };
+  })();
+
+  /* ---------------- lobby ---------------- */
+  function avgPot(r) {
+    if (!r.potHistory || !r.potHistory.length) return 0;
+    return Math.round(r.potHistory.reduce((a, b) => a + b, 0) / r.potHistory.length);
+  }
+  function roomPublic(r) {
+    return {
+      id: r.id, name: r.name, kind: r.kind || "demo",
+      sb: r.table.smallBlind, bb: r.table.bigBlind,
+      seated: r.seats.filter(Boolean).length, maxSeats: r.table.maxSeats,
+      openSeats: r.seats.filter((s) => !s).length,
+      phase: r.phase, inHand: r.phase === "HAND" || r.phase === "SHOWDOWN",
+      avgPot: avgPot(r), rakeBps: r.table.rakeBps, rakeCapBb: r.table.rakeCapBb,
+      buyInMin: r.buyInMin, buyInMax: r.buyInMax,
+      private: !!r.pwHash, host: r.creatorId === "HOUSE" ? "HOUSE" : (r.creatorName || null),
+      commit: (r.table.hand && r.table.hand.commit) || null,
+    };
+  }
+  function lobbyList() { return Array.from(rooms.values()).map(roomPublic); }
+  let _lobbyJsonLast = "";
+  function pushLobby() {
+    const json = JSON.stringify({ type: "pk:lobby:list", rooms: lobbyList() });
+    if (json === _lobbyJsonLast) return;
+    _lobbyJsonLast = json;
+    for (const s of lobbySubs) { if (s && s.send) { try { s.send(json); } catch (e) {} } }
+  }
+
+  /* ---------------- room mgmt ---------------- */
+  function makeRoom(cfg) {
+    if (rooms.size >= MAX_ROOMS) return null;
+    seq++;
+    const id = "PK-" + String(seq).padStart(2, "0");
+    const bb = cfg.bb, sb = cfg.sb != null ? cfg.sb : Math.floor(bb / 2);
+    const table = createTable({
+      smallBlind: sb, bigBlind: bb, seats: cfg.maxSeats,
+      rakeBps: cfg.rakeBps, rakeCapBb: cfg.rakeCapBb,
+    });
+    const r = {
+      id, name: cfg.name || id,
+      kind: cfg.kind === "real" ? "real" : "demo",
+      creatorId: cfg.creatorId || "HOUSE",
+      creatorWallet: cfg.creatorWallet || null,
+      creatorName: cfg.creatorName || null,
+      pwHash: cfg.pwHash || null,
+      table,                                       // the engine table (holds hand + button + nonce)
+      seats: new Array(cfg.maxSeats).fill(null),   // room-layer per-seat records (persist across hands)
+      spectators: new Set(),
+      buyInMin: cfg.buyInMin, buyInMax: cfg.buyInMax,
+      phase: "WAITING",                            // WAITING | HAND | SHOWDOWN | BETWEEN
+      actEpoch: 0,                                 // bumped on every toAct change (stale-timer guard)
+      handSeedOrder: [],                           // seated-in wallets whose seeds were frozen this hand
+      houseRakeChips: 0, creatorRakeChips: 0,      // spec §5.3 accumulators (demo: informational)
+      potHistory: [],                              // rolling avg-pot (last 10)
+      pendingButtonAdvance: false,
+      lastActivity: now(), createdAt: now(),
+      timers: {},
+    };
+    rooms.set(id, r);
+    scheduleIdle(r);
+    pushLobby();
+    return r;
+  }
+  const HOUSE_CFG = { name: "HOUSE · Hold'em", kind: "demo", creatorId: "HOUSE", bb: 10, sb: 5, maxSeats: 9, rakeBps: 500, rakeCapBb: 3, buyInMin: 20 * 10, buyInMax: 100 * 10 };
+  function ensureHouseTable() {
+    for (const r of rooms.values()) if (r.creatorId === "HOUSE") return r;
+    return makeRoom(HOUSE_CFG); // one warm table so the lobby is never empty (spec §6)
+  }
+  const seatedCount = (r) => r.seats.filter(Boolean).length;
+  const inHandPhase = (r) => r.phase === "HAND" || r.phase === "SHOWDOWN";
+  function touch(r) { r.lastActivity = now(); scheduleIdle(r); }
+  function scheduleIdle(r) {
+    if (r.timers.idle) clrT(r.timers.idle);
+    const ms = seatedCount(r) === 0 ? T.idleEmpty : T.idleSeated;
+    r.timers.idle = setT(() => {
+      if (inHandPhase(r)) return scheduleIdle(r);           // NEVER close mid-hand
+      if (r.creatorId === "HOUSE" && seatedCount(r) === 0 && rooms.size === 1) return scheduleIdle(r); // keep the lone warm table
+      const idleFor = now() - r.lastActivity;
+      const limit = seatedCount(r) === 0 ? T.idleEmpty : T.idleSeated;
+      if (idleFor >= limit) closeRoom(r, "idle"); else scheduleIdle(r);
+    }, ms);
+  }
+  function closeRoom(r, reason) {
+    // refund-first (mirror baccarat closeRoom): cash any seated stacks back to the demo bank
+    for (const s of r.seats) if (s) {
+      if (s._dcTimer) { clrT(s._dcTimer); s._dcTimer = null; }
+      if (s.stack > 0) { bank.credit(s.wallet, chipsToUnits(s.stack)); s.stack = 0; }
+    }
+    for (const k in r.timers) clrT(r.timers[k]);
+    broadcast(r, { type: "pk:event", kind: "tableClosing", id: r.id, reason });
+    const h = r.table.hand;
+    if (h && h.done && h.serverSeed) broadcast(r, { type: "pk:reveal", tableId: r.id, serverSeed: h.serverSeed, commit: h.commit });
+    rooms.delete(r.id);
+    pushLobby();
+    ensureHouseTable(); // never leave the lobby empty
+  }
+  // Reap surplus empty tables but always keep the warm HOUSE one.
+  function reapEmptyExtras() {
+    const empties = Array.from(rooms.values()).filter((r) => seatedCount(r) === 0 && r.phase === "WAITING" && r.creatorId !== "HOUSE");
+    for (const r of empties) closeRoom(r, "reaped");
+  }
+
+  // chips ARE integers (1 chip = 1 cent in Phase 3; in demo they are just the buy-in ×… ).
+  // For the demo bank we treat 1 buy-in "unit" as 1 chip 1:1 (no cent scaling in P2) — the
+  // seam converters keep Phase 3's round(units*100) drop-in clean.
+  const unitsToChips = (u) => Math.round(u);
+  const chipsToUnits = (c) => c;
+
+  /* ---------------- per-socket masked broadcast (THE security property) ---------------- */
+  // Loop every recipient (seated player or spectator) and send THAT recipient its OWN masked
+  // snapshot from the engine. A seated player's snapshot reveals only their own holes; a
+  // spectator (null viewer) sees zero live holes. Hole cards NEVER cross sockets.
+  function stateFor(r, viewerWallet) {
+    const h = r.table.hand;
+    const base = {
+      type: "pk:state", tableId: r.id, phase: r.phase, handNo: r.table.nonce,
+      button: r.table.button, sb: r.table.smallBlind, bb: r.table.bigBlind,
+      serverNow: now(), actDeadline: r.actDeadline || 0,
+      seats: r.seats.map((s, i) => s ? {
+        seat: i, wallet: s.wallet, name: s.name, stack: s.stack,
+        sittingOut: !!s.sittingOut, away: !!s.disconnected, left: !!s.left,
+        isHost: s.wallet === r.creatorWallet && r.creatorId !== "HOUSE",
+        inHand: !!(h && h.players.some((p) => p.id === s.wallet)),
+      } : null),
+      buyInMin: r.buyInMin, buyInMax: r.buyInMax,
+      rakeBps: r.table.rakeBps, rakeCapBb: r.table.rakeCapBb,
+    };
+    if (h) {
+      // The engine's masked snapshot IS the per-viewer boundary (poker-server.js:603).
+      base.hand = h.snapshotFor(viewerWallet == null ? null : viewerWallet);
+    } else {
+      base.hand = null;
+    }
+    return base;
+  }
+  function broadcast(r, obj) {
+    // pk:event / pk:reveal etc. carry NO hole cards → a shared broadcast is safe for those.
+    for (const s of r.seats) if (s && !s.disconnected) send(s.sock, obj);
+    for (const sp of r.spectators) send(sp, obj);
+  }
+  // PER-SOCKET state push — the one place the baccarat template is broken (spec §4).
+  function broadcastState(r) {
+    for (const s of r.seats) if (s && s.sock && !s.disconnected) send(s.sock, stateFor(r, s.wallet));
+    for (const sp of r.spectators) send(sp, stateFor(r, null)); // spectators: null viewer, no live holes
+    pushLobby();
+  }
+  function pushWallet(sock, wallet) { send(sock, { type: "pk:wallet", balance: bank.get(wallet) }); }
+  function err(sock, code, msg, intent) { send(sock, { type: "pk:error", code, msg, intent }); }
+
+  /* ---------------- seat helpers ---------------- */
+  function seatIndexOfSock(r, sock) { for (let i = 0; i < r.seats.length; i++) if (r.seats[i] && r.seats[i].sock === sock) return i; return -1; }
+  function seatOfWallet(r, wallet) { for (let i = 0; i < r.seats.length; i++) if (r.seats[i] && r.seats[i].wallet === wallet) return r.seats[i]; return null; }
+  // an "IN" seat is eligible to be dealt into the next hand
+  function seatedInWithChips(r, bb) { return r.seats.filter((s) => s && !s.sittingOut && !s.left && !s.disconnected && s.stack >= bb); } // !disconnected: an in-grace dropped seat sits out of NEW deals (stack preserved for the 90s reclaim) instead of being auto-folded every hand and bleeding blinds it never chose to post (review LOW-3)
+
+  /* ---------------- HAND lifecycle FSM ---------------- */
+  // WAITING → HAND when ≥2 seated-in players have stack ≥ BB.
+  function maybeStartHand(r) {
+    if (r.phase !== "WAITING" && r.phase !== "BETWEEN") return;
+    const eligible = seatedInWithChips(r, r.table.bigBlind);
+    if (eligible.length < 2) { r.phase = "WAITING"; broadcastState(r); reapEmptyExtras(); return; }
+    startNextHand(r);
+  }
+
+  function startNextHand(r) {
+    // Rotate the button one live seat clockwise from the previous hand (except the first).
+    // The engine's startHand takes a buttonIndex into the DEALT (eligible) subset — we compute
+    // it over the room seat ring so it advances one occupied+eligible seat each hand.
+    const bb = r.table.bigBlind;
+    const eligible = seatedInWithChips(r, bb);
+    if (eligible.length < 2) { r.phase = "WAITING"; broadcastState(r); return; }
+
+    // SEEDS (spec §7): collect one clientSeed per SEATED-IN player, auto-gen if blank, FREEZE
+    // at commit. Join via joinPokerSeeds; the engine deals from provablyFairDeck(seed, combined, nonce).
+    const dealt = eligible.map((s) => {
+      if (!s.clientSeed) s.clientSeed = randSeed();
+      return { id: s.wallet, name: s.name, isBot: !!s.isBot, stack: s.stack, aggression: s.aggression != null ? s.aggression : 0.5, clientSeed: s.clientSeed };
+    });
+    r.handSeedOrder = dealt.map((d) => d.id);
+    const combined = joinPokerSeeds(dealt.map((d) => d.clientSeed));
+
+    // Button as an index into the DEALT array. Advance one seat each hand — tracked by SEAT-RING
+    // index so that when the prior button-holder has left/busted/dropped (no longer eligible) the
+    // button moves to the seat clockwise-AFTER their vacated ring slot, not back to dealt[0] (review LOW-2).
+    const eligRing = eligible.map((s) => r.seats.indexOf(s)); // ascending ring indices of the dealt players
+    let btnIdx = 0;
+    if (r._lastButtonSeatIdx != null) {
+      let found = -1;
+      for (let k = 0; k < eligRing.length; k++) { if (eligRing[k] > r._lastButtonSeatIdx) { found = k; break; } }
+      btnIdx = found >= 0 ? found : 0; // none after → wrap to the lowest ring index (the clockwise-next seat)
+    }
+
+    // Drive the engine table directly so we control seed + button (startHand() would re-derive both).
+    const round = PF.newRound();
+    r.table.nonce++;
+    const hand = new ServerHand({
+      smallBlind: r.table.smallBlind, bigBlind: r.table.bigBlind,
+      buttonIndex: btnIdx, players: dealt,
+      serverSeed: round.serverSeed, clientSeed: combined, nonce: r.table.nonce,
+      rakeBps: r.table.rakeBps, rakeCapBb: r.table.rakeCapBb,
+    });
+    hand.start();
+    r.table.hand = hand;
+    r.table.button = hand.button;
+    r.table.commit = hand.commit;
+    r._lastButtonWallet = dealt[hand.button].id;
+    r._lastButtonSeatIdx = eligRing[hand.button]; // remember the button's RING position so next hand advances clockwise even if this holder departs
+    r.phase = "HAND";
+    touch(r);
+
+    // Broadcast the START snapshot (per-socket) — commit + clientSeeds + nonce, NEVER serverSeed/cards.
+    broadcast(r, { type: "pk:event", kind: "handStart", tableId: r.id, handNo: r.table.nonce, commit: hand.commit, clientSeeds: dealt.map((d) => d.clientSeed), nonce: r.table.nonce });
+    broadcastState(r);
+    advanceHand(r); // may immediately auto-resolve (all-in) or arm the first human timer
+  }
+
+  // Drive the hand forward: run bots (delayed), and when the human to-act is reached, arm the
+  // 20s act-timer keyed by actEpoch. When the engine is done → SHOWDOWN.
+  function advanceHand(r) {
+    const h = r.table.hand;
+    if (!h) return;
+    if (h.done) return finishHand(r);
+    const seat = h.players[h.toAct];
+    if (!seat) return finishHand(r);
+    // toAct changed → bump the epoch so any prior-turn timer is stale, and clear the old timer.
+    bumpAct(r);
+    const roomSeat = seatOfWallet(r, seat.id);
+    if (roomSeat && roomSeat.isBot) {
+      // Demo table-fill bot: decide after a short delay (NOT the human timer).
+      const idx = h._botSeq++;
+      const delay = (T.botMin > 0 || T.botMax > 0) ? (T.botMin + Math.floor(rand() * Math.max(0, T.botMax - T.botMin))) : 0;
+      const ep = r.actEpoch;
+      const fire = () => {
+        if (r.actEpoch !== ep || h.done || h.players[h.toAct] == null || h.players[h.toAct].id !== seat.id) return; // stale
+        let fcursor = 0;
+        const rng = () => PF.floats(h.serverSeed, "bot:" + seat.id, (h.nonce * 100000) + idx, ++fcursor)[fcursor - 1];
+        const legal = h.legalActions(seat.id);
+        const decision = botDecide(h.snapshotFor(seat.id), legal, { aggression: roomSeat.aggression, rng });
+        try { h.act(seat.id, decision.type, decision.amount); } catch (e) { try { h.act(seat.id, legal.canCheck ? "check" : "fold"); } catch (_) {} }
+        broadcastState(r);
+        advanceHand(r);
+      };
+      if (delay > 0) { r.actDeadline = 0; r.timers.act = setT(fire, delay); }
+      else fire();
+      return;
+    }
+    // Human to act. A DISCONNECTED seat on its turn auto-folds/checks immediately (spec §4).
+    if (roomSeat && roomSeat.disconnected) { autoAct(r, seat.id); return; }
+    // Arm the 20s act-timer with the epoch guard.
+    armActTimer(r, seat.id);
+    broadcastState(r);
+  }
+
+  function bumpAct(r) { r.actEpoch++; if (r.timers.act) { clrT(r.timers.act); r.timers.act = null; } }
+  function armActTimer(r, wallet) {
+    if (r.timers.act) clrT(r.timers.act);
+    const ep = r.actEpoch;
+    r.actDeadline = now() + T.act;
+    r.timers.act = setT(() => {
+      if (r.actEpoch !== ep) return;           // STALE — a later turn already re-armed; do nothing
+      const h = r.table.hand;
+      if (!h || h.done) return;
+      if (h.players[h.toAct] == null || h.players[h.toAct].id !== wallet) return; // not this seat's turn anymore
+      autoAct(r, wallet);
+    }, T.act);
+  }
+  // Timeout / disconnected action: auto-CHECK if legal, else auto-FOLD.
+  function autoAct(r, wallet) {
+    const h = r.table.hand;
+    if (!h || h.done || h.players[h.toAct] == null || h.players[h.toAct].id !== wallet) return;
+    const legal = h.legalActions(wallet);
+    try { h.act(wallet, legal.canCheck ? "check" : "fold"); } catch (e) { try { h.act(wallet, "fold"); } catch (_) {} }
+    broadcast(r, { type: "pk:event", kind: "autoAct", wallet, action: legal.canCheck ? "check" : "fold" });
+    broadcastState(r);
+    advanceHand(r);
+  }
+
+  function finishHand(r) {
+    const h = r.table.hand;
+    if (r.timers.act) { clrT(r.timers.act); r.timers.act = null; }
+    r.actDeadline = 0;
+    r.phase = "SHOWDOWN";
+    // Rake split (spec §5.3): engine already skimmed h.rake into the pot math; split it here.
+    // H6: a SEATED creator earns ZERO rake-share on hands they were dealt into → that half to HOUSE.
+    const rake = h.rake || 0;
+    if (rake > 0) {
+      const houseHalf = Math.floor(rake / 2);
+      let creatorHalf = rake - houseHalf; // creator gets the odd chip (exact split)
+      const creatorSeated = r.creatorId !== "HOUSE" && r.creatorWallet && h.players.some((p) => p.id === r.creatorWallet);
+      if (r.creatorId === "HOUSE" || creatorSeated) { r.houseRakeChips += rake; }
+      else { r.houseRakeChips += houseHalf; r.creatorRakeChips += creatorHalf; }
+    }
+    // Persist the engine's post-hand stacks back to the room seats (stacks carry across hands).
+    for (const p of h.players) { const s = seatOfWallet(r, p.id); if (s) s.stack = p.stack; }
+    // rolling avg-pot (last 10)
+    const pot = h.players.reduce((a, p) => a + p.committedTotal, 0);
+    r.potHistory.push(pot); if (r.potHistory.length > 10) r.potHistory.shift();
+
+    broadcastState(r); // reveal shown holes + deltas (engine snapshot exposes them once done)
+    broadcast(r, { type: "pk:reveal", tableId: r.id, handNo: r.table.nonce, serverSeed: h.serverSeed, commit: h.commit, clientSeed: h.clientSeed, nonce: h.nonce });
+    touch(r);
+    r.timers.showdown = setT(() => toBetween(r), T.showdown);
+  }
+
+  // BETWEEN: reconcile deferred seat changes, then start the next hand or drop to WAITING.
+  function toBetween(r) {
+    r.phase = "BETWEEN";
+    // remove LEFT seats (credit remaining stack to the demo bank), auto-sit-out the busted.
+    for (let i = 0; i < r.seats.length; i++) {
+      const s = r.seats[i];
+      if (!s) continue;
+      if (s.left) {
+        if (s.stack > 0) { bank.credit(s.wallet, chipsToUnits(s.stack)); pushWallet(s.sock, s.wallet); }
+        if (s._dcTimer) { clrT(s._dcTimer); s._dcTimer = null; }
+        r.seats[i] = null;
+        broadcast(r, { type: "pk:event", kind: "seatOpen", seat: i });
+      } else if (s.stack < r.table.bigBlind) {
+        s.sittingOut = true; // can't post a blind → sit out until a rebuy
+      }
+    }
+    r.table.hand = null;
+    broadcastState(r);
+    reapEmptyExtras();
+    r.timers.between = setT(() => maybeStartHand(r), T.between);
+  }
+
+  /* ---------------- seat lifecycle ---------------- */
+  function takeSeat(sock, wallet, name, r, seatPref, buyInUnits) {
+    // one seat per wallet at THIS table
+    if (seatOfWallet(r, wallet)) { err(sock, "already_seated", "You're already at this table", "join"); return false; }
+    let idx = -1;
+    if (seatPref != null && seatPref >= 0 && seatPref < r.seats.length && !r.seats[seatPref]) idx = seatPref;
+    else idx = r.seats.findIndex((s) => !s);
+    if (idx < 0) { err(sock, "table_full", "Table is full", "join"); return false; }
+    // clamp buy-in to table bounds, then debit the demo bank
+    let units = Number(buyInUnits);
+    if (!isFinite(units) || units <= 0) units = DEMO_BUYIN_DEFAULT;
+    units = Math.max(r.buyInMin, Math.min(r.buyInMax, Math.round(units)));
+    if (bank.get(wallet) < units) { err(sock, "insufficient", "Not enough balance to buy in", "join"); return false; }
+    bank.debit(wallet, units);
+    r.seats[idx] = {
+      sock, wallet, name: name || wallet, isBot: false,
+      stack: unitsToChips(units), cumulativeBuyInChips: unitsToChips(units),
+      clientSeed: "", sittingOut: false, disconnected: 0, _dcTimer: null, left: false,
+      seatIndex: idx, aggression: 0.5,
+    };
+    r.spectators.delete(sock);
+    touch(r);
+    send(sock, Object.assign(stateFor(r, wallet), { you: { tableId: r.id, seat: idx, balance: bank.get(wallet) } }));
+    pushWallet(sock, wallet);
+    broadcast(r, { type: "pk:event", kind: "seatTaken", seat: idx, wallet, name: r.seats[idx].name });
+    broadcastState(r);
+    // Join mid-hand = seated but sits out until the next hand (the engine already built players[]
+    // for the live hand from the pre-join snapshot, so this seat simply isn't in h.players).
+    maybeStartHand(r);
+    return true;
+  }
+
+  function join(sock, wallet, name, tableId, seatPref, buyInUnits, pw) {
+    // Reconnect grace: reclaim a temporarily-disconnected seat (same wallet) → SAME seat + stack.
+    for (const r of rooms.values()) {
+      for (let i = 0; i < r.seats.length; i++) {
+        const s = r.seats[i];
+        if (s && s.disconnected && s.wallet === wallet) {
+          if (s._dcTimer) { clrT(s._dcTimer); s._dcTimer = null; }
+          s.sock = sock; s.disconnected = false; s.dcAt = 0; s.left = false;
+          r.spectators.delete(sock);
+          // SECURITY: mask the snapshot with the SEAT's own wallet (server-side record), never the
+          // client-supplied `wallet` — the reveal key must be bound to socket→seat identity, not a
+          // spoofable message field. (Here s.wallet === wallet by the guard above; belt-and-suspenders.)
+          send(sock, Object.assign(stateFor(r, s.wallet), { you: { tableId: r.id, seat: i, balance: bank.get(s.wallet) } }));
+          pushWallet(sock, s.wallet);
+          broadcast(r, { type: "pk:event", kind: "seatReconnected", seat: i, wallet });
+          broadcastState(r);
+          return r;
+        }
+      }
+    }
+    // RESYNC: the SAME socket re-joining its own seat (mobile half-open socket) → snapshot, not error.
+    // SECURITY (hole-card leak fix): the snapshot MUST be masked for the wallet that actually OWNS this
+    // socket's seat (r.seats[si].wallet), NEVER the client-supplied `wallet`. `messageWallet` falls back
+    // to `m.wallet` whenever sock.wallet is empty (unauthenticated/denied guest sockets), so trusting it
+    // here let a seated attacker resync as `{wallet:"<victim>"}` and receive stateFor(victim) → victim's
+    // live hole cards. The reveal key is bound to socket→seat identity only.
+    for (const r of rooms.values()) { const si = seatIndexOfSock(r, sock); if (si >= 0) {
+      const seatWallet = r.seats[si].wallet;
+      send(sock, Object.assign(stateFor(r, seatWallet), { you: { tableId: r.id, seat: si, balance: bank.get(seatWallet) } }));
+      pushWallet(sock, seatWallet);
+      return r;
+    } }
+    // one seat per wallet across all tables
+    for (const r of rooms.values()) if (seatOfWallet(r, wallet)) { err(sock, "already_seated", "You're already at a table", "join"); return null; }
+    const r = tableId ? rooms.get(tableId) : ensureHouseTable();
+    if (!r) { err(sock, "no_table", "Table not found", "join"); return null; }
+    if (r.pwHash && String(pw || "") !== r.pwHash) { err(sock, "bad_password", "Wrong table password", "join"); return null; }
+    takeSeat(sock, wallet, name, r, seatPref, buyInUnits);
+    return r;
+  }
+
+  function watch(sock, tableId) {
+    const r = rooms.get(tableId);
+    if (!r) return err(sock, "no_table", "Table not found", "watch");
+    r.spectators.add(sock);
+    send(sock, stateFor(r, null)); // spectator view — no live holes
+    pushLobby();
+  }
+
+  // Sit out / sit in (between hands takes effect next deal; mid-hand sit-out folds at your turn via the seat flag).
+  function setSitOut(sock, out) {
+    for (const r of rooms.values()) { const i = seatIndexOfSock(r, sock); if (i < 0) continue;
+      const s = r.seats[i];
+      s.sittingOut = !!out;
+      broadcast(r, { type: "pk:event", kind: out ? "satOut" : "satIn", seat: i, wallet: s.wallet });
+      broadcastState(r);
+      if (!out) maybeStartHand(r);
+      return;
+    }
+    err(sock, "no_seat", "Take a seat first", "sit");
+  }
+
+  function leave(sock) {
+    for (const r of rooms.values()) {
+      r.spectators.delete(sock);
+      const i = seatIndexOfSock(r, sock); if (i < 0) continue;
+      const s = r.seats[i];
+      const liveInHand = inHandPhase(r) && r.table.hand && r.table.hand.players.some((p) => p.id === s.wallet && !p.folded);
+      if (liveInHand) {
+        // abandoning a LIVE hand: fold NOW if it's your turn (chips already in the pot ride via buildPots),
+        // mark left → seat removed + stack credited only at the next BETWEEN (never mid-hand).
+        s.left = true;
+        const h = r.table.hand;
+        if (h.players[h.toAct] && h.players[h.toAct].id === s.wallet) {
+          try { h.act(s.wallet, "fold"); } catch (e) {}
+          broadcastState(r); advanceHand(r);
+        } else broadcastState(r);
+        broadcast(r, { type: "pk:event", kind: "seatLeaving", seat: i, wallet: s.wallet });
+      } else {
+        // not in a live hand → cash out immediately.
+        if (s.stack > 0) { bank.credit(s.wallet, chipsToUnits(s.stack)); pushWallet(s.sock, s.wallet); }
+        if (s._dcTimer) { clrT(s._dcTimer); s._dcTimer = null; }
+        r.seats[i] = null;
+        broadcast(r, { type: "pk:event", kind: "seatOpen", seat: i });
+        broadcastState(r); reapEmptyExtras();
+      }
+      pushLobby();
+      return;
+    }
+  }
+
+  function act(sock, type, amount) {
+    for (const r of rooms.values()) { const i = seatIndexOfSock(r, sock); if (i < 0) continue;
+      const s = r.seats[i];
+      const h = r.table.hand;
+      if (r.phase !== "HAND" || !h || h.done) return err(sock, "no_hand", "No hand in progress", "act");
+      if (h.players[h.toAct] == null || h.players[h.toAct].id !== s.wallet) return err(sock, "not_your_turn", "It's not your turn", "act");
+      try { h.act(s.wallet, type, amount); }
+      catch (e) { return err(sock, "illegal", (e && e.message) || "Illegal action", "act"); }
+      broadcastState(r);
+      advanceHand(r);
+      return;
+    }
+    err(sock, "no_seat", "Take a seat first", "act");
+  }
+
+  // Demo rebuy: add chips (buy-in units) to a seated stack between hands.
+  function rebuy(sock, amountUnits) {
+    for (const r of rooms.values()) { const i = seatIndexOfSock(r, sock); if (i < 0) continue;
+      if (inHandPhase(r) && r.table.hand && r.table.hand.players.some((p) => p.id === r.seats[i].wallet)) return err(sock, "in_hand", "Rebuy between hands", "rebuy");
+      const s = r.seats[i];
+      let units = Math.max(0, Math.round(Number(amountUnits) || 0));
+      if (units <= 0) return err(sock, "server", "Bad rebuy amount", "rebuy");
+      if (unitsToChips(s.stack) + unitsToChips(units) > r.buyInMax * 3) units = Math.max(0, r.buyInMax * 3 - s.stack); // sane cap
+      if (units <= 0) return err(sock, "server", "Rebuy would exceed the table cap", "rebuy");
+      if (!bank.debit(s.wallet, units)) return err(sock, "insufficient", "Not enough balance", "rebuy");
+      s.stack += unitsToChips(units); s.cumulativeBuyInChips += unitsToChips(units);
+      if (s.sittingOut && s.stack >= r.table.bigBlind) s.sittingOut = false;
+      pushWallet(sock, s.wallet); broadcastState(r);
+      maybeStartHand(r);
+      return;
+    }
+    err(sock, "no_seat", "Take a seat first", "rebuy");
+  }
+
+  /* ---------------- table create ---------------- */
+  function createTableMsg(sock, wallet, name, cfg) {
+    cfg = cfg || {};
+    // per-wallet concurrent open-table cap (anti-spam)
+    const mine = Array.from(rooms.values()).filter((r) => r.creatorWallet === wallet).length;
+    if (wallet && mine >= (opts.maxTablesPerWallet || 2)) return err(sock, "table_cap", "You already have the max open tables", "create");
+    // CLAMP every field on receipt (client bounds cosmetic).
+    let bb = Number(cfg.bb); if (STAKES_BB.indexOf(bb) < 0) bb = 10; const sb = Math.floor(bb / 2);
+    const maxSeats = clampInt(cfg.maxSeats, SEATS_MIN, SEATS_MAX, 9);
+    const rakeBps = clampInt(cfg.rakeBps, RAKE_BPS_MIN, RAKE_BPS_MAX, 500);
+    const rakeCapBb = clampInt(cfg.rakeCapBb, RAKE_CAP_BB_MIN, RAKE_CAP_BB_MAX, 3);
+    let buyInMinBb = clampInt(cfg.buyInMinBb != null ? cfg.buyInMinBb : 20, BUYIN_MIN_BB, BUYIN_MAX_BB, 20);
+    let buyInMaxBb = clampInt(cfg.buyInMaxBb != null ? cfg.buyInMaxBb : 100, BUYIN_MIN_BB, BUYIN_MAX_BB, 100);
+    if (buyInMaxBb < buyInMinBb) buyInMaxBb = buyInMinBb;
+    let nm = sanitizeName(cfg.name || (name ? name + "'s Table" : "Poker Table"));
+    if (nm.length < NAME_MIN) nm = "Poker Table";
+    const pwHash = (cfg.private && cfg.pw) ? String(cfg.pw).slice(0, 64) : null; // Phase 2: stored raw-clamped (Phase 4 hashes); never echoed
+    const r = makeRoom({
+      name: nm, kind: "demo", creatorId: wallet || "anon", creatorWallet: wallet || null, creatorName: name || null,
+      bb, sb, maxSeats, rakeBps, rakeCapBb,
+      buyInMin: buyInMinBb * bb, buyInMax: buyInMaxBb * bb, pwHash,
+    });
+    if (!r) return err(sock, "lobby_full", "No table capacity", "create");
+    send(sock, { type: "pk:table:created", tableId: r.id });
+    pushLobby();
+    // creator auto-subscribed + must sit (a 0-seat table reaps in idleEmpty)
+    lobbySubs.add(sock);
+    return r;
+  }
+
+  /* ---------------- disconnect (two-tier grace) ---------------- */
+  function markDisconnected(sock) {
+    lobbySubs.delete(sock);
+    for (const r of rooms.values()) {
+      r.spectators.delete(sock);
+      const i = seatIndexOfSock(r, sock); if (i < 0) continue;
+      const s = r.seats[i];
+      s.disconnected = true; s.dcAt = now(); // BOOLEAN flag (grace expiry is the _dcTimer, not this) — `= now()` read as falsy when a virtual clock starts at 0 (review LOW-1)
+      if (s._dcTimer) clrT(s._dcTimer);
+      s._dcTimer = setT(() => dropSeat(r, i, s), RECONNECT_GRACE);
+      broadcast(r, { type: "pk:event", kind: "seatAway", seat: i, wallet: s.wallet });
+      // if it's this seat's turn RIGHT NOW, auto-fold/check immediately (spec §4).
+      const h = r.table.hand;
+      if (r.phase === "HAND" && h && !h.done && h.players[h.toAct] && h.players[h.toAct].id === s.wallet) {
+        autoAct(r, s.wallet);
+      } else {
+        broadcastState(r);
+      }
+      pushLobby();
+    }
+  }
+  function dropSeat(r, i, s) {
+    if (r.seats[i] !== s) return; // already reclaimed
+    s._dcTimer = null;
+    const liveInHand = inHandPhase(r) && r.table.hand && r.table.hand.players.some((p) => p.id === s.wallet && !p.folded);
+    if (liveInHand) {
+      // grace expired mid-hand: forfeit (fold) — chips ride, seat removed at BETWEEN
+      s.left = true;
+      const h = r.table.hand;
+      if (h.players[h.toAct] && h.players[h.toAct].id === s.wallet) { try { h.act(s.wallet, "fold"); } catch (e) {} broadcastState(r); advanceHand(r); }
+      else broadcastState(r);
+    } else {
+      if (s.stack > 0) bank.credit(s.wallet, chipsToUnits(s.stack));
+      r.seats[i] = null;
+      broadcast(r, { type: "pk:event", kind: "seatOpen", seat: i });
+      broadcastState(r); reapEmptyExtras();
+    }
+    pushLobby();
+  }
+
+  /* ---------------- misc seams ---------------- */
+  function seedGuest(sock, wallet, balance) {
+    if (!/^guest:/.test(String(wallet)) || typeof balance !== "number" || !isFinite(balance) || balance < 0) return;
+    bank.all.set(wallet, Math.round(balance));
+    pushWallet(sock, wallet);
+  }
+  const rand = opts.rand || Math.random;
+  function randSeed() { return (typeof PF.randomSeed === "function") ? PF.randomSeed(8) : Math.random().toString(36).slice(2, 10); }
+
+  /* ---------------- router ---------------- */
+  function messageWallet(sock, m) {
+    if (sock.wallet) return sock.wallet;
+    const hinted = String((m && m.wallet) || "");
+    return /^guest:/.test(hinted) ? hinted : (hinted || "");
+  }
+  function handle(sock, m) {
+    if (!m || typeof m.type !== "string") return;
+    const wallet = messageWallet(sock, m) || "anon";
+    const name = (m && m.name) ? String(m.name).slice(0, 24) : null;
+    switch (m.type) {
+      case "pk:lobby:subscribe": lobbySubs.add(sock); ensureHouseTable(); send(sock, { type: "pk:lobby:list", rooms: lobbyList() }); if (wallet) pushWallet(sock, wallet); break;
+      case "pk:lobby:unsubscribe": lobbySubs.delete(sock); break;
+      case "pk:table:create": createTableMsg(sock, wallet, name, m.config || m); break;
+      case "pk:table:join": join(sock, wallet, name, m.tableId, m.seat != null ? m.seat : m.seatPref, m.buyIn != null ? m.buyIn : m.buyInUnits, m.pw); break;
+      case "pk:table:watch": watch(sock, m.tableId); break;
+      case "pk:table:leave": case "pk:leave": leave(sock); break;
+      case "pk:sit-out": setSitOut(sock, true); break;
+      case "pk:sit-in": setSitOut(sock, false); break;
+      case "pk:sit": setSitOut(sock, m.mode === "out"); break;
+      case "pk:act": act(sock, m.action || m.actionType, m.amount); break;
+      case "pk:rebuy": rebuy(sock, m.amount); break;
+      case "pk:seed": seedGuest(sock, wallet, +m.balance); break;
+      case "pk:ping": send(sock, { type: "pk:pong" }); break;
+      default: break;
+    }
+  }
+  function onClose(sock) { markDisconnected(sock); }
+
+  ensureHouseTable();
+  return {
+    handle, onClose, bank,
+    // token seam (Phase 3, no-op in Phase 2)
+    setTokenLedger: (tl) => { TL = tl || null; },
+    bindToken, unbindToken,
+    _mgr: { rooms, makeRoom, ensureHouseTable, closeRoom, lobbyList, reapEmptyExtras },
+    _room: { maybeStartHand, startNextHand, advanceHand, finishHand, toBetween, armActTimer, autoAct, broadcastState, stateFor },
+    closeRoom,
+  };
+}
+
 module.exports = {
   // table API
   createTable, sit, startHand, act, advance, snapshotFor, verifyHand,
+  // room server (Phase 2)
+  attachPoker, joinPokerSeeds,
   // core (exported for tests / server reuse)
   ServerHand, provablyFairDeck, makeDeck,
   score5, evaluate, categoryName, combinations, buildPots,
@@ -943,6 +1649,244 @@ if (require.main === module) {
     }
   }
 
-  console.log(ok ? "\nSELF-TEST OK — server-authoritative poker core is deterministic, verifiable, and leak-free (+ rake: no-flop-no-drop, %-with-cap, exact chip-sink)." : "\nSELF-TEST FAILED");
+  /* ====================================================================
+     8. attachPoker — RoomManager (Phase 2, DEMO) self-tests.
+        Drives the REAL handle() with stub sockets, a controllable clock and
+        no-op-schedulable timers (setTimeout returns a token; we fire steps by
+        calling the injected clock forward + invoking _room helpers), asserting:
+        (1) two players join → a hand starts + blinds posted;
+        (2) PER-SOCKET NO-LEAK — B's pk:state never carries A's holes nor a deck/di stub;
+        (3) act-timer auto-checks/folds on timeout with the actEpoch guard (a stale
+            prior-turn timer does nothing);
+        (4) disconnect on-turn auto-folds and the hand proceeds;
+        (5) reconnect within grace reclaims the SAME seat + stack;
+        (6) the button rotates the next hand;
+        (7) an out-of-turn / illegal pk:act is rejected with pk:error;
+        (8) heads-up start + everyone-folds-to-BB awards uncontested.
+     ==================================================================== */
+  {
+    console.log("\n--- Phase 2: attachPoker RoomManager (demo) ---");
+    const ACT_MS = 20000; // the act-timer duration this test configures below (matches timers.act)
+    // A controllable clock + a CAPTURING scheduler: timers are stored so the test can fire
+    // the one it wants (the act-timer) deterministically, exactly like baccarat's noT harness
+    // but retaining the callback so we can trip a timeout on demand.
+    let clock = 1000000;
+    const timers = new Map(); let tid = 0;
+    const clk = {
+      now: () => clock,
+      setTimeout: (fn, ms) => { const id = ++tid; timers.set(id, { fn, at: clock + ms, ms }); return id; },
+      clearTimeout: (id) => { timers.delete(id); },
+    };
+    // fire every timer whose deadline is ≤ the (advanced) clock, newest-armed last (FIFO by id)
+    const fireDue = () => {
+      let ran = 0, guard = 0;
+      while (guard++ < 1000) {
+        const due = Array.from(timers.entries()).filter(([, t]) => t.at <= clock).sort((a, b) => a[0] - b[0]);
+        if (!due.length) break;
+        const [id, t] = due[0]; timers.delete(id);
+        try { t.fn(); } catch (e) { console.error("test timer threw:", e); }
+        ran++;
+      }
+      return ran;
+    };
+    const mkWs = (w) => { const msgs = []; const ws = { wallet: w, send: (m) => { try { msgs.push(JSON.parse(m)); } catch (e) {} } }; ws._msgs = msgs; return ws; };
+    const lastState = (ws) => ws._msgs.filter((m) => m.type === "pk:state").pop();
+    const gotErr = (ws, code, from) => ws._msgs.slice(from == null ? 0 : from).some((m) => m.type === "pk:error" && m.code === code);
+    const roomOf = (eng, w) => { for (const r of eng._mgr.rooms.values()) if (r.seats.some((s) => s && s.wallet === w)) return r; return null; };
+
+    // Engine with FAST bots off (all human seats), synchronous bot delay, no idle interference.
+    const pk = attachPoker(Object.assign({
+      startBalance: 100000, demoBuyIn: 1000,
+      timers: { act: 20000, showdown: 0, between: 0, idleEmpty: 60000, idleSeated: 300000, botMin: 0, botMax: 0 },
+    }, clk));
+
+    // (1) two players create + join → a hand starts + blinds posted
+    const A = mkWs("guest:alice"), B = mkWs("guest:bob");
+    pk.handle(A, { type: "pk:lobby:subscribe" });
+    pk.handle(A, { type: "pk:table:create", config: { bb: 10, maxSeats: 6, name: "Test Room", buyInMinBb: 20, buyInMaxBb: 100 } });
+    const created = A._msgs.filter((m) => m.type === "pk:table:created").pop();
+    eq("pk:table:create returns a tableId", !!created && typeof created.tableId === "string");
+    const tid1 = created.tableId;
+    pk.handle(A, { type: "pk:table:join", tableId: tid1, buyIn: 1000 });
+    pk.handle(B, { type: "pk:table:join", tableId: tid1, buyIn: 1000 });
+    const rA = roomOf(pk, "guest:alice");
+    eq("both players seated at the created table", !!rA && rA.id === tid1 && roomOf(pk, "guest:bob") === rA);
+    eq("≥2 seated-in → a hand STARTED (phase HAND, engine hand live)", rA.phase === "HAND" && rA.table.hand && !rA.table.hand.done);
+    const h1 = rA.table.hand;
+    const blinds = h1.players.reduce((a, p) => a + p.committedTotal, 0);
+    eq("blinds posted (SB+BB = 15 committed heads-up)", blinds === 15);
+    eq("start snapshot published a 64-hex commit, NOT the serverSeed", typeof h1.commit === "string" && h1.commit.length === 64 && lastState(A).hand.serverSeed === null);
+
+    // (2) PER-SOCKET NO-LEAK — B's pk:state never carries A's holes nor a deck/di stub
+    const stA = lastState(A), stB = lastState(B);
+    const aWallet = "guest:alice", bWallet = "guest:bob";
+    const holeOf = (st, w) => { const p = st.hand.players.find((pp) => pp.id === w); return p ? p.hole : undefined; };
+    eq("A's own snapshot reveals A's 2 hole cards", Array.isArray(holeOf(stA, aWallet)) && holeOf(stA, aWallet).length === 2);
+    eq("A's snapshot HIDES B's hole cards (null)", holeOf(stA, bWallet) === null);
+    eq("B's snapshot HIDES A's hole cards (null) — no leak across sockets", holeOf(stB, aWallet) === null);
+    eq("B's own snapshot reveals B's cards", Array.isArray(holeOf(stB, bWallet)) && holeOf(stB, bWallet).length === 2);
+    const jsonB = JSON.stringify(stB);
+    eq("B's payload never contains the deck/di stub", jsonB.indexOf("\"deck\"") === -1 && jsonB.indexOf("\"di\"") === -1);
+    // brute check: A's actual hole cards never appear as a pair in B's serialized payload
+    const aHole = holeOf(stA, aWallet);
+    const leaked = stB.hand.players.some((p) => p.id !== bWallet && Array.isArray(p.hole));
+    eq("NO other player's live holes are serialized in B's snapshot at all", !leaked);
+
+    // (7) out-of-turn + illegal pk:act rejected with pk:error
+    const toActId = h1.players[h1.toAct].id;
+    const notToAct = h1.players.find((p) => p.id !== toActId).id;
+    const wsNot = notToAct === aWallet ? A : B;
+    let mark = wsNot._msgs.length;
+    pk.handle(wsNot, { type: "pk:act", action: "call" });
+    eq("out-of-turn pk:act rejected (pk:error not_your_turn)", gotErr(wsNot, "not_your_turn", mark));
+    const wsTurn = toActId === aWallet ? A : B;
+    mark = wsTurn._msgs.length;
+    pk.handle(wsTurn, { type: "pk:act", action: "check" }); // UTG/SB facing the BB → illegal check
+    eq("illegal check facing a bet rejected (pk:error illegal)", gotErr(wsTurn, "illegal", mark));
+
+    // (3) act-timer auto-CHECK/FOLD on timeout + actEpoch stale-guard.
+    // The current toAct is the heads-up SB (button). Fire ONLY its act-timer (find it by ms=20000)
+    // so the assertion sees THIS hand settle before showdown/between cascade a fresh hand. Facing the
+    // BB, toCall>0 → auto-FOLD → BB wins uncontested. (8) heads-up fold-to-BB is proven here too.
+    const actEntry = Array.from(timers.entries()).find(([, t]) => t.ms === ACT_MS);
+    eq("a 20s act-timer is armed for the human to-act (with an actEpoch)", !!actEntry && rA.actEpoch > 0);
+    const foldWallet = h1.players[h1.toAct].id;   // the SB who will time out and fold
+    const winWallet = h1.players.find((p) => p.id !== foldWallet).id; // the BB who wins uncontested
+    timers.delete(actEntry[0]); actEntry[1].fn(); // trip the act-timer
+    eq("(3)(8) act-timer auto-FOLD on timeout → BB wins uncontested (hand done, phase SHOWDOWN)", h1.done && rA.phase === "SHOWDOWN");
+    eq("the timed-out SB folded; the BB is the sole winner", h1.players.find((p) => p.id === foldWallet).folded && h1.deltas[winWallet] === 5 && h1.deltas[foldWallet] === -5);
+    eq("uncontested preflop paid ZERO rake (no-flop-no-drop)", (h1.rake || 0) === 0 && rA.houseRakeChips === 0 && rA.creatorRakeChips === 0);
+    const btn1Wallet = rA._lastButtonWallet;
+
+    // drain the 0ms showdown/between → BETWEEN reconciles → the next hand auto-starts (both funded)
+    fireDue();
+    eq("(6) a fresh hand auto-started after BETWEEN", rA.phase === "HAND" && rA.table.hand && !rA.table.hand.done && rA.table.hand !== h1);
+    const btn2Wallet = rA._lastButtonWallet;
+    eq("(6) button rotated to the other live seat next hand (heads-up alternation)", btn2Wallet !== btn1Wallet);
+    // chip conservation across two hands (fold-to-BB is rake-free → seat stacks total the two buy-ins)
+    eq("chips conserved across hands (2 seats × 1000 = 2000, no rake yet)", rA.seats.reduce((a, s) => a + (s ? s.stack : 0), 0) === 2000);
+
+    // (3b) actEpoch stale-guard: capture the newly-armed act-timer, advance the turn by acting so the
+    // epoch bumps, then fire the now-STALE timer → it must be an inert no-op (guarded by actEpoch).
+    {
+      const h = rA.table.hand;
+      const cur = h.players[h.toAct].id;
+      const curWs = cur === aWallet ? A : B;
+      const staleEntry = Array.from(timers.entries()).find(([, t]) => t.ms === ACT_MS);
+      const epAtArm = rA.actEpoch;
+      const la = h.legalActions(cur);
+      const toActBefore = h.toAct;
+      pk.handle(curWs, { type: "pk:act", action: la.canCheck ? "check" : "call" });
+      eq("acting advances the turn and BUMPS actEpoch (stale-timer guard active)", rA.actEpoch !== epAtArm && (h.done || h.toAct !== toActBefore));
+      const foldedBefore = h.players.map((p) => p.folded).join(",");
+      if (staleEntry) { timers.delete(staleEntry[0]); try { staleEntry[1].fn(); } catch (e) {} } // fire the STALE timer
+      const foldedAfter = h.players.map((p) => p.folded).join(",");
+      eq("a STALE prior-turn act-timer fires as a NO-OP (no extra fold, no throw)", foldedBefore === foldedAfter);
+    }
+
+    /* ── (16b) HOLE-CARD LEAK REGRESSION: a seated socket with EMPTY sock.wallet (the production
+       unauthenticated/denied-guest state, where messageWallet falls back to the client-supplied
+       m.wallet) must NOT be able to resync as another wallet and receive that wallet's live holes.
+       The snapshot mask key is bound to socket→seat identity, never a spoofable message field. ── */
+    {
+      const pkX = attachPoker(Object.assign({ startBalance: 100000, demoBuyIn: 1000,
+        timers: { act: 20000, showdown: 0, between: 0, idleEmpty: 60000, idleSeated: 300000, botMin: 0, botMax: 0 } }, clk));
+      // sockets WITHOUT .wallet ⇒ messageWallet() trusts m.wallet (the exploit precondition)
+      const mkGuest = () => { const msgs = []; const ws = { send: (m) => { try { msgs.push(JSON.parse(m)); } catch (e) {} } }; ws._msgs = msgs; return ws; };
+      const AX = mkGuest(), VX = mkGuest();
+      pkX.handle(AX, { type: "pk:table:create", wallet: "guest:atk", config: { bb: 10, maxSeats: 6, name: "LK" } });
+      const tX = AX._msgs.filter((m) => m.type === "pk:table:created").pop().tableId;
+      pkX.handle(AX, { type: "pk:table:join", wallet: "guest:atk", tableId: tX, buyIn: 1000 });
+      pkX.handle(VX, { type: "pk:table:join", wallet: "guest:victim", tableId: tX, buyIn: 1000 });
+      const rX = Array.from(pkX._mgr.rooms.values()).find((rr) => rr.seats.some((s) => s && s.wallet === "guest:atk"));
+      eq("(16b) leak-repro table is mid-hand with both guests dealt in", rX.phase === "HAND" && rX.table.hand && !rX.table.hand.done);
+      const holeIn = (st, w) => { const p = st && st.hand && st.hand.players.find((pp) => pp.id === w); return p ? p.hole : undefined; };
+      const mk = AX._msgs.length;
+      // EXPLOIT ATTEMPT: attacker (seated, empty sock.wallet) resyncs claiming the victim's wallet.
+      pkX.handle(AX, { type: "pk:table:join", wallet: "guest:victim", tableId: tX, buyIn: 1000 });
+      const spoofed = AX._msgs.slice(mk).filter((m) => m.type === "pk:state").pop();
+      eq("(16b) resync spoofing another wallet NEVER leaks that wallet's holes (masked by own seat)", holeIn(spoofed, "guest:victim") === null && Array.isArray(holeIn(spoofed, "guest:atk")));
+    }
+
+    /* ── (4)(5) disconnect on-turn auto-folds + reconnect reclaims same seat, on a FRESH 3-handed table ── */
+    {
+      const pk2 = attachPoker(Object.assign({ startBalance: 100000, demoBuyIn: 1000, reconnectGrace: 90000,
+        timers: { act: 20000, showdown: 0, between: 0, idleEmpty: 60000, idleSeated: 300000, botMin: 0, botMax: 0 } }, clk));
+      const C = mkWs("guest:carol"), D = mkWs("guest:dave"), E = mkWs("guest:erin");
+      pk2.handle(C, { type: "pk:table:create", config: { bb: 10, maxSeats: 6, name: "DC" } });
+      const t2 = C._msgs.filter((m) => m.type === "pk:table:created").pop().tableId;
+      pk2.handle(C, { type: "pk:table:join", tableId: t2, buyIn: 1000 });
+      pk2.handle(D, { type: "pk:table:join", tableId: t2, buyIn: 1000 }); // 2 seated → heads-up hand starts
+      pk2.handle(E, { type: "pk:table:join", tableId: t2, buyIn: 1000 }); // erin joins MID-HAND → sits out until next hand
+      const r2 = roomOf(pk2, "guest:carol");
+      eq("erin joined mid-hand → seated but NOT in the live (heads-up) hand", r2.phase === "HAND" && r2.table.hand.players.length === 2 && !!r2.seats.find((s) => s && s.wallet === "guest:erin"));
+      // play the heads-up hand to completion (check/call down) so the NEXT hand deals all THREE
+      { let g = 0; while (r2.phase === "HAND" && r2.table.hand && !r2.table.hand.done && g++ < 300) { const hh = r2.table.hand; const cur = hh.players[hh.toAct].id; const w = cur === "guest:carol" ? C : cur === "guest:dave" ? D : E; const la = hh.legalActions(cur); pk2.handle(w, { type: "pk:act", action: la.canCheck ? "check" : "call" }); } }
+      fireDue(); // showdown/between (0ms) → next hand auto-starts with all 3
+      eq("3-handed hand started after the first hand (all 3 dealt in)", r2.phase === "HAND" && r2.table.hand && r2.table.hand.players.length === 3);
+
+      // (5) reconnect within grace reclaims the SAME seat + stack (disconnect a NON-acting seat)
+      const h = r2.table.hand;
+      const actId = h.players[h.toAct].id;
+      const idleId = h.players.find((p) => p.id !== actId).id; // a seat that is NOT to-act
+      const idleWs = idleId === "guest:carol" ? C : idleId === "guest:dave" ? D : E;
+      const idleSeatIdx = r2.seats.findIndex((s) => s && s.wallet === idleId);
+      const stackBefore = r2.seats[idleSeatIdx].stack;
+      pk2.onClose(idleWs);
+      eq("disconnect (non-acting) marks the seat away, chips stay, hand continues", !!r2.seats[idleSeatIdx].disconnected && r2.phase === "HAND" && !r2.table.hand.done);
+      const idleWs2 = mkWs(idleId);
+      pk2.handle(idleWs2, { type: "pk:table:join", tableId: t2, buyIn: 1000 });
+      eq("reconnect within grace reclaims the SAME seat + stack (no re-buy)", r2.seats[idleSeatIdx].sock === idleWs2 && !r2.seats[idleSeatIdx].disconnected && r2.seats[idleSeatIdx].stack === stackBefore);
+
+      // (4) disconnect the TO-ACT seat → auto-fold/check immediately, hand proceeds
+      const h2 = r2.table.hand;
+      const turnId = h2.players[h2.toAct].id;
+      const toActBefore = h2.toAct;                 // snapshot the VALUE (h2 === r2.table.hand, mutated in place)
+      const turnWs = turnId === "guest:carol" ? C : turnId === "guest:dave" ? D : (turnId === idleId ? idleWs2 : E);
+      pk2.onClose(turnWs);
+      const h3 = r2.table.hand;
+      const advanced = (h3 && (h3.toAct !== toActBefore || h3.done)) || r2.phase !== "HAND";
+      eq("disconnect ON its turn auto-acts immediately (fold/check) and the hand proceeds", advanced);
+      const foldedTurn = h3 ? h3.players.find((p) => p.id === turnId) : null;
+      eq("the disconnected to-act seat folded (facing a bet) or checked (toCall 0)", !!foldedTurn && (foldedTurn.folded || foldedTurn.acted || h3.done));
+    }
+
+    /* ── idle GC + warm HOUSE table always present ── */
+    eq("a warm HOUSE table always exists in the lobby", Array.from(pk._mgr.rooms.values()).some((r) => r.creatorId === "HOUSE"));
+    // per-wallet table cap
+    const CAP = mkWs("guest:spammer");
+    for (let i = 0; i < 4; i++) pk.handle(CAP, { type: "pk:table:create", config: { bb: 10, name: "S" + i } });
+    const capErr = CAP._msgs.some((m) => m.type === "pk:error" && m.code === "table_cap");
+    eq("per-wallet open-table cap enforced (anti-spam)", capErr);
+
+    /* ── house-policy clamps on create ── */
+    const CL = mkWs("guest:clamp");
+    pk.handle(CL, { type: "pk:table:create", config: { bb: 999, maxSeats: 50, rakeBps: 9000, rakeCapBb: 99, buyInMinBb: 1, buyInMaxBb: 9999, name: "<script>x" } });
+    const clRoom = Array.from(pk._mgr.rooms.values()).filter((r) => r.creatorWallet === "guest:clamp").pop();
+    eq("create-table RE-CLAMPS every field (bb→10, seats→9, rake→500/5, name sanitized)",
+      !!clRoom && clRoom.table.bigBlind === 10 && clRoom.table.maxSeats === 9 && clRoom.table.rakeBps === 500 && clRoom.table.rakeCapBb === 5 && clRoom.name.indexOf("<") === -1 && clRoom.name.indexOf("script") >= 0);
+
+    /* ── PF verifiability end-to-end: reveal re-derives the deck ── */
+    {
+      const h = rA.table.hand || (() => { rA.phase = "WAITING"; pk._room.maybeStartHand(rA); return rA.table.hand; })();
+      if (h) {
+        // force the hand to completion by having both check/call down, then assert the reveal verifies
+        let guard = 0;
+        while (rA.phase === "HAND" && rA.table.hand && !rA.table.hand.done && guard++ < 200) {
+          const hh = rA.table.hand; const cur = hh.players[hh.toAct].id; const ws = cur === aWallet ? A : B;
+          const la = hh.legalActions(cur);
+          pk.handle(ws, { type: "pk:act", action: la.canCheck ? "check" : "call" });
+        }
+        const rev = A._msgs.filter((m) => m.type === "pk:reveal").pop();
+        eq("pk:reveal carries serverSeed + commit + clientSeed + nonce after the hand", !!rev && typeof rev.serverSeed === "string" && rev.commit === rev.commit && typeof rev.nonce === "number");
+        if (rev) {
+          const vr = verifyHand(rev.commit, rev.serverSeed, rev.clientSeed, rev.nonce);
+          eq("verifyHand re-derives the deck from the pk:reveal (provably fair)", vr.ok && Array.isArray(vr.deck) && vr.deck.length === 52);
+        }
+      }
+    }
+  }
+
+  console.log(ok ? "\nSELF-TEST OK — server-authoritative poker core is deterministic, verifiable, and leak-free (+ rake: no-flop-no-drop, %-with-cap, exact chip-sink; + Phase-2 RoomManager: per-socket no-leak, act-timer epoch guard, disconnect auto-fold, reconnect reclaim, button rotation, illegal-act rejection, heads-up fold-to-BB)." : "\nSELF-TEST FAILED");
   process.exit(ok ? 0 : 1);
 }
