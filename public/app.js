@@ -2550,7 +2550,7 @@
     return new Promise((res, rej) => {
       // v13 #38: dedup by src so a watchdog re-kick (an ensure*Ready promise nulled) never appends a SECOND <script>
       // for the same file while the first is still downloading (the load race). The selector keys on the exact
-      // versioned src ("...?v=1340"), so a later ?v bump is a distinct file and still loads fresh — no stale cache.
+      // versioned src ("...?v=1341"), so a later ?v bump is a distinct file and still loads fresh — no stale cache.
       const sel = 'script[data-loadonce="' + src.replace(/"/g, "&quot;") + '"]';
       const existing = document.querySelector(sel);
       if (existing) {
@@ -2586,7 +2586,7 @@
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=1340"))
+      .then(() => loadScriptOnce("slots.js?v=1341"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -2596,11 +2596,11 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=1340"))
-      .then(() => loadScriptOnce("pressure-render.js?v=1340"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=1340"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=1341"))
+      .then(() => loadScriptOnce("pressure-render.js?v=1341"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=1341"))
       // optional 3D red balloon (Three.js) — falls back to the 2D balloon if it can't load
-      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1340")).catch(() => {}))
+      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1341")).catch(() => {}))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -2673,10 +2673,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=1340"))
-      .then(() => loadScriptOnce("plane-render.js?v=1340"))
-      .then(() => loadScriptOnce("plane-feed.js?v=1340"))
-      .then(() => loadScriptOnce("plane-ui.js?v=1340"))
+      .then(() => loadScriptOnce("plane-engine.js?v=1341"))
+      .then(() => loadScriptOnce("plane-render.js?v=1341"))
+      .then(() => loadScriptOnce("plane-feed.js?v=1341"))
+      .then(() => loadScriptOnce("plane-ui.js?v=1341"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2788,8 +2788,8 @@
     if (window.Slots3D) return Promise.resolve(true);
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("slots3d-engine.js?v=1340"))
-      .then(() => loadScriptOnce("slots3d.js?v=1340"))
+      .then(() => loadScriptOnce("slots3d-engine.js?v=1341"))
+      .then(() => loadScriptOnce("slots3d.js?v=1341"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2847,8 +2847,8 @@
     if (window.FishTable) return Promise.resolve(true);
     if (fishLoadPromise) return fishLoadPromise;
     fishLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishtable-engine.js?v=1340"))
-      .then(() => loadScriptOnce("fishtable.js?v=1340"))
+      .then(() => loadScriptOnce("fishtable-engine.js?v=1341"))
+      .then(() => loadScriptOnce("fishtable.js?v=1341"))
       .then(() => true)
       .catch((e) => { fishLoadPromise = null; throw e; });
     return fishLoadPromise;
@@ -2879,12 +2879,13 @@
     if (setupFishTiltFullscreen.done) return;
     setupFishTiltFullscreen.done = true;
     const isMobile = () => /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (window.matchMedia && window.matchMedia("(max-width: 900px)").matches);
-    const isLandscape = () => window.matchMedia ? window.matchMedia("(orientation: landscape)").matches : window.innerWidth > window.innerHeight;
+    const isLandscape = () => { try { if (screen.orientation && screen.orientation.type) return screen.orientation.type.indexOf("landscape") === 0; } catch (e) {} return window.matchMedia ? window.matchMedia("(orientation: landscape)").matches : window.innerWidth > window.innerHeight; }; // screen.orientation.type is already updated DURING the orientationchange dispatch (viewport matchMedia can lag a frame)
     const sync = () => {
       if (!fishGame || currentGame !== "fish" || !isMobile()) return;
       try { fishGame.autoFullscreen(isLandscape(), $("layer-fish")); } catch (e) {}
     };
     const afterTilt = () => [80, 220, 520, 900].forEach((ms) => setTimeout(sync, ms));
+    window.addEventListener("orientationchange", sync, { passive: true }); // SYNCHRONOUS on-tilt entry: Chromium allows requestFullscreen with NO fresh gesture while the orientationchange dispatch runs (FsUtil's grace window) → tilting to landscape gets REAL browser-chrome-free fullscreen, not just the CSS shell
     window.addEventListener("orientationchange", afterTilt, { passive: true });
     window.addEventListener("resize", afterTilt, { passive: true });
     document.addEventListener("visibilitychange", sync);
@@ -2931,7 +2932,7 @@
     if (window.SwoopGame) return Promise.resolve(true);
     if (swoopLoadPromise) return swoopLoadPromise;
     swoopLoadPromise = loadPlayCanvasOnce()
-      .then(() => loadScriptOnce("swoop3d.js?v=1340"))
+      .then(() => loadScriptOnce("swoop3d.js?v=1341"))
       .then(() => true)
       .catch((e) => { swoopLoadPromise = null; throw e; });
     return swoopLoadPromise;
@@ -2971,9 +2972,10 @@
     if (setupSwoopTiltFullscreen.done) return;
     setupSwoopTiltFullscreen.done = true;
     const isMobile = () => /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (window.matchMedia && window.matchMedia("(max-width: 900px)").matches);
-    const isLandscape = () => window.matchMedia ? window.matchMedia("(orientation: landscape)").matches : window.innerWidth > window.innerHeight;
+    const isLandscape = () => { try { if (screen.orientation && screen.orientation.type) return screen.orientation.type.indexOf("landscape") === 0; } catch (e) {} return window.matchMedia ? window.matchMedia("(orientation: landscape)").matches : window.innerWidth > window.innerHeight; }; // screen.orientation.type is already updated DURING the orientationchange dispatch (viewport matchMedia can lag a frame)
     const sync = () => { if (!swoopGame || currentGame !== "swoop" || !isMobile()) return; try { swoopGame.autoFullscreen(isLandscape(), $("layer-swoop")); } catch (e) {} };
     const afterTilt = () => [80, 220, 520, 900].forEach((ms) => setTimeout(sync, ms));
+    window.addEventListener("orientationchange", sync, { passive: true }); // SYNCHRONOUS on-tilt entry: Chromium allows requestFullscreen with NO fresh gesture while the orientationchange dispatch runs (FsUtil's grace window) → tilting to landscape gets REAL browser-chrome-free fullscreen, not just the CSS shell
     window.addEventListener("orientationchange", afterTilt, { passive: true });
     window.addEventListener("resize", afterTilt, { passive: true });
     document.addEventListener("visibilitychange", sync);
@@ -3012,8 +3014,8 @@
     if (window.FishShooter) return Promise.resolve(true);
     if (fishshooterLoadPromise) return fishshooterLoadPromise;
     fishshooterLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishshooter-engine.js?v=1340")) // OWN engine (decoupled from Reef's fishtable-engine.js)
-      .then(() => loadScriptOnce("fishshooter.js?v=1340"))
+      .then(() => loadScriptOnce("fishshooter-engine.js?v=1341")) // OWN engine (decoupled from Reef's fishtable-engine.js)
+      .then(() => loadScriptOnce("fishshooter.js?v=1341"))
       .then(() => true)
       .catch((e) => { fishshooterLoadPromise = null; throw e; });
     return fishshooterLoadPromise;
@@ -3049,9 +3051,10 @@
     if (setupFishShooterTiltFullscreen.done) return;
     setupFishShooterTiltFullscreen.done = true;
     const isMobile = () => /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (window.matchMedia && window.matchMedia("(max-width: 900px)").matches);
-    const isLandscape = () => window.matchMedia ? window.matchMedia("(orientation: landscape)").matches : window.innerWidth > window.innerHeight;
+    const isLandscape = () => { try { if (screen.orientation && screen.orientation.type) return screen.orientation.type.indexOf("landscape") === 0; } catch (e) {} return window.matchMedia ? window.matchMedia("(orientation: landscape)").matches : window.innerWidth > window.innerHeight; }; // screen.orientation.type is already updated DURING the orientationchange dispatch (viewport matchMedia can lag a frame)
     const sync = () => { if (!fishshooterGame || currentGame !== "fishshooter" || !isMobile()) return; try { fishshooterGame.autoFullscreen(isLandscape(), $("layer-fishshooter")); } catch (e) {} };
     const afterTilt = () => [80, 220, 520, 900].forEach((ms) => setTimeout(sync, ms));
+    window.addEventListener("orientationchange", sync, { passive: true }); // SYNCHRONOUS on-tilt entry: Chromium allows requestFullscreen with NO fresh gesture while the orientationchange dispatch runs (FsUtil's grace window) → tilting to landscape gets REAL browser-chrome-free fullscreen, not just the CSS shell
     window.addEventListener("orientationchange", afterTilt, { passive: true });
     window.addEventListener("resize", afterTilt, { passive: true });
     document.addEventListener("visibilitychange", sync);
@@ -3100,8 +3103,8 @@
     if (window.FishShooter2) return Promise.resolve(true);
     if (fishshooter2LoadPromise) return fishshooter2LoadPromise;
     fishshooter2LoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishshooter2-engine.js?v=1340"))
-      .then(() => loadScriptOnce("fishshooter2.js?v=1340"))
+      .then(() => loadScriptOnce("fishshooter2-engine.js?v=1341"))
+      .then(() => loadScriptOnce("fishshooter2.js?v=1341"))
       .then(() => true)
       .catch((e) => { fishshooter2LoadPromise = null; throw e; });
     return fishshooter2LoadPromise;
@@ -3137,9 +3140,10 @@
     if (setupFishShooter2TiltFullscreen.done) return;
     setupFishShooter2TiltFullscreen.done = true;
     const isMobile = () => /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (window.matchMedia && window.matchMedia("(max-width: 900px)").matches);
-    const isLandscape = () => window.matchMedia ? window.matchMedia("(orientation: landscape)").matches : window.innerWidth > window.innerHeight;
+    const isLandscape = () => { try { if (screen.orientation && screen.orientation.type) return screen.orientation.type.indexOf("landscape") === 0; } catch (e) {} return window.matchMedia ? window.matchMedia("(orientation: landscape)").matches : window.innerWidth > window.innerHeight; }; // screen.orientation.type is already updated DURING the orientationchange dispatch (viewport matchMedia can lag a frame)
     const sync = () => { if (!fishshooter2Game || currentGame !== "fishshooter2" || !isMobile()) return; try { fishshooter2Game.autoFullscreen(isLandscape(), $("layer-fishshooter2")); } catch (e) {} };
     const afterTilt = () => [80, 220, 520, 900].forEach((ms) => setTimeout(sync, ms));
+    window.addEventListener("orientationchange", sync, { passive: true }); // SYNCHRONOUS on-tilt entry: Chromium allows requestFullscreen with NO fresh gesture while the orientationchange dispatch runs (FsUtil's grace window) → tilting to landscape gets REAL browser-chrome-free fullscreen, not just the CSS shell
     window.addEventListener("orientationchange", afterTilt, { passive: true });
     window.addEventListener("resize", afterTilt, { passive: true });
     document.addEventListener("visibilitychange", sync);
@@ -3182,7 +3186,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1340"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1341"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -3209,7 +3213,7 @@
   function loadRail3dOnce() {
     if (window.Rail3D) return Promise.resolve(true);
     if (rail3dLoadPromise) return rail3dLoadPromise;
-    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1340")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
+    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1341")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
     return rail3dLoadPromise;
   }
   function buildRail3d() {
@@ -3230,7 +3234,7 @@
   function loadDice2_3dOnce() {
     if (window.TwoDice3D) return Promise.resolve(true);
     if (d2_3dLoadPromise) return d2_3dLoadPromise;
-    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1340")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
+    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1341")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
     return d2_3dLoadPromise;
   }
   function buildDice2_3d() {
@@ -3961,7 +3965,7 @@
     if (game === "flip") { ensureCoinFlip3dReady(); }
     else if (game === "dice") { refreshDiceHouse(); diceReadouts(); ensureDice3dReady(); }
     else if (game === "twodice") { refreshDiceHouse(); twoDiceReadouts(); ensureTwoDiceSupport(); ensureDice2_3dReady(); }
-    else if (game === "crash") { if (!window.CrashRender) loadScriptOnce("crash-render.js?v=1340").then(() => { try { if (window.TV && TV._crashIdle && currentGame === "crash") TV._crashIdle(); } catch (e) {} }).catch(() => {}); refreshDiceHouse(); crashReadouts(); ensureCrashSupport(); }
+    else if (game === "crash") { if (!window.CrashRender) loadScriptOnce("crash-render.js?v=1341").then(() => { try { if (window.TV && TV._crashIdle && currentGame === "crash") TV._crashIdle(); } catch (e) {} }).catch(() => {}); refreshDiceHouse(); crashReadouts(); ensureCrashSupport(); }
     else if (game === "pressure") { ensurePressureReady(); }
     else if (game === "plane") { refreshDiceHouse(); ensurePlaneReady(); }
     else if (game === "slots3d") { ensureSlots3dReady(); }
@@ -4076,7 +4080,7 @@
       const tableWallet = account || bjGuestId();
       // &r=<nonce> in the QUERY forces a real iframe reload (so the felt re-reads the #bjsession from the
       // hash and re-sends its hello → the server re-binds the table to the token session).
-      let src = "blackjack.html?tv=1&v=1340&r=" + (++bjFeltNonce % 8) + "&guest=" + encodeURIComponent(tableWallet); // %8: consecutive nonces still ALWAYS differ (n vs n+1 mod 8) so the iframe truly reloads, but the URL set is bounded → the SW's ?v= cache-first path can actually HIT (instant felt load from cache) instead of storing a new never-reusable copy per open
+      let src = "blackjack.html?tv=1&v=1341&r=" + (++bjFeltNonce % 8) + "&guest=" + encodeURIComponent(tableWallet); // %8: consecutive nonces still ALWAYS differ (n vs n+1 mod 8) so the iframe truly reloads, but the URL set is bounded → the SW's ?v= cache-first path can actually HIT (instant felt load from cache) instead of storing a new never-reusable copy per open
       let tokenHash = "";
       // PREFERRED real-money path: fund the table with the player's TOKEN session (chips = tokens, no lock step).
       if (account && window.TokenMode && TokenMode.active && TokenMode.active() && TokenMode.session) {
@@ -4324,7 +4328,7 @@
     // + dead-bridge screen), re-init it so it binds to the account + token session. Throttled so it can't loop.
     try {
       const f0 = $("bj-frame");
-      // v13.40: the felt is ALSO stale if it's bound to a DIFFERENT (or no) token bjsession than the live one —
+      // v13.41: the felt is ALSO stale if it's bound to a DIFFERENT (or no) token bjsession than the live one —
       // e.g. it loaded as a $0 GUEST and the post-buy-in re-bind raced the just-created session, so the seat
       // shows $0 and the bet controls never appear until a manual ⟳ Reload. Reloading it (via the proven
       // ensureBlackjackReady) re-funds the seat from the token session AUTOMATICALLY. Guarded by !bjDockLive
@@ -4450,7 +4454,7 @@
   // PARENT-local UI state, shared with the felt through localStorage "bacChip" (the felt
   // listens for the same-origin storage event). ──
   let bacFsOn = false; // parent-owned fullscreen state — the felt asks via bac:fs, we answer via bac:active {fs}
-  function bacFramePost(active) { const f = $("bac-frame"); if (f && f.contentWindow) try { f.contentWindow.postMessage({ type: "bac:active", active, ethUsd: ethUsd, fs: bacFsOn }, location.origin); if (active && !account && !(window.TokenMode && TokenMode.active && TokenMode.active())) f.contentWindow.postMessage({ type: "bac:seed", balance: Math.round(demoUsd * 100) / 100 }, location.origin); } catch (e) {} } // same-origin iframe only; carries the live ETH/USD (cosmetic) + fs state. DEMO unification: seed the felt's guest bank FROM the site demoUsd on (re)activation (server seedGuest sets it exactly; guest-only + capped + never mid-coup)
+  function bacFramePost(active) { const f = $("bac-frame"); if (f && f.contentWindow) try { f.contentWindow.postMessage({ type: "bac:active", active, ethUsd: ethUsd, fs: bacFsOn, portrait: (window.matchMedia ? window.matchMedia("(orientation: portrait)").matches : window.innerHeight >= window.innerWidth) }, location.origin); if (active && !account && !(window.TokenMode && TokenMode.active && TokenMode.active())) f.contentWindow.postMessage({ type: "bac:seed", balance: Math.round(demoUsd * 100) / 100 }, location.origin); } catch (e) {} } // same-origin iframe only; carries the live ETH/USD (cosmetic) + fs state + the PARENT's orientation (fs-landscape bug fix: at fs-enter the felt iframe's own last-laid-out size is the 4:3 TV box — landscape-shaped even on a portrait phone — so it must trust ours). DEMO unification: seed the felt's guest bank FROM the site demoUsd on (re)activation (server seedGuest sets it exactly; guest-only + capped + never mid-coup)
   let bacPendingTable = null; // a specific table id arrived via a share link (?bactable=…)
   try { bacPendingTable = new URLSearchParams(location.search).get("bactable"); } catch (e) {}
   let bacRoomId = null; // latest table id the felt reports (for the Share button)
@@ -4494,7 +4498,7 @@
     if (f && !f.getAttribute("src") && account && window.TokenMode && TokenMode.resumePending && TokenMode.resumePending()) return;
     if (f && !f.getAttribute("src")) {
       const tableWallet = account || bjGuestId(); // REUSE the blackjack guest identity — one guest + one demo balance spans both tables
-      let src = "baccarat.html?tv=1&v=1340&r=" + (++bacFeltNonce % 8) + "&guest=" + encodeURIComponent(tableWallet); // %8 bounds the URL set so the SW ?v= cache can HIT (bj pattern)
+      let src = "baccarat.html?tv=1&v=1341&r=" + (++bacFeltNonce % 8) + "&guest=" + encodeURIComponent(tableWallet); // %8 bounds the URL set so the SW ?v= cache can HIT (bj pattern)
       let tokenHash = "";
       // Real-money path: fund the table with the player's TOKEN session (chips = tokens; hello frame identical to BJ).
       if (account && window.TokenMode && TokenMode.active && TokenMode.active() && TokenMode.session) {
@@ -4528,15 +4532,32 @@
       layer.classList.toggle("bac-fs", on);
       document.documentElement.classList.toggle("bac-fs-on", on);
       document.body.classList.toggle("bac-fs-on", on);
-      if (on) { try { const req = layer.requestFullscreen || layer.webkitRequestFullscreen; if (req) req.call(layer); } catch (e) {} } // native when available; the CSS overlay is the iOS fallback
+      // FsUtil: native requestFullscreen({navigationUI:hide}) where available (URL bar gone on
+      // Android/desktop) + tilt re-assertion + the iOS/MetaMask fake-mode URL-bar-collapse best
+      // effort. NO orientation lock — the felt has dedicated portrait AND landscape fs layouts.
+      // The promote-IN-PLACE overlay above is unchanged (never reparent the iframe — reload kills
+      // the felt's socket mid-coup).
+      if (window.FsUtil) {
+        if (on) { try { FsUtil.enterFs(layer, { lockOrientation: null }); } catch (e) {} }
+        else { try { FsUtil.exitFs(); } catch (e) {} }
+      } else if (on) { try { const req = layer.requestFullscreen || layer.webkitRequestFullscreen; if (req) req.call(layer); } catch (e) {} } // native when available; the CSS overlay is the iOS fallback
       else { try { if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen(); else if (document.webkitFullscreenElement && document.webkitExitFullscreen) document.webkitExitFullscreen(); } catch (e) {} }
     }
     bacFramePost(currentGame === "baccarat");
   }
+  // While the baccarat overlay is fullscreen, re-ship the PARENT's orientation to the felt on every
+  // rotation/resize (the felt's fs-portrait/fs-landscape layout keys off bac:active {portrait} —
+  // it can't trust its own possibly-stale iframe viewport; see bacFramePost).
+  {
+    const bacFsRepost = () => { if (bacFsOn) bacFramePost(currentGame === "baccarat"); };
+    const bacFsAfterTilt = () => [80, 220, 520, 900].forEach((ms) => setTimeout(bacFsRepost, ms));
+    window.addEventListener("orientationchange", bacFsAfterTilt, { passive: true });
+    window.addEventListener("resize", bacFsAfterTilt, { passive: true });
+  }
   // ---- Baccarat dock (under the TV). The felt emits a compact "bac:dock" state on every
   // render; here we paint native, site-styled controls and post intents back as "bac:cmd". ----
   let bacChip = 25; // sticky chip denomination (spec §5.1), default $25
-  try { const c = parseInt(localStorage.getItem("bacChip"), 10); if ([10, 25, 100, 500].indexOf(c) >= 0) bacChip = c; } catch (e) {}
+  try { const c = parseInt(localStorage.getItem("bacChip"), 10); if (isFinite(c) && c >= 10) bacChip = Math.round(c / 5) * 5; } catch (e) {} // any $5-step dial amount (owner: chips ADD onto a slider)
   const BAC_TRAY = [[10, "#39e7ff"], [25, "#45f0a6"], [100, "#ff4d9d"], [500, "#ffd23f"]]; // CHIP_DENOMS colors (spec §5.1)
   const BAC_ZONES = [["player", "PLAYER", "1:1"], ["tie", "TIE", "8:1"], ["banker", "BANKER", "0.95:1"]];
   let bacDockSig = "";
@@ -4554,29 +4575,43 @@
   function bacCmd(cmd, extra) { const f = $("bac-frame"); if (f && f.contentWindow) try { f.contentWindow.postMessage(Object.assign({ type: "bac:cmd", cmd }, extra || {}), location.origin); } catch (e) {} } // same-origin iframe only
   function bacMoney(n) { return "$" + (Math.round((+n || 0) * 100) / 100).toLocaleString(); }
   function buildBacControls(ctr, s) {
-    // chip tray — a chip larger than min(balance, biggest zone headroom) is dead (spec §5.1)
+    // DIAL-THEN-PLACE (owner spec 2026-07-02): the chips ADD their value onto the slider, the
+    // slider dials the EXACT amount, and tapping a zone places that whole amount in one go.
     const bal = (s.balance != null && isFinite(s.balance)) ? Number(s.balance) : 0;
     let maxHeadroom = 0;
     BAC_ZONES.forEach((z) => { const h = ((s.zoneMax && s.zoneMax[z[0]]) || 0) - ((s.staked && s.staked[z[0]]) || 0); if (h > maxHeadroom) maxHeadroom = h; });
-    const tray = document.createElement("div"); tray.className = "bac-chiprow"; tray.setAttribute("role", "group"); tray.setAttribute("aria-label", "Chip value");
+    const maxAmt = Math.max(10, Math.floor(Math.min(bal, maxHeadroom) / 5) * 5);
+    bacChip = Math.max(10, Math.min(maxAmt, Math.round(bacChip / 5) * 5)); // clamp the dial into today's range
+    const persistAmt = () => { try { localStorage.setItem("bacChip", String(bacChip)); } catch (e) {} }; // storage event syncs the felt's tap amount
+    // 2) slider row built first so the chip handlers can reference it (inserted under the tray)
+    const amtRow = document.createElement("div"); amtRow.className = "bac-amtrow";
+    const sl = document.createElement("input"); sl.type = "range"; sl.className = "slider bac-amt";
+    sl.min = "10"; sl.max = String(maxAmt); sl.step = "5"; sl.value = String(bacChip);
+    sl.setAttribute("aria-label", "Bet amount in dollars");
+    const lbl = document.createElement("strong"); lbl.className = "bac-amt-val"; lbl.textContent = bacMoney(bacChip);
+    const syncAmt = () => { sl.value = String(bacChip); lbl.textContent = bacMoney(bacChip); sl.setAttribute("aria-valuetext", bacMoney(bacChip)); persistAmt(); };
+    sl.addEventListener("input", () => { bacChip = Math.round((+sl.value || 10) / 5) * 5; lbl.textContent = bacMoney(bacChip); sl.setAttribute("aria-valuetext", bacMoney(bacChip)); persistAmt(); });
+    amtRow.append(sl, lbl);
+    // 1) chip tray — each tap ADDS its value onto the dial (clamped to the max you can bet)
+    const tray = document.createElement("div"); tray.className = "bac-chiprow"; tray.setAttribute("role", "group"); tray.setAttribute("aria-label", "Add to bet amount");
     BAC_TRAY.forEach((cd) => {
       const v = cd[0];
-      const b = document.createElement("button"); b.type = "button"; b.className = "bac-chip" + (bacChip === v ? " active" : "");
-      b.style.setProperty("--cc", cd[1]); b.textContent = "$" + v;
-      b.setAttribute("aria-pressed", bacChip === v ? "true" : "false");
-      b.setAttribute("aria-label", "$" + v + " chip");
-      if (v > Math.min(bal, maxHeadroom)) { b.disabled = true; b.setAttribute("aria-disabled", "true"); }
-      b.onclick = () => { bacChip = v; try { localStorage.setItem("bacChip", String(v)); } catch (e) {} bacDockSig = ""; renderBacDock(s); }; // localStorage write → storage event syncs the felt's tray
+      const b = document.createElement("button"); b.type = "button"; b.className = "bac-chip";
+      b.style.setProperty("--cc", cd[1]); b.textContent = "+$" + v;
+      b.setAttribute("aria-label", "Add $" + v + " to the bet amount");
+      if (maxAmt <= 10) { b.disabled = true; b.setAttribute("aria-disabled", "true"); } // can't bet at all
+      b.onclick = () => { bacChip = Math.min(maxAmt, bacChip + v); syncAmt(); };
       tray.appendChild(b);
     });
     ctr.appendChild(tray);
-    // zone buttons — tap = add the selected chip (server clamps + partial-fills; felt zones mirror this surface)
+    ctr.appendChild(amtRow);
+    // 3) zone buttons — tap places the WHOLE dialed amount (server clamps + partial-fills)
     const zr = document.createElement("div"); zr.className = "bac-zones";
     BAC_ZONES.forEach((z) => {
       const key = z[0], mine = (s.staked && s.staked[key]) || 0;
       const b = document.createElement("button"); b.type = "button"; b.className = "bac-zone " + key;
       b.innerHTML = '<span class="bac-zn">' + z[1] + ' · ' + z[2] + '</span>' + (mine > 0 ? '<span class="bac-zs">' + bacMoney(mine) + '</span>' : "");
-      b.setAttribute("aria-label", "Add $" + bacChip + " to " + z[1] + ". Your " + z[1] + " bet is " + bacMoney(mine) + ".");
+      b.setAttribute("aria-label", "Bet the dialed amount on " + z[1] + ". Your " + z[1] + " bet is " + bacMoney(mine) + ".");
       b.onclick = () => bacCmd("add", { zone: key, amount: bacChip });
       zr.appendChild(b);
     });
@@ -4666,7 +4701,7 @@
     } else { bacStopCount(); const cEl = $("bac-count"); if (cEl) cEl.textContent = ""; }
     if (s.mode === "betting") {
       const st = s.staked || {};
-      const sig = "bet|" + bacChip + "|" + (st.player || 0) + "|" + (st.banker || 0) + "|" + (st.tie || 0) + "|" +
+      const sig = "bet|" + (st.player || 0) + "|" + (st.banker || 0) + "|" + (st.tie || 0) + "|" + // bacChip excluded: the dial updates in place — a rebuild mid-drag would eat the slider
         Math.floor((s.balance || 0) / 5) + "|" + (s.canUndo ? 1 : 0) + (s.canClear ? 1 : 0) + "|" +
         (s.rebet ? s.rebet.total + ":" + (s.rebet.ok ? 1 : 0) + (s.rebet.ok2 ? 1 : 0) : "-");
       // rebuild on sig change OR an empty dock (channel re-entry can find #bac-controls cleared — bj pattern)
@@ -4795,7 +4830,7 @@
     paintGameTabs(saved);
     if (saved === "poker" && window.PokerUI) PokerUI.show();
     if (window.TV) TV._activeChannel = GAME_CHANNEL[saved] || 8;
-    if (saved === "crash") { if (window.TV && TV._crashIdle) { try { TV._crashIdle(); } catch (e) {} } if (!window.CrashRender) loadScriptOnce("crash-render.js?v=1340").then(() => { try { if (window.TV && TV._crashIdle && currentGame === "crash") TV._crashIdle(); } catch (e) {} }).catch(() => {}); }
+    if (saved === "crash") { if (window.TV && TV._crashIdle) { try { TV._crashIdle(); } catch (e) {} } if (!window.CrashRender) loadScriptOnce("crash-render.js?v=1341").then(() => { try { if (window.TV && TV._crashIdle && currentGame === "crash") TV._crashIdle(); } catch (e) {} }).catch(() => {}); }
     // Balloon Pop needs its engine built + activated on reload too (enterDemo,
     // which runs just after, flips it to enabled once it exists).
     if (saved === "pressure") ensurePressureReady();
@@ -5922,6 +5957,7 @@
     { const bs = $("bj-share"); if (bs) bs.onclick = bjShareTable; } // copy a link to the current blackjack table
     { const bs = $("bac-share"); if (bs) bs.onclick = bacShareTable; } // copy a link to the current baccarat table
     { const fb = $("bac-fs"); if (fb) fb.onclick = () => bacSetFullscreen(!bacFsOn); } // dock ⛶ mirrors the felt's corner button
+    { const bx = $("bac-fs-exit"); if (bx) bx.onclick = () => bacSetFullscreen(false); } // parent-owned escape hatch: exits fullscreen even if the felt iframe is wedged/reloading
     { const br = $("bj-reload"); if (br) br.onclick = () => { bjReanchorNext = true; bjReload(); if (!account) toast("Table chips synced to your $" + Math.round(demoUsd).toLocaleString() + " demo balance 💰", "ok"); }; } // #97 / cluster-a: reflect the real demo balance, not a stale "$1,000": a reload is a DEPOSIT → re-anchor the session net, don't count it as a win
     { const bc = $("bj-cashout"); if (bc) bc.onclick = bjCashout; }
     $("raise-max-btn").onclick = raiseMaxBet;
@@ -6433,7 +6469,7 @@
     // them AFTER first paint. loadScriptOnce dedupes; scenes.js self-boots on inject (readyState !== "loading").
     // The window.* guards make this a no-op if the classic <script defer> tags are still in index.html
     // (never double-execute the IIFEs — a second chiptune.js run would rebind window.Chiptune mid-song).
-    { const goExtras = () => { if (!window.WinScenes) loadScriptOnce("scenes.js?v=1340").catch(() => {}); if (!window.Chiptune) loadScriptOnce("chiptune.js?v=1340").then(() => { try { syncSoundBtn(); } catch (e) {} }).catch(() => {}); };
+    { const goExtras = () => { if (!window.WinScenes) loadScriptOnce("scenes.js?v=1341").catch(() => {}); if (!window.Chiptune) loadScriptOnce("chiptune.js?v=1341").then(() => { try { syncSoundBtn(); } catch (e) {} }).catch(() => {}); };
       if (document.readyState === "complete") setTimeout(goExtras, 0);
       else window.addEventListener("load", () => setTimeout(goExtras, 0), { once: true }); }
     wireUI();

@@ -1108,14 +1108,28 @@
   FishShooter2.prototype.start = function () { this.setActive(true); };
 
   /* fullscreen (reparent-to-body, mirrors Reef) */
-  FishShooter2.prototype.setFullscreenTarget = function (el) { this._fsTarget = el; };
+  FishShooter2.prototype.setFullscreenTarget = function (el) {
+    this._fsTarget = el;
+    // Android can drop native fullscreen while rotating — keep the CSS shell alive
+    // (fishtable/swoop keep-alive parity; was missing here).
+    var self = this;
+    var sync = function () {
+      var real = !!(document.fullscreenElement || document.webkitFullscreenElement);
+      if (!real && el && el.classList && el.classList.contains("rr-fs") && self._fsWasReal) self.enterFullscreen(el, { auto: self._fsAuto, skipNative: true });
+      self._fsWasReal = real;
+    };
+    document.addEventListener("fullscreenchange", sync); document.addEventListener("webkitfullscreenchange", sync);
+  };
   FishShooter2.prototype.isFullscreen = function () { var t = this._fsTarget || this.mount; return !!(document.fullscreenElement || (t && t.classList && t.classList.contains("rr-fs"))); };
   FishShooter2.prototype.enterFullscreen = function (el, opts) {
     var t = el || this._fsTarget || this.mount; opts = opts || {}; if (!t || !t.classList) return;
     if (!this._fsHome) this._fsHome = { parent: t.parentNode, next: t.nextSibling };
     if (t.parentNode !== document.body) document.body.appendChild(t);
     t.classList.add("rr-fs"); document.documentElement.classList.add("rr-fs-on"); document.body.classList.add("rr-fs-on"); this._fsAuto = !!opts.auto;
-    if (!opts.skipNative) { try { var r = t.requestFullscreen || t.webkitRequestFullscreen; if (r) r.call(t); } catch (e) {} }
+    // FsUtil: native fullscreen (URL bar gone) where supported + landscape lock on a manual ⛶ tap
+    // + tilt re-assertion + iOS/MetaMask fake-mode chrome-collapse. rr-fs shell above unchanged.
+    if (root.FsUtil) { try { root.FsUtil.enterFs(t, { skipNative: !!opts.skipNative, lockOrientation: opts.auto ? null : "landscape", landscapeOnly: !!opts.auto }); } catch (e) {} }
+    else if (!opts.skipNative) { try { var r = t.requestFullscreen || t.webkitRequestFullscreen; if (r) r.call(t); } catch (e) {} }
     if (this.els.fsBtn) this.els.fsBtn.classList.add("on");
     var self = this; setTimeout(function () { self._resize(); }, 60); setTimeout(function () { self._resize(); }, 320);
   };
@@ -1123,7 +1137,8 @@
     t = t || this._fsTarget || this.mount; if (!t || !t.classList || !t.classList.contains("rr-fs")) return;
     t.classList.remove("rr-fs"); document.documentElement.classList.remove("rr-fs-on"); document.body.classList.remove("rr-fs-on"); this._fsAuto = false;
     if (this._fsHome && this._fsHome.parent) { try { this._fsHome.parent.insertBefore(t, this._fsHome.next || null); } catch (e) {} this._fsHome = null; }
-    try { if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen(); } catch (e) {}
+    if (root.FsUtil) { try { root.FsUtil.exitFs(); } catch (e) {} }
+    else { try { if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen(); } catch (e) {} }
     if (this.els.fsBtn) this.els.fsBtn.classList.remove("on");
     var self = this; setTimeout(function () { self._resize(); }, 60);
   };

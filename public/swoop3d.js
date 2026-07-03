@@ -568,7 +568,10 @@
     target.classList.add("rr-fs");
     document.documentElement.classList.add("rr-fs-on"); document.body.classList.add("rr-fs-on");
     this._fsAuto = !!opts.auto;
-    if (!opts.skipNative) { try { var req = target.requestFullscreen || target.webkitRequestFullscreen || target.msRequestFullscreen; if (req) req.call(target); } catch (e) {} }
+    // FsUtil: native fullscreen (URL bar gone) where supported + landscape lock on a manual ⛶ tap
+    // + tilt re-assertion + iOS/MetaMask fake-mode chrome-collapse. rr-fs shell above unchanged.
+    if (root.FsUtil) { try { root.FsUtil.enterFs(target, { skipNative: !!opts.skipNative, lockOrientation: opts.auto ? null : "landscape", landscapeOnly: !!opts.auto }); } catch (e) {} }
+    else if (!opts.skipNative) { try { var req = target.requestFullscreen || target.webkitRequestFullscreen || target.msRequestFullscreen; if (req) req.call(target); } catch (e) {} }
     if (this.els.fsBtn) this.els.fsBtn.classList.add("on");
     var self = this; setTimeout(function () { self._resize(); }, 60); setTimeout(function () { self._resize(); }, 320);
   };
@@ -579,7 +582,8 @@
     document.documentElement.classList.remove("rr-fs-on"); document.body.classList.remove("rr-fs-on");
     this._fsAuto = false;
     if (this._fsHome && this._fsHome.parent) { try { this._fsHome.parent.insertBefore(target, this._fsHome.next || null); } catch (e) {} this._fsHome = null; }
-    try { if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen(); else if (document.webkitFullscreenElement && document.webkitExitFullscreen) document.webkitExitFullscreen(); } catch (e) {}
+    if (root.FsUtil) { try { root.FsUtil.exitFs(); } catch (e) {} } // exits native + unlocks orientation + stops re-assertion
+    else { try { if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen(); else if (document.webkitFullscreenElement && document.webkitExitFullscreen) document.webkitExitFullscreen(); } catch (e) {} }
     if (this.els.fsBtn) this.els.fsBtn.classList.remove("on");
     var self = this; setTimeout(function () { self._resize(); }, 60);
   };

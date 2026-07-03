@@ -60,7 +60,7 @@
     this.zoneMax = DEFAULT_ZONE_MAX;
     this._lastBetsLocal = null; // client mirror of the last completed bet map (server value preferred when shipped)
     this._connectedOnce = false; this._reconnectRoom = null; this._stagger = 0; this._sfxReady = false;
-    this._dockSig = null; this._fsSig = null; this._mySettle = null; this._lastChance = false;
+    this._dockSig = null; this._fsSig = null; this._fsPortrait = null; this._mySettle = null; this._lastChance = false;
     var chip = 25;
     try { var saved = parseInt(localStorage.getItem("bacChip"), 10); if ([10, 25, 100, 500].indexOf(saved) >= 0) chip = saved; } catch (e) {}
     this.chip = chip; // sticky denomination (spec §5.1) — shared with the parent dock via localStorage
@@ -71,7 +71,8 @@
       root.addEventListener("storage", function (e) {
         if (!e || e.key !== "bacChip") return;
         var v = parseInt(e.newValue, 10);
-        if ([10, 25, 100, 500].indexOf(v) >= 0 && v !== self0.chip) { self0.chip = v; self0._dockSig = null; self0._fsSig = null; self0._renderDock(); }
+        // any $5-step amount ≥ $10 — the parent dock dials EXACT amounts (chips add onto a slider)
+        if (isFinite(v) && v >= 10 && v !== self0.chip) { self0.chip = Math.round(v / 5) * 5; self0._dockSig = null; self0._fsSig = null; self0._renderDock(); }
       });
     } catch (e) {}
     this._bindNet(); this._wireStatic();
@@ -225,7 +226,7 @@
   BaccaratClient.prototype._currentChip = function () {
     try {
       var v = parseInt(localStorage.getItem("bacChip"), 10);
-      if ([10, 25, 100, 500].indexOf(v) >= 0) this.chip = v;
+      if (isFinite(v) && v >= 10) this.chip = Math.round(v / 5) * 5; // parent dial: any $5-step amount
     } catch (e) {}
     return this.chip;
   };
@@ -891,7 +892,11 @@
     document.documentElement.classList.add("rr-fs-on");
     document.body.classList.add("rr-fs-on");
     this.setFsEmbed(true);
-    if (!skipNative) {
+    // FsUtil: native fullscreen (URL bar gone) where supported + tilt re-assertion + the
+    // iOS/MetaMask fake-mode chrome-collapse. NO orientation lock — the felt has dedicated
+    // portrait AND landscape fullscreen layouts (fs-portrait/fs-landscape).
+    if (root.FsUtil) { try { root.FsUtil.enterFs(target, { skipNative: !!skipNative, lockOrientation: null }); } catch (e) {} }
+    else if (!skipNative) {
       try { var req = target.requestFullscreen || target.webkitRequestFullscreen || target.webkitRequestFullScreen || target.msRequestFullscreen; if (req) req.call(target); } catch (e) {}
     }
   };
@@ -901,7 +906,8 @@
     document.documentElement.classList.remove("rr-fs-on");
     document.body.classList.remove("rr-fs-on");
     if (this._fsHome && this._fsHome.parent) { try { this._fsHome.parent.insertBefore(target, this._fsHome.next || null); } catch (e) {} this._fsHome = null; }
-    try { if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen(); else if (document.webkitFullscreenElement && document.webkitExitFullscreen) document.webkitExitFullscreen(); } catch (e) {}
+    if (root.FsUtil) { try { root.FsUtil.exitFs(); } catch (e) {} } // exits native + stops re-assertion
+    else { try { if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen(); else if (document.webkitFullscreenElement && document.webkitExitFullscreen) document.webkitExitFullscreen(); } catch (e) {} }
     this.setFsEmbed(false);
   };
   // Android can drop native fullscreen while rotating — keep the CSS shell alive (fishtable sync pattern).
@@ -916,11 +922,21 @@
     document.addEventListener("fullscreenchange", sync);
     document.addEventListener("webkitfullscreenchange", sync);
   };
-  // both paths land here: parent-driven (embed, via bac:active {fs}) or local (standalone)
-  BaccaratClient.prototype.setFsEmbed = function (on) {
+  // both paths land here: parent-driven (embed, via bac:active {fs, portrait}) or local (standalone).
+  // `portrait` is the PARENT page's orientation (fs-landscape bug fix): at fs-enter the iframe's
+  // own last-laid-out size is the 4:3 TV box — landscape-shaped even on a portrait phone — so
+  // self-measuring picked body.fs-landscape on a portrait viewport. The parent's viewport is the
+  // truth in embed mode; the parent re-posts it on every rotation/resize while fullscreen.
+  BaccaratClient.prototype.setFsEmbed = function (on, portrait) {
     document.body.classList.toggle("fs-embed", !!on);
+    if (portrait != null) { this._fsPortrait = !!portrait; this._fsPortraitAt = Date.now(); }
+    if (!on) this._fsPortrait = null;
     this._fsSig = null;
     this._fit(); this._renderDock();
+    // re-fit once the iframe has ACTUALLY grown to the promoted layer (the bac:active message
+    // can land before the parent's relayout resizes this frame)
+    var self = this;
+    if (on && root.requestAnimationFrame) root.requestAnimationFrame(function () { root.requestAnimationFrame(function () { self._fit(); }); });
   };
 
   /* one fit() for every mode: TV scale / lobby width-scale / fullscreen portrait
@@ -930,7 +946,13 @@
     if (!E.stage) return;
     var w = root.innerWidth, h = root.innerHeight;
     if (b.classList.contains("fs-embed")) {
-      var portrait = h >= w;
+      // embed: trust the PARENT's orientation while the hint is FRESH (bac:active {portrait};
+      // the parent re-posts on rotation) — the iframe's own w×h can be a stale pre-promotion
+      // layout at fs-enter (fs-landscape bug fix). Once promoted, the iframe tracks the parent
+      // viewport, so after the hint ages out self-measurement is correct again (and instant on
+      // later rotations, where the parent's re-post takes ~80ms to arrive).
+      var hintFresh = this.embed && this._fsPortrait != null && (Date.now() - (this._fsPortraitAt || 0) < 1500);
+      var portrait = hintFresh ? !!this._fsPortrait : (h >= w);
       b.classList.toggle("fs-portrait", portrait);
       b.classList.toggle("fs-landscape", !portrait);
       if (portrait) { E.stage.style.transform = ""; if (E.stageWrap) E.stageWrap.style.height = ""; return; }

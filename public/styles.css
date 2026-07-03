@@ -2334,7 +2334,7 @@ body.demo-mode #bankroll { display: none !important; }
    landscape side menu, the ETH ticker, the Share-win button, modals, everything) in
    every layout/orientation. The game layer is the only thing left visible. */
 html.rr-fs-on, body.rr-fs-on { width: 100vw !important; height: 100dvh !important; overflow: hidden !important; overscroll-behavior: none !important; background: #041326 !important; }
-body.rr-fs-on > *:not(#layer-fish):not(#layer-swoop):not(#layer-fishshooter) { display: none !important; }
+body.rr-fs-on > *:not(#layer-fish):not(#layer-swoop):not(#layer-fishshooter):not(#layer-fishshooter2) { display: none !important; } /* v13.41: #layer-fishshooter2 was MISSING → CH20 fullscreen reparented the layer to <body> and this rule display:none'd it = black screen */
 body.rr-fs-on .topbar,
 body.rr-fs-on .bottom-nav,
 body.rr-fs-on .chat-tab,
@@ -3056,3 +3056,48 @@ body.bac-fs-on .topbar, body.bac-fs-on .bottom-nav, body.bac-fs-on .chat-tab,
 body.bac-fs-on .sidebar, body.bac-fs-on .channels-grid { display: none !important; }
 /* neutralize any ancestor transform that would trap the fixed overlay (TV frame effects) */
 body.bac-fs-on .stage, body.bac-fs-on .tv, body.bac-fs-on .tv-wrap, body.bac-fs-on .screen { transform: none !important; filter: none !important; }
+
+/* ============================================================
+   v13.41 — SITE-WIDE MOBILE FULLSCREEN (fullscreen-util.js / FsUtil)
+   ============================================================ */
+/* ── Fish Shooter V2 (CH 20) rr-fs rules — they NEVER existed for #layer-fishshooter2, so its
+   fullscreen was a black screen (see the fixed child-hide whitelist at the rr-fs block). Byte
+   mirror of the CH19 #layer-fishshooter rules. ── */
+#layer-fishshooter2.rr-fs .fishshooter-stage canvas { object-fit: contain; }
+#layer-fishshooter2.rr-fs { display: block !important; position: fixed !important; inset: 0 !important; width: 100vw !important; height: 100dvh !important; z-index: 2147483646 !important; background: #041326; }
+body.rr-fs-on #layer-fishshooter2, body.rr-fs-on #layer-fishshooter2 * { visibility: visible !important; }
+#layer-fishshooter2.rr-fs .fish-fs-exit { display: block; position: fixed; top: max(10px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); z-index: 2147483647; background: rgba(4,19,38,.82); color: #fff; border: 1px solid rgba(255,255,255,.5); border-radius: 10px; padding: 9px 14px; font-weight: 800; cursor: pointer; }
+#layer-fishshooter2:fullscreen, #layer-fishshooter2:-webkit-full-screen { width: 100vw; height: 100vh; background: #041326; }
+
+/* ── FsUtil fake-fullscreen contract: html.fsu-fake = NO Fullscreen API in this browser
+   (iPhone Safari — never shipped on iPhone through iOS 26; MetaMask in-app browser — WebView
+   never opts in, verified in metamask-mobile source). The fixed 100dvh overlay IS the
+   fullscreen; the ONLY way to lose the URL bar there is the user's own upward swipe on a
+   scrollable document. So while fake-fullscreen is active, let the ROOT scroller scroll a hair
+   (FsUtil injects an invisible inline-styled ~100.5lvh #fsu-spacer): the first pan collapses
+   Safari/Chrome/MetaMask chrome and the 100dvh overlay grows to fill. The overlay is
+   position:fixed — a few px of document scroll never moves it. Overrides the
+   html/body.rr-fs-on|bac-fs-on { height:100dvh; overflow:hidden } freeze above. ── */
+html.fsu-fake { height: auto !important; min-height: 100.5lvh !important; overflow-y: auto !important; }
+html.fsu-fake body { height: auto !important; min-height: 100.5lvh !important; overflow-y: auto !important; }
+
+/* ── Baccarat fullscreen, safe-area aware: env() resolves to 0 INSIDE an iframe, so the felt
+   can't pad itself — the PARENT insets the whole iframe instead. Keeps the felt's overlay bet
+   bar (fsbar) clear of the home indicator (portrait) and the notch (landscape); the layer's
+   own #06091a fills the shaved edges. `inset:` with env() falls back harmlessly (older engines
+   drop the declaration → the base inset:0 rule stands). ── */
+#layer-baccarat.bac-fs .bac-frame { width: auto; height: auto; inset: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
+/* the buried parent dock: already under the z-2147483646 overlay — belt-and-suspenders hide so
+   it can never catch a tap; it stays MOUNTED and keeps repainting from bac:dock (state guards
+   like bacDockLive depend on that). */
+body.bac-fs-on .action-dock.bac-dock { visibility: hidden !important; pointer-events: none !important; }
+/* parent-owned fullscreen escape hatch (index.html #layer-baccarat) — top-LEFT so it never
+   collides with the felt's own ⛶ corner (top-right). Works even if the iframe wedges. */
+#bac-fs-exit { display: none; }
+#layer-baccarat.bac-fs #bac-fs-exit { display: block; position: fixed; top: max(10px, env(safe-area-inset-top)); left: max(12px, env(safe-area-inset-left)); z-index: 2147483647; background: rgba(4,19,38,.82); color: #fff; border: 1px solid rgba(255,255,255,.5); border-radius: 10px; padding: 9px 14px; font-weight: 800; font-size: 14px; cursor: pointer; min-height: 44px; -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+/* Baccarat dial-then-place (owner spec): chips ADD onto the slider; the slider is the exact
+   amount; a zone tap places the whole dial. */
+.bac-amtrow { display: flex; align-items: center; gap: 12px; margin: 2px 2px 12px; }
+.bac-amtrow .bac-amt { flex: 1; }
+.bac-amt-val { font-family: var(--display); font-size: 22px; line-height: 1; color: var(--s-green, #00e701); min-width: 74px; text-align: right; }
+.bac-chip { font-size: 11px; letter-spacing: -0.2px; }

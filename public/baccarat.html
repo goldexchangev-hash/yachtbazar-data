@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#06091a" />
     <meta name="referrer" content="same-origin" />
     <title>🎴 BACCARAT — Crypto TV</title>
@@ -25,6 +25,19 @@
       body.tv-embed #table { display: block !important; height: 100%; }
       body.tv-embed .stage-wrap { position: absolute; inset: 0; width: 100%; height: 100%; }
       body.tv-embed .stage { top: 50%; left: 50%; transform-origin: center center; } /* fit() = min(w/720, h/540) */
+
+      /* ── fullscreen-util.js (FsUtil) contract — STANDALONE felt only (in TV-embed the PARENT
+         page owns FsUtil). html.fsu-fake = no Fullscreen API here (iPhone Safari, MetaMask
+         in-app browser): the fixed 100dvh overlay IS the fullscreen. Make the DOCUMENT slightly
+         scrollable (#fsu-spacer, inline-styled ~100.5lvh) so the user's first upward swipe
+         collapses the browser URL bar — the only mechanism iOS allows; no API can hide it.
+         Overrides baccarat.css's `html/body.rr-fs-on { height:100dvh; overflow:hidden }`. ── */
+      html.fsu-fake { height: auto !important; min-height: 100.5lvh !important; overflow-y: auto !important; }
+      html.fsu-fake body { height: auto !important; min-height: 100.5lvh !important; overflow-y: auto !important; }
+      /* fullscreen bet bar: keep the chips/controls clear of the notch in landscape + the home
+         indicator (viewport-fit=cover is now on this page, so env() is live in standalone mode;
+         in TV-embed the parent insets the whole iframe instead — env() is 0 inside an iframe). */
+      body.fs-embed .fsbar { padding-left: max(10px, env(safe-area-inset-left)); padding-right: max(10px, env(safe-area-inset-right)); }
     </style>
   </head>
   <body>
@@ -122,12 +135,13 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
-    <script src="blackjack-shuffle.js?v=1340"></script>
-    <script src="baccarat-rules.js?v=1340"></script>
-    <script src="baccarat-net.js?v=1340"></script>
-    <script src="baccarat-fx.js?v=1340"></script>
-    <script src="blackjack-sfx.js?v=1340"></script>
-    <script src="baccarat-ui.js?v=1340"></script>
+    <script src="fullscreen-util.js"></script><!-- shared FsUtil (no ?v= — network-first in the SW; maintainer bumps) -->
+    <script src="blackjack-shuffle.js?v=1341"></script>
+    <script src="baccarat-rules.js?v=1341"></script>
+    <script src="baccarat-net.js?v=1341"></script>
+    <script src="baccarat-fx.js?v=1341"></script>
+    <script src="blackjack-sfx.js?v=1341"></script>
+    <script src="baccarat-ui.js?v=1341"></script>
     <script>
       window.addEventListener("DOMContentLoaded", function () {
         var id = function (x) { return document.getElementById(x); };
@@ -167,7 +181,7 @@
             if (d.type === "bac:active") {
               if (window.BlackjackSFX) window.BlackjackSFX.muted = !d.active; // off-channel mute (site rule)
               if (d.ethUsd && window.BAC && window.BAC.setRate) window.BAC.setRate(d.ethUsd); // cosmetic ≈Ξ rate
-              if (d.fs != null && window.BAC) window.BAC.setFsEmbed(!!d.fs); // parent toggled the rr-fs layer
+              if (d.fs != null && window.BAC) window.BAC.setFsEmbed(!!d.fs, d.portrait); // parent toggled the fs layer; d.portrait = the PARENT viewport's orientation (fs-landscape bug fix — our own iframe size can be stale at fs-enter)
               if (d.active && window.BAC && window.BAC.room) window.BAC._renderDock(); // re-sync the parent dock on channel re-entry
             }
             else if (d.type === "bac:seed" && window.BAC && window.BAC.net) {
