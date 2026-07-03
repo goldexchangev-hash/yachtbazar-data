@@ -311,9 +311,13 @@
       for (j = 0; j < btns.length; j++) btns[j].disabled = true;
     }
     var self = this; clearTimeout(this._actWatch);
-    this._actWatch = setTimeout(function () { self._actWatch = null; try { self.resume(); } catch (e) {} }, 7000); // null FIRST: a fired watchdog must release the in-flight guard
+    this._actWatch = setTimeout(function () { self._releaseAct(); try { self.resume(); } catch (e) {} self._renderDock(); }, 7000); // watchdog: release the guard, pull a fresh snapshot (embed), then re-render locally (standalone resume is a no-op)
   };
-  BaccaratClient.prototype._clearActWatch = function () { if (this._actWatch) { clearTimeout(this._actWatch); this._actWatch = null; } };
+  // Release the in-flight act guard AND force a control rebuild. A same-sig snapshot — e.g. the
+  // server's silent-ACK snapshot for a rate-limited CLEAR — would otherwise be skipped by the
+  // sig-gate in _renderLocalControls/_renderFsBar, leaving UNDO/CLEAR disabled all window.
+  BaccaratClient.prototype._releaseAct = function () { this._actWatch = null; this._dockSig = null; this._fsSig = null; };
+  BaccaratClient.prototype._clearActWatch = function () { if (this._actWatch) { clearTimeout(this._actWatch); this._releaseAct(); } };
   BaccaratClient.prototype.undoBet = function () { if (this._totalStaked() <= 0) return; this._act({ type: "bac:bet:undo" }); };
   BaccaratClient.prototype.clearBets = function () { if (this._totalStaked() <= 0) return; this._act({ type: "bac:bet:clear" }); };
   BaccaratClient.prototype.rebet = function (mult) {

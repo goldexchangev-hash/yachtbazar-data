@@ -550,7 +550,7 @@
         if (!bank.debit(s.wallet, amt)) return err(sock, "insufficient", "Not enough balance", "bet"); // debit-before-escrow
         s.bets[zone] = r2(s.bets[zone] + amt);
         s.chipStack.push({ zone, amt, g: ++s._chipSeq });                        // one undo unit per tap
-        if (!s.clientSeed) s.clientSeed = String(clientSeed || Shuffle.randomSeed(8)); // captured at (first) bet time
+        if (!s.clientSeed) s.clientSeed = String(clientSeed || Shuffle.randomSeed(8)).slice(0, 128); // captured at (first) bet time; CLAMP to 128 hex chars — the ws frame cap is 64KB, and an unclamped seed is HMAC'd 415× against the joined-seat string per coup in the synchronous shuffle → event-loop DoS. 128 chars is far more entropy than the shoe consumes (mirrors blackjack placeBet).
         touch(r);
         fastForwardIfAllBet(r);
         pushWallet(sock, s.wallet); broadcastState(r);
@@ -585,7 +585,7 @@
       for (const r of rooms.values()) { const i = seatOf(r, sock); if (i < 0) continue;
         if (r.phase !== "betting") return err(sock, "bets_closed", "Too late to clear the bet", "bet");
         const s = r.seats[i];
-        if (s._lastClear && now() - s._lastClear < 2000) return;
+        if (s._lastClear && now() - s._lastClear < 2000) { send(sock, snapshot(r)); return; } // rate-limited: ACK with a snapshot (NOT a bare return) so the client's in-flight guard releases and re-enables UNDO/CLEAR — a silent drop stranded them disabled for the rest of the window
         const total = seatStake(s);
         if (!(total > 0)) { send(sock, snapshot(r)); return; } // nothing to clear — silent ack
         const ok = bank.credit(s.wallet, total); // refund first, abort on failure (BJ #9)
@@ -803,8 +803,10 @@
     bac.handle(B, { type: "bac:bet:clear" });
     eq("CLEAR refunds every zone (bob → 5000)", stakeOf(sb()) === 0 && bac.bank.get("guest:bob") === 5000);
     bac.handle(B, { type: "bac:bet:add", zone: "banker", amountUsd: 50 });
-    bac.handle(B, { type: "bac:bet:clear" }); // within 2s of the last clear → rate-limited, ignored
+    mark = B._msgs.length;
+    bac.handle(B, { type: "bac:bet:clear" }); // within 2s of the last clear → rate-limited, chips stay…
     eq("clear is RATE-LIMITED (2s) — chips stay", sb().bets.banker === 50 && bac.bank.get("guest:bob") === 4950);
+    eq("rate-limited clear STILL ACKs with a snapshot (releases the client's in-flight guard)", B._msgs.slice(mark).some((m) => m.type === "bac:room:snapshot"));
     clock += 2500;
     bac.handle(B, { type: "bac:bet:clear" });
     eq("clear works again after the cooldown", stakeOf(sb()) === 0 && bac.bank.get("guest:bob") === 5000);

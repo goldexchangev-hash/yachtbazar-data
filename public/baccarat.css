@@ -308,6 +308,7 @@ body {
 .chipbtn {
   width: 48px; height: 48px; border-radius: 50%; border: 0; cursor: pointer; flex: none;
   font-family: var(--pixel); font-size: 9px; color: #06091a;
+  background: var(--cc); /* SOLID fallback FIRST: color-mix() (next line) is unsupported on iOS Safari <16.2 / older Android WebView, where the whole declaration is dropped as invalid → an INVISIBLE chip. A supporting engine overrides this with the richer gradient. */
   background: radial-gradient(circle at 38% 32%, color-mix(in srgb, var(--cc) 65%, #fff 35%), var(--cc) 58%, color-mix(in srgb, var(--cc) 70%, #000 30%) 100%);
   box-shadow: 0 2px 5px rgba(0, 0, 0, .55), inset 0 0 0 3px rgba(255, 255, 255, .5), 0 0 0 2px var(--cc);
   transition: transform .12s cubic-bezier(.34, 1.56, .64, 1), box-shadow .15s, filter .15s;
