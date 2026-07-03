@@ -13,7 +13,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Space+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
     <noscript><link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Space+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet" /></noscript>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🃏</text></svg>" />
-    <link rel="stylesheet" href="blackjack.css?v=1348" />
+    <link rel="stylesheet" href="blackjack.css?v=1349" />
     <style>
       /* TV-embed mode (?tv=1): just the felt, scaled to fill the 4:3 screen. The
          betting/action controls render in the PARENT page's dock under the TV, so the
@@ -89,18 +89,26 @@
             client seed to recompute the exact 6-deck shoe. USD value, settled in ETH · play money.</p>
         </div>
       </section>
+
+      <!-- Fullscreen machinery (TV-embed only; baccarat §5.6 clone): the corner ⛶ asks the PARENT
+           page to promote #layer-blackjack (posts bj:fs — the parent owns the layer + FsUtil); the
+           fsbar is the fullscreen-only bet/action bar (body.fs-embed). Both are position:fixed
+           against the iframe viewport so they NEVER scale down with the 720×540 felt (real 44px
+           touch targets at any TV scale). -->
+      <button type="button" class="fs-corner" id="fs-btn" title="Fullscreen" aria-label="Fullscreen">⛶</button>
+      <div class="fsbar" id="fsbar"></div>
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
-    <script src="blackjack-shuffle.js?v=1348"></script>
-    <script src="blackjack-rules.js?v=1348"></script>
-    <script src="blackjack-net.js?v=1348"></script>
-    <script src="blackjack-fx.js?v=1348"></script>
-    <script src="blackjack-sfx.js?v=1348"></script>
+    <script src="blackjack-shuffle.js?v=1349"></script>
+    <script src="blackjack-rules.js?v=1349"></script>
+    <script src="blackjack-net.js?v=1349"></script>
+    <script src="blackjack-fx.js?v=1349"></script>
+    <script src="blackjack-sfx.js?v=1349"></script>
     <script src="vendor/three.min.js?v=three-1"></script>
-    <script src="blackjack-gl.js?v=1348"></script>
-    <script src="blackjack-ui.js?v=1348"></script>
+    <script src="blackjack-gl.js?v=1349"></script>
+    <script src="blackjack-ui.js?v=1349"></script>
     <script>
       window.addEventListener("DOMContentLoaded", function () {
         var id = function (x) { return document.getElementById(x); };
@@ -111,6 +119,7 @@
           dealerHand: id("dealer-hand"), dealerTotal: id("dealer-total"), shoe: id("shoe"),
           phaseBanner: id("phase-banner"), phaseMain: id("phase-main"), phaseSub: id("phase-sub"), ring: id("ring"),
           seats: id("seats"), dockMsg: id("dock-msg"), dockRow: id("dock-row"),
+          fsBtn: id("fs-btn"), fsbar: id("fsbar"),
           pfCommit: id("pf-commit"), pfClient: id("pf-client"), pfVerify: id("pf-verify"), pfReveal: id("pf-reveal"), pfOut: id("pf-out"),
           toast: id("toast"),
         };
@@ -127,9 +136,18 @@
         if (tv) {
           // tell the host page we're alive so it can seed our demo balance
           try { window.parent.postMessage({ type: "bj:ready" }, window.location.origin); } catch (e) {} // #24: same-origin parent only
-          // scale the fixed-size felt+dock to fill the 4:3 TV screen
+          // scale the fixed-size felt+dock to fill the 4:3 TV screen. Fullscreen (body.fs-embed):
+          // reserve the fsbar strip at the bottom and center the felt in what's left — the same
+          // proven scale-to-fit in BOTH orientations (the fsbar holds the native-size controls).
           var table = id("table");
-          var fit = function () { var s = Math.min(window.innerWidth / 720, window.innerHeight / 540); table.style.transform = "translate(-50%,-50%) scale(" + s + ")"; };
+          var fit = function () {
+            var fb = id("fsbar");
+            var barH = (document.body.classList.contains("fs-embed") && fb) ? ((fb.offsetHeight || 84) + 8) : 0;
+            var s = Math.min(window.innerWidth / 720, Math.max(1, window.innerHeight - barH) / 540);
+            table.style.top = barH ? "calc(50% - " + Math.round(barH / 2) + "px)" : "";
+            table.style.transform = "translate(-50%,-50%) scale(" + s + ")";
+          };
+          window.__bjFit = fit; // setFsEmbed re-fits through this (the bar mounts/unmounts + resizes with fs)
           window.addEventListener("resize", fit); fit(); setTimeout(fit, 100);
           // messages from the TV page: mute toggle + control intents from the dock under the TV
           window.addEventListener("message", function (e) {
@@ -139,6 +157,7 @@
               if (window.BlackjackSFX) window.BlackjackSFX.muted = !d.active;
               try { if (window.BlackjackGL) { if (d.active) { window.BlackjackGL.resume && window.BlackjackGL.resume(); } else { window.BlackjackGL.pause && window.BlackjackGL.pause(); } } } catch (e) {} // L1: stop the ambient WebGL render loop while off-channel
               if (d.ethUsd && window.BJ && window.BJ.setRate) window.BJ.setRate(d.ethUsd); // v6 #29: live ETH/USD for the ≈Ξ labels (cosmetic)
+              if (d.fs != null && window.BJ && window.BJ.setFsEmbed) window.BJ.setFsEmbed(!!d.fs, d.portrait); // parent toggled the fs layer; d.portrait = the PARENT viewport's orientation (bac fs-landscape bug fix — our own iframe size can be stale at fs-enter)
               if (d.active && window.BJ && window.BJ.room) window.BJ._renderDock(); // re-sync the parent dock on channel re-entry
             }
             else if (d.type === "bj:seed" && window.BJ && window.BJ.net) {

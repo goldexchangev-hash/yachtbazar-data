@@ -302,6 +302,7 @@
   // UNDO / CLEAR / REBET use the BJ act() discipline: disable-on-send, 7s watchdog resume,
   // controls restored by the next snapshot or bac:error (dock-sig reset).
   BaccaratClient.prototype._act = function (msg) {
+    if (this._actWatch) return; // an act is already in flight (cross-surface guard: fsbar + parent dock in the fs drift window) — cleared by every snapshot/error; a double UNDO would refund twice as much as shown
     this.net.send(msg);
     var hosts = [this.E.dockRow, this.E.fsbar], i, j;
     for (i = 0; i < hosts.length; i++) {
@@ -310,7 +311,7 @@
       for (j = 0; j < btns.length; j++) btns[j].disabled = true;
     }
     var self = this; clearTimeout(this._actWatch);
-    this._actWatch = setTimeout(function () { try { self.resume(); } catch (e) {} }, 7000);
+    this._actWatch = setTimeout(function () { self._actWatch = null; try { self.resume(); } catch (e) {} }, 7000); // null FIRST: a fired watchdog must release the in-flight guard
   };
   BaccaratClient.prototype._clearActWatch = function () { if (this._actWatch) { clearTimeout(this._actWatch); this._actWatch = null; } };
   BaccaratClient.prototype.undoBet = function () { if (this._totalStaked() <= 0) return; this._act({ type: "bac:bet:undo" }); };

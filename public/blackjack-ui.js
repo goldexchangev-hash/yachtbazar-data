@@ -86,7 +86,7 @@
       if (m.you) { self.you = { roomId: m.you.roomId, seat: m.you.seat }; self.spectating = null; if (m.you.balance != null) { self.balance = m.you.balance; self._renderBalance(); } }
       self._onSnapshot(m);
     });
-    this.net.on("bj:turn", function (m) { self._clearActWatch(); if (self.you && m.seat === self.you.seat) { self.legal = m.legalActions || []; self.needFunds = m.needFunds || []; self.handBet = m.bet || 0; self.activeHand = m.hand; self._dockSig = null; } self._renderDock(); });
+    this.net.on("bj:turn", function (m) { self._clearActWatch(); if (self.you && m.seat === self.you.seat) { self.legal = m.legalActions || []; self.needFunds = m.needFunds || []; self.handBet = m.bet || 0; self.activeHand = m.hand; self._dockSig = null; self._fsSig = null; } self._renderDock(); }); // _fsSig too: a post-action turn can carry an IDENTICAL fs sig (same legal set) — without the reset the fullscreen bar stays disabled until auto-stand
     this.net.on("bj:insurance:offer", function () { self._insuranceDone = false; self._renderDock(); });
     this.net.on("bj:insurance:result", function (m) { self.toast(m.dealerBlackjack ? "Dealer had blackjack — insurance pays" : "No dealer blackjack — insurance off"); });
     this.net.on("bj:settle", function (m) { self._onSettle(m); });
@@ -104,7 +104,7 @@
       if (self._reconnectRoom && (m.intent === "join" || m.code === "table_full" || m.code === "no_room" || m.code === "lobby_full")) { self._reconnectRoom = null; self.toast("Reconnected — pick a table to jump back in"); self.showLobby(); return; }
       if (self.embed && m.code === "auth_required") self._emitDockError(m.msg || m.message || "Lock credits before joining blackjack");
       // restore controls on rejection: force a dock rebuild from the still-intact legal set
-      self.toast(m.msg || "Error", true); self._dockSig = null; self._renderDock();
+      self.toast(m.msg || "Error", true); self._dockSig = null; self._fsSig = null; self._renderDock(); // _fsSig too: the fullscreen bar re-enables its buttons on the rebuild
     });
   };
 
@@ -129,6 +129,7 @@
     var self = this, E = this.E;
     if (E.balEth && !this.showEth) E.balEth.style.display = "none"; // demo: hide ETH until a wallet connects
     if (E.back) E.back.onclick = function () { self.leaveTable(); };
+    if (E.fsBtn) E.fsBtn.onclick = function () { self.toggleFullscreen(); }; // corner ⛶ — enter AND exit (the parent owns the layer)
     if (E.pfVerify) E.pfVerify.onclick = function () { self._verify(); };
     if (E.soundBtn) E.soundBtn.onclick = function () {
       var sfx = root.BlackjackSFX; if (!sfx) return;
@@ -147,7 +148,13 @@
 
   /* ---------------- lobby ---------------- */
   BlackjackClient.prototype.showLobby = function () {
-    if (this.embed) { this.you = null; this.spectating = null; this.room = null; this.legal = []; this._autoJoin(); return; } // embed: no lobby — hop to another table
+    if (this.embed) {
+      this.you = null; this.spectating = null; this.room = null; this.legal = [];
+      // room is gone → tear down the fullscreen bar NOW (a stale slider/PLACE BET would send roomless
+      // cmds until a rejoin succeeds); it rebuilds from the next room's renders
+      if (this.E.fsbar && this.E.fsbar._built) { this.E.fsbar.innerHTML = ""; this.E.fsbar._built = false; this._fsSig = null; }
+      this._autoJoin(); return; // embed: no lobby — hop to another table
+    }
     this.view = "lobby"; this.you = null; this.spectating = null; this.room = null; this.legal = [];
     this.E.lobby.classList.remove("hidden"); this.E.table.classList.add("hidden");
     this.net.send({ type: "bj:lobby:subscribe" });
@@ -211,15 +218,17 @@
     else if (this.spectating) { this.net.send({ type: "bj:room:watch", roomId: this.spectating }); }
   };
   BlackjackClient.prototype.act = function (action) {
+    if (this._actWatch) return; // an action is already in flight (cross-surface guard: fsbar + parent dock can both be visible in the fs drift window) — cleared by every snapshot/turn/settle/error
     this.net.send({ type: "bj:action", action: action });
     // disable buttons to prevent a double-send, but KEEP this.legal so a server
     // rejection (bj:error) can restore the same controls — no lockout until auto-stand.
     var btns = this.E.dockRow.querySelectorAll(".btn"); for (var i = 0; i < btns.length; i++) btns[i].disabled = true;
+    if (this.E.fsbar) { var fbs = this.E.fsbar.querySelectorAll(".btn"); for (var j = 0; j < fbs.length; j++) fbs[j].disabled = true; } // the fullscreen bar shares the same double-send guard
     // WATCHDOG: if NO server response (snapshot/turn/settle/error) arrives within 7s after our
     // action, the socket/server likely died mid-hand — pull a fresh snapshot so the felt + dock
     // recover instead of freezing forever. Cleared by _clearActWatch on any of those messages.
     var self = this; clearTimeout(this._actWatch);
-    this._actWatch = setTimeout(function () { try { self.resume(); } catch (e) {} }, 7000);
+    this._actWatch = setTimeout(function () { self._actWatch = null; try { self.resume(); } catch (e) {} }, 7000); // null FIRST: a fired watchdog must release the in-flight guard
   };
   BlackjackClient.prototype._clearActWatch = function () { if (this._actWatch) { clearTimeout(this._actWatch); this._actWatch = null; } };
   BlackjackClient.prototype.sendInsurance = function (take) { this._insuranceDone = true; this.net.send({ type: "bj:insurance", take: !!take }); this._renderDock(); };
@@ -379,7 +388,21 @@
     this.E.phaseBanner.style.top = "32%";
   };
   BlackjackClient.prototype._tick = function () {
-    if (this.embed) return; // TV channel: countdowns render under the TV (parent), not in the felt
+    if (this.embed) {
+      // fullscreen bar countdown (the one exception to no-countdown-on-TV: in fullscreen the TV IS the screen)
+      var Ef = this.E, mf = this.room;
+      if (Ef.fsbar && document.body.classList.contains("fs-embed")) {
+        var cnt = Ef.fsbar.querySelector(".fs-count");
+        if (cnt) {
+          var live = !!(mf && this.deadline && (mf.phase === "betting" || mf.phase === "insurance" || (mf.phase === "turns" && this.you && mf.turnIdx === this.you.seat)));
+          var remF = live ? Math.max(0, this.deadline - (Date.now() + this.skew)) : 0;
+          var secF = Math.ceil(remF / 1000);
+          cnt.textContent = live ? ("⏱ " + secF + "s") : "";
+          cnt.className = "fs-count" + (live ? (secF <= 3 ? " crit" : (secF <= 5 ? " warn" : "")) : "");
+        }
+      }
+      return; // TV channel: all other countdowns render under the TV (parent), not in the felt
+    }
     var m = this.room, E = this.E;
     var remaining = m ? Math.max(0, this.deadline - (Date.now() + this.skew)) : 0;
     // center ring — betting only (it has room up top; later phases place text low instead)
@@ -419,6 +442,7 @@
     else msg = "Waiting for the next hand…";
     if (E.dockMsg.innerHTML !== msg) E.dockMsg.innerHTML = msg; // idempotent: dock-msg is aria-live — identical rewrites must not re-announce
     if (this.embed) this._emitDock(m, seated, mySeat, isMyTurn, iBet, insurePhase, msg); // TV channel: controls live in the parent dock
+    this._renderFsBar(seated, mySeat, isMyTurn, iBet, insurePhase, msg); // fullscreen bet/action bar (no-op unless body.fs-embed)
 
     var sig = (seated ? "S" : "X") + "|" + m.phase + "|" + (isMyTurn ? 1 : 0) + "|" + (iBet ? 1 : 0) + "|" + (insurePhase ? 1 : 0) + "|" + this.legal.join(",");
     if (sig === this._dockSig) {
@@ -486,13 +510,14 @@
       bet: this.bet, betMin: 10, betMax: maxBet, betStep: 5, legal: legal, countMsLeft: countMsLeft, roomId: roomId,
       needFunds: needFunds, handBet: this.handBet || 0,
       net: settleNet, stake: settleStake,
-      placed: (mySeat && mySeat.baseBet > 0) ? mySeat.baseBet : 0 };
+      placed: (mySeat && mySeat.baseBet > 0) ? mySeat.baseBet : 0,
+      fs: document.body.classList.contains("fs-embed") }; // the parent heals fs-state drift (bac clone: Safari rotate can strand the felt in fs-embed with the overlay off)
     try { if (root.parent && root.parent !== root) root.parent.postMessage(state, root.location.origin); } catch (e) {} // #24: same-origin target only
   };
   BlackjackClient.prototype._emitDockError = function (msg) {
     var state = { type: "bj:dock", mode: "waiting", msg: msg, balance: this.balance || 0, showEth: this.showEth,
       bet: this.bet || 25, betMin: 10, betMax: 0, betStep: 5, legal: [], countMsLeft: null, roomId: null,
-      needFunds: [], handBet: 0, placed: 0 };
+      needFunds: [], handBet: 0, placed: 0, fs: document.body.classList.contains("fs-embed") };
     try { if (root.parent && root.parent !== root) root.parent.postMessage(state, root.location.origin); } catch (e) {} // #24: same-origin target only
   };
   BlackjackClient.prototype._settleMsg = function (mySeat) {
@@ -527,6 +552,123 @@
     var place = el("button", "btn place", "PLACE BET"); place.onclick = function () { self.placeBet(); };
     wrap.appendChild(val); wrap.appendChild(slider); wrap.appendChild(chips); wrap.appendChild(place);
     row.appendChild(wrap);
+  };
+
+  /* ---------------- fullscreen (TV-embed; baccarat §5.6 clone) ----------------
+     In fullscreen the parent dock is buried under the overlay, so the felt renders its own
+     compact bet/action bar (#fsbar, fixed to the iframe's bottom edge, never scaled with the
+     felt). Same client methods as every other surface (placeBet/act/sendInsurance/cancelBet) —
+     one source of truth, ONE visible controls owner at a time (the parent dock is
+     visibility:hidden while body.bj-fs-on, but keeps repainting from bj:dock). */
+  BlackjackClient.prototype.toggleFullscreen = function () {
+    if (!this.embed) return; // standalone page: no fs button rendered (the browser's own fullscreen exists)
+    // the PARENT owns the layer: it promotes #layer-blackjack IN PLACE (never a reparent — that
+    // would reload this document and drop the socket mid-hand) and answers bj:active {fs}.
+    try { if (root.parent && root.parent !== root) root.parent.postMessage({ type: "bj:fs", on: !document.body.classList.contains("fs-embed") }, root.location.origin); } catch (e) {}
+  };
+  // parent-driven via bj:active {fs, portrait}: `portrait` is the PARENT page's orientation (bac
+  // fs-landscape bug fix — at fs-enter this iframe's own last-laid-out size is the 4:3 TV box,
+  // landscape-shaped even on a portrait phone). The parent re-posts on every rotation/resize.
+  BlackjackClient.prototype.setFsEmbed = function (on, portrait) {
+    on = !!on;
+    document.body.classList.toggle("fs-embed", on);
+    if (portrait != null) { this._fsPortrait = !!portrait; this._fsPortraitAt = Date.now(); }
+    if (!on) this._fsPortrait = null;
+    var hintFresh = this._fsPortrait != null && (Date.now() - (this._fsPortraitAt || 0) < 1500);
+    var isPortrait = hintFresh ? !!this._fsPortrait : (root.innerHeight >= root.innerWidth);
+    document.body.classList.toggle("fs-portrait", on && isPortrait);
+    document.body.classList.toggle("fs-landscape", on && !isPortrait);
+    this._fsSig = null;
+    if (root.__bjFit) try { root.__bjFit(); } catch (e) {}
+    if (this.room) this._renderDock(); // builds/tears down the fsbar
+    // re-fit once the iframe has ACTUALLY grown to the promoted layer (the bj:active message can
+    // land before the parent's relayout resizes this frame) — and once the bar's height is real.
+    if (on && root.requestAnimationFrame) root.requestAnimationFrame(function () { root.requestAnimationFrame(function () { if (root.__bjFit) try { root.__bjFit(); } catch (e) {} }); });
+  };
+  BlackjackClient.prototype._renderFsBar = function (seated, mySeat, isMyTurn, iBet, insurePhase, msg) {
+    var E = this.E, m = this.room, self = this;
+    if (!E.fsbar || !document.body.classList.contains("fs-embed")) {
+      if (E.fsbar && E.fsbar._built) { E.fsbar.innerHTML = ""; E.fsbar._built = false; this._fsSig = null; }
+      return;
+    }
+    var balReady = (this.balance != null && isFinite(this.balance));
+    var mode = "status";
+    if (insurePhase) mode = "insurance";
+    else if (isMyTurn) mode = "turn";
+    else if (seated && m && m.phase === "betting" && !iBet && balReady) mode = "betting"; // v5 #20: no bet UI off a fabricated balance
+    else if (seated && m && m.phase === "betting" && iBet) mode = "betplaced";
+    var sig = mode + "|" + this.legal.join(",") + "|" + Math.floor((this.balance || 0) / 5) + "|" +
+      ((mySeat && mySeat.baseBet) || 0) + "|" + (this.handBet || 0) + "|" + (mode === "status" ? msg : ""); // dial (this.bet) excluded — a rebuild mid-drag would eat the slider
+    if (sig === this._fsSig) {
+      // sig-match still re-syncs button state from this.legal (parent-dock L441 parity): act()
+      // disables every fsbar .btn, and a same-sig render after the server reply must re-enable
+      var bs = E.fsbar.querySelectorAll("[data-a]"), bi;
+      for (bi = 0; bi < bs.length; bi++) bs[bi].disabled = this.legal.indexOf(bs[bi].getAttribute("data-a")) < 0;
+      return;
+    }
+    this._fsSig = sig;
+    E.fsbar._built = true;
+    var hBefore = E.fsbar.offsetHeight;
+    setTimeout(function () { // a mode change can wrap/unwrap the bar — re-fit the felt above the new height
+      try { if (E.fsbar.offsetHeight !== hBefore && root.__bjFit) root.__bjFit(); } catch (e) {}
+    }, 0);
+    E.fsbar.innerHTML = "";
+    E.fsbar.appendChild(el("span", "fs-count", "")); // countdown slot, painted by _tick (the one exception to no-countdown-on-TV: in fullscreen the TV IS the screen)
+    if (mode === "betting") { this._fsBetUI(E.fsbar); return; }
+    if (mode === "betplaced") {
+      E.fsbar.appendChild(el("span", "fs-status", "🃏 Bet locked <b>" + money((mySeat && mySeat.baseBet) || 0) + "</b>"));
+      var rm = el("button", "btn ghost", "✕ REMOVE"); rm.type = "button";
+      rm.onclick = function () { rm.disabled = true; self.cancelBet(); };
+      E.fsbar.appendChild(rm);
+      return;
+    }
+    if (mode === "insurance") {
+      E.fsbar.appendChild(el("span", "fs-status", "<b>Insurance?</b> ½ bet, pays 2:1"));
+      var yes = el("button", "btn primary", "INSURE ½"); yes.type = "button"; yes.onclick = function () { yes.disabled = no.disabled = true; self.sendInsurance(true); };
+      var no = el("button", "btn ghost", "NO"); no.type = "button"; no.onclick = function () { yes.disabled = no.disabled = true; self.sendInsurance(false); };
+      E.fsbar.appendChild(yes); E.fsbar.appendChild(no);
+      return;
+    }
+    if (mode === "turn") {
+      ["hit", "stand", "double", "split", "surrender"].forEach(function (a) {
+        if (self.legal.indexOf(a) < 0) return;
+        // DOUBLE/SPLIT stake an ADDITIONAL bet equal to the hand bet — print it (parent-dock parity)
+        var extra = ((a === "double" || a === "split") && self.handBet > 0) ? ' <span class="fs-sub">+' + money(self.handBet) + "</span>" : "";
+        var btn = el("button", "btn " + ACT_CLASS[a], ACT_LABEL[a] + extra); btn.setAttribute("data-a", a); btn.type = "button";
+        btn.onclick = function () { self.act(a); }; // act() disables every fsbar .btn (double-send guard)
+        E.fsbar.appendChild(btn);
+      });
+      return;
+    }
+    // status-only bar (waiting / dealing / settle / spectating)
+    E.fsbar.appendChild(el("span", "fs-status", msg || ""));
+  };
+  BlackjackClient.prototype._fsBetUI = function (host) {
+    var self = this;
+    var rawBalance = (this.balance != null && isFinite(this.balance)) ? this.balance : 0;
+    var maxBet = Math.max(0, Math.floor(rawBalance / 5) * 5);
+    if (maxBet < 10) { host.appendChild(el("span", "fs-status", "Out of chips — exit fullscreen (⛶) to reload.")); return; } // the ⟳ Reload lives in the parent dock, hidden under the overlay
+    this.bet = Math.min(Math.max(10, Math.round(this.bet / 5) * 5), maxBet); // mirror _betUI normalization
+    var amt = el("strong", "fs-amt", money(this.bet));
+    var slider = document.createElement("input");
+    slider.type = "range"; slider.className = "bet-slider fs-slider";
+    slider.min = "10"; slider.max = String(maxBet); slider.step = "5"; slider.value = String(this.bet);
+    slider.setAttribute("aria-label", "Bet amount in dollars");
+    var fill = function () { var pct = ((self.bet - 10) / Math.max(1, maxBet - 10)) * 100; slider.style.setProperty("--fill", pct.toFixed(1) + "%"); };
+    var sync = function () { amt.textContent = money(self.bet); slider.value = String(self.bet); fill(); };
+    slider.oninput = function () { self.bet = Math.max(10, Math.round(+slider.value / 5) * 5); amt.textContent = money(self.bet); fill(); };
+    fill();
+    host.appendChild(slider); host.appendChild(amt);
+    var chips = el("div", "qchips fs-chips");
+    [["$10", 10], ["$25", 25], ["$50", 50], ["MAX", maxBet]].forEach(function (c) {
+      var b = el("button", "chip", c[0]); b.type = "button";
+      b.onclick = function () { self.bet = Math.min(maxBet, Math.max(10, Math.round(c[1] / 5) * 5)); sync(); };
+      chips.appendChild(b);
+    });
+    host.appendChild(chips);
+    var place = el("button", "btn place fs-place", "PLACE BET"); place.type = "button";
+    place.onclick = function () { place.disabled = true; self.placeBet(); }; // re-enabled by the next rebuild (snapshot, or bj:error → _fsSig reset)
+    host.appendChild(place);
   };
 
   /* ---------------- settle / fx ---------------- */
