@@ -3004,8 +3004,9 @@ body.chat-open #chat-toggle { box-shadow: inset 0 -3px 0 0 currentColor; }
 /* chip tray — round denomination chips; --cc is the chip color set by JS */
 .bac-chiprow { display: flex; justify-content: center; gap: 10px; margin: 4px 0 10px; }
 .bac-chip { width: 48px; height: 48px; border-radius: 50%; cursor: pointer;
-  font-family: var(--display); font-weight: 800; font-size: 12px; color: var(--s-text);
-  background: radial-gradient(circle at 50% 42%, #0c1424 58%, var(--cc, #39e7ff) 60%, var(--cc, #39e7ff) 72%, #0c1424 74%);
+  display: inline-flex; align-items: center; justify-content: center; padding: 0; line-height: 1; white-space: nowrap; overflow: hidden; /* text stays dead-center in the circle at ANY dock scale */
+  font-family: var(--display); font-weight: 800; font-size: 11px; color: var(--s-text);
+  background: radial-gradient(circle at 50% 46%, #0c1424 64%, var(--cc, #39e7ff) 66%, var(--cc, #39e7ff) 78%, #0c1424 80%); /* thinner ring = a bigger inner disc for the label */
   border: 2px dashed var(--cc, #39e7ff); transition: transform .12s ease, box-shadow .12s ease; }
 .bac-chip:hover { transform: translateY(-2px); }
 .bac-chip.active { color: #04121a; background: var(--cc, #39e7ff); border: 2px solid #fff;
@@ -3086,7 +3087,14 @@ html.fsu-fake body { height: auto !important; min-height: 100.5lvh !important; o
    bar (fsbar) clear of the home indicator (portrait) and the notch (landscape); the layer's
    own #06091a fills the shaved edges. `inset:` with env() falls back harmlessly (older engines
    drop the declaration → the base inset:0 rule stands). ── */
-#layer-baccarat.bac-fs .bac-frame { width: auto; height: auto; inset: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
+/* NOTE: an <iframe> is a REPLACED element — with width/height:auto it collapses to its intrinsic
+   300×150 even when all four insets are set (owner hit this: a postage-stamp felt in fullscreen,
+   both orientations). Size it EXPLICITLY with calc() against the safe areas instead. */
+#layer-baccarat.bac-fs .bac-frame {
+  inset: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+  width: calc(100% - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+  height: calc(100% - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+}
 /* the buried parent dock: already under the z-2147483646 overlay — belt-and-suspenders hide so
    it can never catch a tap; it stays MOUNTED and keeps repainting from bac:dock (state guards
    like bacDockLive depend on that). */
@@ -3100,7 +3108,7 @@ body.bac-fs-on .action-dock.bac-dock { visibility: hidden !important; pointer-ev
 .bac-amtrow { display: flex; align-items: center; gap: 12px; margin: 2px 2px 12px; }
 .bac-amtrow .bac-amt { flex: 1; }
 .bac-amt-val { font-family: var(--display); font-size: 22px; line-height: 1; color: var(--s-green, #00e701); min-width: 74px; text-align: right; }
-.bac-chip { font-size: 11px; letter-spacing: -0.2px; }
+.bac-chip { font-size: 11px; } /* "$500" fits the enlarged inner disc without spacing hacks */
 /* ── Resizable mobile betting sheet + demo reload (owner 2026-07-02) ──
    The grip drags the whole pinned dock scale (CSS zoom keeps layout height honest, so the
    sheet genuinely shrinks and more TV shows); shared preference, double-tap resets. */
