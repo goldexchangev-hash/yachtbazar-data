@@ -402,6 +402,19 @@ body.fs-embed .fsbar .tray { display: flex; flex-wrap: nowrap; align-items: cent
 body.fs-embed .fsbar .chipbtn { width: 52px; height: 52px; flex: none; }
 body.fs-embed .fsbar .ctl { height: 48px; flex: none; white-space: nowrap; }
 body.fs-embed .fsbar .ctl.rebet { flex: none; padding: 0 12px; font-size: 12px; }
+/* dial row (owner 2026-07-03: "make the amount I bet clearer to see and adjust with slider"):
+   slider dials the exact $5-step amount, the gold readout is what the next zone tap places.
+   Full-width row by default (under the chips); landscape fullscreen inlines it. */
+.amtwrap { display: flex; align-items: center; gap: 10px; flex: 1 1 100%; min-width: 0; padding: 0 2px; }
+.amtwrap .amtsl { -webkit-appearance: none; appearance: none; flex: 1; min-width: 60px; height: 8px; border-radius: 999px; background: linear-gradient(90deg, var(--cyan), var(--gold)); outline: none; }
+.amtwrap .amtsl::-webkit-slider-thumb { -webkit-appearance: none; width: 26px; height: 26px; border-radius: 50%; background: #fff; border: 3px solid var(--gold); cursor: pointer; box-shadow: 0 2px 8px rgba(0, 0, 0, .5); }
+.amtwrap .amtsl::-moz-range-thumb { width: 24px; height: 24px; border-radius: 50%; background: #fff; border: 3px solid var(--gold); cursor: pointer; }
+.amtwrap .amtsl:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+.amtwrap .amt { font-family: var(--pixel); font-size: 16px; line-height: 1; color: var(--gold); min-width: 70px; text-align: right; flex: none; text-shadow: 0 0 12px rgba(255, 210, 63, .5); }
+/* portrait fullscreen: the bar wraps — row 1 = count + chips + UNDO/CLEAR, row 2 = the dial */
+body.fs-embed.fs-portrait .fsbar { flex-wrap: wrap; height: auto; min-height: calc(64px + env(safe-area-inset-bottom)); row-gap: 8px; }
+/* landscape fullscreen: plenty of width — the dial rides inline in the single fixed-height row */
+body.fs-embed.fs-landscape .fsbar .amtwrap { flex: 1 1 150px; min-width: 120px; }
 /* base .fs-count MUST precede the phone media blocks below — equal specificity, source order decides */
 .fsbar .fs-count { font-family: var(--pixel); font-size: 10px; color: var(--cyan); min-width: 56px; text-align: center; flex: none; }
 .fsbar .fs-count.warn { color: var(--gold); }

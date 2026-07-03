@@ -62,7 +62,7 @@
     this._connectedOnce = false; this._reconnectRoom = null; this._stagger = 0; this._sfxReady = false;
     this._dockSig = null; this._fsSig = null; this._fsPortrait = null; this._mySettle = null; this._lastChance = false;
     var chip = 25;
-    try { var saved = parseInt(localStorage.getItem("bacChip"), 10); if ([10, 25, 100, 500].indexOf(saved) >= 0) chip = saved; } catch (e) {}
+    try { var saved = parseInt(localStorage.getItem("bacChip"), 10); if (isFinite(saved) && saved >= 10) chip = Math.round(saved / 5) * 5; } catch (e) {} // any $5-step dial amount (owner: chips ADD onto a slider)
     this.chip = chip; // sticky denomination (spec §5.1) — shared with the parent dock via localStorage
     // chip selection is parent-local UI state in embed mode (spec §5.5): the parent's
     // localStorage write fires a `storage` event in this (separate) browsing context.
@@ -72,7 +72,7 @@
         if (!e || e.key !== "bacChip") return;
         var v = parseInt(e.newValue, 10);
         // any $5-step amount ≥ $10 — the parent dock dials EXACT amounts (chips add onto a slider)
-        if (isFinite(v) && v >= 10 && v !== self0.chip) { self0.chip = Math.round(v / 5) * 5; self0._dockSig = null; self0._fsSig = null; self0._renderDock(); }
+        if (isFinite(v) && v >= 10 && v !== self0.chip) { self0.chip = Math.round(v / 5) * 5; self0._syncDialUi(); } // in-place: the dial is excluded from the rebuild sigs
       });
     } catch (e) {}
     this._bindNet(); this._wireStatic();
@@ -230,11 +230,35 @@
     } catch (e) {}
     return this.chip;
   };
-  BaccaratClient.prototype.selectChip = function (v) {
-    if ([10, 25, 100, 500].indexOf(v) < 0) return;
+  // DIAL-THEN-PLACE (owner 2026-07-03: "make the amount I bet clearer to see and adjust with
+  // slider" — in-game/fullscreen too): chips ADD onto the dial, the slider sets the EXACT
+  // $5-step amount, and a zone tap places the whole dial. Mirrors the parent dock; the shared
+  // localStorage key keeps both dials equal. Updates are IN-PLACE (dial excluded from the
+  // rebuild sigs) so a slider drag never rebuilds the control it is dragging.
+  BaccaratClient.prototype._dialMax = function () {
+    var self = this, bal = (this.balance != null && isFinite(this.balance)) ? this.balance : 0, mh = 0;
+    ZONES.forEach(function (z) { var h = (self.zoneMax[z] || 0) - (self.staked[z] || 0); if (h > mh) mh = h; });
+    return Math.max(10, Math.floor(Math.min(bal, mh) / 5) * 5);
+  };
+  BaccaratClient.prototype.setDial = function (v, src) {
+    v = Math.max(10, Math.round((+v || 10) / 5) * 5);
+    var cap = this._dialMax(); if (v > cap) v = cap;
     this.chip = v;
     try { localStorage.setItem("bacChip", String(v)); } catch (e) {}
-    this._dockSig = null; this._fsSig = null; this._renderDock();
+    this._syncDialUi(src);
+  };
+  BaccaratClient.prototype._syncDialUi = function (src) {
+    var hosts = [this.E.dockRow, this.E.fsbar], i;
+    for (i = 0; i < hosts.length; i++) {
+      if (!hosts[i]) continue;
+      var sl = hosts[i].querySelector(".amtsl"), amt = hosts[i].querySelector(".amt");
+      if (sl && sl !== src) sl.value = String(this.chip);
+      if (sl) sl.setAttribute("aria-valuetext", money(this.chip));
+      if (amt) {
+        amt.textContent = money(this.chip);
+        if (!src && amt.animate) amt.animate([{ transform: "scale(1)" }, { transform: "scale(1.22)" }, { transform: "scale(1)" }], { duration: 220 }); // chip-add bump; quiet during drags
+      }
+    }
   };
 
   // Tap-a-zone: add the selected chip (or an explicit amount from the parent dock).
@@ -651,15 +675,15 @@
     if (compact) { var cnt = el("span", "fs-count", ""); host.appendChild(cnt); }
     var tray = el("div", "tray");
     tray.setAttribute("role", "group"); tray.setAttribute("aria-label", "Chip value");
+    var maxAmt = Math.max(10, Math.floor(Math.min(bal, maxHeadroom) / 5) * 5);
+    if (this.chip > maxAmt) this.chip = maxAmt; if (this.chip < 10) this.chip = 10; // clamp the dial into today's range
     TRAY.forEach(function (cd) {
-      var v = cd[0], b = el("button", "chipbtn" + (self.chip === v ? " active" : ""), "$" + v);
+      var v = cd[0], b = el("button", "chipbtn", "$" + v);
       b.type = "button";
       b.style.setProperty("--cc", cd[1]);
-      b.setAttribute("aria-pressed", self.chip === v ? "true" : "false");
-      b.setAttribute("aria-label", "$" + v + " chip");
-      var dead = v > Math.min(bal, maxHeadroom);
-      if (dead) { b.disabled = true; b.setAttribute("aria-disabled", "true"); }
-      b.onclick = function () { self.selectChip(v); };
+      b.setAttribute("aria-label", "Add $" + v + " to the bet amount");
+      if (maxAmt <= 10) { b.disabled = true; b.setAttribute("aria-disabled", "true"); } // can't bet at all
+      b.onclick = function () { self.setDial(self.chip + v); };
       tray.appendChild(b);
     });
     var undo = el("button", "ctl", "↩ UNDO"); undo.type = "button";
@@ -670,6 +694,18 @@
     clear.onclick = function () { self.clearBets(); };
     tray.appendChild(undo); tray.appendChild(clear);
     host.appendChild(tray);
+    // dial row UNDER the chips (owner layout): slider dials the exact amount, gold readout
+    // shows what the next zone tap will place
+    var wrap = el("div", "amtwrap");
+    var sl = document.createElement("input");
+    sl.type = "range"; sl.className = "amtsl";
+    sl.min = "10"; sl.max = String(maxAmt); sl.step = "5"; sl.value = String(this.chip);
+    sl.setAttribute("aria-label", "Bet amount in dollars");
+    sl.setAttribute("aria-valuetext", money(this.chip));
+    sl.oninput = function () { self.setDial(+sl.value, sl); };
+    var amt = el("strong", "amt", money(this.chip));
+    wrap.appendChild(sl); wrap.appendChild(amt);
+    host.appendChild(wrap);
     // REBET row — only while the current bets are empty, amounts PRINTED (spec §5.3/R12)
     var rb = total <= 0 ? this._rebetState() : null;
     if (rb) {
@@ -687,7 +723,7 @@
   BaccaratClient.prototype._renderLocalControls = function (m, mode) {
     var E = this.E;
     var rb = this._totalStaked() <= 0 ? this._rebetState() : null;
-    var sig = mode + "|" + this.chip + "|" + this._totalStaked() + "|" + Math.floor((this.balance || 0) / 5) + "|" +
+    var sig = mode + "|" + this._totalStaked() + "|" + Math.floor((this.balance || 0) / 5) + "|" + // dial excluded: it updates in place — a rebuild mid-drag would eat the slider
       (rb ? rb.total + ":" + (rb.ok ? 1 : 0) + (rb.ok2 ? 1 : 0) : "-") + "|" + (this.you ? this.you.seat : "x");
     if (E.countStrip) E.countStrip.classList.toggle("on", mode === "betting" && !!this.deadline);
     if (sig === this._dockSig) return;
@@ -698,7 +734,7 @@
     var E = this.E;
     if (!E.fsbar || !document.body.classList.contains("fs-embed")) { if (E.fsbar && E.fsbar._built) { E.fsbar.innerHTML = ""; E.fsbar._built = false; this._fsSig = null; } return; }
     var rb = this._totalStaked() <= 0 ? this._rebetState() : null;
-    var sig = mode + "|" + this.chip + "|" + this._totalStaked() + "|" + Math.floor((this.balance || 0) / 5) + "|" +
+    var sig = mode + "|" + this._totalStaked() + "|" + Math.floor((this.balance || 0) / 5) + "|" + // dial excluded (see _renderLocalControls)
       (rb ? rb.total + ":" + (rb.ok ? 1 : 0) + (rb.ok2 ? 1 : 0) : "-");
     if (sig === this._fsSig) return;
     this._fsSig = sig;

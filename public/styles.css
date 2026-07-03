@@ -3057,6 +3057,13 @@ body.bac-fs-on .topbar, body.bac-fs-on .bottom-nav, body.bac-fs-on .chat-tab,
 body.bac-fs-on .sidebar, body.bac-fs-on .channels-grid { display: none !important; }
 /* neutralize any ancestor transform that would trap the fixed overlay (TV frame effects) */
 body.bac-fs-on .stage, body.bac-fs-on .tv, body.bac-fs-on .tv-wrap, body.bac-fs-on .screen { transform: none !important; filter: none !important; }
+/* ...and any ancestor STACKING CONTEXT: isolation on #tv-screen + z-index:2 on main.layout
+   trapped the overlay UNDER the sidebar/topbar in the >900px desktop layout — which iPhone
+   Pro Max LANDSCAPE (932px) triggers. This was the owner's "fullscreen shows the sidebar,
+   chips inside the TV, no Exit button" screenshot: the overlay geometry was full-viewport but
+   it PAINTED below later siblings. Harmless while fs is on — the opaque overlay covers all. */
+body.bac-fs-on .tv-screen { isolation: auto !important; }
+body.bac-fs-on main.layout, body.bac-fs-on .layout { z-index: auto !important; }
 
 /* ============================================================
    v13.41 — SITE-WIDE MOBILE FULLSCREEN (fullscreen-util.js / FsUtil)
