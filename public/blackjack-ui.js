@@ -474,9 +474,18 @@
     var countMsLeft = (this.deadline && (m.phase === "betting" || mode === "turn")) ? Math.max(0, this.deadline - (Date.now() + this.skew)) : null;
     var roomId = this.you ? this.you.roomId : (this.spectating || (this.room ? this.room.roomId : null));
     var needFunds = (isMyTurn && this.needFunds) ? this.needFunds : [];
+    // settle stats (display-only, for the parent's profile ledger): my authoritative per-seat net
+    // (folds in insurance) + the round stake — only present in settle mode.
+    var settleNet = null, settleStake = 0;
+    if (mode === "settle" && mySeat && mySeat.hands && mySeat.hands.length) {
+      settleNet = (this._mySettle && this._mySettle.net != null) ? this._mySettle.net
+        : mySeat.hands.reduce(function (a, h) { return a + (h.result ? h.result.delta : 0); }, 0);
+      settleStake = this.handBet || mySeat.baseBet || 0;
+    }
     var state = { type: "bj:dock", mode: mode, msg: msg, balance: this.balance, showEth: this.showEth,
       bet: this.bet, betMin: 10, betMax: maxBet, betStep: 5, legal: legal, countMsLeft: countMsLeft, roomId: roomId,
       needFunds: needFunds, handBet: this.handBet || 0,
+      net: settleNet, stake: settleStake,
       placed: (mySeat && mySeat.baseBet > 0) ? mySeat.baseBet : 0 };
     try { if (root.parent && root.parent !== root) root.parent.postMessage(state, root.location.origin); } catch (e) {} // #24: same-origin target only
   };

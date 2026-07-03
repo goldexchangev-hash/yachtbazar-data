@@ -26,6 +26,7 @@
     fishshooter2: "Fish Shooter V2",
     swoop: "Sky Swoop",
     blackjack: "Blackjack",
+    baccarat: "Baccarat",
   };
 
   const Profile = {
