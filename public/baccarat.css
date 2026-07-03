@@ -383,6 +383,10 @@ body.rr-fs-on > *:not(.stage-wrap):not(.toast) { display: none !important; }
   padding: 11px 16px; font-weight: 800; font-size: 15px; cursor: pointer; min-height: 44px;
   -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
 body.fs-embed:not(.tv-embed) .fs-exit { display: block; } /* embed mode: the parent layer owns the exit button */
+/* landscape: the pill's fixed top-right home is now the RAIL's top — it hid the countdown and a
+   chip tap could exit fullscreen mid-betting (review v13.51). The felt's own ⛶ (topband) exits,
+   consistent with the owner's 2026-07-03 site-wide pill removal. */
+body.fs-embed.fs-landscape:not(.tv-embed) .fs-exit { display: none; }
 
 /* the in-felt bet bar — fullscreen only; height clamp + safe-area padded (spec §4.2) */
 .fsbar { display: none; }
@@ -413,8 +417,33 @@ body.fs-embed .fsbar .ctl.rebet { flex: none; padding: 0 12px; font-size: 12px; 
 .amtwrap .amt { font-family: var(--pixel); font-size: 16px; line-height: 1; color: var(--gold); min-width: 70px; text-align: right; flex: none; text-shadow: 0 0 12px rgba(255, 210, 63, .5); }
 /* portrait fullscreen: the bar wraps — row 1 = count + chips + UNDO/CLEAR, row 2 = the dial */
 body.fs-embed.fs-portrait .fsbar { flex-wrap: wrap; height: auto; min-height: calc(64px + env(safe-area-inset-bottom)); row-gap: 8px; }
-/* landscape fullscreen: plenty of width — the dial rides inline in the single fixed-height row */
-body.fs-embed.fs-landscape .fsbar .amtwrap { flex: 1 1 150px; min-width: 120px; }
+/* landscape fullscreen: controls live in a RIGHT-SIDE RAIL (the 4:3 felt is pillarboxed in
+   landscape — width was free, height was not; the rail buys the felt ~25% more scale).
+   --railw is the single source of truth: the stage centering calc AND _fit's offsetWidth
+   measurement both derive from it. */
+body.fs-embed { --railw: clamp(124px, 17vw, 156px); }
+body.fs-embed.fs-landscape .fsbar {
+  position: fixed; top: 0; right: 0; bottom: 0; left: auto;
+  width: var(--railw); height: auto;
+  flex-direction: column; flex-wrap: nowrap; justify-content: flex-start; gap: 8px;
+  padding: 10px calc(6px + env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) 6px;
+  border-top: none; border-left: 1px solid var(--line);
+  overflow-y: auto; overflow-x: hidden;
+}
+/* centering via GROWABLE SPACERS, not justify-content:center — `safe center` is a no-op on
+   iOS/WebKit (never shipped), and a plain-centered overflowing column clips its TOP
+   unreachably (the prior "can't bet" class of bug). Spacers grow when space is free
+   (visually centered) and sit at 0 when content overflows (top-anchored, scrollable). */
+body.fs-embed.fs-landscape .fsbar::before, body.fs-embed.fs-landscape .fsbar::after { content: ""; flex: 1 0 0; min-height: 0; }
+body.fs-embed.fs-landscape .fsbar .fs-count { width: 100%; min-width: 0; text-align: center; flex: none; }
+body.fs-embed.fs-landscape .fsbar .tray { width: 100%; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 0; }
+body.fs-embed.fs-landscape .fsbar .chipbtn { width: 46px; height: 46px; font-size: 11px; }
+body.fs-embed.fs-landscape .fsbar .ctl { width: calc(50% - 3px); height: 42px; padding: 0; font-size: 11px; }
+body.fs-embed.fs-landscape .fsbar .amtwrap { flex: none; width: 100%; flex-wrap: wrap; gap: 4px; padding: 0; }
+body.fs-embed.fs-landscape .fsbar .amtsl { flex: 1 1 100%; min-width: 0; }
+body.fs-embed.fs-landscape .fsbar .amt { width: 100%; min-width: 0; text-align: center; font-size: 17px; }
+body.fs-embed.fs-landscape .fsbar .ctl.rebet { width: 100%; font-size: 11px; padding: 0 4px; }
+body.fs-embed.fs-landscape .fsbar > span:not(.fs-count) { width: 100%; text-align: center; } /* status text (non-betting) */
 /* base .fs-count MUST precede the phone media blocks below — equal specificity, source order decides */
 .fsbar .fs-count { font-family: var(--pixel); font-size: 10px; color: var(--cyan); min-width: 56px; text-align: center; flex: none; }
 .fsbar .fs-count.warn { color: var(--gold); }
@@ -442,9 +471,8 @@ body.fs-embed.fs-landscape .fsbar .amtwrap { flex: 1 1 150px; min-width: 120px; 
 /* fullscreen layout: the wrap becomes a flex column (stage above bar) */
 body.fs-embed .stage-wrap { position: fixed; inset: 0; display: flex; flex-direction: column; width: 100vw; height: 100dvh; }
 body.fs-embed .stage-wrap > .stage { z-index: 1; }
-/* landscape: keep the 720×540 felt, scaled by fit() to the space above the bar */
-body.fs-embed.fs-landscape .stage { position: absolute; top: calc(50% - clamp(64px, 12dvh, 96px) / 2); left: 50%; transform-origin: center center; }
-body.fs-embed.fs-landscape .fsbar { position: fixed; left: 0; right: 0; bottom: 0; }
+/* landscape: keep the 720×540 felt, scaled by fit() to the space LEFT of the side rail */
+body.fs-embed.fs-landscape .stage { position: absolute; top: 50%; left: calc((100% - var(--railw, 140px)) / 2); transform-origin: center center; }
 /* portrait phone: fluid flex column — hands flex:1, controls flex:none = the
    "betting section auto-adjusts" requirement in pure CSS. Banker far/top. */
 body.fs-embed.fs-portrait .stage {

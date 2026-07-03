@@ -1008,8 +1008,11 @@
       b.classList.toggle("fs-portrait", portrait);
       b.classList.toggle("fs-landscape", !portrait);
       if (portrait) { E.stage.style.transform = ""; if (E.stageWrap) E.stageWrap.style.height = ""; return; }
-      var bar = (E.fsbar && E.fsbar.offsetHeight) || 84;
-      var s = Math.min(w / 720, (h - bar - 8) / 540);
+      // landscape: the controls live in a RIGHT-SIDE RAIL (owner: felt ~25% bigger than the
+      // old bottom bar — the 4:3 felt was pillarboxed, so width was free and height was not).
+      // offsetWidth is measured AFTER the fs-landscape class flip above → the rail CSS applies.
+      var rail = (E.fsbar && E.fsbar.offsetWidth) || 140;
+      var s = Math.min((w - rail - 8) / 720, (h - 8) / 540);
       E.stage.style.transform = "translate(-50%,-50%) scale(" + s + ")";
       if (E.stageWrap) E.stageWrap.style.height = "";
       return;
