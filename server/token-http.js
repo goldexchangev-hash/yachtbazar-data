@@ -988,6 +988,20 @@ function makeTokenService(opts) {
     const r = bridge.applyExternal({ sessionId: s.id, game: "baccarat", betUnits: betUnits, payoutUnits: payoutUnits, ref: ref });
     return r.tokens;
   }
+  // ── TOKEN-FUNDED POKER (spec §5/§12) — additive SIBLING of applyBaccaratNet, game:"poker". Same
+  // gates (open session + player-match + liveCrashSession). Used for BUY-IN (betUnits>0 debit — the
+  // applyExternal insufficient-tokens throw at :269 IS the H2 pre-check, so a buy-in can never floor)
+  // and LOSER/breakeven CASH-OUT (payoutUnits ≤ buy-in, never near the cap). ⚠️ A WINNING cash-out whose
+  // returned stack exceeds the buy-in (holds other seats' chips) is credited via applyPokerWin below,
+  // which bypasses capUp under an absolute poker clamp (H3/H4) — do NOT route a big win through here.
+  function applyPokerNet(player, sessionId, betUnits, payoutUnits, ref) {
+    const s = bridge.session(String(sessionId || ""));
+    if (!s || s.closed || s.settlement) throw new Error("no open token session");
+    if (String(s.player).toLowerCase() !== String(player || "").toLowerCase()) throw new Error("session does not belong to player");
+    if (liveCrashSession(s.id)) throw new Error("finish your live round before joining a poker table");
+    const r = bridge.applyExternal({ sessionId: s.id, game: "poker", betUnits: betUnits, payoutUnits: payoutUnits, ref: ref });
+    return r.tokens;
+  }
   // True if the player has a blackjack hand/bet in flight against their token session — used to REFUSE a
   // cash-out / recover mid-hand (else the settle would lock in a debited stake before the hand resolves).
   function liveExternal(player) { try { return !!(opts.hasLiveExternal && opts.hasLiveExternal(player)); } catch (e) { return false; } }
@@ -1042,7 +1056,7 @@ function makeTokenService(opts) {
   // Synchronous + swallow-on-fail (we're on the way down; never throw out of a signal handler).
   function flushPersist() { try { saveHttp(); } catch (e) {} }
 
-  return { doStart, doPlay, doTopUp, doSettle, doSession, doRelease, doAdminRelease, doAdminPlayer, doHouseState, status, houseState, verifySession, tokensOf, applyBlackjackNet, applyBaccaratNet, liveExternal, setActiveCrashCheck, liveCrashSession, liveCrashPlayer, flushPersist, _bridge: bridge };
+  return { doStart, doPlay, doTopUp, doSettle, doSession, doRelease, doAdminRelease, doAdminPlayer, doHouseState, status, houseState, verifySession, tokensOf, applyBlackjackNet, applyBaccaratNet, applyPokerNet, liveExternal, setActiveCrashCheck, liveCrashSession, liveCrashPlayer, flushPersist, _bridge: bridge };
 }
 
 // Wire the service onto an Express app, behind a flag. Live demo is untouched.
