@@ -228,9 +228,13 @@
     // action, the socket/server likely died mid-hand — pull a fresh snapshot so the felt + dock
     // recover instead of freezing forever. Cleared by _clearActWatch on any of those messages.
     var self = this; clearTimeout(this._actWatch);
-    this._actWatch = setTimeout(function () { self._actWatch = null; try { self.resume(); } catch (e) {} }, 7000); // null FIRST: a fired watchdog must release the in-flight guard
+    this._actWatch = setTimeout(function () { self._releaseAct(); try { self.resume(); } catch (e) {} if (self.room) self._renderDock(); }, 7000); // watchdog: release the guard, pull a fresh snapshot (embed), then re-render locally — in STANDALONE resume() is a no-op, so without this the disabled buttons never re-enable (baccarat parity)
   };
-  BlackjackClient.prototype._clearActWatch = function () { if (this._actWatch) { clearTimeout(this._actWatch); this._actWatch = null; } };
+  // Release the in-flight act guard AND force a control rebuild. A same-sig (or absent) snapshot
+  // would otherwise be skipped by the sig-gate in _renderLocalControls/_renderFsBar, leaving the
+  // action buttons disabled. Mirrors baccarat _releaseAct.
+  BlackjackClient.prototype._releaseAct = function () { this._actWatch = null; this._dockSig = null; this._fsSig = null; };
+  BlackjackClient.prototype._clearActWatch = function () { if (this._actWatch) { clearTimeout(this._actWatch); this._releaseAct(); } };
   BlackjackClient.prototype.sendInsurance = function (take) { this._insuranceDone = true; this.net.send({ type: "bj:insurance", take: !!take }); this._renderDock(); };
 
   /* ---------------- snapshot render ---------------- */
@@ -502,9 +506,16 @@
     // (folds in insurance) + the round stake — only present in settle mode.
     var settleNet = null, settleStake = 0;
     if (mode === "settle" && mySeat && mySeat.hands && mySeat.hands.length) {
-      settleNet = (this._mySettle && this._mySettle.net != null) ? this._mySettle.net
-        : mySeat.hands.reduce(function (a, h) { return a + (h.result ? h.result.delta : 0); }, 0);
-      settleStake = this.handBet || mySeat.baseBet || 0;
+      // RECORDABLE net comes ONLY from the authoritative per-seat settle (folds in the insurance
+      // leg). The phase=settle snapshot arrives BEFORE bj:settle, so _mySettle can still be null
+      // here — emit net:null then (parent defers), and _onSettle re-renders once the real net lands.
+      // The old hand-delta fallback EXCLUDED insurance → e.g. insure $5 on $10 vs dealer BJ recorded
+      // -$10 when the true seat net is $0.
+      settleNet = (this._mySettle && this._mySettle.net != null) ? this._mySettle.net : null;
+      // total WAGERED this round for the profile ledger: every hand's bet (split hands + doubled
+      // stakes are already in h.bet) PLUS the insurance premium — not just the single last-turn bet
+      // (which under-reported split/double/insurance volume).
+      settleStake = mySeat.hands.reduce(function (a, h) { return a + (h.bet || 0); }, 0) + (mySeat.insurance || 0);
     }
     var state = { type: "bj:dock", mode: mode, msg: msg, balance: this.balance, showEth: this.showEth,
       bet: this.bet, betMin: 10, betMax: maxBet, betStep: 5, legal: legal, countMsLeft: countMsLeft, roomId: roomId,
@@ -681,6 +692,7 @@
       var bj = ps.hands && ps.hands.some(function (h) { return h.outcome === "blackjack"; });
       root.BlackjackFX.celebrate(bj ? "blackjack" : "win", ps.net);
     }
+    this._dockSig = null; this._fsSig = null; this._renderDock(); // re-emit now that _mySettle is authoritative: corrects the settle banner AND the parent's profile-ledger net (the earlier snapshot emitted net:null so the parent deferred to THIS insurance-inclusive value)
   };
   BlackjackClient.prototype._flashSeat = function (seatIdx) { var n = this.E.seats.children[seatIdx]; if (n && n.animate) n.animate([{ filter: "brightness(2)" }, { filter: "brightness(1)" }], { duration: 380 }); };
 
