@@ -3101,3 +3101,13 @@ body.bac-fs-on .action-dock.bac-dock { visibility: hidden !important; pointer-ev
 .bac-amtrow .bac-amt { flex: 1; }
 .bac-amt-val { font-family: var(--display); font-size: 22px; line-height: 1; color: var(--s-green, #00e701); min-width: 74px; text-align: right; }
 .bac-chip { font-size: 11px; letter-spacing: -0.2px; }
+/* ── Resizable mobile betting sheet + demo reload (owner 2026-07-02) ──
+   The grip drags the whole pinned dock scale (CSS zoom keeps layout height honest, so the
+   sheet genuinely shrinks and more TV shows); shared preference, double-tap resets. */
+.dock-grip { display: none; }
+@media (max-width: 900px) {
+  .action-dock.bj-dock, .action-dock.bac-dock { zoom: var(--dock-scale, 1); }
+  .dock-grip { display: flex; justify-content: center; align-items: center; padding: 2px 0 8px; cursor: ns-resize; touch-action: none; }
+  .dock-grip i { width: 44px; height: 5px; border-radius: 999px; background: var(--s-border, #2a3550); transition: background .15s ease; }
+  .dock-grip:active i, .dock-grip:hover i { background: var(--s-text-2, #8a97b5); }
+}
