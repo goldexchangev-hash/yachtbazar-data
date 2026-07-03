@@ -115,6 +115,73 @@
     setMode("fake");
     makeSpacer();
     nudge(); setTimeout(nudge, 260); setTimeout(nudge, 900);
+    maybeHint();
+  }
+
+  /* ---------- one-time platform hints (owner directive: "remove the url section" on iPhone
+     Safari / MetaMask — programmatically IMPOSSIBLE there (see PER-PLATFORM TRUTH above), so
+     the best effort is telling the player the ONE real path to true fullscreen, once per
+     device, only when we actually land in fake mode on those platforms). The site's manifest
+     is display:fullscreen + apple-mobile-web-app-capable, so the A2HS claim is honest. */
+  var hintShown = {};
+  function hintOnce(kind) {
+    if (hintShown[kind]) return false;
+    hintShown[kind] = true; // session latch even when storage is unavailable
+    try {
+      var k = "fsuHint:" + kind;
+      if (root.localStorage.getItem(k)) return false;
+      root.localStorage.setItem(k, "1");
+    } catch (e) {}
+    return true;
+  }
+  function showHint(kind) {
+    try {
+      var old = doc.getElementById("fsu-hint"); if (old && old.parentNode) old.parentNode.removeChild(old);
+      var pill = doc.createElement("div");
+      pill.id = "fsu-hint";
+      pill.setAttribute("role", "status");
+      pill.textContent = kind === "metamask"
+        ? "For true fullscreen, open this site in Chrome or Safari"
+        : "Tip: Share → Add to Home Screen for true fullscreen";
+      var st = pill.style; // inline !important: self-contained in BOTH host documents, survives every overlay/child-hide rule
+      st.setProperty("position", "fixed", "important");
+      st.setProperty("top", "calc(env(safe-area-inset-top, 0px) + 10px)", "important");
+      st.setProperty("left", "50%", "important");
+      st.setProperty("transform", "translateX(-50%)", "important");
+      st.setProperty("z-index", "2147483647", "important");
+      st.setProperty("max-width", "92vw", "important");
+      st.setProperty("box-sizing", "border-box", "important");
+      st.setProperty("padding", "10px 16px", "important");
+      st.setProperty("border-radius", "12px", "important");
+      st.setProperty("background", "rgba(4, 19, 38, .92)", "important");
+      st.setProperty("border", "1px solid rgba(255, 255, 255, .35)", "important");
+      st.setProperty("color", "#fff", "important");
+      st.setProperty("font", "600 13px/1.45 system-ui, -apple-system, sans-serif", "important");
+      st.setProperty("text-align", "center", "important");
+      st.setProperty("box-shadow", "0 6px 24px rgba(0, 0, 0, .5)", "important");
+      st.setProperty("cursor", "pointer", "important");
+      st.setProperty("opacity", "0", "important");
+      st.setProperty("transition", "opacity .35s ease", "important");
+      doc.body.appendChild(pill);
+      setTimeout(function () { st.setProperty("opacity", "1", "important"); }, 30);
+      var gone = false;
+      var dismiss = function () {
+        if (gone) return; gone = true;
+        st.setProperty("opacity", "0", "important");
+        setTimeout(function () { try { if (pill.parentNode) pill.parentNode.removeChild(pill); } catch (e) {} }, 400);
+      };
+      pill.addEventListener("click", dismiss);
+      setTimeout(dismiss, 8000); // auto-fade: a hint, never a nag
+    } catch (e) {}
+  }
+  function maybeHint() {
+    try {
+      if (isStandalone()) return; // already installed → already true fullscreen
+      if (isMetaMask()) { if (hintOnce("metamask")) setTimeout(function () { showHint("metamask"); }, 600); return; }
+      var ua = (root.navigator && root.navigator.userAgent) || "";
+      // iPhone/iPod Safari only (iPad reaches native fs); canNative() false = the provably-impossible case
+      if (/iPhone|iPod/.test(ua) && !canNative() && hintOnce("a2hs")) setTimeout(function () { showHint("a2hs"); }, 600);
+    } catch (e) {}
   }
 
   /* ---------- native path ---------- */
@@ -263,5 +330,6 @@
     chromeVisible: chromeVisible,
     nudgeChrome: nudge,
     active: function () { return S ? { mode: S.mode, locked: !!S.locked, skipNative: !!S.skipNative } : null; },
+    _hint: showHint, // internal: preview/test hook (gates live in maybeHint)
   };
 })(typeof window !== "undefined" ? window : this);
