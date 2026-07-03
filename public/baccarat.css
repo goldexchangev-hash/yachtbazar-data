@@ -387,18 +387,43 @@ body.fs-embed:not(.tv-embed) .fs-exit { display: block; } /* embed mode: the par
 /* the in-felt bet bar — fullscreen only; height clamp + safe-area padded (spec §4.2) */
 .fsbar { display: none; }
 body.fs-embed .fsbar {
-  display: flex; align-items: center; justify-content: center; gap: 8px; flex: none;
+  display: flex; align-items: center; justify-content: flex-start; gap: 8px; flex: none;
   height: calc(clamp(64px, 12dvh, 96px) + env(safe-area-inset-bottom));
   padding: 6px 10px calc(6px + env(safe-area-inset-bottom));
   background: rgba(6, 9, 26, .78); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
   border-top: 1px solid var(--line); overflow-x: auto; overflow-y: hidden; z-index: 6;
+  -webkit-overflow-scrolling: touch;
 }
-body.fs-embed .fsbar .chipbtn { width: 52px; height: 52px; }
-body.fs-embed .fsbar .ctl { height: 48px; }
+/* the shared control builder emits a .tray CONTAINER — it must be ONE non-wrapping row inside the
+   bar (owner hit: the tray wrapped, CLEAR landed on a clipped second row → "can't bet").
+   margin:auto centers it when it fits; when it doesn't, the bar scrolls from the LEFT edge
+   (justify flex-start above — a centered overflow clips its start unreachably). */
+body.fs-embed .fsbar .tray { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; margin: 0 auto; min-width: 0; flex: none; }
+body.fs-embed .fsbar .chipbtn { width: 52px; height: 52px; flex: none; }
+body.fs-embed .fsbar .ctl { height: 48px; flex: none; white-space: nowrap; }
 body.fs-embed .fsbar .ctl.rebet { flex: none; padding: 0 12px; font-size: 12px; }
+/* base .fs-count MUST precede the phone media blocks below — equal specificity, source order decides */
 .fsbar .fs-count { font-family: var(--pixel); font-size: 10px; color: var(--cyan); min-width: 56px; text-align: center; flex: none; }
 .fsbar .fs-count.warn { color: var(--gold); }
 .fsbar .fs-count.crit { color: var(--red); animation: critPulse .5s ease-in-out infinite; }
+/* phones: compact everything so count + 4 chips + UNDO + CLEAR fit ONE row on a 375px screen */
+@media (max-width: 480px) {
+  body.fs-embed .fsbar { gap: 6px; }
+  body.fs-embed .fsbar .tray { gap: 6px; }
+  body.fs-embed .fsbar .chipbtn { width: 44px; height: 44px; font-size: 11px; }
+  body.fs-embed .fsbar .ctl { height: 44px; padding: 0 10px; font-size: 11px; }
+  .fsbar .fs-count { min-width: 40px; }
+}
+/* ≤400px (iPhone portrait is 375–393): shave chips/buttons/gaps so the WHOLE row fits with zero
+   scroll — 40px chips ×4 + icon-size UNDO/CLEAR + count ≈ 354px < 374px viewport. The bar keeps
+   overflow-x:auto purely as a 320px-SE safety net. */
+@media (max-width: 400px) {
+  body.fs-embed .fsbar { gap: 4px; padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); }
+  body.fs-embed .fsbar .tray { gap: 4px; }
+  body.fs-embed .fsbar .chipbtn { width: 40px; height: 40px; font-size: 10px; }
+  body.fs-embed .fsbar .ctl { height: 40px; padding: 0 8px; font-size: 10px; }
+  .fsbar .fs-count { min-width: 34px; }
+}
 @media (max-width: 420px) { body.fs-embed .fsbar .ctl.rebet { display: none; } } /* zones remain the way to bet when width is tight */
 
 /* fullscreen layout: the wrap becomes a flex column (stage above bar) */

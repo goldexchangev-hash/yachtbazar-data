@@ -729,11 +729,12 @@
       history: (m && m.history) || [],
       outcome: (m && m.phase === "settle") ? (m.outcome || null) : null,
       net: this._mySettle ? this._mySettle.net : null,
+      fs: document.body.classList.contains("fs-embed"), // the parent heals fs-state drift (Safari rotate can strand the felt in fs-embed with the overlay off)
     };
     try { if (root.parent && root.parent !== root) root.parent.postMessage(state, root.location.origin); } catch (e) {} // same-origin target only
   };
   BaccaratClient.prototype._emitDockError = function (msg) {
-    var state = { type: "bac:dock", mode: "waiting", msg: msg, balance: this.balance || 0, showEth: this.showEth,
+    var state = { type: "bac:dock", mode: "waiting", msg: msg, balance: this.balance || 0, showEth: this.showEth, fs: document.body.classList.contains("fs-embed"),
       staked: { player: 0, banker: 0, tie: 0 }, totalStaked: 0, canUndo: false, canClear: false, rebet: null,
       betMin: 10, zoneMax: this.zoneMax, countMsLeft: null, roomId: null, phase: null, history: [], outcome: null, net: null };
     try { if (root.parent && root.parent !== root) root.parent.postMessage(state, root.location.origin); } catch (e) {}
