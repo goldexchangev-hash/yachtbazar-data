@@ -300,10 +300,18 @@ function botDecide(snap, legal, opts) {
    ========================================================================= */
 
 // players: clockwise SEAT order, [{ id, name, isBot, stack, aggression?, seat? }]
-// opts: { smallBlind, bigBlind, buttonIndex, serverSeed, clientSeed, nonce }
+// opts: { smallBlind, bigBlind, buttonIndex, serverSeed, clientSeed, nonce, rakeBps, rakeCapBb }
 function ServerHand(opts) {
   this.sb = opts.smallBlind;
   this.bb = opts.bigBlind;
+  // RAKE (spec §5.3): a % of each RAKED pot, capped, NO-FLOP-NO-DROP. Deducted in _finish before
+  // the pot is awarded → the only chip-sink (keeps Σstacks_after = Σstacks_before − rake, exact).
+  // Defaults to 0 so a hand built without rake params (existing tests) is unraked. The house/creator
+  // 50/50 SPLIT + the seated-creator-earns-nothing routing (H6) live at the TABLE layer, which reads
+  // this.rake — the engine is table-agnostic and only computes+deducts the total.
+  this.rakeBps = Math.max(0, Math.min(500, Math.round(opts.rakeBps || 0))); // house-clamped 0..5% even here (defence in depth)
+  this.rakeCapChips = (opts.rakeCapBb != null && opts.rakeCapBb >= 0) ? Math.round(opts.rakeCapBb * this.bb) : Infinity;
+  this.rake = 0; // total rake taken this hand (set in _finish)
 
   // PROVABLY-FAIR deal: commit published before any card is touched.
   this.serverSeed = opts.serverSeed;
@@ -524,6 +532,18 @@ ServerHand.prototype._finish = function () {
   const startStack = {};
   for (const p of this.players) { this.payouts[p.id] = 0; startStack[p.id] = p.committedTotal + p.stack; }
 
+  // RAKE (spec §5.3): NO-FLOP-NO-DROP — only a hand that saw a flop is raked. Computed on the TOTAL
+  // pot, capped, then deducted off the top of the pots (main pot first) BEFORE any award. Rake is the
+  // ONLY chip that leaves the pots un-awarded → the sink that makes Σstacks_after = Σstacks_before − rake.
+  const flopSeen = this.board.length >= 3;
+  let totalPot = 0; for (const pot of pots) totalPot += pot.amount;
+  this.rake = (flopSeen && this.rakeBps > 0)
+    ? Math.min(Math.round(totalPot * this.rakeBps / 10000), this.rakeCapChips)
+    : 0;
+  if (this.rake > totalPot) this.rake = totalPot; // never rake more than the pot (cap sanity)
+  let rakeLeft = this.rake;
+  for (const pot of pots) { if (rakeLeft <= 0) break; const take = Math.min(rakeLeft, pot.amount); pot.amount -= take; rakeLeft -= take; }
+
   const live = this._activeInHand();
   const scoreById = {};
   if (live.length === 1) {
@@ -634,6 +654,8 @@ function createTable(opts) {
     hand: null,         // current ServerHand or null between hands
     nonce: 0,           // increments per hand → independent verifiable rounds
     clientSeed: opts.clientSeed || "",
+    rakeBps: opts.rakeBps || 0,                                   // spec §5.3 — 0 = unraked (demo/tests); house-clamped 100..500 at the RoomManager layer
+    rakeCapBb: opts.rakeCapBb != null ? opts.rakeCapBb : Infinity, // cap in big blinds (default: uncapped when unset)
   };
 }
 
@@ -669,6 +691,7 @@ function startHand(table, opts) {
     smallBlind: table.smallBlind, bigBlind: table.bigBlind,
     buttonIndex: buttonIndex, players: dealt,
     serverSeed: round.serverSeed, clientSeed: clientSeed, nonce: table.nonce,
+    rakeBps: table.rakeBps, rakeCapBb: table.rakeCapBb, // spec §5.3 — thread the table's raked-pot config into the hand
   });
   hand.start();
   table.hand = hand;
@@ -860,6 +883,66 @@ if (require.main === module) {
     eq("illegal check facing a bet is rejected", threw2);
   }
 
-  console.log(ok ? "\nSELF-TEST OK — server-authoritative poker core is deterministic, verifiable, and leak-free." : "\nSELF-TEST FAILED");
+  /* ---- 7. RAKE (spec §5.3): no-flop-no-drop, %-with-cap, exact chip-sink conservation ---- */
+  {
+    const RAKE_BPS = 500, CAP_BB = 3, BB = 10, CAP = CAP_BB * BB; // 5%, 3bb cap = 30 chips
+    // drive every to-act seat to the cheapest legal continue (check, else call) → check/limp down
+    const checkDown = (t) => { let g = 0; const h = t.hand; while (!h.done && g++ < 200) { const p = h.players[h.toAct]; const toCall = h.currentBet - p.committedStreet; act(t, p.id, toCall > 0 ? "call" : "check"); } };
+
+    // (a) limped, checked-down heads-up pot = 20 chips, sees a flop → rake = min(round(20·5%),30) = 1
+    {
+      const t = createTable({ smallBlind: 5, bigBlind: BB, seats: 2, rakeBps: RAKE_BPS, rakeCapBb: CAP_BB });
+      sit(t, { id: "a", isBot: false, stack: 500 }); sit(t, { id: "b", isBot: false, stack: 500 });
+      const before = t.seats.reduce((a, s) => a + s.stack, 0);
+      startHand(t, { buttonIndex: 0 }); checkDown(t);
+      const h = t.hand, after = h.players.reduce((a, p) => a + p.stack, 0);
+      eq("rake: limped pot sees a flop and is raked exactly 1 (5% of 20)", h.board.length >= 3 && h.rake === 1);
+      eq("rake: chips conserved with rake as the only sink (limped)", after === before - h.rake);
+    }
+    // (b) all-in preflop heads-up → board RUNS OUT (flop seen) → pot 2000 → rake = 30 (CAP binds)
+    {
+      const t = createTable({ smallBlind: 5, bigBlind: BB, seats: 2, rakeBps: RAKE_BPS, rakeCapBb: CAP_BB });
+      sit(t, { id: "a", isBot: false, stack: 1000 }); sit(t, { id: "b", isBot: false, stack: 1000 });
+      const before = t.seats.reduce((a, s) => a + s.stack, 0);
+      startHand(t, { buttonIndex: 0 });
+      const h = t.hand;
+      act(t, h.players[h.toAct].id, "allin");        // first to act shoves 1000
+      if (!h.done) act(t, h.players[h.toAct].id, "call"); // the other calls all-in → run-out + showdown
+      const after = h.players.reduce((a, p) => a + p.stack, 0);
+      eq("rake: all-in run-out is raked at the 3bb CAP (30, not 5%·2000=100)", h.board.length >= 3 && h.rake === CAP);
+      eq("rake: chips conserved with rake as the only sink (all-in cap)", after === before - h.rake);
+    }
+    // (c) NO-FLOP-NO-DROP: everyone folds to the BB preflop → no flop → ZERO rake
+    {
+      const t = createTable({ smallBlind: 5, bigBlind: BB, seats: 3, rakeBps: RAKE_BPS, rakeCapBb: CAP_BB });
+      sit(t, { id: "a", isBot: false, stack: 500 }); sit(t, { id: "b", isBot: false, stack: 500 }); sit(t, { id: "c", isBot: false, stack: 500 });
+      const before = t.seats.reduce((a, s) => a + s.stack, 0);
+      startHand(t, { buttonIndex: 0 });
+      const h = t.hand; let g = 0;
+      while (!h.done && g++ < 20) act(t, h.players[h.toAct].id, "fold");
+      const after = h.players.reduce((a, p) => a + p.stack, 0);
+      eq("rake: no-flop-no-drop — a preflop fold-around pays ZERO rake", h.done && h.board.length < 3 && h.rake === 0);
+      eq("rake: no-flop hand fully conserves chips (nothing skimmed)", after === before);
+    }
+    // (d) SWEEP: 60 bot hands — rake is ALWAYS exactly min(5%·grossPot, cap) with no-flop-no-drop, and the only sink
+    {
+      let trials = 60, conserved = 0, formula = 0;
+      for (let i = 0; i < trials; i++) {
+        const t = createTable({ smallBlind: 5, bigBlind: BB, seats: 6, rakeBps: RAKE_BPS, rakeCapBb: CAP_BB });
+        for (let s = 0; s < 4; s++) sit(t, { id: "p" + s, isBot: true, stack: 1000, aggression: 0.3 + s * 0.15 });
+        const before = t.seats.reduce((a, s) => a + s.stack, 0);
+        startHand(t, { buttonIndex: i % 4 }); advance(t);
+        const h = t.hand, after = h.players.reduce((a, p) => a + p.stack, 0);
+        const grossPot = h.players.reduce((a, p) => a + p.committedTotal, 0);
+        const expected = (h.board.length >= 3 && grossPot > 0) ? Math.min(Math.round(grossPot * RAKE_BPS / 10000), CAP) : 0;
+        if (after === before - h.rake) conserved++;
+        if (h.rake === expected) formula++;
+      }
+      eq("rake sweep: chips conserved with rake as the only sink in all 60 hands", conserved === trials);
+      eq("rake sweep: rake == min(5%·pot, 3bb) with no-flop-no-drop in all 60 hands", formula === trials);
+    }
+  }
+
+  console.log(ok ? "\nSELF-TEST OK — server-authoritative poker core is deterministic, verifiable, and leak-free (+ rake: no-flop-no-drop, %-with-cap, exact chip-sink)." : "\nSELF-TEST FAILED");
   process.exit(ok ? 0 : 1);
 }
