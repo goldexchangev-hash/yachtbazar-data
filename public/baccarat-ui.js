@@ -228,6 +228,10 @@
       var v = parseInt(localStorage.getItem("bacChip"), 10);
       if (isFinite(v) && v >= 10) this.chip = Math.round(v / 5) * 5; // parent dial: any $5-step amount
     } catch (e) {}
+    // THE READOUT NEVER LIES (review v13.47 #1): the stored dial can exceed today's range
+    // (balance dropped since it was set) while the display clamps — clamp the re-read too,
+    // so a tap places at most what the gold readout shows.
+    var cap = this._dialMax(); if (this.chip > cap) this.chip = cap;
     return this.chip;
   };
   // DIAL-THEN-PLACE (owner 2026-07-03: "make the amount I bet clearer to see and adjust with
@@ -246,6 +250,7 @@
     this.chip = v;
     try { localStorage.setItem("bacChip", String(v)); } catch (e) {}
     this._syncDialUi(src);
+    this._renderDock(); // live status ("tap a zone to add $X") + parent dock msg follow the dial; msg write is idempotent-guarded and the dial is excluded from the rebuild sigs, so a drag never rebuilds the slider
   };
   BaccaratClient.prototype._syncDialUi = function (src) {
     var hosts = [this.E.dockRow, this.E.fsbar], i;
@@ -259,6 +264,12 @@
         if (!src && amt.animate) amt.animate([{ transform: "scale(1)" }, { transform: "scale(1.22)" }, { transform: "scale(1)" }], { duration: 220 }); // chip-add bump; quiet during drags
       }
     }
+    // zone aria-labels advertise the tap amount — keep them equal to the readout (review v13.47 #2)
+    var self3 = this;
+    ZONES.forEach(function (z) {
+      var zn = self3._zoneEl(z); if (!zn) return;
+      zn.setAttribute("aria-label", "Add " + money(self3.chip) + " to " + ZONE_LABEL[z] + ". Your " + ZONE_LABEL[z] + " bet is " + money(self3.staked[z] || 0) + ".");
+    });
   };
 
   // Tap-a-zone: add the selected chip (or an explicit amount from the parent dock).
@@ -677,6 +688,9 @@
     tray.setAttribute("role", "group"); tray.setAttribute("aria-label", "Chip value");
     var maxAmt = Math.max(10, Math.floor(Math.min(bal, maxHeadroom) / 5) * 5);
     if (this.chip > maxAmt) this.chip = maxAmt; if (this.chip < 10) this.chip = 10; // clamp the dial into today's range
+    // persist the clamp (guarded — same-value writes fire no storage event anywhere): the
+    // parent hears the change and follows, so the two dials can never sit permanently unequal
+    try { if (localStorage.getItem("bacChip") !== String(this.chip)) localStorage.setItem("bacChip", String(this.chip)); } catch (e) {}
     TRAY.forEach(function (cd) {
       var v = cd[0], b = el("button", "chipbtn", "$" + v);
       b.type = "button";
