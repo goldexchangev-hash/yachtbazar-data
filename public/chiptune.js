@@ -613,6 +613,70 @@
         });
       }
     },
+
+    // ── FS2 bonus-round cues (fishshooter2 bonus remake; additive only) ──────
+    // charge(): short rising "power-up" sweep — trigger-fish flares, heralds, lunge tells.
+    charge() {
+      if (!this._sfx()) return;
+      const t = ctx.currentTime;
+      const osc = ctx.createOscillator(), g = ctx.createGain();
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(220, t);
+      osc.frequency.exponentialRampToValueAtTime(880, t + 0.32);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(0.12, t + 0.05);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.38);
+      osc.connect(g); g.connect(master);
+      osc.start(t); osc.stop(t + 0.4);
+    },
+    // tick(n): countdown / combo tick. Countdown 3→2→1 rises in pitch; combo n>3 keeps rising.
+    tick(n) {
+      if (!this._sfx()) return;
+      const t = ctx.currentTime;
+      const idx = n == null ? 0 : (n <= 3 ? (3 - n) * 4 : Math.min(12, n));
+      voice(NOTES["C5"] * Math.pow(2, idx / 12), t, 0.09, "square", master, 0.3);
+      kick(t);
+    },
+    // rumble(s): low bass swell of ~s seconds — dives, colossus crossings, storms.
+    rumble(s) {
+      if (!this._sfx()) return;
+      const t = ctx.currentTime, dur = Math.max(0.2, Math.min(4, s || 0.6));
+      const osc = ctx.createOscillator(), g = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(48, t);
+      osc.frequency.linearRampToValueAtTime(34, t + dur);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(0.22, t + dur * 0.3);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      osc.connect(g); g.connect(master);
+      osc.start(t); osc.stop(t + dur + 0.05);
+    },
+    // fanfare(): ~1.5s triumphant wave-start / deposit jingle (freshly composed).
+    fanfare() {
+      if (!this._sfx()) return;
+      const t = ctx.currentTime;
+      this._run(["C5", "E5", "G5", "C6", "-", "G5", "C6", "E6"], t, 0.11, "square", 0.3, true);
+      bass(NOTES["C2"], t, 0.5); bass(NOTES["G2"], t + 0.55, 0.5); bass(NOTES["C2"], t + 1.1, 0.6);
+      this._chord(["C5", "E5", "G5", "C6"], t + 0.9, 0.7, 0.18);
+    },
+    // clang(): deep armor clang — a boss-tier fish shrugging off a shot.
+    clang() {
+      if (!this._sfx() || !noiseBuf) return;
+      const t = ctx.currentTime;
+      const src = ctx.createBufferSource(); src.buffer = noiseBuf;
+      const bp = ctx.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 620; bp.Q.value = 9;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.28, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.24);
+      src.connect(bp); bp.connect(g); g.connect(master); src.start(t); src.stop(t + 0.26);
+      voice(NOTES["E3"], t, 0.2, "triangle", master, 0.16);
+    },
+    // horn(): low horn swell — a boss-tier creature announcing its arrival.
+    horn() {
+      if (!this._sfx()) return;
+      const t = ctx.currentTime;
+      ["D3", "A3", "D4"].forEach((n) => voice(NOTES[n], t, 0.7, "sawtooth", master, 0.08, 0.18, 0.35));
+      bass(NOTES["D2"], t, 0.7);
+    },
   };
 
   window.Chiptune = Chiptune;

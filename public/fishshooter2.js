@@ -32,6 +32,11 @@
   var FISH_KEYS = ["wisp", "ember", "prism", "lantern", "ray", "hatchet", "voltjelly", "minecrab", "aurum", "nautilus", "hammer", "voidkraken", "solaris", "mantis", "isopod", "sovereign", "aurora", "vaultback", "tempest", "bloom"];
   // per-creature animation frame count (default 4); the new creatures are authored at 8 for smoother motion
   var FRAMES = { wisp: 8, ember: 8, prism: 8, lantern: 8, ray: 8, hatchet: 8, voltjelly: 8, minecrab: 8, aurum: 8, nautilus: 8, hammer: 8, voidkraken: 8, solaris: 8, mantis: 8, isopod: 8, sovereign: 8, aurora: 8, vaultback: 8, tempest: 8, bloom: 8 }; // FS2: every creature is an 8-frame strip
+  // BONUS-ROUND CAST (bonus remake): display-only actors + the vb_key prop fish. Deliberately NOT in
+  // FISH_KEYS (never in the roster/engine/normal spawn pools); loaded DEFERRED and guarded by _frames()
+  // at every use so missing art silently degrades to the current rounds (F12).
+  var BONUS_CAST_KEYS = ["fb_maw", "fb_herald", "fb_gilt", "vb_key", "vb_elder", "vb_midas", "sb_herald", "sb_levi", "sb_aurex", "bb_choir", "bb_seraph", "bb_colossus", "colossus", "oracle", "cathedral"];
+  BONUS_CAST_KEYS.forEach(function (k) { FRAMES[k] = 8; });
   function frameCount(k) { return FRAMES[k] || 4; }
   // The high-weight common fish that fill the board at start → load these (+ background, cannon,
   // shot/catch FX) in the CRITICAL first phase. Every other creature loads in the background.
@@ -70,6 +75,10 @@
     this._boss = null; this._bossId = 0; // active jackpot boss bonus round (id bumps each round)
     this._bonus = null; this._frenzyKind = "frenzy"; // active wave bonus round (frenzy/vault/storm) + its theme
     this._bonusFinale = null; this._depositPulse = 0; // end-of-round reveal → deposit-to-bank sequence
+    // ── bonus remake state (all display-side; every new payment flows through _waveAward/_accrueBoss) ──
+    this._wave = null; this._meterPulse = 0; this._laserMix = 0; this._stormMix = 0; // per-world scripted cast + themed FX mixes
+    this._hitStop = 0; this._hitStopAt = null; this._chainPts = []; this._chainWon = 0; // base-play juice (mega-catch freeze + catch-chain thread)
+    this._parade = null; this._paradeT = rand(180, 420); this._ambientT = rand(45, 120); this._duskMix = 0; // majestic parade + ambient micro-events + boss foreshadow dusk
     this._holding = false; this._ready = false; this.tex = {};
 
     this._initPixi();
@@ -151,6 +160,7 @@
     // Re-fit every live fish to the CURRENT screen (prevents any stuck/growing sizes).
     for (var fi3 = 0; fi3 < this.fish.length; fi3++) { var ff3 = this.fish[fi3]; if (!ff3 || !ff3.frameW) continue; var dw3 = this._fishDispW(ff3.def); ff3.scale = dw3 / ff3.frameW; ff3.r = dw3 * 0.294; this._sizeLabel(ff3); }
     for (var i = 0; i < this.weeds.length; i++) { var wq = this.weeds[i]; wq.s.x = W * (wq.frac != null ? wq.frac : 0.5); wq.s.y = H + 6; wq.s.scale.set((wq.baseScale != null ? wq.baseScale : 0.6) * this.uiScale); } // refit weed X + scale to current width (was pinned to old width on rotate)
+    this._layoutOverlays(); // refit the laser-grid overlay + dim wash to the new size
     this._drawHud();
   };
 
@@ -177,6 +187,7 @@
     ["bg_bonus", "bg_boss", "bg_vault", "bg_frenzy", "bg_storm"].forEach(function (n) { deferred.push({ alias: n, src: DIR + n + ".jpg" }); }); // world backgrounds (bonus rounds)
     for (var cb = 0; cb < 9; cb++) deferred.push({ alias: "coinburst_" + cb, src: DIR + "coinburst_" + cb + ".png" });
     for (var ch = 0; ch < 4; ch++) deferred.push({ alias: "chest_" + ch, src: DIR + "chest_" + ch + ".png" });
+    BONUS_CAST_KEYS.forEach(function (k) { for (var bi = 0; bi < 8; bi++) deferred.push({ alias: k + "_" + bi, src: DIR + k + "_" + bi + ".png" }); }); // bonus-remake cast — DEFERRED, _frames-guarded (F12)
 
     self.tex = {};
     self._loadAssets(critical, true, function () {                 // PHASE 1 — must complete to paint
@@ -299,8 +310,34 @@
     this.banner = mk(42, 0xffd23f); this.banner.anchor.set(0.5); this.banner.alpha = 0; this.hud.addChild(this.banner);
     this.bannerSub = mk(22, 0xffffff); this.bannerSub.anchor.set(0.5); this.bannerSub.alpha = 0; this.hud.addChild(this.bannerSub);
 
+    // ── bonus-remake layers ──
+    // paradeLayer: DEEP background (above caustics, below weeds/fish) — parade colossi + ambient
+    // flybys live ONLY here, are never pushed to this.fish, and can never be hit or paid (F8).
+    this.paradeLayer = new PIXI.Container(); this.world.addChildAt(this.paradeLayer, this.world.getChildIndex(this.weedLayer));
+    // catch-chain golden thread: one persistent Graphics, cleared every frame (under the vignette)
+    this.chainG = new PIXI.Graphics(); this.world.addChildAt(this.chainG, this.world.getChildIndex(this.vign));
+    // themed FREE-shot overlay: darken wash + drifting neon grid, lerped by _laserMix (above vign, below cannon/hud)
+    this.laserOverlay = new PIXI.Container(); this.laserOverlay.visible = false; this.laserOverlay.alpha = 0;
+    this._laserDim = new PIXI.Graphics(); this._laserDim.beginFill(0x06251a, 0.5); this._laserDim.drawRect(0, 0, 4, 4); this._laserDim.endFill(); this.laserOverlay.addChild(this._laserDim);
+    this.laserGrid = new PIXI.Graphics(); this.laserGrid.blendMode = PIXI.BLEND_MODES.ADD; this.laserOverlay.addChild(this.laserGrid);
+    this.world.addChildAt(this.laserOverlay, this.world.getChildIndex(this.cannon));
+    // storm rain (streak pool built lazily on first storm)
+    this.rainLayer = new PIXI.Container(); this.rainLayer.visible = false; this.world.addChildAt(this.rainLayer, this.world.getChildIndex(this.cannon));
+    // pulsing FREE tag over the barrel
+    this.freeTag = mk(16, 0x4dff7a); this.freeTag.anchor.set(0.5); this.freeTag.text = "FREE"; this.freeTag.visible = false; this.hud.addChild(this.freeTag);
+    this._layoutOverlays();
+
     for (var f = 0; f < 7; f++) this._spawnFish();
     this._layout(); this._renderHud();
+  };
+  FishShooter2.prototype._layoutOverlays = function () {
+    var W = this.W, H = this.H;
+    if (this._laserDim) { this._laserDim.width = W; this._laserDim.height = H; }
+    if (this.laserGrid) {
+      var g = this.laserGrid, gap = 44; g.clear(); g.lineStyle(1, 0xffffff, 0.10);
+      for (var gx = 0; gx <= W; gx += gap) { g.moveTo(gx, -gap); g.lineTo(gx, H + gap); }
+      for (var gy = -gap; gy <= H + gap; gy += gap) { g.moveTo(0, gy); g.lineTo(W, gy); }
+    }
   };
 
   FishShooter2.prototype._radial = function (color, size) {
@@ -338,28 +375,34 @@
     f.lbl.scale.set((f.flip ? -1 : 1) * cs, cs);
   };
   FishShooter2.prototype._spawnFish = function (forceDef) {
-    if (this.fish.length > 14) return;
+    if (this.fish.length > 14) return undefined; // F4: callers MUST check the return (undefined on skip)
     var def = forceDef || this.engine.pickFish();
     var nf = frameCount(def.key);
     var frames = this._frames(def.key, nf);
-    if (!frames.length) return; // frames not all loaded yet (deferred/transient) → skip this spawn
+    if (!frames.length) return undefined; // frames not all loaded yet (deferred/transient) → skip this spawn
     var spr = new PIXI.AnimatedSprite(frames);
     // 8-frame creatures read smooth at a lower per-tick speed; 4-frame ones need it faster to feel alive.
     spr.anchor.set(0.5); spr.animationSpeed = nf >= 8 ? rand(0.11, 0.16) : rand(0.16, 0.26); spr.play();
     var cont = new PIXI.Container(); cont.addChild(spr);
     var dispW = this._fishDispW(def); var scale = dispW / frames[0].width; cont.scale.set(scale);
 
-    if (def.special) { this._glowCache = this._glowCache || {}; var gtex = this._glowCache[def.color] || (this._glowCache[def.color] = this._radial(def.color, 256)); var gl = new PIXI.Sprite(gtex); gl.anchor.set(0.5); gl.alpha = 0.4; gl.blendMode = PIXI.BLEND_MODES.ADD; gl.scale.set((def.r * 6) / 256 / scale); cont.addChildAt(gl, 0); } // cache glow texture by color (was leaking a 256px texture per spawn)
-    var lbl = new PIXI.Text("x" + def.mult, { fontFamily: "Bungee, Arial", fontSize: 50, fontWeight: "700", fill: 0xffffff, stroke: 0x041326, strokeThickness: 7 });
+    var gl = null;
+    if (def.special) { this._glowCache = this._glowCache || {}; var gtex = this._glowCache[def.color] || (this._glowCache[def.color] = this._radial(def.color, 256)); gl = new PIXI.Sprite(gtex); gl.anchor.set(0.5); gl.alpha = 0.4; gl.blendMode = PIXI.BLEND_MODES.ADD; gl.scale.set((def.r * 6) / 256 / scale); cont.addChildAt(gl, 0); } // cache glow texture by color (was leaking a 256px texture per spawn)
+    var lbl = new PIXI.Text(def.prop ? "🔑" : "x" + def.mult, { fontFamily: "Bungee, Arial", fontSize: 50, fontWeight: "700", fill: 0xffffff, stroke: 0x041326, strokeThickness: 7 });
     lbl.anchor.set(0.5); lbl.y = frames[0].height * 0.34; lbl.alpha = 0.9; cont.addChild(lbl); // just under the body; size kept CONSISTENT + flipped via _sizeLabel
 
     var fromLeft = Math.random() < 0.5;
     var y = rand(this.H * 0.12, this.H * 0.8);
     var speed = def.tier === "boss" ? 34 : rand(48, 92);
     var fobj = { def: def, cont: cont, spr: spr, vx: (fromLeft ? 1 : -1) * speed, vy: rand(-14, 14), r: dispW * 0.294, scale: scale, frameW: frames[0].width, lbl: lbl, alive: true, flip: !fromLeft, flinch: 0 };
+    if (gl && def.bonus) fobj.pulse = gl; // bonus-trigger foreshadow: its glow child heartbeats in _frame + flares on flinch (throttled, F10)
     this._sizeLabel(fobj); // consistent on-screen label size regardless of creature size, + correct flip
     cont.x = fromLeft ? -dispW : this.W + dispW; cont.y = y;
     this.fishLayer.addChild(cont); this.fish.push(fobj);
+    // boss-tier ENTRANCE sting (base play only): god-ray spotlight + name tag + horn. Pure decoration —
+    // the spawn was already decided by the unchanged weight table; killProb is untouched.
+    if (def.tier === "boss" && !forceDef && !this._boss && this._frenzy <= 0 && !this._bonus && !this._bonusFinale) this._bossEntrance(fobj);
+    return fobj;
   };
 
   FishShooter2.prototype._spawnBubble = function (anywhere) {
@@ -416,12 +459,21 @@
       this._save(); this._renderHud();
     }
     var ang = this._aim, md = (this._barrelTipLen || 44) * (this._cannonK || 1), tx = this.cannon.x + Math.cos(ang) * md, ty = this.cannon.y + Math.sin(ang) * md;
-    // Little glowing bullet: a small stretched core + an additive glow halo, much
-    // smaller than before, oriented along its travel direction.
-    var bs = 0.038 + sp * 0.007;
-    var b = new PIXI.Container(); b.x = tx; b.y = ty; b.rotation = ang + Math.PI / 2;
-    var glow = new PIXI.Sprite(this._glowTex); glow.anchor.set(0.5); glow.blendMode = PIXI.BLEND_MODES.ADD; glow.scale.set(bs * 3.6); glow.alpha = 0.5; b.addChild(glow);
-    var core = new PIXI.Sprite(this.tex.bullet); core.anchor.set(0.5); core.tint = 0xc8ffd6; core.scale.set(bs, bs * 1.8); b.addChild(core);
+    // F5: during ANY round, free shots render as the shared fat themed bolt (frenzy green / vault gold /
+    // storm cyan / boss violet) — VISUAL ONLY. The bullets[] money fields and the collision radius below
+    // stay byte-identical to the paid bolt, so odds/connect-rate never change.
+    var roundCol = 0;
+    if (free) roundCol = this._boss ? 0xb14dff : ((BONUS_THEME[this._frenzyKind] || BONUS_THEME.frenzy).bolt || 0x4dff7a);
+    var b;
+    if (roundCol) { b = this._buildRoundBolt(roundCol, sp); b.x = tx; b.y = ty; b.rotation = ang + Math.PI / 2; }
+    else {
+      // Little glowing bullet: a small stretched core + an additive glow halo, much
+      // smaller than before, oriented along its travel direction.
+      var bs = 0.038 + sp * 0.007;
+      b = new PIXI.Container(); b.x = tx; b.y = ty; b.rotation = ang + Math.PI / 2;
+      var glow = new PIXI.Sprite(this._glowTex); glow.anchor.set(0.5); glow.blendMode = PIXI.BLEND_MODES.ADD; glow.scale.set(bs * 3.6); glow.alpha = 0.5; b.addChild(glow);
+      var core = new PIXI.Sprite(this.tex.bullet); core.anchor.set(0.5); core.tint = 0xc8ffd6; core.scale.set(bs, bs * 1.8); b.addChild(core);
+    }
     this.bulletLayer.addChild(b);
     var speed = 1040 + sp * 30; // faster bullets connect sooner → fewer redundant in-flight shots at a fish that already died (less auto-fire overkill → higher REALIZED rtp, esp. at power 2)
     while (this.bullets.length > 120) this._rmBullet(this.bullets[0]); // higher cap → bullets ricochet until they connect instead of being culled (culled = paid-but-wasted, which craters realized RTP)
@@ -430,9 +482,23 @@
     if (root.Chiptune && root.Chiptune.blip) try { root.Chiptune.blip(); } catch (e) {}
     this._fireCd = FIRE_CD[this.fireSpeed] || FIRE_CD.fast; // ONE rate governs EVERY path (manual tap, auto-hold, bonus/boss free shots) — tap-spamming the dragon can NEVER exceed the chosen speed
   };
+  // F5: ONE shared themed round-bolt skin (3 stacked ADD layers: haze / glow body / white-hot core).
+  // Pure sprite construction — callers keep the bullets[] entry and collision radius byte-identical.
+  FishShooter2.prototype._buildRoundBolt = function (color, sp) {
+    var bs = 0.038 + sp * 0.007;
+    var b = new PIXI.Container();
+    this._whiteGlow = this._whiteGlow || this._radial(0xffffff, 128);
+    var haze = new PIXI.Sprite(this._whiteGlow); haze.anchor.set(0.5); haze.blendMode = PIXI.BLEND_MODES.ADD; haze.tint = color; haze.alpha = 0.32; haze.scale.set(bs * 8);
+    var glow = new PIXI.Sprite(this._whiteGlow); glow.anchor.set(0.5); glow.blendMode = PIXI.BLEND_MODES.ADD; glow.tint = color; glow.alpha = 0.7; glow.scale.set(bs * 4.4);
+    var core = new PIXI.Sprite(this.tex.bullet); core.anchor.set(0.5); core.blendMode = PIXI.BLEND_MODES.ADD; core.tint = 0xffffff; core.scale.set(bs * 1.5, bs * 3.4);
+    b.addChild(haze); b.addChild(glow); b.addChild(core);
+    return b;
+  };
   FishShooter2.prototype._muzzle = function (x, y) {
-    var mk = (this._cannonK || 1) * 1.5; // muzzle flash tracks the (now small) barrel
-    var s = new PIXI.Sprite(this.tex.muzzle); s.anchor.set(0.5); s.x = x; s.y = y; s.rotation = this._aim + Math.PI / 2; s.blendMode = PIXI.BLEND_MODES.ADD; s.scale.set(0.3 * mk); this.fxLayer.addChild(s);
+    var mk = (this._cannonK || 1) * 1.5 * (1 + Math.min(12, this._combo || 0) * 0.06); // heat ladder: hot streak = bigger flash (display only)
+    var s = new PIXI.Sprite(this.tex.muzzle); s.anchor.set(0.5); s.x = x; s.y = y; s.rotation = this._aim + Math.PI / 2; s.blendMode = PIXI.BLEND_MODES.ADD; s.scale.set(0.3 * mk);
+    if (this._frenzy > 0 || (this._boss && this._boss.started)) s.tint = this._boss ? 0xb14dff : ((BONUS_THEME[this._frenzyKind] || BONUS_THEME.frenzy).bolt || 0x4dff7a); // themed muzzle during rounds
+    this.fxLayer.addChild(s);
     this.fx.push({ s: s, t: 0, dur: 0.16, kind: "flash", mk: mk });
   };
   FishShooter2.prototype._rmBullet = function (b) { if (!b) return; try { if (b.s) { this.bulletLayer.removeChild(b.s); b.s.destroy(); } } catch (e) {} var i = this.bullets.indexOf(b); if (i >= 0) this.bullets.splice(i, 1); };
@@ -442,6 +508,15 @@
 
   FishShooter2.prototype._resolveHit = function (b, fish) {
     b.hit = true;
+    // F3 belt-and-suspenders: a scripted PROP fish (vault Keywing…) may only be popped by a LIVE free
+    // wave bolt. Any other bullet despawns it cosmetically and returns — no engine roll, no TokenMode.bet,
+    // no payout — so a prop can never enter the kill-prob economy even if it somehow outlived its wave.
+    if (fish.def && fish.def.prop) {
+      if (b.free && b.frenzyId === this._frenzyId && this._frenzy > 0) this._propPop(fish, b);
+      else { this._net(b.s.x, b.s.y, fish.def.color); fish.alive = false; fish.death = 0; }
+      b.settled = true; // verifier hardening: a paid bullet absorbed here must not linger in the in-flight display sum
+      return;
+    }
     if (this._boss) { this._catchCosmetic(fish, b.s.x, b.s.y); return; } // boss round: minions pop for show only
     if (b.free && (this._frenzy <= 0 || b.frenzyId !== this._frenzyId)) { this._net(b.s.x, b.s.y, fish.def.color); return; } // stale free bullet after the wave → no catch
     // ── TOKEN MODE: a PAID shot is a server-settled micro-bet. The server engine (v2) returns
@@ -468,7 +543,7 @@
         if (r && r.win) {
           if (fish.alive) self._catch(fish, shot); // direct-catch FX (local credit + local triggers gated in _catch)
           if (bonus) self._startTokenBonus(bonus, shot); // server-driven wave (its total reveals at the finale, not here)
-        } else if (fish.alive && !inBonus) { fish.flinch = 0.16; fish.spr.tint = 0xff8888; }
+        } else if (fish.alive && !inBonus) { fish.flinch = 0.16; fish.spr.tint = 0xff8888; self._nearMiss(fish); self._bonusFlare(fish); }
         // Hold the balance HUD until the catch/blow-up has played out — otherwise the new total reveals the
         // win/loss before the fish bursts and spoils it. Skip the repaint entirely while a bonus is running so
         // the held balance can't flash the bonus total early. Sync the TOP token bar at the same beat.
@@ -482,7 +557,80 @@
     var shot = { unitBet: b.unitBet, power: b.power, cost: b.cost, free: !!b.free };
     var res = this.engine.resolveHit(fish.def, shot.power);
     this._net(b.s.x, b.s.y, fish.def.color);
-    if (res.dead) this._catch(fish, shot); else { fish.flinch = 0.16; fish.spr.tint = 0xff8888; }
+    if (res.dead) this._catch(fish, shot); else { fish.flinch = 0.16; fish.spr.tint = 0xff8888; this._nearMiss(fish); this._bonusFlare(fish); }
+  };
+  // Near-miss drama on a surviving boss-tier fish: armor sparks + a throttled "SO CLOSE!" + clang.
+  // F7: NO escalating wording (nothing may imply stateful progress — killProb is memoryless).
+  // f.hitStreak is display state only (feeds the "got away" beat), never passed to the engine.
+  FishShooter2.prototype._nearMiss = function (fish) {
+    if (!fish.def || fish.def.mult < 80) return;
+    fish.hitStreak = (fish.hitStreak || 0) + 1;
+    var x = fish.cont.x, y = fish.cont.y;
+    for (var i = 0; i < 2; i++) this._lightning(x + rand(-fish.r, fish.r), y + rand(-fish.r, fish.r), x + rand(-fish.r, fish.r), y + rand(-fish.r, fish.r));
+    if (this._t - (this._nearMissT || -9) > 0.8) { this._nearMissT = this._t; this._floatText("SO CLOSE!", x, y - fish.r, 0xffd23f); }
+    var C = root.Chiptune; if (C && C.clang) try { C.clang(); } catch (e) {}
+  };
+  // Bonus-trigger foreshadow flare on flinch — throttled to ≥1.5s per fish (F10).
+  FishShooter2.prototype._bonusFlare = function (fish) {
+    if (!fish.def || !fish.def.bonus || !fish.pulse) return;
+    if (this._t - (fish.flareT != null ? fish.flareT : -9) < 1.5) return;
+    fish.flareT = this._t; fish.flare = 1;
+    var C = root.Chiptune; if (C && C.charge) try { C.charge(); } catch (e) {}
+  };
+  // Vault PROP pop (Keywing): despawn FX + a guaranteed pour through the single wave choke point.
+  FishShooter2.prototype._propPop = function (fish, b) {
+    if (!fish.alive) return; fish.alive = false; fish.death = 0;
+    this._net(fish.cont.x, fish.cont.y, 0xffd23f, true);
+    this._burst(fish.cont.x, fish.cont.y, 0.8);
+    if (fish.def.vault === "key" && this._wave && this._wave.kind === "vault") {
+      this._wave.combo = (this._wave.combo || 0) + 1;
+      this._waveAward(Math.max(0.01, Math.round(this._frenzyBudget * 0.02 * 100) / 100), fish.cont.x, fish.cont.y);
+      var C = root.Chiptune; if (C) try { if (C.tick) C.tick(Math.min(10, 3 + this._wave.combo)); else if (C.coin) C.coin(); } catch (e) {}
+    }
+  };
+  // ── THE single money choke point for every scripted wave pour (gilt / pods / keys / seams / midas /
+  // aurex). DEFERS like every wave catch: never touches this.balance — demo clamps to the pre-funded
+  // budget AND accrues the same amount into _frenzyExpected (a deterministic payment's EV is itself, so
+  // the accounting stays unbiased and E[wave total] ≤ budget); token clamps to the server-disbursed
+  // total exactly like _catch. Returns the amount actually poured (0 = silent). ──
+  FishShooter2.prototype._waveAward = function (amount, x, y) {
+    if (this._frenzy <= 0 || !(amount > 0)) return 0;
+    var amt;
+    if (this._tokenActive()) {
+      var remain = Math.max(0, Math.round(((this._tokenWaveTotal || 0) - (this._tokenWavePaid || 0)) * 100) / 100);
+      amt = Math.min(Math.round(amount * 100) / 100, remain);
+      if (amt <= 0) return 0;
+      this._tokenWavePaid = Math.round(((this._tokenWavePaid || 0) + amt) * 100) / 100;
+      this._frenzyWon = this._tokenWavePaid;
+    } else {
+      var room = Math.max(0, Math.round(((this._frenzyBudget || 0) - (this._frenzyExpected || 0)) * 100) / 100);
+      amt = Math.min(Math.round(amount * 100) / 100, room);
+      if (amt <= 0) return 0;
+      this._frenzyWon = Math.round(((this._frenzyWon || 0) + amt) * 100) / 100;
+      this._frenzyExpected = Math.round(((this._frenzyExpected || 0) + amt) * 100) / 100;
+    }
+    this._floatText("+$" + amt.toFixed(2), x, y, 0xffd23f);
+    for (var i = 0; i < 3; i++) this._spawnCoin(x, y, this.W / 2, 24); // coins arc INTO the top meter
+    this._meterPulse = 1;
+    return amt;
+  };
+  FishShooter2.prototype._waveRemaining = function () {
+    return this._tokenActive()
+      ? Math.max(0, Math.round(((this._tokenWaveTotal || 0) - (this._tokenWavePaid || 0)) * 100) / 100)
+      : Math.max(0, Math.round(((this._frenzyBudget || 0) - (this._frenzyExpected || 0)) * 100) / 100);
+  };
+  FishShooter2.prototype._waveProgress = function () {
+    return this._tokenActive()
+      ? (this._tokenWavePaid || 0) / Math.max(0.01, this._tokenWaveTotal || 0)
+      : (this._frenzyExpected || 0) / Math.max(0.01, this._frenzyBudget || 0);
+  };
+  // F1: NEVER zero _frenzy directly from script code. Nudge the timer to ≤1 frame and (demo) top the
+  // expected meter so the EXISTING _frame frenzy block runs _clearRoundBullets + _endBonusWave in-order
+  // next frame — a paid shot can never fire inside a free round.
+  FishShooter2.prototype._endWaveSoon = function () {
+    if (this._frenzy <= 0) return;
+    this._frenzy = Math.min(this._frenzy, 0.001);
+    if (!this._tokenActive()) this._frenzyExpected = Math.max(this._frenzyExpected || 0, this._frenzyBudget || 0);
   };
   FishShooter2.prototype._catch = function (fish, shot, isSplash) {
     if (!fish.alive) return; fish.alive = false;
@@ -538,7 +686,7 @@
     if (!isSplash) {
       // Lightning Storm round: every free kill arcs chain-lightning to nearby fish (payouts still
       // capped by the frenzy budget in _resolveHit/_catch, so the round total stays ≤ its budget).
-      if (this._frenzy > 0 && this._frenzyKind === "storm" && shot.free) this._chain(fish, shot);
+      if (this._frenzy > 0 && this._frenzyKind === "storm" && shot.free) this._chain(fish, shot, fish.charged ? 4 : 3); // CHARGED (herald ion-wake) fish fork to 4
       if (fish.def.special === "bomb") this._bomb(fish, shot);   // splash renders in token too (server already paid splash.total)
       else if (fish.def.special === "chain") this._chain(fish, shot);
       // TOKEN: the wave/boss is triggered by the SERVER's disbursement (_startTokenBonus in
@@ -547,8 +695,19 @@
         if (fish.def.bonus === "frenzy" && this._canBonus()) this._startBonus("frenzy", shot);   // Magma Lobster / Treasure Clam → Feeding Frenzy world
         else if (fish.def.bonus === "chest" && this._canBonus()) this._startBonus("vault", shot); // Gold Crab / Armored Reef Crab → Treasure Vault world
         else if (fish.def.bonus === "storm" && this._canBonus()) this._startBonus("storm", shot); // Electric Eel → Lightning Storm world
-        else if (fish.def.key === "aurora" && this._canBonus()) this._startBossRound();         // Royal Sea Dragon → boss round
+        else if (fish.def.key === "aurora" && this._canBonus()) { this._startBossRound(); if (this._boss) this._flashBanner("THE SERPENT'S CALL", "THE LEVIATHAN ANSWERS…", 0x9ff0d8); } // Aurora Serpent → boss round
       }
+    }
+    // ── base-play juice (display only; all money above already settled through the existing paths) ──
+    if (!shot.free && !this._boss && !this._bonus && !this._bonusFinale && this._frenzy <= 0 && !isSplash) {
+      // catch-chain golden thread: link recent catches while the combo window is alive; the text just
+      // SUMS payouts the unchanged _catch path already credited — no credit statement anywhere here.
+      this._chainWon = Math.round(((this._combo > 1 ? (this._chainWon || 0) : 0) + payout) * 100) / 100;
+      this._chainPts.push({ x: fish.cont.x, y: fish.cont.y });
+      if (this._chainPts.length > 6) this._chainPts.shift();
+      if (this._combo >= 3) this._floatText("CHAIN x" + this._combo + "  +$" + this._chainWon.toFixed(2), fish.cont.x, fish.cont.y - fish.r - 26, 0xffd23f);
+      // mega-catch HIT-STOP (mult ≥ 100): a 0.12s freeze + shock ring. F6: any round zeroes it in _frame.
+      if (fish.def.mult >= 100) { this._hitStop = 0.12; this._hitStopAt = { x: fish.cont.x, y: fish.cont.y }; }
     }
     fish.death = 0;
     // (frenzy no longer ends early on the budget — it runs its full timer; payouts stay capped in _resolveHit)
@@ -567,12 +726,12 @@
     // bomb catch (folded into r.tokens); despawning nearby fish from a CLIENT Math.random roll would remove
     // real shootable fish the server never settled — robbing future real bets. Keep the explosion, skip the kills.
     if (this._tokenActive() && !shot.free) return;
-    var t = this.fish.filter(function (o) { return o.alive && o !== src; }).map(function (o) { return { o: o, d: Math.hypot(o.cont.x - src.cont.x, o.cont.y - src.cont.y) }; }).filter(function (z) { return z.d < 160; }).sort(function (a, b) { return a.d - b.d; }).slice(0, 4);
+    var t = this.fish.filter(function (o) { return o.alive && o !== src && !(o.def && o.def.prop); }).map(function (o) { return { o: o, d: Math.hypot(o.cont.x - src.cont.x, o.cont.y - src.cont.y) }; }).filter(function (z) { return z.d < 160; }).sort(function (a, b) { return a.d - b.d; }).slice(0, 4);
     for (var i = 0; i < t.length; i++) { var o = t[i].o; if (this._splashRoll(o.def, shot.power, shot.free, shot.unitBet)) this._catch(o, shot, true); }
   };
-  FishShooter2.prototype._chain = function (src, shot) {
+  FishShooter2.prototype._chain = function (src, shot, forks) {
     var visualOnly = this._tokenActive() && !shot.free; // v6 #25: keep the lightning arcs, but in token paid play don't despawn shootable fish from a client roll (server paid splash.total already)
-    var t = this.fish.filter(function (o) { return o.alive && o !== src; }).map(function (o) { return { o: o, d: Math.hypot(o.cont.x - src.cont.x, o.cont.y - src.cont.y) }; }).sort(function (a, b) { return a.d - b.d; }).slice(0, 3);
+    var t = this.fish.filter(function (o) { return o.alive && o !== src && !(o.def && o.def.prop); }).map(function (o) { return { o: o, d: Math.hypot(o.cont.x - src.cont.x, o.cont.y - src.cont.y) }; }).sort(function (a, b) { return a.d - b.d; }).slice(0, forks || 3);
     var px = src.cont.x, py = src.cont.y;
     for (var i = 0; i < t.length; i++) { var o = t[i].o; this._lightning(px, py, o.cont.x, o.cont.y); px = o.cont.x; py = o.cont.y; if (!visualOnly && this._splashRoll(o.def, shot.power, shot.free, shot.unitBet)) this._catch(o, shot, true); }
   };
@@ -588,10 +747,14 @@
   // BONUS_THEME: per-round world background + banner + accent. All are free-shot WAVE rounds,
   // funded by the trigger creature's pre-paid budget (25× unitBet) — house edge unchanged.
   var BONUS_THEME = {
-    frenzy: { name: "FRENZY", bg: "bg_frenzy", title: "⚡ FEEDING FRENZY ⚡", sub: "FREE SHOTS!", color: 0x45f0a6 },
-    vault:  { name: "VAULT",  bg: "bg_vault",  title: "💰 TREASURE VAULT 💰", sub: "FREE SHOTS!", color: 0xffd23f },
-    storm:  { name: "STORM",  bg: "bg_storm",  title: "🌩 LIGHTNING STORM 🌩", sub: "FREE CHAIN SHOTS!", color: 0x2bd6ff },
+    frenzy: { name: "FRENZY", bg: "bg_frenzy", title: "⚡ FEEDING FRENZY ⚡", sub: "FREE LASER SHOTS!", color: 0x45f0a6, bolt: 0x4dff7a },
+    vault:  { name: "VAULT",  bg: "bg_vault",  title: "💰 TREASURE VAULT 💰", sub: "FREE SHOTS!", color: 0xffd23f, bolt: 0xffd23f },
+    storm:  { name: "STORM",  bg: "bg_storm",  title: "🌩 LIGHTNING STORM 🌩", sub: "FREE CHAIN SHOTS!", color: 0x2bd6ff, bolt: 0x2bd6ff },
   };
+  // Vault-wave PROP fish (Keywing Shoal): a LOCAL display-only def — never in the engine FISH/BY_KEY/
+  // WAVE_SPAWN, mult 0, intercepted in _resolveHit BEFORE any engine roll or server bet (F3). Its only
+  // money path is the _waveAward pour in _propPop.
+  var VAULT_KEY_DEF = { key: "vb_key", name: "Keywing", mult: 0, tier: "small", weight: 0, r: 16, color: 0xffd23f, accent: 0x39e7ff, prop: true, vault: "key", sizeMul: 0.9 };
   // Bonus-wave spawn roster: PLAIN fish only (EV per connecting shot = RTP*cost, so the expected-
   // value budget stays an unbiased estimator), with the mid-bosses (shark/kraken) BOOSTED so you get
   // real shots at BIG fish during a bonus. NO bonus/splash creatures (they'd re-arm a round or skew
@@ -622,6 +785,20 @@
     if (this.bgWorld && this.tex[th.bg]) { try { this.bgWorld.texture = this.tex[th.bg]; this._layout(); } catch (e) {} } // swap to this round's world
     this._flashBanner(th.title, th.sub, th.color);
     this._screenFlash(th.color);
+    // ── bonus remake: per-world scripted cast. Display-only actors driven by _updateWave; every payment
+    // they present flows through the single _waveAward choke point (clamped + deferred). Missing art
+    // degrades each actor to "absent" via the _frames guard — the wave itself is untouched. ──
+    this._wave = {
+      kind: kind, t: 0,
+      surge: kind === "frenzy" ? 2.5 : 0,                                    // frenzy: tighter spawn interval for the opening surge
+      heraldT: kind === "frenzy" ? 1.2 : (kind === "storm" ? 0.3 : -1),      // herald entrance times
+      keyT: 0.4, keys: 0, combo: 0, giltFired: 0,
+      gilt: null, herald: null, maw: null, elder: null, midas: null, lev: null, aurex: null,
+      elderDone: false, midasDone: false, levDone: false, aurexDone: false,
+      groundT: 0, boltT: 0.6, done: false,
+    };
+    this._laserSweep(th.bolt || th.color); // one-shot cosmetic mega-beam (kills nothing)
+    var Cf = root.Chiptune; if (Cf && Cf.fanfare) try { Cf.fanfare(); } catch (e) {}
     for (var i = 0; i < 8; i++) { (function (self) { setTimeout(function () { if (self._active && self._frenzy > 0) self._spawnFish(self._pickWaveFish()); }, i * 120); })(this); }
   };
   // ── shared bonus-WAVE launcher: 3-2-1 countdown → world crossfade → free-shot wave ──
@@ -629,6 +806,12 @@
   FishShooter2.prototype._startBonus = function (kind, shot) {
     if (!this._canBonus()) return;
     this._bonus = { kind: kind, shot: { unitBet: shot.unitBet, power: shot.power, cost: shot.cost, free: !!shot.free }, countT: 0, lastNum: 99, started: false };
+    this._endParade(); // F8: a parade never overlaps a round
+    // F9: pre-swap the WORLD texture NOW (kind is known here) so the RIGHT world crossfades in during
+    // the 3-2-1 countdown — after a prior vault/storm round bgWorld still held the old world's art.
+    var th0 = BONUS_THEME[kind] || BONUS_THEME.frenzy;
+    if (this.bgWorld && this.tex[th0.bg]) { try { this.bgWorld.texture = this.tex[th0.bg]; this._layout(); } catch (e) {} }
+    var Cq = root.Chiptune; if (Cq && Cq.charge) try { Cq.charge(); } catch (e) {}
     // v6 #10: clear in-flight PAID shots the instant a bonus wave triggers — mirror the boss round (which
     // already does this at _updateBoss). Otherwise a pre-wave paid bullet still travels and can hit a FREE
     // wave fish: in token mode that fires an unexpected mid-wave server bet on connect; in demo it debits/
@@ -650,17 +833,28 @@
   };
   FishShooter2.prototype._updateBonus = function (dt) {
     var bz = this._bonus; if (!bz) return;
-    if (!bz.started) { // 3-2-1 countdown
+    if (!bz.started) { // 3-2-1 countdown (suspense-spec restyle: cyan → gold → red, rising ticks, growing shake)
       bz.countT += dt;
       var num = 3 - Math.floor(bz.countT);
-      if (num !== bz.lastNum) { bz.lastNum = num; if (num > 0) { this._flashBanner(String(num), "GET READY!", 0xffe08a); this._shake = Math.max(this._shake, 4 + (3 - num) * 3); var Cc = root.Chiptune; if (Cc && Cc.blip) try { Cc.blip(); } catch (e) {} } }
-      if (bz.countT >= 3) { bz.started = true; this._startFrenzy(10, bz.shot, bz.kind); } // 10s = safety cap; the wave normally ends earlier when the expected budget is delivered
+      if (num !== bz.lastNum) {
+        bz.lastNum = num;
+        if (num > 0) {
+          var cdCols = { 3: 0x39e7ff, 2: 0xffd23f, 1: 0xff4d6a };
+          this._flashBanner(String(num), "GET READY!", cdCols[num] || 0xffe08a);
+          this._shake = Math.max(this._shake, 4 + (3 - num) * 3);
+          var Cc = root.Chiptune; if (Cc) try { if (Cc.tick) Cc.tick(num); else if (Cc.blip) Cc.blip(); } catch (e) {}
+          if (bz.kind === "storm") this._skyBolt(this.W / 2 + rand(-40, 40), this.H * 0.34); // each number is STRUCK by a sky-bolt
+          if (bz.kind === "vault") { this._vaultDialFx(num); if (Cc && Cc.rumble) try { Cc.rumble(0.15); } catch (e) {} } // the rune-dial CLUNKS a notch
+        }
+      }
+      if (bz.countT >= 3) { bz.started = true; this._startFrenzy(bz.kind === "frenzy" ? 12 : 10, bz.shot, bz.kind); } // safety cap only (frenzy 12s so the Bloommaw climax fits); the wave normally ends earlier when the expected budget is delivered
       return;
     }
     if (this._frenzy <= 0) this._endBonusWave(); // wave finished → finale + revert
   };
   FishShooter2.prototype._endBonusWave = function () {
     var bz = this._bonus; if (!bz) return; var kind = bz.kind; this._bonus = null;
+    this._clearWaveCast(); // destroy the scripted cast + prop fish + charged halos before the reveal
     this._clearRoundBullets(); // wave over → no free bullet may linger into the finale / normal play
     var th = BONUS_THEME[kind] || BONUS_THEME.frenzy;
     // TOKEN: free wave catches aren't accumulated locally (the server disbursed the whole wave into r.tokens),
@@ -696,13 +890,510 @@
         if (fz.kind === "vault") this._openChest({ cont: { x: this.W / 2, y: this.H * 0.40 }, r: this.W * 0.12 }, fz.shot); // vault pops its chest on the deposit
         this._flashBanner("YOU WON  $" + fz.won.toFixed(2), "DEPOSITED →", 0xffd23f);
         this._depositPulse = 1; for (var i = 0; i < 70; i++) this._rainCoin();
-        var C = root.Chiptune; if (C && C.jackpot) try { C.jackpot(); } catch (e) {}
+        var C = root.Chiptune; if (C) try { if (C.jackpot) C.jackpot(); if (C.fanfare) C.fanfare(); } catch (e) {}
       } else { this._flashBanner((fz.th.name || "BONUS") + " COMPLETE", "", fz.th.color); }
       this._renderHud();
     }
     if (fz.t >= fz.dur) { this._bonusFinale = null; this._renderHud(); } // resume normal play; world bg fades via _frame
   };
 
+
+  /* ---------- bonus-remake: scripted wave cast (Great Bloom / Treasure Vault / Lightning Storm) ----------
+     Display-driven actors — NEVER in this.fish (except the vb_key PROP, intercepted in _resolveHit),
+     never in the engine roster, no kill-prob rolls. Money only via _waveAward (clamped, deferred). */
+  // Spawn a cast actor: AnimatedSprite in bossLayer, guarded by _frames (F12 — missing art → null).
+  FishShooter2.prototype._spawnCastActor = function (key, o) {
+    var fr = this._frames(key, 8); if (!fr.length) return null;
+    var spr = new PIXI.AnimatedSprite(fr); spr.anchor.set(0.5); spr.animationSpeed = o.anim || 0.1; spr.play();
+    var c = new PIXI.Container(); c.addChild(spr);
+    var dw = o.dw || 200, sc = dw / fr[0].width; c.scale.set(sc);
+    var fromLeft = o.fromLeft != null ? o.fromLeft : true;
+    c.x = o.x != null ? o.x : (fromLeft ? -dw * 0.6 : this.W + dw * 0.6);
+    c.y = o.y != null ? o.y : this.H * 0.3;
+    if (!fromLeft) c.scale.x = -sc;
+    var vx = o.vx != null ? o.vx : ((this.W + dw * 1.2) / (o.dur || 5)) * (fromLeft ? 1 : -1);
+    this.bossLayer.addChild(c);
+    return { key: key, c: c, spr: spr, vx: vx, vy: o.vy || 0, sine: o.sine || 0, orbit: !!o.orbit, baseY: c.y, t: 0, r: o.r || 0, dead: false, layer: this.bossLayer };
+  };
+  FishShooter2.prototype._moveCast = function (a, dt) {
+    if (!a || !a.c) return; a.t += dt;
+    if (a.orbit) { a.c.x = this.W / 2 + Math.sin(a.t * 0.9) * this.W * 0.18; a.c.y = a.baseY + Math.sin(a.t * 1.4) * 24; }
+    else { a.c.x += a.vx * dt; a.c.y += (a.vy || 0) * dt; if (a.sine) a.c.y = a.baseY + Math.sin(a.t * 2.2) * a.sine; }
+  };
+  FishShooter2.prototype._castOff = function (a) {
+    if (!a || !a.c) return false;
+    var half = Math.abs(a.c.width) * 0.6;
+    return a.vx > 0 ? a.c.x > this.W + half : (a.vx < 0 ? a.c.x < -half : false);
+  };
+  FishShooter2.prototype._rmCast = function (a) {
+    if (!a || !a.c) { if (a) a.dead = true; return; }
+    try { (a.layer || this.bossLayer).removeChild(a.c); a.c.destroy({ children: true }); } catch (e) {}
+    a.c = null; a.dead = true;
+  };
+  // The Bloommaw Titan: screen-wide climax crosser with 5 gold bloom-pods along its flank.
+  FishShooter2.prototype._spawnMaw = function () {
+    var a = this._spawnCastActor("fb_maw", { y: this.H * 0.32, dw: this.W * 1.05, dur: 4.5, anim: 0.09 });
+    if (!a) return null;
+    a.pods = []; a.podR = Math.max(18, Math.min(this.W, this.H) * 0.055);
+    this._whiteGlow = this._whiteGlow || this._radial(0xffffff, 128);
+    var fw = a.spr.texture.width, fh = a.spr.texture.height;
+    for (var i = 0; i < 5; i++) {
+      var sp = new PIXI.Sprite(this._whiteGlow); sp.anchor.set(0.5); sp.blendMode = PIXI.BLEND_MODES.ADD; sp.tint = 0xffd23f;
+      var lx = (i / 4 - 0.5) * fw * 0.7, ly = fh * 0.18;
+      sp.x = lx; sp.y = ly; sp.scale.set((a.podR * 2.4) / 128 / Math.abs(a.c.scale.y));
+      a.c.addChild(sp);
+      a.pods.push({ sp: sp, lx: lx, ly: ly, cracked: false });
+    }
+    var C = root.Chiptune; if (C && C.rumble) try { C.rumble(1.2); } catch (e) {}
+    this._shake = Math.max(this._shake, 8);
+    return a;
+  };
+  // Storm herald ion-wake: mark a fish CHARGED (its kill forks to 4) with a crackling halo child.
+  FishShooter2.prototype._chargeFish = function (f) {
+    if (f.charged || !f.alive) return; f.charged = true;
+    this._glowCache = this._glowCache || {};
+    var gt = this._glowCache[0x2bd6ff] || (this._glowCache[0x2bd6ff] = this._radial(0x2bd6ff, 128));
+    var halo = new PIXI.Sprite(gt); halo.anchor.set(0.5); halo.blendMode = PIXI.BLEND_MODES.ADD; halo.alpha = 0.55;
+    halo.scale.set((f.r * 3) / 128 / (f.scale || 1));
+    f.cont.addChildAt(halo, 0); f.halo = halo;
+  };
+  // ── per-frame wave-script driver (called from _frame while a wave is live) ──
+  FishShooter2.prototype._updateWave = function (dt) {
+    var wv = this._wave; if (!wv || this._frenzy <= 0) return;
+    wv.t += dt; if (wv.surge > 0) wv.surge -= dt;
+    var prog = this._waveProgress(), rem = this._waveRemaining(), W = this.W, H = this.H;
+    if (wv.kind === "frenzy") {
+      // BEAT 5 — the Bloom Herald sings the swarm in (pays nothing; spawns engine fish under the 14 cap)
+      if (wv.heraldT >= 0 && wv.t >= wv.heraldT && !wv.herald) {
+        wv.heraldT = -1;
+        wv.herald = this._spawnCastActor("fb_herald", { y: H * 0.2, dw: Math.min(W, H) * 0.55, dur: 5 });
+        if (wv.herald) wv.herald.wakeT = 0.6;
+      }
+      if (wv.herald && wv.herald.c) {
+        this._moveCast(wv.herald, dt);
+        wv.herald.wakeT -= dt;
+        if (wv.herald.wakeT <= 0) {
+          wv.herald.wakeT = 0.6;
+          for (var hw = 0; hw < 2; hw++) { var nf2 = this._spawnFish(this._pickWaveFish()); if (nf2) { nf2.cont.x = wv.herald.c.x; nf2.cont.y = wv.herald.c.y + rand(16, 70); } }
+        }
+        if (this._castOff(wv.herald)) this._rmCast(wv.herald);
+        if (wv.herald && wv.herald.dead) wv.herald = null;
+      }
+      // BEAT 6 — the Gilded Aurelia at 35% / 65% progress (skip on an empty pot — F4)
+      if (!wv.gilt && wv.giltFired < 2 && rem > 0 && prog >= (wv.giltFired === 0 ? 0.35 : 0.65)) {
+        wv.gilt = this._spawnCastActor("fb_gilt", { x: W * rand(0.3, 0.7), y: -60, vx: 0, vy: H / 5, dw: Math.min(W, H) * 0.3, r: Math.min(W, H) * 0.13, anim: 0.12 });
+        if (wv.gilt) wv.giltFired++;
+      }
+      if (wv.gilt && wv.gilt.c) { this._moveCast(wv.gilt, dt); if (wv.gilt.c.y > H + 80) this._rmCast(wv.gilt); if (wv.gilt.dead) wv.gilt = null; }
+      // BEAT 7 — the Bloommaw breaches at 70% progress or t≥6.5s (verdict F3: 0.7 beats the cutoff)
+      if (!wv.maw && !wv.done && (prog >= 0.7 || wv.t >= 6.5)) {
+        if (rem > 0) wv.maw = this._spawnMaw();
+        if (!wv.maw) wv.done = true; // no art / empty pot → the normal budget/timer end path finishes the wave
+      }
+      if (wv.maw && wv.maw.c) {
+        this._moveCast(wv.maw, dt);
+        if (this._castOff(wv.maw)) { this._rmCast(wv.maw); wv.maw = null; this._endWaveSoon(); } // exits with pods uncracked → wave ends via the EXISTING path (F1)
+      }
+    } else if (wv.kind === "vault") {
+      // ACT I — Keywing flood (concurrency-capped so real engine targets stay dense — verdict F5)
+      wv.keyT -= dt;
+      if (wv.keyT <= 0 && wv.keys < 12 && wv.t < 4.5 && rem > 0) {
+        wv.keyT = rand(0.25, 0.5);
+        var liveKeys = 0;
+        for (var ki = 0; ki < this.fish.length; ki++) { var kf0 = this.fish[ki]; if (kf0.alive && kf0.def.prop) liveKeys++; }
+        if (liveKeys < 4 && this.fish.length < 12) { var kf = this._spawnFish(VAULT_KEY_DEF); if (kf) { wv.keys++; kf.vy = rand(-8, 8); } } // F4: use the RETURNED object
+      }
+      // ACT II — the Elder Vaultback crosses; each free hit cracks a lock-seam
+      if (!wv.elder && !wv.elderDone && (wv.t >= 2.5 || prog >= 0.25)) {
+        if (rem > 0) {
+          wv.elder = this._spawnCastActor("vb_elder", { y: H * 0.35, dw: Math.min(W, H) * 0.85, dur: 5.5, anim: 0.08 });
+          if (wv.elder) { wv.elder.seams = 8; wv.elder.r = Math.min(W, H) * 0.3; this._shake = Math.max(this._shake, 10); var Ce = root.Chiptune; if (Ce && Ce.rumble) try { Ce.rumble(0.6); } catch (e) {} }
+        }
+        wv.elderDone = true;
+      }
+      if (wv.elder && wv.elder.c) { this._moveCast(wv.elder, dt); if (this._castOff(wv.elder)) this._rmCast(wv.elder); if (wv.elder.dead) wv.elder = null; }
+      // ACT III — the Midas Serpent: one fast S-curve pass, its kill pours the climax
+      if (!wv.midas && !wv.midasDone && (wv.t >= 6 || prog >= 0.55)) {
+        if (rem > 0) {
+          wv.midas = this._spawnCastActor("vb_midas", { y: H * 0.4, dw: Math.min(W, H) * 0.6, dur: 2.8, sine: H * 0.12, anim: 0.14 });
+          if (wv.midas) { wv.midas.r = Math.min(W, H) * 0.19; var Cm = root.Chiptune; if (Cm && Cm.charge) try { Cm.charge(); } catch (e) {} }
+        }
+        wv.midasDone = true;
+      }
+      if (wv.midas && wv.midas.c) { this._moveCast(wv.midas, dt); if (this._castOff(wv.midas)) this._rmCast(wv.midas); if (wv.midas.dead) wv.midas = null; }
+    } else if (wv.kind === "storm") {
+      // ambient far-bg sky-bolts (display only, fx-capped)
+      wv.boltT -= dt;
+      if (wv.boltT <= 0) { wv.boltT = rand(0.8, 1.4); if (this.fx.length < 24) this._skyBolt(rand(W * 0.1, W * 0.9), rand(H * 0.15, H * 0.5)); }
+      // ACT 1 — the Nimbus Herald charges the shoal (display-HP 6; SKYFALL on dissipation)
+      if (wv.heraldT >= 0 && wv.t >= wv.heraldT && !wv.herald) {
+        wv.heraldT = -1;
+        wv.herald = this._spawnCastActor("sb_herald", { y: H * 0.18, dw: Math.min(W, H) * 0.5, dur: 5 });
+        if (wv.herald) { wv.herald.hp = 6; wv.herald.r = Math.min(W, H) * 0.16; }
+      }
+      if (wv.herald && wv.herald.c) {
+        this._moveCast(wv.herald, dt);
+        for (var sfi = 0; sfi < this.fish.length; sfi++) { var sf = this.fish[sfi]; if (!sf.alive || sf.charged || (sf.def && sf.def.prop)) continue; if (Math.abs(sf.cont.y - wv.herald.c.y) < 70 && Math.abs(sf.cont.x - wv.herald.c.x) < 120) this._chargeFish(sf); }
+        if (this._castOff(wv.herald)) this._rmCast(wv.herald);
+        if (wv.herald && wv.herald.dead) wv.herald = null;
+      }
+      // ACT 2 — Zephyrion the conductor (unkillable; grounds bullets into _splashRoll kills)
+      if (!wv.lev && !wv.levDone && (prog >= 0.33 || wv.t >= 2.5)) {
+        wv.lev = this._spawnCastActor("sb_levi", { y: H * 0.45, dw: W * 0.9, dur: 4.5, sine: 26, anim: 0.08 });
+        if (wv.lev) { wv.lev.r = Math.min(W, H) * 0.2; var Cl = root.Chiptune; if (Cl && Cl.rumble) try { Cl.rumble(1.2); } catch (e) {} }
+        wv.levDone = true;
+      }
+      if (wv.lev && wv.lev.c) { this._moveCast(wv.lev, dt); if (this._castOff(wv.lev)) this._rmCast(wv.lev); if (wv.lev.dead) wv.lev = null; }
+      wv.groundT -= dt;
+      // ACT 3 — Aurex, the Gilded Fulmen (siphons GUARANTEED remaining budget per hit)
+      if (!wv.aurex && !wv.aurexDone && (prog >= 0.62 || wv.t >= 5.5)) {
+        if (rem > 0) {
+          wv.aurex = this._spawnCastActor("sb_aurex", { x: W / 2, y: H * 0.3, vx: 0, dw: Math.min(W, H) * 0.34, orbit: true, anim: 0.12 });
+          if (wv.aurex) { wv.aurex.hp = 8; wv.aurex.r = Math.min(W, H) * 0.15; this._skyBolt(W / 2, H * 0.3, 0xffd23f); }
+        }
+        wv.aurexDone = true;
+      }
+      if (wv.aurex && wv.aurex.c) { this._moveCast(wv.aurex, dt); if (wv.aurex.dead) wv.aurex = null; }
+    }
+  };
+  // ── wave-cast bullet hit-test (called from the bullet loop for LIVE free wave bolts only).
+  // Returns true when the bullet was consumed by a cast actor. ──
+  FishShooter2.prototype._waveHit = function (b) {
+    var wv = this._wave; if (!wv) return false;
+    var bx = b.s.x, by = b.s.y;
+    if (wv.kind === "frenzy") {
+      // fb_herald: bolts pass THROUGH (soft chime flare, bullet NOT consumed)
+      if (wv.herald && wv.herald.c && Math.hypot(bx - wv.herald.c.x, by - wv.herald.c.y) < Math.min(this.W, this.H) * 0.14 + b.r) {
+        if (Math.random() < 0.25) this._net(bx, by, 0x39e7ff);
+      }
+      // fb_gilt: ONE hit pops her — guaranteed pour of min(3×unit, remaining)
+      if (wv.gilt && wv.gilt.c && !wv.gilt.dead && Math.hypot(bx - wv.gilt.c.x, by - wv.gilt.c.y) < wv.gilt.r + b.r) {
+        var gx = wv.gilt.c.x, gy = wv.gilt.c.y;
+        this._burst(gx, gy, 1.4); this._net(gx, gy, 0xffd23f, true);
+        this._waveAward(Math.min(3 * (this._frenzyUnit || 1), this._waveRemaining()), gx, gy);
+        for (var gc = 0; gc < 6; gc++) this._spawnCoin(gx, gy, this.W / 2, 24);
+        this._rmCast(wv.gilt); wv.gilt = null;
+        var Cg = root.Chiptune; if (Cg && Cg.bigwin) try { Cg.bigwin(); } catch (e) {}
+        return true;
+      }
+      // fb_maw pods: each crack pours a deterministic slice of what the pot still owes
+      if (wv.maw && wv.maw.c && wv.maw.pods) {
+        var mc = wv.maw.c;
+        for (var pi2 = 0; pi2 < wv.maw.pods.length; pi2++) {
+          var pod = wv.maw.pods[pi2]; if (pod.cracked) continue;
+          var px = mc.x + pod.lx * mc.scale.x, py = mc.y + pod.ly * Math.abs(mc.scale.y);
+          if (Math.hypot(bx - px, by - py) >= wv.maw.podR + b.r) continue;
+          pod.cracked = true; pod.sp.alpha = 0.15;
+          var left = 0;
+          for (var pj = 0; pj < wv.maw.pods.length; pj++) if (!wv.maw.pods[pj].cracked) left++;
+          var remNow = this._waveRemaining();
+          // F13 (conservative option): demo pods pour ceil(remaining*0.85/podsLeft) — the 10s-cap
+          // truncation margin is preserved; token pours re-pace the already-paid server total.
+          var slice = Math.max(0.01, Math.ceil(remNow * (this._tokenActive() ? 1 : 0.85) / (left + 1) * 100) / 100);
+          this._waveAward(slice, px, py);
+          this._burst(px, py, 1.1); this._shake = Math.max(this._shake, 8);
+          var Ct = root.Chiptune; if (Ct && Ct.tick) try { Ct.tick(5 + (5 - left)); } catch (e) {}
+          if (left === 0) { // final pod: full-body gold flash → the EXISTING end path runs next frame (F1)
+            this._screenFlash(0xffd23f); this._burst(mc.x, mc.y, 2.6);
+            var Cj = root.Chiptune; if (Cj && Cj.jackpot) try { Cj.jackpot(); } catch (e) {}
+            this._rmCast(wv.maw); wv.maw = null;
+            this._endWaveSoon();
+          }
+          return true;
+        }
+      }
+    } else if (wv.kind === "vault") {
+      // vb_elder: each hit cracks a lock-seam (8) → gold pour; all 8 → shell bursts open
+      if (wv.elder && wv.elder.c && !wv.elder.dead && wv.elder.seams > 0 && Math.hypot(bx - wv.elder.c.x, by - wv.elder.c.y) < wv.elder.r + b.r) {
+        wv.elder.seams--;
+        this._burst(bx, by, 0.9); this._lightning(bx, by, bx + rand(-50, 50), by + rand(-50, 50));
+        this._waveAward(Math.max(0.01, Math.round(this._frenzyBudget * 0.035 * 100) / 100), bx, by);
+        var Cr = root.Chiptune; if (Cr && Cr.rumble) try { Cr.rumble(0.2); } catch (e) {}
+        if (wv.elder.seams === 0) {
+          var ex = wv.elder.c.x, ey = wv.elder.c.y, er = wv.elder.r;
+          this._rmCast(wv.elder); wv.elder = null;
+          this._openChest({ cont: { x: ex, y: ey }, r: er * 0.8 }, null);
+          this._waveAward(Math.min(this._waveRemaining(), Math.round(this._frenzyBudget * 0.10 * 100) / 100), ex, ey);
+          this._screenFlash(0xffd23f);
+        }
+        return true;
+      }
+      // vb_midas: its kill is the wave's designed climax pour
+      if (wv.midas && wv.midas.c && !wv.midas.dead && Math.hypot(bx - wv.midas.c.x, by - wv.midas.c.y) < wv.midas.r + b.r) {
+        var mx = wv.midas.c.x, my = wv.midas.c.y;
+        this._rmCast(wv.midas); wv.midas = null;
+        this._explosion(mx, my, 0xffd23f);
+        this._waveAward(Math.min(this._waveRemaining(), Math.round(this._frenzyBudget * 0.45 * 100) / 100), mx, my);
+        for (var mc2 = 0; mc2 < 24; mc2++) this._spawnCoin(mx + rand(-40, 40), my + rand(-30, 30));
+        this._shake = Math.max(this._shake, 20);
+        var Cj2 = root.Chiptune; if (Cj2) try { if (Cj2.jackpot) Cj2.jackpot(); if (Cj2.fanfare) Cj2.fanfare(); } catch (e) {}
+        return true;
+      }
+    } else if (wv.kind === "storm") {
+      // sb_herald: display-HP 6; dissipation → SKYFALL (≤6 sky-bolts, each a normal budget-metered roll)
+      if (wv.herald && wv.herald.c && !wv.herald.dead && Math.hypot(bx - wv.herald.c.x, by - wv.herald.c.y) < wv.herald.r + b.r) {
+        wv.herald.hp--;
+        this._net(bx, by, 0x39e7ff);
+        if (wv.herald.hp <= 0) {
+          this._rmCast(wv.herald); wv.herald = null;
+          var shot6 = { unitBet: b.unitBet, power: b.power, cost: 0, free: true };
+          var near = this.fish.filter(function (o) { return o.alive && !(o.def && o.def.prop); }).slice(0, 6);
+          for (var sk = 0; sk < near.length; sk++) {
+            var o6 = near[sk];
+            this._skyBolt(o6.cont.x, o6.cont.y);
+            if (this._splashRoll(o6.def, b.power, true, b.unitBet)) this._catch(o6, shot6, true);
+          }
+          var Ck = root.Chiptune; if (Ck && Ck.tick) try { Ck.tick(8); } catch (e) {}
+        }
+        return true;
+      }
+      // sb_levi: unkillable CONDUCTOR — grounds the bolt into a mega fork onto the nearest fish,
+      // resolved via the normal _splashRoll money path. F13: rate-limited to one grounding / 0.25s.
+      if (wv.lev && wv.lev.c && !wv.lev.dead && Math.hypot(bx - wv.lev.c.x, by - wv.lev.c.y) < wv.lev.r + b.r) {
+        if (wv.groundT <= 0) {
+          wv.groundT = 0.25;
+          if (wv.lev.spr) { wv.lev.spr.tint = 0xbfffff; var lv = wv.lev; setTimeout(function () { try { if (lv.spr) lv.spr.tint = 0xffffff; } catch (e) {} }, 120); }
+          var best = null, bd = 1e9;
+          for (var li = 0; li < this.fish.length; li++) { var lf = this.fish[li]; if (!lf.alive || (lf.def && lf.def.prop)) continue; var d2 = Math.hypot(lf.cont.x - bx, lf.cont.y - by); if (d2 < bd) { bd = d2; best = lf; } }
+          if (best) {
+            this._forkBolt(bx, by, best.cont.x, best.cont.y);
+            if (this._splashRoll(best.def, b.power, true, b.unitBet)) this._catch(best, { unitBet: b.unitBet, power: b.power, cost: 0, free: true }, true);
+          }
+        } else this._net(bx, by, 0x2bd6ff);
+        return true;
+      }
+      // sb_aurex: every hit siphons a GUARANTEED slice of the remaining budget into the pot meter
+      if (wv.aurex && wv.aurex.c && !wv.aurex.dead && Math.hypot(bx - wv.aurex.c.x, by - wv.aurex.c.y) < wv.aurex.r + b.r) {
+        wv.aurex.hp--;
+        var ax = wv.aurex.c.x, ay = wv.aurex.c.y;
+        this._lightning(ax, ay, this.W / 2, 20); // gold siphon arc into the top meter
+        this._waveAward(Math.min(this._waveRemaining(), Math.round(this._frenzyBudget * 0.04 * 100) / 100), ax, ay);
+        var Cn = root.Chiptune; if (Cn && Cn.coin) try { Cn.coin(); } catch (e) {}
+        if (wv.aurex.hp <= 0) {
+          // GOLD SUPERNOVA — pinned to min(remaining, budget×0.10) (storm verdict F3)
+          this._waveAward(Math.min(this._waveRemaining(), Math.round(this._frenzyBudget * 0.10 * 100) / 100), ax, ay);
+          this._screenFlash(0xffd23f); this._burst(ax, ay, 2.6);
+          for (var ac = 0; ac < 24; ac++) this._rainCoin();
+          this._rmCast(wv.aurex); wv.aurex = null;
+          var Cb = root.Chiptune; if (Cb && Cb.bigwin) try { Cb.bigwin(); } catch (e) {}
+        }
+        return true;
+      }
+    }
+    return false;
+  };
+  // Destroy the whole wave cast + sweep prop fish and charged halos. Called from _endBonusWave AND
+  // _teardownRounds (F2) — a channel exit mid-wave must strand NOTHING into normal play.
+  FishShooter2.prototype._clearWaveCast = function () {
+    var wv = this._wave;
+    if (wv) {
+      var actors = [wv.herald, wv.gilt, wv.maw, wv.elder, wv.midas, wv.lev, wv.aurex];
+      for (var i = 0; i < actors.length; i++) if (actors[i]) this._rmCast(actors[i]);
+      this._wave = null;
+    }
+    for (var fi = this.fish.length - 1; fi >= 0; fi--) {
+      var f = this.fish[fi]; if (!f) continue;
+      if (f.def && f.def.prop) { try { this.fishLayer.removeChild(f.cont); f.cont.destroy({ children: true }); } catch (e) {} this.fish.splice(fi, 1); continue; } // hard-remove props (F2)
+      if (f.charged) { f.charged = false; if (f.halo) { try { f.cont.removeChild(f.halo); f.halo.destroy(); } catch (e) {} f.halo = null; } } // strip CHARGED state (storm verdict F1)
+    }
+  };
+
+  /* ---------- bonus-remake FX helpers ---------- */
+  FishShooter2.prototype._skyBolt = function (x, y, color) {
+    if (this.fx.length > 30) return; // fx cap (storm verdict F5)
+    var g = new PIXI.Graphics(); g.lineStyle(3, color || 0x9fdcff, 0.95);
+    var sx = x + rand(-24, 24);
+    g.moveTo(sx, 0);
+    for (var i = 1; i < 6; i++) g.lineTo(lerp(sx, x, i / 6) + rand(-14, 14), y * (i / 6) + rand(-10, 10));
+    g.lineTo(x, y);
+    g.blendMode = PIXI.BLEND_MODES.ADD;
+    this.fxLayer.addChild(g); this.fx.push({ s: g, t: 0, dur: 0.25, kind: "fade" });
+  };
+  FishShooter2.prototype._forkBolt = function (x1, y1, x2, y2) {
+    if (this.fx.length > 30) return;
+    this._lightning(x1, y1, x2, y2);
+    this._lightning(x1, y1, x2 + rand(-30, 30), y2 + rand(-30, 30));
+    if (Math.random() < 0.6) this._lightning(lerp(x1, x2, 0.5), lerp(y1, y2, 0.5), x2 + rand(-50, 50), y2 + rand(-40, 40));
+  };
+  // One-shot cosmetic mega-beam up the field at wave start — kills nothing (laser-frenzy spec).
+  FishShooter2.prototype._laserSweep = function (color) {
+    var g = new PIXI.Graphics(); g.beginFill(color || 0x4dff7a, 0.4);
+    g.drawRect((this.cannon ? this.cannon.x : this.W / 2) - 26, 0, 52, this.H); g.endFill();
+    g.blendMode = PIXI.BLEND_MODES.ADD;
+    this.fxLayer.addChild(g); this.fx.push({ s: g, t: 0, dur: 0.45, kind: "fade" });
+  };
+  // Vault countdown rune-dial: short-lived fx entry per number → auto-expires (vault verdict F4).
+  FishShooter2.prototype._vaultDialFx = function (num) {
+    var g = new PIXI.Graphics(), cx = this.W / 2, cy = this.H * 0.4, R = Math.min(this.W, this.H) * 0.18;
+    var col = num === 3 ? 0x39e7ff : num === 2 ? 0xffd23f : 0xff4d6a;
+    g.lineStyle(4, col, 0.8); g.drawCircle(cx, cy, R);
+    for (var i = 0; i < 8; i++) { var a = (i / 8) * Math.PI * 2 + num; g.moveTo(cx + Math.cos(a) * R * 0.82, cy + Math.sin(a) * R * 0.82); g.lineTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R); }
+    g.blendMode = PIXI.BLEND_MODES.ADD;
+    this.fxLayer.addChild(g); this.fx.push({ s: g, t: 0, dur: 0.5, kind: "fade" });
+  };
+  // Boss-tier arrival sting: tracked god-ray spotlight + name tag + horn (display only).
+  FishShooter2.prototype._bossEntrance = function (f) {
+    if (this._spot || !this.fxLayer) return;
+    this._glowCache = this._glowCache || {};
+    var gt = this._glowCache[0xfff2c8] || (this._glowCache[0xfff2c8] = this._radial(0xfff2c8, 256));
+    var s = new PIXI.Sprite(gt); s.anchor.set(0.5); s.blendMode = PIXI.BLEND_MODES.ADD;
+    s.scale.set(1.2, 2.4); s.alpha = 0.32;
+    this.fxLayer.addChild(s);
+    this._spot = { s: s, f: f, t: 2 };
+    this._floatText(f.def.name.toUpperCase() + " APPROACHES", this.W / 2, this.H * 0.24, 0xffd23f);
+    var C = root.Chiptune; if (C) try { if (C.horn) C.horn(); else if (C.swoosh) C.swoosh(500); } catch (e) {}
+    this._shake = Math.max(this._shake, 3);
+  };
+
+  /* ---------- THE LIVING TRENCH: majestic parade + ambient micro-events (display only) ---------- */
+  FishShooter2.prototype._startParade = function (force) {
+    if (this._parade || !this.paradeLayer) return false;
+    if (this._boss || this._bonus || this._bonusFinale || this._frenzy > 0) return false;
+    for (var i = 0; i < this.fish.length; i++) { var f = this.fish[i]; if (f.alive && f.def.bonus) return false; } // F8: never during a live bonus-trigger window
+    var keys = ["colossus", "oracle", "cathedral"];
+    this._paradeIdx = ((this._paradeIdx || 0) + 1) % keys.length;
+    var key = keys[this._paradeIdx], fr = this._frames(key, 8);
+    if (!fr.length && force) for (var k2 = 0; k2 < keys.length; k2++) { if (this._frames(keys[k2], 8).length) { key = keys[k2]; fr = this._frames(key, 8); break; } }
+    if (!fr.length) return false; // F12: missing art → no parade today, never a throw
+    var s = new PIXI.AnimatedSprite(fr); s.anchor.set(0.5); s.animationSpeed = 0.09; s.play();
+    var vertical = key === "cathedral";
+    var dw = vertical ? Math.min(this.W, this.H) * 0.8 : this.W * 1.1;
+    s.scale.set(dw / fr[0].width); s.alpha = 0.33; // deep-background awe — never a target (own layer, F8)
+    var dur = vertical ? 15 : rand(12, 18);
+    var p = { s: s, key: key, t: 0, dur: dur, vertical: vertical };
+    if (vertical) { s.x = this.W * rand(0.3, 0.7); s.y = this.H + s.height * 0.55; p.vy = -(this.H + s.height * 1.1) / dur; }
+    else {
+      var fromLeft = Math.random() < 0.5;
+      s.x = fromLeft ? -dw * 0.6 : this.W + dw * 0.6; s.y = this.H * rand(0.22, 0.4);
+      p.vx = ((this.W + dw * 1.2) / dur) * (fromLeft ? 1 : -1);
+      if (!fromLeft) s.scale.x = -s.scale.y;
+    }
+    this.paradeLayer.addChild(s);
+    this._parade = p;
+    var C = root.Chiptune; if (C && C.rumble) try { C.rumble(1.5); } catch (e) {}
+    return true;
+  };
+  FishShooter2.prototype._updateParade = function (dt) {
+    var p = this._parade; if (!p) return;
+    p.t += dt;
+    if (p.vx) p.s.x += p.vx * dt;
+    if (p.vy) p.s.y += p.vy * dt;
+    if (p.t >= p.dur + 1) this._endParade();
+  };
+  FishShooter2.prototype._endParade = function () {
+    var p = this._parade; if (!p) return; this._parade = null;
+    try { this.paradeLayer.removeChild(p.s); p.s.destroy(); } catch (e) {}
+  };
+  FishShooter2.prototype._ambientEvent = function () {
+    var r = Math.random();
+    if (r < 0.34) this._plankton = 8; // plankton bloom: caustics blush magenta for ~8s
+    else if (r < 0.67) { this._skyBolt(rand(this.W * 0.2, this.W * 0.8), this.H * 0.16); var C = root.Chiptune; if (C && C.rumble) try { C.rumble(0.5); } catch (e) {} } // distant refraction
+    else this._wispSchool();
+  };
+  FishShooter2.prototype._wispSchool = function () { // non-target flyby on the parade layer (reuses wisp art)
+    var fr = this._frames("wisp", 8); if (!fr.length || !this.paradeLayer) return;
+    for (var i = 0; i < 9; i++) {
+      var s = new PIXI.AnimatedSprite(fr); s.anchor.set(0.5); s.animationSpeed = 0.14; s.play();
+      s.tint = 0x39e7ff; s.alpha = 0.3; s.scale.set(0.1 + Math.random() * 0.06);
+      s.x = -40 - i * 26; s.y = this.H * rand(0.2, 0.6);
+      this.paradeLayer.addChild(s);
+      this.fx.push({ s: s, t: 0, dur: 10, kind: "wisp", ph: rand(0, 6.28) });
+    }
+  };
+
+  // ── per-frame juice/ambient driver (heat ladder, laser overlay, storm rain, dusk, parade, spotlight,
+  // chain thread). ALL display-side — reads state the engine already produced, writes none of it. ──
+  FishShooter2.prototype._updateJuice = function (dt) {
+    var W = this.W, H = this.H;
+    // cannon HEAT ladder
+    if (this.barrel) {
+      var cb = this._combo || 0;
+      this.barrel.tint = cb >= 12 ? 0xfff6ee : cb >= 9 ? 0xff4d9d : cb >= 6 ? 0xffd23f : cb >= 3 ? 0x9be8ff : 0xffffff;
+    }
+    // themed FREE-shot overlay (drifting laser grid) + pulsing FREE tag
+    var mixT = this._frenzy > 0 ? 1 : 0;
+    this._laserMix += (mixT - this._laserMix) * Math.min(1, dt * 3.2);
+    if (this._laserMix < 0.01 && !mixT) this._laserMix = 0;
+    if (this.laserOverlay) {
+      var loOn = this._laserMix > 0.01;
+      this.laserOverlay.visible = loOn;
+      if (loOn) {
+        this.laserOverlay.alpha = 0.5 * this._laserMix;
+        var thj = BONUS_THEME[this._frenzyKind] || BONUS_THEME.frenzy;
+        if (this.laserGrid) { this.laserGrid.tint = thj.bolt || 0x4dff7a; this.laserGrid.y = (this._t * 26) % 44; }
+      }
+    }
+    if (this.freeTag) {
+      var ftOn = this._frenzy > 0 || !!(this._boss && this._boss.started);
+      this.freeTag.visible = ftOn;
+      if (ftOn) {
+        var ftCol = this._boss ? 0xb14dff : ((BONUS_THEME[this._frenzyKind] || BONUS_THEME.frenzy).bolt || 0x4dff7a);
+        if (this._freeTagCol !== ftCol) { this._freeTagCol = ftCol; this.freeTag.style.fill = ftCol; }
+        this.freeTag.x = this.cannon ? this.cannon.x : W / 2; this.freeTag.y = H - 58 * (this.uiScale || 1);
+        this.freeTag.scale.set(1 + 0.18 * Math.sin(this._t * 9));
+      }
+    }
+    // storm rain + dim
+    var smT = (this._frenzy > 0 && this._frenzyKind === "storm") ? 1 : 0;
+    this._stormMix += (smT - this._stormMix) * Math.min(1, dt * 3.2);
+    if (this._stormMix > 0.01) {
+      this._ensureRain();
+      if (this.rainLayer) {
+        this.rainLayer.visible = true; this.rainLayer.alpha = this._stormMix;
+        for (var ri = 0; ri < this.rainLayer.children.length; ri++) { var rs = this.rainLayer.children[ri]; rs.y += rs._vy * dt; rs.x -= rs._vy * dt * 0.12; if (rs.y > H + 20) { rs.y = -20; rs.x = rand(0, W + 60); } }
+      }
+    } else { this._stormMix = smT ? this._stormMix : 0; if (this.rainLayer && this.rainLayer.visible) this.rainLayer.visible = false; }
+    // caustic ambience tint (storm cyan / plankton magenta / frenzy green)
+    if (this._plankton > 0) this._plankton -= dt;
+    var ct = this._stormMix > 0.3 ? 0x9fdcff : (this._plankton > 0 ? 0xff9ed0 : (this._laserMix > 0.3 && this._frenzy > 0 && this._frenzyKind === "frenzy" ? 0xa5ffc8 : 0xffffff));
+    if (ct !== this._causticTint) { this._causticTint = ct; if (this.causticLayer) for (var cc2 = 0; cc2 < this.causticLayer.children.length; cc2++) this.causticLayer.children[cc2].tint = ct; }
+    // boss foreshadow DUSK (demo only; the idle meter is hidden, so this IS the tell).
+    // F13: NO colossus silhouette in base play — the dusk tint + heartbeat carry the foreshadow alone.
+    var duskOn = !this._boss && !this._bonus && !this._bonusFinale && this._frenzy <= 0 && !this._tokenActive() && this._jackpot >= 0.9;
+    this._duskMix = clamp(this._duskMix + (duskOn ? dt * 0.5 : -dt * 1.5), 0, 1);
+    if (this.bg) {
+      if (this._duskMix > 0.005) {
+        var dm = this._duskMix;
+        this.bg.tint = ((Math.round(255 - (255 - 0x8a) * dm)) << 16) | ((Math.round(255 - (255 - 0x6a) * dm)) << 8) | Math.round(255 - (255 - 0xd0) * dm);
+        this._duskTinted = true;
+        this._duskBeat = (this._duskBeat || 0) - dt;
+        if (this._duskBeat <= 0) { this._duskBeat = 2.2; var Cd = root.Chiptune; if (Cd) try { if (Cd.rumble) Cd.rumble(0.3); else if (Cd.blip) Cd.blip(); } catch (e) {} }
+      } else if (this._duskTinted) { this.bg.tint = 0xffffff; this._duskTinted = false; }
+    }
+    // majestic parade + ambient micro-events (plain play only)
+    var plain = !this._boss && !this._bonus && !this._bonusFinale && this._frenzy <= 0;
+    if (plain && this._ready) {
+      this._paradeT -= dt;
+      if (this._paradeT <= 0 && !this._parade) { this._paradeT = this._startParade() ? rand(180, 420) : 30; }
+      this._ambientT -= dt;
+      if (this._ambientT <= 0) { this._ambientT = rand(45, 120); this._ambientEvent(); }
+    }
+    if (this._parade) this._updateParade(dt);
+    // boss-tier arrival spotlight tracks its creature for ~2s
+    if (this._spot) {
+      var sp2 = this._spot; sp2.t -= dt;
+      if (sp2.t <= 0 || !sp2.f || !sp2.f.alive) { try { this.fxLayer.removeChild(sp2.s); sp2.s.destroy(); } catch (e) {} this._spot = null; }
+      else { sp2.s.x = sp2.f.cont.x; sp2.s.y = sp2.f.cont.y - sp2.f.r * 1.6; sp2.s.alpha = Math.min(0.32, sp2.t * 0.3); }
+    }
+    // catch-chain golden thread: ONE persistent Graphics, cleared each frame (trench verdict F6)
+    if (this.chainG) {
+      this.chainG.clear();
+      if (plain && this._comboT > 0 && this._chainPts.length >= 2) {
+        this.chainG.lineStyle(2, 0xffd23f, 0.5 * Math.min(1, this._comboT));
+        this.chainG.moveTo(this._chainPts[0].x, this._chainPts[0].y);
+        for (var cp = 1; cp < this._chainPts.length; cp++) this.chainG.lineTo(this._chainPts[cp].x, this._chainPts[cp].y);
+      }
+    }
+  };
+  FishShooter2.prototype._ensureRain = function () {
+    if (!this.rainLayer || this.rainLayer.children.length) return;
+    for (var i = 0; i < 40; i++) {
+      var g = new PIXI.Sprite(PIXI.Texture.WHITE); g.tint = 0x9fdcff; g.alpha = rand(0.15, 0.3);
+      g.width = 2; g.height = rand(10, 18); g.rotation = 0.12;
+      g.x = rand(0, this.W); g.y = rand(-this.H, 0); g._vy = rand(700, 1000);
+      this.rainLayer.addChild(g);
+    }
+  };
 
   // Chest-burst (Gold Crab / Armored Reef Crab). PURE VISUAL — the catch payout was already
   // metered through the crab's chest budget in the engine; the chest hands out NO extra money.
@@ -729,7 +1420,12 @@
     this._jackpot = 0;
     // pool = the accumulated jackpot rake; awarded on boss death (house edge preserved).
     this._bossId++;
-    this._boss = { id: this._bossId, pool: Math.round(this._jackpotPool * 100) / 100, won: 0, inc: 0, started: false, countT: 0, lastNum: 99, t: 0, dur: 45, minT: 0, flash: 0 };
+    // Economy fields (pool/won/inc/hpMax/dur) are byte-identical to the proven skeleton; everything
+    // added below is PRESENTATION state (phases/staggers/cast) — money still flows only through
+    // _accrueBoss + the _endBossRound remainder settle.
+    this._boss = { id: this._bossId, pool: Math.round(this._jackpotPool * 100) / 100, won: 0, inc: 0, started: false, countT: 0, lastNum: 99, t: 0, dur: 45, minT: 0, flash: 0,
+      phase: 1, submerged: 0, entry: 0, lungeT: rand(2.5, 4), tellT: 0, lungeVx: 0, lungeX: 0, lungeDur: 0, cast: [], castLayer: null, milestone: 0, seraphOn: false };
+    this._endParade(); // F8: a parade never overlaps a round
     this._shake = 30;
     this._flashBanner("JACKPOT ROUND!", "GET READY…", 0xffd23f);
     var C = root.Chiptune; if (C) try { (C.bigwin || C.jackpot || function () {})(); } catch (e) {}
@@ -738,10 +1434,14 @@
     if (!this.tex.boss) { this._endBossRound(); return; }
     var spr = new PIXI.Sprite(this.tex.boss); spr.anchor.set(0.5);
     var dispW = this.W * 0.52, scale = dispW / spr.texture.width; spr.scale.set(scale);
-    spr.x = this.W / 2; spr.y = this.H * 0.34;
+    spr.x = this.W / 2; spr.y = -this.H * 0.3; // ENTRANCE: descends from the surface gloom over 1.2s
     this.bossLayer.addChild(spr);
     this._boss.spr = spr; this._boss.scale = scale; this._boss.r = dispW * 0.4;
-    this._boss.baseY = spr.y; this._boss.hpMax = 150; this._boss.hp = 150; // a real battle — many hits to fell the dragon
+    this._boss.baseY = this.H * 0.34; this._boss.hpMax = 150; this._boss.hp = 150; // a real battle — many hits to fell the dragon
+    this._boss.entry = 1.2;
+    this._boss.castLayer = new PIXI.Container(); this.bossLayer.addChildAt(this._boss.castLayer, 0); // cast renders UNDER the boss; whole layer dies with _boss
+    this._screenFlash(0x9ff0d8); // god-ray
+    var Cr0 = root.Chiptune; if (Cr0 && Cr0.rumble) try { Cr0.rumble(0.6); } catch (e) {}
     // Dole the purse across the fight: per-hit increment from pool/hpMax with 0.9 headroom
     // (so live credits stay strictly under the purse; the remainder settles at the end).
     var bz = this._boss; var events = Math.max(1, bz.hpMax);
@@ -750,14 +1450,15 @@
   };
   FishShooter2.prototype._updateBoss = function (dt) {
     var bz = this._boss; if (!bz) return;
-    if (!bz.started) { // 3-2-1 countdown
+    if (!bz.started) { // 3-2-1 countdown (suspense-spec restyle: cyan → gold → red, rising ticks, growing shake)
       bz.countT += dt;
       var num = 3 - Math.floor(bz.countT);
-      if (num !== bz.lastNum) { bz.lastNum = num; if (num > 0) { this._flashBanner(String(num), "GET READY!", 0xffe08a); var Cc = root.Chiptune; if (Cc && Cc.blip) try { Cc.blip(); } catch (e) {} } }
+      if (num !== bz.lastNum) { bz.lastNum = num; if (num > 0) { var bCols = { 3: 0x39e7ff, 2: 0xffd23f, 1: 0xff4d6a }; this._flashBanner(String(num), "GET READY!", bCols[num] || 0xffe08a); this._shake = Math.max(this._shake, 4 + (3 - num) * 3); var Cc = root.Chiptune; if (Cc) try { if (Cc.tick) Cc.tick(num); else if (Cc.blip) Cc.blip(); } catch (e) {} } }
       if (bz.countT >= 3) {
         bz.started = true; bz.t = 0;
         this._flashBanner("FIGHT!", "BLAST THE DRAGON", 0xff4d6a);
         this._spawnBoss(); this._shake = 24;
+        for (var ffi = 0; ffi < this.fish.length; ffi++) { var ffs = this.fish[ffi]; if (ffs.alive) ffs.vx = (ffs.cont.x < this.W / 2 ? -1 : 1) * 220; } // every regular fish FLEES the arena
         // The boss arena clears your in-flight PAID shots (so they don't clutter / dump damage on the
         // dragon). They never got to resolve, so REFUND their cost — the boss round must never "cost
         // you shots". Then drop all pre-boss bullets.
@@ -770,14 +1471,136 @@
     }
     bz.t += dt;
     if (bz.spr) {
-      bz.spr.y = bz.baseY + Math.sin(this._t * 1.6) * 12;
-      bz.spr.x = this.W / 2 + Math.sin(this._t * 0.8) * this.W * 0.16; // sway across the screen — track it
-      bz.spr.rotation = Math.sin(this._t * 0.7) * 0.05;
-      bz.spr.scale.set(bz.scale * (1 + Math.sin(this._t * 4) * 0.012) * (bz.flash > 0 ? 1.05 : 1));
-      if (bz.flash > 0) { bz.flash -= dt; if (bz.flash <= 0) bz.spr.tint = 0xffffff; }
+      if (bz.entry > 0) { // ENTRANCE: descend from the surface gloom
+        bz.entry = Math.max(0, bz.entry - dt);
+        bz.spr.y = lerp(bz.baseY, -this.H * 0.3, bz.entry / 1.2); bz.spr.x = this.W / 2;
+      } else if (bz.submerged > 0) { // STAGGER DIVE: invulnerable, dimmed, sunk
+        bz.submerged -= dt;
+        bz.spr.alpha = 0.25; bz.spr.y = bz.baseY + 40;
+        if (bz.submerged <= 0) { bz.spr.alpha = 1; this._shake = Math.max(this._shake, 10); var Cu = root.Chiptune; if (Cu && Cu.rumble) try { Cu.rumble(0.5); } catch (e) {} }
+      } else {
+        var swayMul = bz.phase >= 3 ? 1.7 : bz.phase === 2 ? 1.4 : 1; // enrage tiers speed the sway
+        // LUNGE scheduler: a 0.5s violet TELL always precedes the horizontal burst (learnable skill)
+        bz.lungeT -= dt;
+        if (bz.lungeT <= 0 && bz.tellT <= 0 && bz.lungeVx === 0) { bz.tellT = 0.5; bz.spr.tint = 0xd0a0ff; var Cch = root.Chiptune; if (Cch && Cch.charge) try { Cch.charge(); } catch (e) {} }
+        if (bz.tellT > 0) { bz.tellT -= dt; if (bz.tellT <= 0) { bz.spr.tint = 0xffffff; bz.lungeVx = (Math.random() < 0.5 ? -1 : 1) * this.W * 0.5; bz.lungeDur = 0.7; } }
+        if (bz.lungeVx !== 0) { bz.lungeX += bz.lungeVx * dt; bz.lungeDur -= dt; if (bz.lungeDur <= 0) { bz.lungeVx = 0; bz.lungeT = rand(2.2, 4) / swayMul; } }
+        else bz.lungeX *= 0.94; // ease back home after the burst
+        bz.spr.y = bz.baseY + Math.sin(this._t * 1.6 * swayMul) * 12;
+        bz.spr.x = clamp(this.W / 2 + Math.sin(this._t * 0.8 * swayMul) * this.W * 0.16 + bz.lungeX, bz.r * 0.6, this.W - bz.r * 0.6);
+        bz.spr.rotation = Math.sin(this._t * 0.7) * 0.05;
+        bz.spr.scale.set(bz.scale * (1 + Math.sin(this._t * 4) * 0.012) * (bz.flash > 0 ? 1.05 : 1));
+        if (bz.flash > 0) { bz.flash -= dt; if (bz.flash <= 0) bz.spr.tint = 0xffffff; }
+      }
     }
-    bz.minT -= dt; if (bz.minT <= 0) { bz.minT = rand(0.5, 1.0); if (this.fish.length < 6) this._spawnFish(E.FISH[(Math.random() * 4) | 0]); }
+    // three-act phase machine (hp 150→100→50): act breaks STAGGER the boss + vent the Choir
+    var ph = bz.hp > 100 ? 1 : bz.hp > 50 ? 2 : 3;
+    if (ph > bz.phase && bz.hp > 0) this._bossStagger(ph);
+    this._updateBossCast(dt);
+    bz.minT -= dt;
+    if (bz.minT <= 0) { bz.minT = rand(0.5, 1.0); var mcap = bz.phase >= 3 ? 3 : 6, mpool = bz.phase === 2 ? 6 : 4; if (this.fish.length < mcap) this._spawnFish(E.FISH[(Math.random() * mpool) | 0]); } // ph2 adds ray/hatchet; ph3 thins minions so all guns point at the Leviathan
     if (bz.hp <= 0 || bz.t >= bz.dur) this._endBossRound();
+  };
+  // ── act-break STAGGER: white-out, dive invulnerable ~2.2s, vent the Voidspawn Choir ──
+  FishShooter2.prototype._bossStagger = function (ph) {
+    var bz = this._boss; if (!bz) return;
+    bz.phase = ph; bz.flash = 0.3; bz.submerged = 2.2;
+    if (bz.spr) bz.spr.tint = 0xffffff;
+    this._screenFlash(0xb14dff); this._shake = Math.max(this._shake, 20);
+    this._flashBanner(ph === 2 ? "PHASE II · THE MAW" : "PHASE III · EVENT HORIZON", "IT DIVES — SILENCE THE CHOIR!", 0xb14dff);
+    var C = root.Chiptune; if (C) try { if (C.rumble) C.rumble(0.8); else if (C.bigwin) C.bigwin(); } catch (e) {}
+    this._spawnChoir(ph === 2 ? 7 : 5);
+    if (ph === 3) this._spawnColossus(); // the Elder crosses BEHIND the fight; its exit summons the Seraph
+  };
+  FishShooter2.prototype._spawnChoir = function (n) {
+    var bz = this._boss; if (!bz || !bz.castLayer) return;
+    var fr = this._frames("bb_choir", 8); if (!fr.length) return; // F12: missing art skips the spectacle, never the accrual/settle
+    var cx = bz.spr ? bz.spr.x : this.W / 2, cy = bz.spr ? bz.spr.y : this.H * 0.34;
+    var dw = Math.min(this.W, this.H) * 0.16;
+    for (var i = 0; i < n; i++) {
+      var s = new PIXI.AnimatedSprite(fr); s.anchor.set(0.5); s.animationSpeed = 0.12; s.play();
+      s.scale.set(dw / fr[0].width); s.x = cx; s.y = cy;
+      bz.castLayer.addChild(s);
+      bz.cast.push({ kind: "choir", s: s, cx: cx, cy: cy, ang: (i / n) * Math.PI * 2, rad: 30, radT: Math.min(this.W, this.H) * 0.3, r: dw * 0.4 });
+      this._net(cx, cy, 0xb14dff);
+    }
+  };
+  FishShooter2.prototype._spawnColossus = function () {
+    var bz = this._boss; if (!bz || !bz.castLayer) return;
+    var fr = this._frames("bb_colossus", 8); if (!fr.length) { this._spawnSeraph(); return; } // no art → straight to the Seraph
+    var s = new PIXI.AnimatedSprite(fr); s.anchor.set(0.5); s.animationSpeed = 0.08; s.play();
+    var dw = this.W * 1.4; s.scale.set(dw / fr[0].width); s.alpha = 0.5;
+    s.x = this.W + dw * 0.6; s.y = this.H * 0.22; s.scale.x = -s.scale.y; // crosses right → left, dwarfing the boss
+    bz.castLayer.addChildAt(s, 0);
+    bz.cast.push({ kind: "colossus", s: s, vx: -(this.W + dw * 1.2) / 6 }); // NO r field → the collision loop can never match it (pure awe)
+    var C = root.Chiptune; if (C) try { if (C.rumble) C.rumble(1.2); if (C.horn) C.horn(); } catch (e) {}
+  };
+  FishShooter2.prototype._spawnSeraph = function () {
+    var bz = this._boss; if (!bz || !bz.castLayer || bz.seraphOn) return;
+    bz.seraphOn = true;
+    var fr = this._frames("bb_seraph", 8); if (!fr.length) return;
+    var s = new PIXI.AnimatedSprite(fr); s.anchor.set(0.5); s.animationSpeed = 0.12; s.play();
+    var dw = Math.min(this.W, this.H) * 0.24; s.scale.set(dw / fr[0].width);
+    bz.castLayer.addChild(s);
+    bz.cast.push({ kind: "seraph", s: s, ang: 0, hits: 0, r: dw * 0.45 });
+    this._skyBolt(this.W / 2, this.H * 0.3, 0xffd23f); // descends on a light pillar
+    var C = root.Chiptune; if (C && C.charge) try { C.charge(); } catch (e) {}
+  };
+  FishShooter2.prototype._updateBossCast = function (dt) {
+    var bz = this._boss; if (!bz || !bz.cast.length) return;
+    for (var i = bz.cast.length - 1; i >= 0; i--) {
+      var ce = bz.cast[i];
+      if (ce.kind === "choir") {
+        ce.ang += dt * 1.1; ce.rad = Math.min(ce.radT, ce.rad + dt * 90);
+        ce.s.x = ce.cx + Math.cos(ce.ang) * ce.rad; ce.s.y = ce.cy + Math.sin(ce.ang) * ce.rad * 0.6;
+      } else if (ce.kind === "colossus") {
+        ce.s.x += ce.vx * dt;
+        if (ce.s.x < -Math.abs(ce.s.width) * 0.6) { try { bz.castLayer.removeChild(ce.s); ce.s.destroy(); } catch (e) {} bz.cast.splice(i, 1); this._spawnSeraph(); continue; }
+      } else if (ce.kind === "seraph") {
+        ce.ang += dt * 0.9;
+        var ox = bz.spr ? bz.spr.x : this.W / 2, oy = bz.spr ? bz.spr.y : this.H * 0.34;
+        ce.s.x = ox + Math.cos(ce.ang) * (bz.r || 100) * 1.5; ce.s.y = oy + Math.sin(ce.ang) * (bz.r || 100) * 0.9;
+        ce.s.alpha = 0.45 + 0.55 * ((bz.pool - bz.won) / Math.max(0.01, bz.pool)); // its radiance IS the remaining purse
+      }
+    }
+  };
+  // Cast hit-test — lives INSIDE the bossId-gated bullet block (a stale bullet can never pop the cast
+  // for credit — boss verdict F3). Every credit here flows through the _accrueBoss pool clamp.
+  FishShooter2.prototype._bossCastHit = function (b) {
+    var bz = this._boss; if (!bz || !bz.cast.length) return false;
+    for (var i = bz.cast.length - 1; i >= 0; i--) {
+      var ce = bz.cast[i]; if (!ce.r) continue; // colossus: no hitbox — pure spectacle
+      if (Math.hypot(b.s.x - ce.s.x, b.s.y - ce.s.y) >= ce.r + b.r) continue;
+      if (ce.kind === "choir") {
+        var chx = ce.s.x, chy = ce.s.y; // capture BEFORE destroy (a destroyed sprite's transform is nulled)
+        this._burst(chx, chy, 0.6); this._net(chx, chy, 0xb14dff);
+        this._accrueBoss(bz.inc * 0.5, chx, chy, false); // same slice as a minion pop
+        try { bz.castLayer.removeChild(ce.s); ce.s.destroy(); } catch (e) {}
+        bz.cast.splice(i, 1);
+        var left = 0; for (var j = 0; j < bz.cast.length; j++) if (bz.cast[j].kind === "choir") left++;
+        if (left === 0 && bz.submerged > 0) { // CHOIR SILENCED — surge (pool-clamped) + early, angrier resurface
+          bz.submerged = 0.01;
+          this._accrueBoss(bz.inc * 4, chx, chy, true);
+          this._screenFlash(0xffd23f); this._flashBanner("CHOIR SILENCED!", "", 0xffd23f);
+          var Cs = root.Chiptune; if (Cs && Cs.bigwin) try { Cs.bigwin(); } catch (e) {}
+        }
+        var Cc2 = root.Chiptune; if (Cc2 && Cc2.coin) try { Cc2.coin(); } catch (e) {}
+        return true;
+      }
+      if (ce.kind === "seraph") {
+        ce.hits++;
+        this._accrueBoss(bz.inc * 0.75, ce.s.x, ce.s.y, true);
+        for (var sc2 = 0; sc2 < 3; sc2++) this._spawnCoin(ce.s.x, ce.s.y);
+        var Cn2 = root.Chiptune; if (Cn2 && Cn2.coin) try { Cn2.coin(); } catch (e) {}
+        if (ce.hits >= 12) { // ascends in a pillar of light
+          this._skyBolt(ce.s.x, ce.s.y, 0xffd23f); this._burst(ce.s.x, ce.s.y, 1.2);
+          try { bz.castLayer.removeChild(ce.s); ce.s.destroy(); } catch (e) {}
+          bz.cast.splice(i, 1);
+        }
+        return true;
+      }
+    }
+    return false;
   };
   // Single choke point for boss-round EARNED credits: clamps to the remaining purse, credits
   // balance, tracks bz.won, shows a +$ floater. bz.won can never exceed bz.pool.
@@ -792,6 +1615,9 @@
     this._won = amt; this._sesWon = Math.round((this._sesWon + amt) * 100) / 100;
     this._save(); this._renderHud();
     this._floatText("+$" + amt.toFixed(2), x, y, isBossHit ? 0xffd23f : 0x45f0a6);
+    // display-only HOARD milestones (25/50/75% CLAIMED) — clamp math above is untouched
+    var q = Math.floor(bz.won / Math.max(0.01, bz.pool) * 4);
+    if (q > (bz.milestone || 0) && q < 4 && bz.pool >= 1) { bz.milestone = q; this._screenFlash(0xffd23f); this._flashBanner("HOARD " + (q * 25) + "% CLAIMED", "", 0xffd23f); }
     return amt;
   };
   FishShooter2.prototype._catchCosmetic = function (fish) { // boss-round minion pop — EARNED increment
@@ -805,17 +1631,19 @@
   FishShooter2.prototype._endBossRound = function () {
     var bz = this._boss; if (!bz) return; this._boss = null;
     this._clearRoundBullets(); // boss over → drop its free shots so they don't bounce into normal play
-    if (bz.spr) { this._burst(bz.spr.x, bz.spr.y, 3.0); this._explosion(bz.spr.x, bz.spr.y, 0xffd23f); try { this.bossLayer.removeChild(bz.spr); bz.spr.destroy(); } catch (e) {} }
+    if (bz.castLayer) { try { this.bossLayer.removeChild(bz.castLayer); bz.castLayer.destroy({ children: true }); } catch (e) {} bz.castLayer = null; bz.cast.length = 0; } // whole cast dies with the round
+    var felled = bz.hp <= 0; // kill cinematic vs "IT DIVES — AND DROPS THE HOARD!" (timeout never feels like a robbery)
+    if (bz.spr) { this._burst(bz.spr.x, bz.spr.y, 3.0); this._explosion(bz.spr.x, bz.spr.y, 0xffd23f); if (felled) { this._explosion(bz.spr.x + 40, bz.spr.y - 24, 0xb14dff); this._screenFlash(0xffffff); } try { this.bossLayer.removeChild(bz.spr); bz.spr.destroy(); } catch (e) {} }
     this._shake = 28;
     // Pay only the UNDISTRIBUTED remainder so the round total === bz.pool EXACTLY (house edge preserved).
     var rem = Math.round(((bz.pool || 0) - (bz.won || 0)) * 100) / 100;
     if (rem > 0) { this.balance = Math.round((this.balance + rem) * 100) / 100; this._won = rem; this._sesWon = Math.round((this._sesWon + rem) * 100) / 100; }
     this._jackpotPool = 0; this._save(); this._renderHud();
     var total = Math.round((bz.pool || 0) * 100) / 100;
-    this._flashBanner("JACKPOT!!!", "+$" + total.toFixed(2) + " EARNED", 0xffd23f);
+    this._flashBanner(felled ? "LEVIATHAN FELLED!" : "IT DIVES — AND DROPS THE HOARD!", "JACKPOT  +$" + total.toFixed(2) + " EARNED", 0xffd23f);
     this._screenFlash(0xffd23f);
     for (var i = 0; i < 90; i++) this._rainCoin();
-    var C = root.Chiptune; if (C && C.jackpot) try { C.jackpot(); } catch (e) {}
+    var C = root.Chiptune; if (C) try { if (felled && C.fanfare) C.fanfare(); if (C.jackpot) C.jackpot(); } catch (e) {}
     if (this.onWin) try { this.onWin({ profitUsd: total, bonus: true }); } catch (e) {}
   };
 
@@ -837,7 +1665,7 @@
   };
   FishShooter2.prototype._explosion = function (x, y, color) { this._explCache = this._explCache || {}; var t = this._explCache[color] || (this._explCache[color] = this._radial(color, 256)); var s = new PIXI.Sprite(t); s.anchor.set(0.5); s.x = x; s.y = y; s.blendMode = PIXI.BLEND_MODES.ADD; s.scale.set(0.2); this.fxLayer.addChild(s); this.fx.push({ s: s, t: 0, dur: 0.4, kind: "ring", to: 1.6 }); this._shake = 14; }; // cache radial by color (was leaking per explosion)
   FishShooter2.prototype._lightning = function (x1, y1, x2, y2) { var g = new PIXI.Graphics(); g.lineStyle(3, 0xfff15a, 0.95); var seg = 6; g.moveTo(x1, y1); for (var i = 1; i < seg; i++) { var t = i / seg; g.lineTo(lerp(x1, x2, t) + rand(-12, 12), lerp(y1, y2, t) + rand(-12, 12)); } g.lineTo(x2, y2); g.blendMode = PIXI.BLEND_MODES.ADD; this.fxLayer.addChild(g); this.fx.push({ s: g, t: 0, dur: 0.22, kind: "fade" }); };
-  FishShooter2.prototype._spawnCoin = function (x, y) { var cf = this._frames("coinspin", 4); if (!cf.length) return; var s = new PIXI.AnimatedSprite(cf); s.anchor.set(0.5); s.animationSpeed = 0.4; s.play(); s.x = x; s.y = y; s.scale.set(rand(0.18, 0.34)); this.fxLayer.addChild(s); var a = rand(-Math.PI, 0), sp = rand(120, 320); this.coins.push({ s: s, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 70, t: 0, life: rand(0.7, 1.1), tx: this.W - 38, ty: this.H - 18 }); };
+  FishShooter2.prototype._spawnCoin = function (x, y, tx, ty) { var cf = this._frames("coinspin", 4); if (!cf.length) return; var s = new PIXI.AnimatedSprite(cf); s.anchor.set(0.5); s.animationSpeed = 0.4; s.play(); s.x = x; s.y = y; s.scale.set(rand(0.18, 0.34)); this.fxLayer.addChild(s); var a = rand(-Math.PI, 0), sp = rand(120, 320); this.coins.push({ s: s, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 70, t: 0, life: rand(0.7, 1.1), tx: tx != null ? tx : this.W - 38, ty: ty != null ? ty : this.H - 18 }); }; // optional tx/ty: pours retarget coins into the TOP meter instead of the balance corner
   FishShooter2.prototype._rainCoin = function () { var cf = this._frames("coinspin", 4); if (!cf.length) return; var s = new PIXI.AnimatedSprite(cf); s.anchor.set(0.5); s.animationSpeed = 0.4; s.play(); s.x = rand(0, this.W); s.y = -20; s.scale.set(rand(0.2, 0.4)); this.fxLayer.addChild(s); this.coins.push({ s: s, vx: rand(-30, 30), vy: rand(150, 340), t: 0, life: rand(1.6, 2.6), rain: true }); };
   FishShooter2.prototype._floatText = function (txt, x, y, color) { var t = new PIXI.Text(txt, { fontFamily: "Bungee, Arial", fontSize: 22, fontWeight: "700", fill: color, stroke: 0x041326, strokeThickness: 4 }); t.anchor.set(0.5); t.x = x; t.y = y; this.fxLayer.addChild(t); this.fx.push({ s: t, t: 0, dur: 0.9, kind: "float" }); };
   FishShooter2.prototype._flashBanner = function (txt, sub, color) { this.banner.text = txt; this.banner.style.fill = color; this.banner.alpha = 1; this.banner.scale.set(2.2); this.bannerSub.text = sub || ""; this.bannerSub.alpha = sub ? 1 : 0; this._bannerT = 0; };
@@ -845,10 +1673,20 @@
   /* ---------- per-frame ---------- */
   FishShooter2.prototype._frame = function (dt) {
     if (!this._active || !this._ready) return;
+    // mega-catch HIT-STOP (base play ONLY). F6: any active round zeroes it instantly — round timers
+    // and free-shot pacing must never run on scaled time.
+    if ((this._hitStop || 0) > 0) {
+      if (this._frenzy > 0 || this._boss || this._bonus || this._bonusFinale) { this._hitStop = 0; this._hitStopAt = null; }
+      else {
+        this._hitStop -= dt;
+        if (this._hitStop <= 0) { this._hitStop = 0; if (this._hitStopAt) { this._net(this._hitStopAt.x, this._hitStopAt.y, 0xffffff, true); this._screenFlash(0xffffff); this._hitStopAt = null; } }
+        else dt *= 0.12; // the freeze consumes real time; release pops a shock ring
+      }
+    }
     this._t += dt; var W = this.W, H = this.H;
 
     this._spawnT -= dt;
-    if (this._spawnT <= 0) { this._spawnT = this._frenzy > 0 ? rand(0.2, 0.45) : rand(0.6, 1.3); if (this.fish.length < 5 || Math.random() < 0.6) this._spawnFish(this._frenzy > 0 ? this._pickWaveFish() : undefined); }
+    if (this._spawnT <= 0) { this._spawnT = this._frenzy > 0 ? ((this._wave && this._wave.surge > 0) ? rand(0.14, 0.30) : rand(0.2, 0.45)) : rand(0.6, 1.3); if (this.fish.length < 5 || Math.random() < 0.6) this._spawnFish(this._frenzy > 0 ? this._pickWaveFish() : undefined); } // frenzy SURGE: first 2.5s spawn tighter
 
     this._fireCd -= dt;
     if (this.lock) this._autoAim();
@@ -873,6 +1711,7 @@
       }
     }
     if (this._bonus) this._updateBonus(dt); // bonus-world 3-2-1 countdown → wave
+    if (this._wave && this._frenzy > 0) this._updateWave(dt); // scripted wave cast (herald/gilt/maw/elder/midas/lev/aurex)
     if (this._bonusFinale) this._updateBonusFinale(dt); // reveal total → deposit to bank
     this._depositPulse = (this._depositPulse || 0) * 0.9; if (this._depositPulse < 0.01) this._depositPulse = 0;
     if (this.bgBonus && this.bgBonus.alpha > 0) this.bgBonus.alpha = Math.max(0, this.bgBonus.alpha - dt * 3);
@@ -889,8 +1728,16 @@
       var ang = f.flip ? Math.atan2(f.vy, -f.vx) : Math.atan2(f.vy, f.vx);
       f.cont.rotation = ang; f.cont.scale.x = (f.flip ? -1 : 1) * f.scale; f.cont.scale.y = f.scale;
       if (f.flinch > 0) { f.flinch -= dt; if (f.flinch <= 0) f.spr.tint = 0xffffff; }
+      if (f.pulse) { f.flare = Math.max(0, (f.flare || 0) - dt * 2); f.pulse.alpha = 0.3 + 0.2 * (0.5 + 0.5 * Math.sin(this._t * 3.9 + f.r)) + f.flare * 0.5; } // bonus-trigger heartbeat + flinch flare
       var off = f.vx > 0 ? f.cont.x > W + f.r * 4 : f.cont.x < -f.r * 4;
-      if (off) { this.fishLayer.removeChild(f.cont); f.cont.destroy({ children: true }); this.fish.splice(i, 1); }
+      if (off) {
+        // "the one that got away" — a boss-tier fish escaping AFTER surviving hits leaves a story beat
+        if ((f.hitStreak || 0) > 0 && f.def.tier === "boss" && !this._boss && this._frenzy <= 0 && !this._bonus && !this._bonusFinale) {
+          this._net(clamp(f.cont.x, 40, W - 40), f.cont.y, f.def.color, true);
+          this._floatText("the " + f.def.name + " got away…", clamp(f.cont.x, 110, W - 110), f.cont.y, 0x9be8ff);
+        }
+        this.fishLayer.removeChild(f.cont); f.cont.destroy({ children: true }); this.fish.splice(i, 1);
+      }
     }
 
     // bullets (ricochet off walls)
@@ -901,8 +1748,12 @@
       // boss takes priority during the boss round
       if (this._boss && this._boss.started && this._boss.spr && !b.hit && b.bossId === this._boss.id) {
         var bzz = this._boss;
-        if (Math.hypot(b.s.x - bzz.spr.x, b.s.y - bzz.spr.y) < bzz.r + b.r) {
-          b.hit = true; bzz.hp -= 1; bzz.flash = 0.1; bzz.spr.tint = 0xffd0d0;
+        // cast (choir/seraph) hit-test FIRST — inside the bossId gate so a stale bullet can never pop it (verdict F3)
+        if (bzz.cast.length && this._bossCastHit(b)) b.hit = true;
+        else if (bzz.submerged <= 0 && bzz.entry <= 0 && Math.hypot(b.s.x - bzz.spr.x, b.s.y - bzz.spr.y) < bzz.r + b.r) {
+          b.hit = true;
+          bzz.hp -= (FIRE_CD[this.fireSpeed] || FIRE_CD.fast) / FIRE_CD.fast; // F11: slower fire = fewer hits, each hits harder — SLOW players can fell the boss; purse math (inc per hit) untouched
+          bzz.flash = 0.1; bzz.spr.tint = 0xffd0d0;
           this._accrueBoss(bzz.inc, bzz.spr.x, bzz.spr.y - bzz.r * 0.6, true); // EARNED per hit
           // light hit FX — small spark at the impact only; auto-fire is rapid so keep it subtle so the boss + scene stay visible
           if (Math.random() < 0.22) this._burst(b.s.x, b.s.y, 0.16);
@@ -911,6 +1762,8 @@
           this._shake = Math.max(this._shake, 2);
         }
       }
+      // scripted wave cast (gilt / pods / elder / midas / storm actors) — LIVE free wave bolts only
+      if (!b.hit && b.free && this._frenzy > 0 && this._wave && b.frenzyId === this._frenzyId && this._waveHit(b)) b.hit = true;
       // v12.99: a PAID token shot that has connected but whose server bet hasn't RESOLVED yet stays in the array
       // (hidden, no re-collision) so it keeps counting toward the in-flight display sum until settled — that keeps
       // the tapped-instant debit steady with no flicker. Free/boss bullets (no server bet) are removed normally.
@@ -943,13 +1796,15 @@
       else if (e.kind === "flash") { e.s.alpha = 1 - k2; e.s.scale.set((0.3 + k2 * 0.6) * (e.mk || 1)); }
       else if (e.kind === "fade") { e.s.alpha = 1 - k2; }
       else if (e.kind === "float") { e.s.y -= 40 * dt; e.s.alpha = k2 < 0.7 ? 1 : 1 - (k2 - 0.7) / 0.3; }
+      else if (e.kind === "wisp") { e.s.x += 60 * dt; e.s.y += Math.sin(this._t * 1.5 + e.ph) * 14 * dt; if (e.s.x > W + 60) e.t = e.dur; } // ambient flyby (parade layer; destroy() detaches it)
       if (k2 >= 1) { this.fxLayer.removeChild(e.s); e.s.destroy(); this.fx.splice(xi, 1); }
     }
 
     // banner
     if (this.banner.alpha > 0) { this._bannerT += dt; var bk = Math.min(1, this._bannerT / 0.32); var eb = 1 + 2.70158 * Math.pow(bk - 1, 3) + 1.70158 * Math.pow(bk - 1, 2); this.banner.scale.set(2.2 + (1 - 2.2) * eb); if (this._bannerT > 1.3) { this.banner.alpha = Math.max(0, this.banner.alpha - dt * 1.6); this.bannerSub.alpha = this.banner.alpha; } }
-    if (this._comboT > 0) { this._comboT -= dt; if (this._comboT <= 0) this._combo = 0; }
+    if (this._comboT > 0) { this._comboT -= dt; if (this._comboT <= 0) { this._combo = 0; this._chainPts.length = 0; this._chainWon = 0; } } // chain thread dies with the combo window
 
+    this._updateJuice(dt); // heat ladder / laser overlay / storm rain / dusk / parade / spotlight / chain thread
     this._drawHud();
     this._shake = (this._shake || 0) * 0.85; if (this._shake < 0.2) this._shake = 0;
     this.app.stage.x = (Math.random() - 0.5) * this._shake; this.app.stage.y = (Math.random() - 0.5) * this._shake;
@@ -981,21 +1836,47 @@
       g.beginFill(0x041326, 0.7); g.drawRoundedRect(x - 3, y - 3, bw + 6, bh + 6, 6); g.endFill();
       g.beginFill(0x0c2840); g.drawRoundedRect(x, y, bw, bh, 5); g.endFill();
       var bth = finale ? (this._bonusFinale.th || BONUS_THEME.frenzy) : (BONUS_THEME[this._frenzyKind] || BONUS_THEME.frenzy);
-      // bonus wave = TIME bar (constant); countdown fills the bar; finale = full; else boss HP or the jackpot meter.
-      var fr = this._frenzy > 0 ? (this._tokenActive() // TOKEN: fill by REAL collected/total (climbs as you pop); DEMO: fill toward the pre-paid expected budget
-          ? clamp((this._tokenWavePaid || 0) / (this._tokenWaveTotal || 1), 0, 1)
-          : clamp((this._frenzyExpected || 0) / (this._frenzyBudget || 1), 0, 1))
-        : counting ? clamp(this._bonus.countT / 3, 0, 1)
-        : finale ? 1
-        : (inBoss && this._boss.hpMax ? Math.max(0, this._boss.hp / this._boss.hpMax) : this._jackpot);
-      var barCol = (this._frenzy > 0 || counting || finale) ? bth.color : (inBoss ? 0xff4d6a : 0xffd23f);
-      g.beginFill(barCol); g.drawRoundedRect(x, y, bw * fr, bh, 5); g.endFill();
+      if (inBoss && this._boss.started && this._boss.hpMax) {
+        // SEGMENTED three-act HP bar (I THE DESCENT / II THE MAW / III EVENT HORIZON), gold-gated
+        var segW = (bw - 6) / 3;
+        for (var si = 0; si < 3; si++) {
+          var lo = (2 - si) * 50, segHp = clamp(((this._boss.hp || 0) - lo) / 50, 0, 1);
+          g.beginFill(0x2a0f26); g.drawRoundedRect(x + si * (segW + 3), y, segW, bh, 4); g.endFill();
+          if (segHp > 0) { g.beginFill(0xff4d6a); g.drawRoundedRect(x + si * (segW + 3), y, segW * segHp, bh, 4); g.endFill(); }
+        }
+      } else {
+        // bonus wave = TIME bar (constant); countdown fills the bar; finale = full; else boss HP or the jackpot meter.
+        var fr = this._frenzy > 0 ? (this._tokenActive() // TOKEN: fill by REAL collected/total (climbs as you pop); DEMO: fill toward the pre-paid expected budget
+            ? clamp((this._tokenWavePaid || 0) / (this._tokenWaveTotal || 1), 0, 1)
+            : clamp((this._frenzyExpected || 0) / (this._frenzyBudget || 1), 0, 1))
+          : counting ? clamp(this._bonus.countT / 3, 0, 1)
+          : finale ? 1
+          : (inBoss && this._boss.hpMax ? Math.max(0, this._boss.hp / this._boss.hpMax) : this._jackpot);
+        var barCol = (this._frenzy > 0 || counting || finale) ? bth.color : (inBoss ? 0xff4d6a : 0xffd23f);
+        g.beginFill(barCol); g.drawRoundedRect(x, y, bw * fr, bh, 5); g.endFill();
+      }
       this.jpText.x = W / 2; this.jpText.y = y + bh + 2;
       this.jpText.text = this._frenzy > 0 ? (bth.name + "  +$" + (this._frenzyWon || 0).toFixed(0))
         : counting ? (bth.name + " INCOMING…")
         : finale ? (bth.name + " COMPLETE   YOU WON $" + (this._bonusFinale.won || 0).toFixed(2))
-        : (inBoss ? (this._boss.started ? ("BOSS  " + Math.max(0, Math.ceil(this._boss.hp)) + " HP   ·   BONUS +$" + (this._boss.won || 0).toFixed(2)) : "JACKPOT ROUND")
+        : (inBoss ? (this._boss.started ? ("PHASE " + (this._boss.phase === 1 ? "I" : this._boss.phase === 2 ? "II" : "III") + "  ·  " + Math.max(0, Math.ceil(this._boss.hp)) + " HP  ·  HOARD +$" + (this._boss.won || 0).toFixed(2)) : "JACKPOT ROUND")
                   : ("JACKPOT ROUND  " + Math.floor(this._jackpot * 100) + "%"));
+    }
+    // gold pour pulse on the top meter (decays like _depositPulse)
+    this._meterPulse = (this._meterPulse || 0) * 0.9; if (this._meterPulse < 0.01) this._meterPulse = 0;
+    if (this.jpText) this.jpText.scale.set(1 + this._meterPulse * 0.25);
+    // FREE affordance (laser spec): the pow readout + DOM cost read FREE during any free-shot round;
+    // plain play appends the HEAT ticker. Change-checked so Text isn't rebuilt every frame.
+    var freeNow2 = this._frenzy > 0 || !!(this._boss && this._boss.started);
+    if (freeNow2) {
+      var ptxt = "PWR " + (this._boss ? this.power : (this._frenzyPow || 1)) + "  ·  FREE";
+      if (this.powText && this.powText.text !== ptxt) this.powText.text = ptxt;
+      if (this.els.cost && this.els.cost.textContent !== "FREE") this.els.cost.textContent = "FREE";
+      this._powFree = true;
+    } else {
+      var ptxt2 = "PWR " + this.power + "  ·  " + this._usd(this.cost()) + "/shot" + ((this._combo || 0) >= 3 ? "  ·  HEAT x" + this._combo : "");
+      if (this.powText && this.powText.text !== ptxt2) this.powText.text = ptxt2;
+      if (this._powFree) { this._powFree = false; if (this.els.cost) this.els.cost.textContent = this._usd(this.cost()) + " / shot"; }
     }
     // POWER bottom-LEFT, BALANCE bottom-RIGHT (replaced the old WIN readout), bottom
     // CENTER stays clear for the half-circle turret. Per-catch wins show as the floating
@@ -1068,14 +1949,44 @@
   // winnings are forfeited (house-favorable). Prevents a stranded auto-firing round from surviving a
   // channel switch — the ticker freezes the round mid-flight otherwise and it resumes auto-firing on return.
   FishShooter2.prototype._teardownRounds = function () {
-    if (this._boss && this._boss.spr) { try { this.bossLayer.removeChild(this._boss.spr); this._boss.spr.destroy(); } catch (e) {} }
+    // F2 (fixes the PRE-EXISTING leak): the boss round credits bz.won LIVE but only _endBossRound zeroed
+    // the pool — discarding _boss mid-round used to re-seed the next round with money ALREADY paid out.
+    // Deduct the paid portion first; only the genuinely-unpaid remainder rolls into the next round.
+    if (this._boss) {
+      this._jackpotPool = Math.max(0, Math.round((this._jackpotPool - (this._boss.won || 0)) * 100) / 100);
+      if (this._boss.spr) { try { this.bossLayer.removeChild(this._boss.spr); this._boss.spr.destroy(); } catch (e) {} }
+      if (this._boss.castLayer) { try { this.bossLayer.removeChild(this._boss.castLayer); this._boss.castLayer.destroy({ children: true }); } catch (e) {} } // choir/seraph/colossus die with the round
+    }
     this._boss = null; this._bonus = null; this._bonusFinale = null;
+    this._clearWaveCast(); // F2: sweep the wave cast + every PROP fish + charged halos — nothing scripted survives a channel exit
+    this._endParade(); this._paradeT = rand(180, 420); // F2: no parade sprite/timer survives either
     this._frenzyId++; this._frenzy = 0; this._frenzyMax = 0; this._frenzyWon = 0; this._frenzyExpected = 0; // bump id → any in-flight free bullet is rejected
     this._tokenWaveTotal = 0; this._tokenWavePaid = 0; // clear the token per-pop collect state so no stale total leaks into the next wave
     this._holding = false;
     for (var i = this.bullets.length - 1; i >= 0; i--) { var b = this.bullets[i]; if (b && (b.free || b.bossId)) this._rmBullet(b); }
+    // F2: zero every juice/overlay state a round could have armed
+    this._hitStop = 0; this._hitStopAt = null; this._chainPts.length = 0; this._chainWon = 0; this._meterPulse = 0;
+    this._laserMix = 0; if (this.laserOverlay) { this.laserOverlay.visible = false; this.laserOverlay.alpha = 0; }
+    if (this.freeTag) this.freeTag.visible = false;
+    this._stormMix = 0; if (this.rainLayer) this.rainLayer.visible = false;
+    this._duskMix = 0; if (this.bg && this._duskTinted) { this.bg.tint = 0xffffff; this._duskTinted = false; }
+    if (this._causticTint && this._causticTint !== 0xffffff && this.causticLayer) { this._causticTint = 0xffffff; for (var ci = 0; ci < this.causticLayer.children.length; ci++) this.causticLayer.children[ci].tint = 0xffffff; }
+    this._plankton = 0;
+    if (this._spot) { try { this.fxLayer.removeChild(this._spot.s); this._spot.s.destroy(); } catch (e) {} this._spot = null; }
+    if (this.barrel) this.barrel.tint = 0xffffff;
+    if (this.jpText) this.jpText.scale.set(1);
     if (this.bgBoss) this.bgBoss.alpha = 0; if (this.bgWorld) this.bgWorld.alpha = 0;
     try { this._renderHud(); } catch (e) {}
+  };
+  // DEBUG (demo-mode only): force a round/parade from the console or the headless probe —
+  // window.__fshoot2.__fs2ForceBonus('frenzy'|'vault'|'storm'|'boss'|'parade'). No-op in token play.
+  FishShooter2.prototype.__fs2ForceBonus = function (kind) {
+    if (this._tokenActive()) return false; // demo only — never near real money
+    if (kind === "parade") return this._startParade(true);
+    if (kind === "boss") { this._startBossRound(); return !!this._boss; }
+    if (kind !== "frenzy" && kind !== "vault" && kind !== "storm") return false;
+    this._startBonus(kind, { unitBet: this.unitBet, power: 1, cost: this.unitBet, free: false });
+    return !!this._bonus;
   };
   FishShooter2.prototype.setActive = function (on) {
     on = !!on; if (on === this._active) return; this._active = on; var self = this;
