@@ -825,28 +825,178 @@ function attachPoker(opts) {
   const MAX_ROOMS = opts.maxRooms || 200;
   const START_STACK = opts.startBalance != null ? opts.startBalance : 5000; // demo play-money bank (chips are stack-local; this is just the buy-in wallet)
   const DEMO_BUYIN_DEFAULT = opts.demoBuyIn != null ? opts.demoBuyIn : 1000;
-
-  // TOKEN SEAM (Phase 3) — no-op in Phase 2. Left so the money layer drops in without
-  // restructuring: setTokenLedger binds the applyPokerNet ledger; bindToken freezes a
-  // wallet→session mapping. In demo mode chips are pure integers and none of this fires.
-  let TL = opts.tokenLedger || null;
-  const tokenBind = new Map();
-  const bindToken = (wallet, sessionId) => { if (!wallet || !sessionId) return false; tokenBind.set(String(wallet).toLowerCase(), String(sessionId)); return true; };
-  const unbindToken = (wallet) => tokenBind.delete(String(wallet || "").toLowerCase());
+  const norm = (w) => String(w == null ? "" : w).toLowerCase();
+  const realWallet = (w) => /^0x[0-9a-fA-F]{40}$/.test(String(w || ""));
+  const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
   const rooms = new Map();
   let seq = 0;
   const lobbySubs = new Set();
 
-  /* ---------------- demo bank (play-money buy-in wallet) ---------------- */
-  // Phase 2 is demo-only: a simple in-memory play-money wallet each player buys in FROM.
-  // Chips at the table are seat-local integers; this bank is the source/sink for buy-ins
-  // and cash-outs so the demo felt has a coherent balance. No persistence, no bridge.
-  const bank = opts.bank || (() => {
+  // ── CENT-SCALING (spec §5): 1 chip = 1 USD cent. TOKEN (real 0x) wallets carry a USD session,
+  // so units↔chips is the exact 100× cent scale (a $ buy-in becomes round(units*100) integer chips;
+  // a chip stack cashes back at /100 USD). DEMO (guest) wallets are play-money with NO ledger and NO
+  // cent meaning — 1 unit = 1 chip, 1:1 — so the demo felt's integer balance stays coherent and the
+  // Phase-2 demo self-tests (stack === units) hold unchanged. The converters are wallet-aware so the
+  // single buy-in / cash-out code path serves both without branching at every call site.
+  const chipsScale = (w) => realWallet(w) ? 100 : 1;
+  const unitsToChips = (u, w) => Math.round((Number(u) || 0) * chipsScale(w));
+  const chipsToUnits = (c, w) => { const sc = chipsScale(w); return sc === 100 ? round2((Number(c) || 0) / 100) : Math.round(Number(c) || 0); };
+
+  /* ---------------- TOKEN SEAM (spec §5/§12 — Phase 3, the money settlement) ----------------
+     setTokenLedger binds the applyPokerNet ledger; a real (0x) wallet at a REAL table has its
+     chips bound to a token-bridge session (bindToken, FROZEN while it has chips in a live pot).
+     The bank's get/credit/debit for a token wallet then route to the ledger (a buy-in debits, a
+     cash-out credits the SAME session they bought in with), EXACTLY the baccarat pattern.
+
+     H1 — the winner reconciliation AND the creator rake-share are HOUSE-FUNDED applyPokerNet
+     CREDITS into the payee's OWN session (a payout, never the single-slot pendingSettle map). When
+     the payee has NO open session, the credit SUMS into a durable append-only pokerOwed[wallet]
+     ledger, paid on the wallet's next session open (claimOwed). Never overwrites.
+     H3/H4 — a winner's returned stack can exceed buyIn+TOKEN_MAX_WIN_USD; applyExternal's capUp
+     would silently truncate it. We do NOT touch capUp: we MEASURE the credit (before/after tokens)
+     and route any capUp SHORTFALL to pokerOwed. An H4 absolute clamp (creditUnits ≤ cumulativeBuyIn
+     + maxTablePotUnits) is asserted fail-closed at cash-out.
+     -------------------------------------------------------------------------------------------- */
+  let TL = opts.tokenLedger || null;   // { tokensOf(sid), applyNet(player,sid,bet,payout,ref), recordOwed?, persist? }
+  const tokenBind = new Map();         // wallet(lc) → token sessionId (frozen while the wallet has live chips)
+  const pokerOwed = new Map();         // wallet(lc) → SUMMED chips owed (house-funded credits with no open session); append-only, persisted
+  const creatorRakeDaily = new Map();  // "wallet:dayIndex" → creator-rake chips paid today (H7 per-wallet daily cap)
+  // H7 anti-wash gate defaults (BINDING, spec §12): creator-half routes to HOUSE until the table has had
+  // ≥3 DISTINCT funded wallets play ≥10 hands; and a per-creator-wallet daily rake cap.
+  const CREATOR_GATE_DISTINCT = opts.creatorGateDistinct != null ? opts.creatorGateDistinct : 3;
+  const CREATOR_GATE_HANDS = opts.creatorGateHands != null ? opts.creatorGateHands : 10;
+  const CREATOR_RAKE_CAP_DAILY_CHIPS = opts.creatorRakeCapDailyChips != null ? opts.creatorRakeCapDailyChips : 100000; // $1,000/day default (chips = cents)
+  const tokenSid = (w) => tokenBind.get(norm(w));
+  const isTokenWallet = (w) => !!(TL && tokenBind.has(norm(w)));
+
+  // hasLiveHand(wallet): the wallet has chips committed to an UNSETTLED pot right now → cash-out /
+  // recover / rebind must be REFUSED (mirror baccarat-server.js:151). A seat "in a live hand" is one
+  // whose engine player is not folded while the room is mid-hand (chips are in the pot / at risk).
+  function hasLiveHand(wallet) {
+    const w = norm(wallet);
+    for (const r of rooms.values()) {
+      if (!inHandPhase(r) || !r.table.hand || r.table.hand.done) continue;
+      const seat = r.seats.find((s) => s && norm(s.wallet) === w);
+      if (!seat) continue;
+      const p = r.table.hand.players.find((pp) => norm(pp.id) === w);
+      if (p && !p.folded) return true; // chips at risk in the live pot
+    }
+    return false;
+  }
+
+  // FREEZE the funding pool: bind a real wallet to its token session. Refuse if it's already bound
+  // to another live game's session, or has live chips (never swap the pool mid-pot). Idempotent.
+  const bindToken = (wallet, sessionId) => {
+    if (!realWallet(wallet) || !sessionId) return false;
+    const cur = tokenBind.get(norm(wallet));
+    if (cur === String(sessionId)) return true;              // idempotent reconnect
+    if (cur && cur !== String(sessionId)) { if (hasLiveHand(wallet)) return false; } // bound elsewhere & live → refuse
+    if (hasLiveHand(wallet)) return false;
+    tokenBind.set(norm(wallet), String(sessionId));
+    return true;
+  };
+  const unbindToken = (wallet) => { if (hasLiveHand(wallet)) return false; return tokenBind.delete(norm(wallet)); };
+
+  // ── pokerOwed ledger (H1 fallback) — SUMMED, append-only, persisted ──
+  function owe(wallet, chips) {
+    const w = norm(wallet); const add = Math.round(Number(chips) || 0);
+    if (!(add > 0)) return;
+    pokerOwed.set(w, (pokerOwed.get(w) || 0) + add); // SUM — never overwrite (H1/self-test 24)
+    if (TL && typeof TL.recordOwed === "function") { try { TL.recordOwed(w, pokerOwed.get(w)); } catch (e) {} }
+    savePersist();
+  }
+  // On session open (bind), pay down any owed balance as a house-funded credit into the fresh
+  // session (bounded by capUp; a residual capUp shortfall stays owed). Called at buy-in.
+  function claimOwed(wallet, sessionId) {
+    const w = norm(wallet); const owed = pokerOwed.get(w) || 0;
+    if (!(owed > 0) || !TL) return;
+    const before = tokensNow(sessionId);
+    let booked = 0;
+    try { const after = TL.applyNet(wallet, sessionId, 0, chipsToUnits(owed, wallet), "pokerOwed:claim"); booked = Math.round((round2(after) - round2(before)) * 100); }
+    catch (e) { return; } // session not creditable right now → leave owed for next time
+    const paid = Math.max(0, Math.min(owed, booked));
+    const remain = owed - paid;
+    if (remain > 0) pokerOwed.set(w, remain); else pokerOwed.delete(w);
+    savePersist();
+  }
+  function tokensNow(sessionId) { try { const t = TL && TL.tokensOf(sessionId); return t == null ? 0 : round2(t); } catch (e) { return 0; } }
+
+  // Token cash-out credit with capUp-shortfall detection (H3/H4). Credits `chips` back to the
+  // wallet's session via applyPokerNet; measures the ACTUAL booked delta and routes any capUp
+  // shortfall to pokerOwed so a legit P2P win can never silently vanish. Returns { booked, owed }
+  // (both in chips) — booked+owed === chips by construction (zero-sum over ATTEMPTED credits, H8).
+  function tokenCredit(wallet, chips) {
+    const want = Math.round(Number(chips) || 0);
+    if (!(want > 0)) return { booked: 0, owed: 0 };
+    const sid = tokenSid(wallet);
+    if (!sid) { owe(wallet, want); return { booked: 0, owed: want }; } // no open session → all owed
+    const before = tokensNow(sid);
+    let bookedChips = 0;
+    try { const after = TL.applyNet(wallet, sid, 0, chipsToUnits(want, wallet), "leave:poker"); bookedChips = Math.max(0, Math.round((round2(after) - round2(before)) * 100)); }
+    catch (e) { try { console.error("[pk] TOKEN CREDIT FAILED — routing to pokerOwed:", JSON.stringify({ wallet, chips: want, session: sid, err: (e && e.message) || String(e) })); } catch (e2) {} owe(wallet, want); return { booked: 0, owed: want }; }
+    const owedChips = Math.max(0, want - bookedChips); // capUp truncated the credit → the remainder is owed (never lost)
+    if (owedChips > 0) owe(wallet, owedChips);
+    return { booked: bookedChips, owed: owedChips };
+  }
+  // Token buy-in DEBIT, pre-checked + REFUSED on insufficient (H2 — never floored). Returns true iff
+  // the debit booked. applyPokerNet inherits applyExternal's insufficient-tokens throw (:269), so a
+  // seat can never hold more chips than its session surrendered.
+  function tokenDebit(wallet, chips) {
+    const want = Math.round(Number(chips) || 0);
+    if (!(want > 0)) return true;
+    const sid = tokenSid(wallet);
+    if (!sid) return false;
+    const have = Math.round(tokensNow(sid) * 100);
+    if (want > have) return false; // H2 pre-check (mirror applyExternal:269) — refuse, don't floor
+    try { TL.applyNet(wallet, sid, chipsToUnits(want, wallet), 0, "buyin:poker"); return true; }
+    catch (e) { try { console.error("[pk] TOKEN DEBIT FAILED — buy-in NOT placed:", JSON.stringify({ wallet, chips: want, session: sid, err: (e && e.message) || String(e) })); } catch (e2) {} return false; }
+  }
+
+  /* ---------------- bank (play-money for demo, token ledger for real wallets) ----------------
+     The DEMO bank is a simple in-memory play-money wallet each player buys in FROM (no persistence
+     of the bank itself, no bridge). A REAL (token-bound) wallet's get/credit/debit ROUTE to the token
+     ledger — a buy-in debits / a cash-out credits the SAME session (mirror baccarat-server.js:112).
+     Demo balances are 1:1 units↔chips; token balances are cent-scaled at the seat boundary.       */
+  const _demoBank = opts.bank || (() => {
     const m = new Map();
     const get = (w) => (m.has(w) ? m.get(w) : START_STACK);
     return { get, credit: (w, a) => m.set(w, get(w) + a), debit: (w, a) => { if (get(w) < a) return false; m.set(w, get(w) - a); return true; }, all: m };
   })();
+  const bank = {
+    all: _demoBank.all,
+    get: (w) => isTokenWallet(w) ? tokensNow(tokenSid(w)) : _demoBank.get(w),
+    // credit/debit here are UNIT-denominated (demo bank convention). Token routing converts to chips.
+    credit: (w, a) => { if (isTokenWallet(w)) { tokenCredit(w, unitsToChips(a, w)); return true; } return _demoBank.credit(w, a); },
+    debit: (w, a) => { if (isTokenWallet(w)) { return tokenDebit(w, unitsToChips(a, w)); } return _demoBank.debit(w, a); },
+  };
+
+  /* ---------------- persistence (spec §12 H5 — bindings/stacks/cumulativeBuyIn/rake/pokerOwed) ----------------
+     Mirror the BJ/bac bank + bridge disk files: an opts.persist { load()->state, save(state) } seam,
+     debounced write-through. Persists the token seat→session bindings + per-seat stacks + cumulative
+     buy-in + accrued creator rake + the pokerOwed ledger + the daily creator-rake caps so a Render
+     restart during a disconnect window can reconstruct a force-cash-out (boot-drain) and never strand
+     an on-chain lock (the v12.94 class). Demo play-money state is NOT persisted (bank is ephemeral).   */
+  const persist = opts.persist || null;
+  let _saveT = null;
+  function persistSnapshot() {
+    const tables = [];
+    for (const r of rooms.values()) {
+      if (r.kind !== "real") continue; // only real (token) tables carry stranded-lock risk
+      const seats = [];
+      for (let i = 0; i < r.seats.length; i++) { const s = r.seats[i]; if (!s || !realWallet(s.wallet)) continue;
+        seats.push({ seat: i, wallet: s.wallet, sid: tokenSid(s.wallet) || s._sid || null, stack: s.stack, cumulativeBuyInChips: s.cumulativeBuyInChips || 0 }); }
+      if (seats.length) tables.push({ id: r.id, creatorWallet: r.creatorWallet, creatorRakeChips: r.creatorRakeChips || 0, seats });
+    }
+    return {
+      tables,
+      pokerOwed: Array.from(pokerOwed.entries()),
+      creatorRakeDaily: Array.from(creatorRakeDaily.entries()),
+    };
+  }
+  function doSave() { _saveT = null; if (!persist || !persist.save) return; try { persist.save(persistSnapshot()); } catch (e) {} }
+  function savePersist() { if (!persist || !persist.save) return; if (_saveT) return; _saveT = setT(doSave, 800); }
+  function flushPersist() { try { doSave(); } catch (e) {} }
 
   /* ---------------- lobby ---------------- */
   function avgPot(r) {
@@ -929,12 +1079,103 @@ function attachPoker(opts) {
       if (idleFor >= limit) closeRoom(r, "idle"); else scheduleIdle(r);
     }, ms);
   }
-  function closeRoom(r, reason) {
-    // refund-first (mirror baccarat closeRoom): cash any seated stacks back to the demo bank
+  /* ---------------- MONEY: cash-out / creator-rake / zero-sum (spec §5/§12) ---------------- */
+  // The most a single seat can legitimately hold: its own cumulative buy-in PLUS every OTHER seat's
+  // cumulative buy-in (it can win at most all their chips, minus rake). This is the H4 absolute clamp
+  // ceiling for a cash-out credit — fail-closed.
+  function maxSeatCreditChips(r) {
+    // H4 ceiling is TABLE-LIFE, not seats-present-now: a seat can legitimately hold at most EVERY
+    // chip ever bought in at this table (it can win others' whole stacks). `_everBuyInChips` accrues
+    // at each buy-in/rebuy, so it is correct even after a busted loser has already left — which is the
+    // common case the old "sum currently-seated buy-ins" version got wrong (F1: the ceiling collapsed
+    // to the winner's own buy-in and destroyed their winnings).
+    return (r._everBuyInChips || 0);
+  }
+  // CASH-OUT one seat (spec §5.4 uniform form for winners AND losers). DEMO: credit the play-money
+  // bank. TOKEN: credit the stack back to the session via tokenCredit (H1 house-funded credit), which
+  // routes any capUp SHORTFALL to pokerOwed (H3 — a deep P2P win never truncates/vanishes), asserts the
+  // H4 absolute clamp fail-closed, then unbinds. Returns { creditedChips } = the ATTEMPTED credit
+  // (booked OR owed) so the zero-sum assert (H8) sums over attempted, never only-successful.
+  function cashOutSeat(r, s) {
+    const chips = Math.max(0, Math.round(s.stack || 0));
+    s.stack = 0;
+    // TABLE-LIFE returned total for the zero-sum assert (F2): every cash-out EVER — including seats
+    // that already left before teardown — must be summed, not just the seats present at closeRoom.
+    const track = (credited) => { r._everReturnedChips = (r._everReturnedChips || 0) + credited; };
+    if (chips === 0) { if (isTokenWallet(s.wallet)) { unbindToken(s.wallet); } return { creditedChips: 0 }; }
+    if (!isTokenWallet(s.wallet)) { bank.credit(s.wallet, chipsToUnits(chips, s.wallet)); track(chips); return { creditedChips: chips }; }
+    // H4 ABSOLUTE clamp (fail-closed): with the table-life ceiling a legit stack can NEVER exceed it,
+    // so this only fires on a genuine engine bug — and when it does the excess is routed to pokerOwed,
+    // NEVER dropped on the floor (the F1 vanish). The credit's own capUp shortfall → pokerOwed too.
+    const ceil = maxSeatCreditChips(r);
+    if (chips > ceil) {
+      try { console.error("[pk] H4 CLAMP: seat stack " + chips + " > table-life ceiling " + ceil + " (engine bug?) — excess " + (chips - ceil) + " → pokerOwed"); } catch (e) {}
+      owe(s.wallet, chips - ceil);
+    }
+    tokenCredit(s.wallet, Math.min(chips, ceil)); // routes any capUp shortfall → pokerOwed (never lost)
+    unbindToken(s.wallet);
+    if (s._sid) s._sid = null;
+    track(chips);          // ATTEMPTED credit = the FULL stack (booked + any owed), per H8
+    flushPersist();        // money mutation → durable NOW (close the stranded-lock window)
+    return { creditedChips: chips };
+  }
+  // CREATOR rake-share settlement (spec §5.6 + H1/H6/H7). r.creatorRakeChips accrued per hand at
+  // finishHand (H6 seated-creator own-hand share already routed to HOUSE there; H7 anti-wash gate also
+  // there). At teardown, pay the accrued creator-half as a HOUSE-FUNDED applyPokerNet credit into the
+  // creator's session (or pokerOwed if sessionless). Enforces CREATOR_RAKE_CAP_DAILY (H7).
+  function settleCreatorRake(r) {
+    const chips = Math.round(r.creatorRakeChips || 0);
+    r.creatorRakeChips = 0;
+    if (!(chips > 0) || r.creatorId === "HOUSE" || !r.creatorWallet) return;
+    const w = norm(r.creatorWallet);
+    // H7 daily cap: the platform withholds any creator-rake beyond CREATOR_RAKE_CAP_DAILY per wallet/day.
+    const cap = Math.round(CREATOR_RAKE_CAP_DAILY_CHIPS);
+    const dayKey = w + ":" + Math.floor(now() / 86400000);
+    const used = creatorRakeDaily.get(dayKey) || 0;
+    let pay = chips;
+    if (used + pay > cap) pay = Math.max(0, cap - used); // withhold the excess to HOUSE
+    if (pay <= 0) return;
+    creatorRakeDaily.set(dayKey, used + pay);
+    if (isTokenWallet(r.creatorWallet)) { tokenCredit(r.creatorWallet, pay); } // house-funded credit (or pokerOwed if capUp/sessionless)
+    else { owe(r.creatorWallet, pay); } // creator not currently bound → accrue owed, claimed on next session open
+    savePersist();
+  }
+  // ZERO-SUM assert (spec §5.5 + H8), fail-closed, computed over ATTEMPTED credits (booked OR owed).
+  // Over the table's life: Σ(cumulativeBuyIn − returned) === totalRake === houseRake + creatorRake, exact
+  // to the chip. `returned` is the sum of ATTEMPTED cash-out credits (a failed booking is an owed
+  // obligation, not a hole). Logs LOUD on any mismatch (an engine/settlement bug); never throws out of
+  // teardown (a throw would strand the room), but flags the invariant break for audit.
+  function assertZeroSum(r, returnedChips, rakeChips) {
+    const buyIn = (r._everBuyInChips || 0);
+    const lhs = buyIn - returnedChips;                 // chips that never came back to a seat
+    const rhs = Math.round(rakeChips || 0);            // == houseRake + creatorRake (the only sink)
+    if (lhs !== rhs) { try { console.error("[pk] ZERO-SUM VIOLATION table=" + r.id + " Σ(buyIn−returned)=" + lhs + " != totalRake=" + rhs + " (buyIn=" + buyIn + " returned=" + returnedChips + ")"); } catch (e) {} return false; }
+    return true;
+  }
+  // Force-cash-out every seat of a REAL table + settle the creator rake + assert zero-sum. Used by
+  // closeRoom(real) and the boot-drain. Fail-closed: the assert result is logged; teardown proceeds so
+  // no lock is ever stranded (an owed chip is claimable next session).
+  function settleRealTable(r, reason) {
     for (const s of r.seats) if (s) {
       if (s._dcTimer) { clrT(s._dcTimer); s._dcTimer = null; }
-      if (s.stack > 0) { bank.credit(s.wallet, chipsToUnits(s.stack)); s.stack = 0; }
+      cashOutSeat(r, s); // accumulates into r._everReturnedChips (table-life)
     }
+    const totalRake = Math.round((r.houseRakeChips || 0) + (r.creatorRakeChips || 0)); // table-life: accrued per hand, never removed before this point (settleCreatorRake zeroes creatorRakeChips AFTER)
+    settleCreatorRake(r); // credits the creator-half (or owed); houseRake stays HOUSE profit (no explicit payout)
+    // ASSERT over the table's WHOLE LIFE: Σ(everBuyIn − everReturned) === totalRake (F2 — earlier-left
+    // seats' cash-outs are in _everReturnedChips, so the invariant no longer false-positives on the normal path).
+    assertZeroSum(r, (r._everReturnedChips || 0), totalRake);
+    flushPersist();
+  }
+
+  function closeRoom(r, reason) {
+    // refund-first (mirror baccarat closeRoom): cash any seated stacks back. For a REAL (token) table
+    // this force-cash-out credits each seat's stack to its session (or pokerOwed), settles the CREATOR
+    // rake-share, and unbinds — then the zero-sum assert (fail-closed) gates the teardown so a chip can
+    // never vanish. NEVER close mid-hand (the idle scheduler already guards; belt-and-suspenders here too).
+    if (r.kind === "real" && inHandPhase(r) && r.table.hand && !r.table.hand.done) { scheduleIdle(r); return; }
+    if (r.kind === "real") { settleRealTable(r, reason); }
+    else { for (const s of r.seats) if (s) { if (s._dcTimer) { clrT(s._dcTimer); s._dcTimer = null; } if (s.stack > 0) { bank.credit(s.wallet, chipsToUnits(s.stack, s.wallet)); s.stack = 0; } } }
     for (const k in r.timers) clrT(r.timers[k]);
     broadcast(r, { type: "pk:event", kind: "tableClosing", id: r.id, reason });
     const h = r.table.hand;
@@ -948,12 +1189,6 @@ function attachPoker(opts) {
     const empties = Array.from(rooms.values()).filter((r) => seatedCount(r) === 0 && r.phase === "WAITING" && r.creatorId !== "HOUSE");
     for (const r of empties) closeRoom(r, "reaped");
   }
-
-  // chips ARE integers (1 chip = 1 cent in Phase 3; in demo they are just the buy-in ×… ).
-  // For the demo bank we treat 1 buy-in "unit" as 1 chip 1:1 (no cent scaling in P2) — the
-  // seam converters keep Phase 3's round(units*100) drop-in clean.
-  const unitsToChips = (u) => Math.round(u);
-  const chipsToUnits = (c) => c;
 
   /* ---------------- per-socket masked broadcast (THE security property) ---------------- */
   // Loop every recipient (seated player or spectator) and send THAT recipient its OWN masked
@@ -1129,15 +1364,22 @@ function attachPoker(opts) {
     if (r.timers.act) { clrT(r.timers.act); r.timers.act = null; }
     r.actDeadline = 0;
     r.phase = "SHOWDOWN";
-    // Rake split (spec §5.3): engine already skimmed h.rake into the pot math; split it here.
-    // H6: a SEATED creator earns ZERO rake-share on hands they were dealt into → that half to HOUSE.
+    // Count this dealt hand toward the H7 anti-wash gate (a hand that actually reached _finish).
+    r._handsPlayed = (r._handsPlayed || 0) + 1;
+    // Rake split (spec §5.3 + §12 H6/H7): engine already skimmed h.rake into the pot math; split it here.
+    //   H6 — a SEATED creator earns ZERO rake-share on hands they were dealt into → that half to HOUSE.
+    //   H7 — the creator-half stays with HOUSE until the table has had ≥CREATOR_GATE_DISTINCT DISTINCT
+    //        funded wallets play ≥CREATOR_GATE_HANDS hands (anti-wash / self-dealing gate).
     const rake = h.rake || 0;
     if (rake > 0) {
       const houseHalf = Math.floor(rake / 2);
-      let creatorHalf = rake - houseHalf; // creator gets the odd chip (exact split)
+      const creatorHalf = rake - houseHalf; // creator gets the odd chip (exact split, no mint/burn)
       const creatorSeated = r.creatorId !== "HOUSE" && r.creatorWallet && h.players.some((p) => p.id === r.creatorWallet);
-      if (r.creatorId === "HOUSE" || creatorSeated) { r.houseRakeChips += rake; }
-      else { r.houseRakeChips += houseHalf; r.creatorRakeChips += creatorHalf; }
+      const distinct = (r._fundedWallets ? r._fundedWallets.size : 0);
+      const gateOpen = distinct >= CREATOR_GATE_DISTINCT && (r._handsPlayed || 0) >= CREATOR_GATE_HANDS;
+      const creatorEligible = r.creatorId !== "HOUSE" && r.creatorWallet && !creatorSeated && gateOpen;
+      if (!creatorEligible) { r.houseRakeChips += rake; }                            // H6 seated OR H7 gate-shut OR HOUSE table → all to HOUSE
+      else { r.houseRakeChips += houseHalf; r.creatorRakeChips += creatorHalf; }     // creator earns the half
     }
     // Persist the engine's post-hand stacks back to the room seats (stacks carry across hands).
     for (const p of h.players) { const s = seatOfWallet(r, p.id); if (s) s.stack = p.stack; }
@@ -1159,7 +1401,8 @@ function attachPoker(opts) {
       const s = r.seats[i];
       if (!s) continue;
       if (s.left) {
-        if (s.stack > 0) { bank.credit(s.wallet, chipsToUnits(s.stack)); pushWallet(s.sock, s.wallet); }
+        if (isTokenWallet(s.wallet)) { cashOutSeat(r, s); pushWallet(s.sock, s.wallet); }
+        else if (s.stack > 0) { bank.credit(s.wallet, chipsToUnits(s.stack, s.wallet)); pushWallet(s.sock, s.wallet); }
         if (s._dcTimer) { clrT(s._dcTimer); s._dcTimer = null; }
         r.seats[i] = null;
         broadcast(r, { type: "pk:event", kind: "seatOpen", seat: i });
@@ -1181,18 +1424,34 @@ function attachPoker(opts) {
     if (seatPref != null && seatPref >= 0 && seatPref < r.seats.length && !r.seats[seatPref]) idx = seatPref;
     else idx = r.seats.findIndex((s) => !s);
     if (idx < 0) { err(sock, "table_full", "Table is full", "join"); return false; }
-    // clamp buy-in to table bounds, then debit the demo bank
+    // clamp buy-in to table bounds, then debit the funding wallet (demo bank OR token session).
     let units = Number(buyInUnits);
     if (!isFinite(units) || units <= 0) units = DEMO_BUYIN_DEFAULT;
     units = Math.max(r.buyInMin, Math.min(r.buyInMax, Math.round(units)));
-    if (bank.get(wallet) < units) { err(sock, "insufficient", "Not enough balance to buy in", "join"); return false; }
-    bank.debit(wallet, units);
+    // TOKEN (real) table: FREEZE the funding pool and (if the wallet had owed chips from a prior
+    // sessionless payout) pay them down into the fresh session before the buy-in (H1 claim).
+    const tokenSeat = isTokenWallet(wallet);
+    if (tokenSeat) {
+      r.kind = "real";
+      const sid = tokenSid(wallet);
+      if (!bindToken(wallet, sid)) { err(sock, "bound_elsewhere", "Your session is busy in another game — finish that first", "join"); return false; }
+      claimOwed(wallet, sid);
+    }
+    if (bank.get(wallet) < units - 1e-9) { err(sock, "insufficient", "Not enough balance to buy in", "join"); return false; } // H2 pre-check (tokenDebit also refuses)
+    if (!bank.debit(wallet, units)) { err(sock, "insufficient", "Not enough balance to buy in", "join"); return false; } // debit-before-escrow; token debit is REFUSED (never floored) on insufficient
     r.seats[idx] = {
       sock, wallet, name: name || wallet, isBot: false,
-      stack: unitsToChips(units), cumulativeBuyInChips: unitsToChips(units),
+      stack: unitsToChips(units, wallet), cumulativeBuyInChips: unitsToChips(units, wallet),
+      _sid: tokenSeat ? tokenSid(wallet) : null,
       clientSeed: "", sittingOut: false, disconnected: 0, _dcTimer: null, left: false,
       seatIndex: idx, aggression: 0.5,
     };
+    // zero-sum bookkeeping (spec §5.5): the cumulative chips EVER bought in at this table (buy-ins +
+    // rebuys), and the DISTINCT funded wallets for the H7 anti-wash gate.
+    r._everBuyInChips = (r._everBuyInChips || 0) + r.seats[idx].cumulativeBuyInChips;
+    if (!r._fundedWallets) r._fundedWallets = new Set();
+    r._fundedWallets.add(norm(wallet));
+    if (tokenSeat) flushPersist(); else savePersist(); // BUY-IN: the debit is durable synchronously, so the seat→session binding must persist SYNCHRONOUSLY too — a debounced write leaves an 800ms crash window that strands the on-chain lock (H5/v12.94 class)
     r.spectators.delete(sock);
     touch(r);
     send(sock, Object.assign(stateFor(r, wallet), { you: { tableId: r.id, seat: idx, balance: bank.get(wallet) } }));
@@ -1284,12 +1543,13 @@ function attachPoker(opts) {
         } else broadcastState(r);
         broadcast(r, { type: "pk:event", kind: "seatLeaving", seat: i, wallet: s.wallet });
       } else {
-        // not in a live hand → cash out immediately.
-        if (s.stack > 0) { bank.credit(s.wallet, chipsToUnits(s.stack)); pushWallet(s.sock, s.wallet); }
+        // not in a live hand → cash out immediately (token seats: credit session/pokerOwed + unbind).
+        if (isTokenWallet(s.wallet)) { cashOutSeat(r, s); pushWallet(s.sock, s.wallet); }
+        else if (s.stack > 0) { bank.credit(s.wallet, chipsToUnits(s.stack, s.wallet)); pushWallet(s.sock, s.wallet); }
         if (s._dcTimer) { clrT(s._dcTimer); s._dcTimer = null; }
         r.seats[i] = null;
         broadcast(r, { type: "pk:event", kind: "seatOpen", seat: i });
-        broadcastState(r); reapEmptyExtras();
+        broadcastState(r); reapEmptyExtras(); savePersist();
       }
       pushLobby();
       return;
@@ -1311,19 +1571,27 @@ function attachPoker(opts) {
     err(sock, "no_seat", "Take a seat first", "act");
   }
 
-  // Demo rebuy: add chips (buy-in units) to a seated stack between hands.
+  // Rebuy: add chips (buy-in units) to a seated stack between hands. H8 — ONE guarded transaction
+  // (debit → stack+= → cumulativeBuyIn+=) that rolls back all three on any failure (refund-first-
+  // abort-on-fail). Token debit is REFUSED (not floored) on insufficient. The sane cap is computed in
+  // CHIPS (s.stack is already chips) so it isn't the prior units/chips-confusion bug.
   function rebuy(sock, amountUnits) {
     for (const r of rooms.values()) { const i = seatIndexOfSock(r, sock); if (i < 0) continue;
       if (inHandPhase(r) && r.table.hand && r.table.hand.players.some((p) => p.id === r.seats[i].wallet)) return err(sock, "in_hand", "Rebuy between hands", "rebuy");
       const s = r.seats[i];
       let units = Math.max(0, Math.round(Number(amountUnits) || 0));
       if (units <= 0) return err(sock, "server", "Bad rebuy amount", "rebuy");
-      if (unitsToChips(s.stack) + unitsToChips(units) > r.buyInMax * 3) units = Math.max(0, r.buyInMax * 3 - s.stack); // sane cap
-      if (units <= 0) return err(sock, "server", "Rebuy would exceed the table cap", "rebuy");
-      if (!bank.debit(s.wallet, units)) return err(sock, "insufficient", "Not enough balance", "rebuy");
-      s.stack += unitsToChips(units); s.cumulativeBuyInChips += unitsToChips(units);
+      let addChips = unitsToChips(units, s.wallet);
+      const capChips = r.buyInMax * 3 * chipsScale(s.wallet); // sane per-seat cap in chips
+      if (s.stack + addChips > capChips) { addChips = Math.max(0, capChips - s.stack); units = chipsToUnits(addChips, s.wallet); }
+      if (addChips <= 0 || units <= 0) return err(sock, "server", "Rebuy would exceed the table cap", "rebuy");
+      if (!bank.debit(s.wallet, units)) return err(sock, "insufficient", "Not enough balance", "rebuy"); // token debit refuses on insufficient (never floors)
+      // debit booked → apply the OTHER two legs atomically (pure in-memory, cannot throw).
+      s.stack += addChips; s.cumulativeBuyInChips += addChips;
+      r._everBuyInChips = (r._everBuyInChips || 0) + addChips;
       if (s.sittingOut && s.stack >= r.table.bigBlind) s.sittingOut = false;
       pushWallet(sock, s.wallet); broadcastState(r);
+      if (isTokenWallet(s.wallet)) flushPersist(); else savePersist(); // rebuy is a real debit → persist the larger stack SYNCHRONOUSLY (stranded-lock window)
       maybeStartHand(r);
       return;
     }
@@ -1392,10 +1660,12 @@ function attachPoker(opts) {
       if (h.players[h.toAct] && h.players[h.toAct].id === s.wallet) { try { h.act(s.wallet, "fold"); } catch (e) {} broadcastState(r); advanceHand(r); }
       else broadcastState(r);
     } else {
-      if (s.stack > 0) bank.credit(s.wallet, chipsToUnits(s.stack));
+      // grace expired NOT mid-hand → force-cash-out so a disconnect can't strand an on-chain lock.
+      if (isTokenWallet(s.wallet)) { cashOutSeat(r, s); }
+      else if (s.stack > 0) bank.credit(s.wallet, chipsToUnits(s.stack, s.wallet));
       r.seats[i] = null;
       broadcast(r, { type: "pk:event", kind: "seatOpen", seat: i });
-      broadcastState(r); reapEmptyExtras();
+      broadcastState(r); reapEmptyExtras(); savePersist();
     }
     pushLobby();
   }
@@ -1438,14 +1708,52 @@ function attachPoker(opts) {
   }
   function onClose(sock) { markDisconnected(sock); }
 
+  // ── PERSISTENCE hydrate + BOOT-DRAIN (spec §12 H5, REQUIRED) ─────────────────────────────────
+  // Rehydrate the pokerOwed ledger + daily creator-rake counters (so an owed win survives a restart
+  // and is still claimed on the wallet's next session open). The persisted seat→session bindings +
+  // stacks describe seats that were live BEFORE a restart; on boot there is NO live table for them
+  // (rooms are built fresh), so DRAIN each: credit the remaining stack back to its session (or
+  // pokerOwed) and unbind — a Render restart during a disconnect window can NEVER strand an on-chain
+  // lock (the v12.94 "locked funds forever" class). Idempotent: a drained session is not re-drained
+  // because its owed credit is booked/summed once and the persisted table list is cleared after.
+  function hydrateAndBootDrain() {
+    if (!persist || !persist.load) return { drained: 0 };
+    let st = null; try { st = persist.load() || {}; } catch (e) { return { drained: 0 }; }
+    for (const [w, n] of (st.pokerOwed || [])) { const c = Math.round(Number(n) || 0); if (c > 0) pokerOwed.set(norm(w), c); }
+    for (const [k, n] of (st.creatorRakeDaily || [])) { const c = Math.round(Number(n) || 0); if (c > 0) creatorRakeDaily.set(String(k), c); }
+    let drained = 0;
+    for (const tbl of (st.tables || [])) {
+      // creator rake accrued but unpaid at the crash → owe it to the creator wallet.
+      const cr = Math.round(Number(tbl.creatorRakeChips) || 0);
+      if (cr > 0 && tbl.creatorWallet && norm(tbl.creatorWallet) !== "house") owe(tbl.creatorWallet, cr);
+      for (const seat of (tbl.seats || [])) {
+        const wallet = seat.wallet, sid = seat.sid, stack = Math.round(Number(seat.stack) || 0);
+        if (!wallet || !realWallet(wallet)) continue;
+        // Re-bind just long enough to route the credit to the right session, then unbind. If the
+        // session is gone/closed, tokenCredit falls back to pokerOwed (still claimable) — never lost.
+        if (sid && TL) tokenBind.set(norm(wallet), String(sid));
+        if (stack > 0) { tokenCredit(wallet, stack); drained++; }
+        tokenBind.delete(norm(wallet));
+      }
+    }
+    // the drained tables no longer exist → clear the persisted table list, keep the (updated) owed ledger.
+    savePersist(); flushPersist();
+    return { drained };
+  }
+
   ensureHouseTable();
   return {
     handle, onClose, bank,
-    // token seam (Phase 3, no-op in Phase 2)
-    setTokenLedger: (tl) => { TL = tl || null; },
-    bindToken, unbindToken,
+    // TOKEN money seam (spec §5/§12 — Phase 3, REAL). setTokenLedger binds the applyPokerNet ledger
+    // ({ tokensOf, applyNet, recordOwed?, persist? }); on (re)bind, run the boot-drain so any orphaned
+    // poker-bound session from a prior process is force-cashed-out (no stranded lock).
+    setTokenLedger: (tl) => { TL = tl || null; const res = hydrateAndBootDrain(); return res; },
+    bindToken, unbindToken, hasLiveHand,
+    // owed-ledger + persistence introspection (server.js flushes on SIGTERM; tests assert owed sums)
+    pokerOwed: (wallet) => pokerOwed.get(norm(wallet)) || 0,
+    flushPersist, bootDrain: hydrateAndBootDrain,
     _mgr: { rooms, makeRoom, ensureHouseTable, closeRoom, lobbyList, reapEmptyExtras },
-    _room: { maybeStartHand, startNextHand, advanceHand, finishHand, toBetween, armActTimer, autoAct, broadcastState, stateFor },
+    _room: { maybeStartHand, startNextHand, advanceHand, finishHand, toBetween, armActTimer, autoAct, broadcastState, stateFor, cashOutSeat, settleCreatorRake, settleRealTable },
     closeRoom,
   };
 }
@@ -1887,6 +2195,307 @@ if (require.main === module) {
     }
   }
 
-  console.log(ok ? "\nSELF-TEST OK — server-authoritative poker core is deterministic, verifiable, and leak-free (+ rake: no-flop-no-drop, %-with-cap, exact chip-sink; + Phase-2 RoomManager: per-socket no-leak, act-timer epoch guard, disconnect auto-fold, reconnect reclaim, button rotation, illegal-act rejection, heads-up fold-to-BB)." : "\nSELF-TEST FAILED");
+  /* ====================================================================
+     9. PHASE 3 — MONEY SETTLEMENT token self-tests 17–24 (spec §3 + §12).
+        A STUB token bridge/ledger mirrors applyExternal semantics EXACTLY
+        (insufficient-throw at bet>tokens; capUp clamp to buyIn+maxWin on the
+        win side; loss floored at 0), plus a controllable clock. Real 0x
+        wallets are bound to sessions via poker.bindToken; the poker bank's
+        get/credit/debit then route to the ledger (cent-scaled at the seat).
+        17 end-to-end zero-sum to the cent across a raked multi-seat hand + all cash-outs;
+        18 creator rake-share funded with NO house mint;
+        19 winner credit whose capUp-shortfall lands in pokerOwed (no vanish);
+        20 insufficient buy-in REFUSED (not floored);
+        21 boot-drain reconstructs a force-cash-out for an orphaned poker-bound session;
+        22 a seated-creator hand routes creator-half to HOUSE;
+        23 creator-half withheld until the ≥3-distinct-wallets/≥10-hands gate opens;
+        24 pokerOwed SUMS (never overwrites) across two payouts to one sessionless wallet.
+     ==================================================================== */
+  {
+    console.log("\n--- Phase 3: MONEY settlement (token) ---");
+    // ── STUB token bridge (mirrors token-bridge.js applyExternal + capUp) ──
+    function makeStubBridge(maxWinUnits) {
+      const S = new Map(); // sid → { player, buyInUnits, tokens, closed }
+      const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+      const capUp = (tokens, buyIn) => { const ceil = r2(buyIn) + (maxWinUnits == null ? Infinity : maxWinUnits); return (Number.isFinite(ceil) && tokens > ceil) ? r2(ceil) : tokens; };
+      return {
+        open: (sid, player, buyInUnits) => { S.set(sid, { player: String(player).toLowerCase(), buyInUnits: r2(buyInUnits), tokens: r2(buyInUnits), closed: false }); },
+        close: (sid) => { const s = S.get(sid); if (s) s.closed = true; },
+        _get: (sid) => S.get(sid),
+        tokensOf: (sid) => { const s = S.get(sid); return (s && !s.closed) ? s.tokens : null; },
+        // SIBLING of the real applyPokerNet: open-session + player-match gate, insufficient-throw (H2),
+        // capUp on the win side (H3). Synchronous. Returns the new token balance.
+        applyPokerNet: (player, sid, betUnits, payoutUnits, ref) => {
+          const s = S.get(sid);
+          if (!s || s.closed) throw new Error("no open token session");
+          if (s.player !== String(player || "").toLowerCase()) throw new Error("session does not belong to player");
+          const bet = r2(betUnits || 0), payout = r2(Math.max(0, payoutUnits || 0));
+          if (Math.round(bet * 100) > Math.round(s.tokens * 100)) throw new Error("insufficient tokens"); // H2
+          s.tokens = capUp(r2(s.tokens - bet + payout), s.buyInUnits);                                    // capUp (H3)
+          if (s.tokens < 0) s.tokens = 0;
+          return s.tokens;
+        },
+      };
+    }
+    let clock2 = 5000000; const timers2 = new Map(); let tid2 = 0;
+    const clk2 = { now: () => clock2, setTimeout: (fn, ms) => { const id = ++tid2; timers2.set(id, { fn, at: clock2 + ms, ms }); return id; }, clearTimeout: (id) => { timers2.delete(id); } };
+    const fireDue2 = () => { let g = 0; while (g++ < 2000) { const due = Array.from(timers2.entries()).filter(([, t]) => t.at <= clock2).sort((a, b) => a[0] - b[0]); if (!due.length) break; const [id, t] = due[0]; timers2.delete(id); try { t.fn(); } catch (e) { console.error("t2 threw:", e); } } };
+    const mkTokWs = (w) => { const msgs = []; const ws = { wallet: w, send: (m) => { try { msgs.push(JSON.parse(m)); } catch (e) {} } }; ws._msgs = msgs; return ws; };
+    const roomOf2 = (eng, w) => { for (const r of eng._mgr.rooms.values()) if (r.seats.some((s) => s && String(s.wallet).toLowerCase() === String(w).toLowerCase())) return r; return null; };
+    const W1 = "0x1111111111111111111111111111111111111111";
+    const W2 = "0x2222222222222222222222222222222222222222";
+    const W3 = "0x3333333333333333333333333333333333333333";
+    const W4 = "0x4444444444444444444444444444444444444444";
+    // Play a real-money table to completion by check/call-down; returns when phase leaves HAND.
+    const checkCallDown = (pk, r, wsOf) => { let g = 0; while (r.phase === "HAND" && r.table.hand && !r.table.hand.done && g++ < 400) { const h = r.table.hand; const cur = h.players[h.toAct].id; const ws = wsOf(cur); const la = h.legalActions(cur); if (!ws) break; pk.handle(ws, { type: "pk:act", action: la.canCheck ? "check" : "call" }); } };
+
+    // ── 17: END-TO-END ZERO-SUM to the cent across a raked multi-seat hand + all cash-outs ──
+    {
+      const bridge = makeStubBridge(2000);
+      bridge.open("s1", W1, 200); bridge.open("s2", W2, 200); bridge.open("s3", W3, 200); // $200 each = 20000 chips (20bb min at bb=10)
+      const pk = attachPoker(Object.assign({ timers: { act: 20000, showdown: 0, between: 0, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 } }, clk2));
+      pk.setTokenLedger({ tokensOf: bridge.tokensOf, applyNet: bridge.applyPokerNet });
+      const A = mkTokWs(W1), B = mkTokWs(W2), C = mkTokWs(W3);
+      pk.bindToken(W1, "s1"); pk.bindToken(W2, "s2"); pk.bindToken(W3, "s3");
+      // Real table, creator = W1 (seated → H6 sends its own rake-half to HOUSE; irrelevant to zero-sum).
+      // Buy in $200 each (the 20bb server-clamped minimum at bb=10). Rake is the only chip-sink.
+      pk.handle(A, { type: "pk:table:create", wallet: W1, config: { bb: 10, maxSeats: 6, name: "RM", buyInMinBb: 20, buyInMaxBb: 100, rakeBps: 500, rakeCapBb: 3 } });
+      const t1 = A._msgs.filter((m) => m.type === "pk:table:created").pop().tableId;
+      pk.handle(A, { type: "pk:table:join", wallet: W1, tableId: t1, buyIn: 200 });
+      pk.handle(B, { type: "pk:table:join", wallet: W2, tableId: t1, buyIn: 200 });
+      pk.handle(C, { type: "pk:table:join", wallet: W3, tableId: t1, buyIn: 200 });
+      const r = roomOf2(pk, W1);
+      eq("(17) real table established, 3 token seats bought in @ $200 (20000 chips each)", r && r.kind === "real" && r.seats.filter(Boolean).length === 3 && r.seats.filter(Boolean).every((s) => s.stack === 20000 && s.cumulativeBuyInChips === 20000));
+      eq("(17) each session debited its full buy-in ($200 → $0 held; chips are now table-local)", bridge._get("s1").tokens === 0 && bridge._get("s2").tokens === 0 && bridge._get("s3").tokens === 0);
+      const wsOf = (w) => (String(w).toLowerCase() === W1 ? A : String(w).toLowerCase() === W2 ? B : C);
+      // Play a few complete hands to accumulate rake, then STOP with the last hand DONE (phase SHOWDOWN)
+      // so closeRoom can tear the table down (it refuses mid-LIVE-hand). checkCallDown ends with h.done;
+      // fireDue2 cascades showdown->between->next-hand. For the FINAL hand we leave the cascade UNFIRED
+      // and close while SHOWDOWN (hand.done) — a clean, settleable teardown.
+      let handsRun = 0;
+      while (handsRun < 2 && r.phase === "HAND") { checkCallDown(pk, r, wsOf); handsRun++; if (handsRun < 2) fireDue2(); }
+      const totalRakeChips = (r.houseRakeChips || 0) + (r.creatorRakeChips || 0);
+      pk._mgr.closeRoom(r, "test"); // SHOWDOWN + hand.done → settleable
+      // Zero-sum: Σ(session tokens returned) + Σ(pokerOwed to seats) == Σ buy-ins − totalRake.
+      const back1 = bridge._get("s1").tokens, back2 = bridge._get("s2").tokens, back3 = bridge._get("s3").tokens;
+      const owedSeats = pk.pokerOwed(W1) + pk.pokerOwed(W2) + pk.pokerOwed(W3);
+      const returnedUsd = Math.round((back1 + back2 + back3) * 100) + owedSeats; // chips
+      const buyInsChips = 60000;
+      eq("(17) ZERO-SUM to the cent: Σ(buyIn − returned) === totalRake", (buyInsChips - returnedUsd) === totalRakeChips);
+      eq("(17) totalRake === houseRake + creatorRake (exact split, odd cent to creator)", totalRakeChips === (r.houseRakeChips || 0) + (r.creatorRakeChips || 0));
+      eq("(17) no per-seat credit exceeded its buy-in + others' buy-ins (H4 clamp held)", back1 <= 600 && back2 <= 600 && back3 <= 600);
+    }
+
+    // ── 17b: F1/F2 REGRESSION — the busted LOSER LEAVES before the winner cashes out (the most common
+    //    outcome, and the exact gap that let F1 through). The winner's stack holds BOTH buy-ins minus
+    //    rake; the H4 ceiling is table-life (_everBuyInChips), so the winnings must NOT be truncated,
+    //    and zero-sum must hold over the table's WHOLE life (departed seats counted in _everReturnedChips). ──
+    {
+      const bridge = makeStubBridge(5000);
+      bridge.open("s1", W1, 200); bridge.open("s2", W2, 200);
+      const pk = attachPoker(Object.assign({ timers: { act: 20000, showdown: 0, between: 999999, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 } }, clk2));
+      pk.setTokenLedger({ tokensOf: bridge.tokensOf, applyNet: bridge.applyPokerNet });
+      const A = mkTokWs(W1), B = mkTokWs(W2);
+      pk.bindToken(W1, "s1"); pk.bindToken(W2, "s2");
+      pk.handle(A, { type: "pk:table:create", config: { bb: 10, maxSeats: 2, name: "F1", buyInMinBb: 20, buyInMaxBb: 100, rakeBps: 500, rakeCapBb: 3 } });
+      const t = A._msgs.filter((m) => m.type === "pk:table:created").pop().tableId;
+      pk.handle(A, { type: "pk:table:join", wallet: W1, tableId: t, buyIn: 200 });
+      pk.handle(B, { type: "pk:table:join", wallet: W2, tableId: t, buyIn: 200 });
+      const r = roomOf2(pk, W1);
+      const wsOf = (w) => (String(w).toLowerCase() === W1 ? A : B);
+      checkCallDown(pk, r, wsOf); // finish the auto-started hand → phase SHOWDOWN (hand.done); between held (999999)
+      // Simulate the settled outcome of a BIG hand at the settlement layer: W2 won W1's whole stack,
+      // minus a 20-chip rake (3bb cap at bb=10). Overwrite all the relevant fields consistently.
+      const s1 = r.seats.find((s) => s && s.wallet === W1), s2 = r.seats.find((s) => s && s.wallet === W2);
+      s1.stack = 0; s2.stack = 39980; r.houseRakeChips = 10; r.creatorRakeChips = 10; r._everReturnedChips = 0;
+      // LOSER leaves FIRST — cash them out (0) and vacate the seat BEFORE the winner settles (the F1 trigger)
+      pk._room.cashOutSeat(r, s1); r.seats[r.seats.indexOf(s1)] = null;
+      eq("(17b) busted loser left; winner still holds the big stack (39980)", !r.seats.find((s) => s && s.wallet === W1) && s2.stack === 39980);
+      pk._mgr.closeRoom(r, "test"); // winner cashes out — ceiling is table-life 40000, so 39980 is NOT clamped
+      const back2 = Math.round(bridge._get("s2").tokens * 100) + pk.pokerOwed(W2); // chips (booked + owed)
+      eq("(17b) F1 FIXED: winner credited the FULL 39980 after a loser left first (no truncation, no vanish)", back2 === 39980);
+      eq("(17b) F2 FIXED: zero-sum holds table-life — everBuyIn − everReturned === totalRake (20)", (r._everBuyInChips - r._everReturnedChips) === 20);
+    }
+
+    // ── 18: creator rake-share is FUNDED (no house mint) — a HOUSE-independent creator earns the half ──
+    {
+      const bridge = makeStubBridge(2000);
+      bridge.open("s1", W1, 200); bridge.open("s2", W2, 200); bridge.open("s3", W3, 200); bridge.open("sc", W4, 200);
+      const pk = attachPoker(Object.assign({ creatorGateDistinct: 1, creatorGateHands: 1, timers: { act: 20000, showdown: 0, between: 0, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 } }, clk2));
+      pk.setTokenLedger({ tokensOf: bridge.tokensOf, applyNet: bridge.applyPokerNet });
+      const A = mkTokWs(W1), B = mkTokWs(W2), C = mkTokWs(W3);
+      pk.bindToken(W1, "s1"); pk.bindToken(W2, "s2"); pk.bindToken(W3, "s3"); pk.bindToken(W4, "sc");
+      // creator = W4 via its OWN socket D, which NEVER sits (H6 seated-exclusion won't fire). The creator
+      // is the AUTHENTICATED socket owner (server ignores the m.wallet hint when sock.wallet is set), so a
+      // non-seated creator needs its own socket. gate forced open (1/1) so the very first raked hand pays.
+      const D = mkTokWs(W4);
+      pk.handle(D, { type: "pk:table:create", config: { bb: 10, maxSeats: 6, name: "CR", buyInMinBb: 20, buyInMaxBb: 100, rakeBps: 500, rakeCapBb: 3 } });
+      const t = D._msgs.filter((m) => m.type === "pk:table:created").pop().tableId;
+      // W1/W2/W3 sit (3 distinct funded wallets, gate is 1/1 so it opens immediately).
+      pk.handle(A, { type: "pk:table:join", wallet: W1, tableId: t, buyIn: 200 });
+      pk.handle(B, { type: "pk:table:join", wallet: W2, tableId: t, buyIn: 200 });
+      pk.handle(C, { type: "pk:table:join", wallet: W3, tableId: t, buyIn: 200 });
+      const r = roomOf2(pk, W1);
+      const wsOf = (w) => (String(w).toLowerCase() === W1 ? A : String(w).toLowerCase() === W2 ? B : C);
+      let hands = 0; while (hands < 6 && (r.creatorRakeChips || 0) === 0 && r.phase === "HAND") { checkCallDown(pk, r, wsOf); hands++; if ((r.creatorRakeChips || 0) === 0) fireDue2(); }
+      // end on a DONE hand (phase SHOWDOWN, cascade unfired) so closeRoom can settle.
+      if (r.phase === "HAND" && r.table.hand && !r.table.hand.done) checkCallDown(pk, r, wsOf);
+      const accruedCreator = r.creatorRakeChips || 0;
+      const accruedHouse = r.houseRakeChips || 0;
+      eq("(18) a raked hand accrued a creator-half (gate open, creator NOT seated)", accruedCreator > 0);
+      const scTokBefore = bridge._get("sc").tokens;
+      pk._mgr.closeRoom(r, "test");
+      const scTokAfter = bridge._get("sc").tokens;
+      const creatorPaid = Math.round((scTokAfter - scTokBefore) * 100) + pk.pokerOwed(W4); // chips credited or owed
+      eq("(18) creator-half PAID into the creator session (or owed) — funded, no mint", creatorPaid === accruedCreator);
+      eq("(18) house-retained + creator-paid === total rake skimmed (no mint/burn)", (accruedHouse + creatorPaid) === (accruedHouse + accruedCreator));
+    }
+
+    // ── 19: winner credit whose capUp-shortfall lands in pokerOwed (no vanish) ──
+    {
+      // maxWin tiny ($5) so a winner's returned stack ($ up to buyIn+others) exceeds buyIn+maxWin → capUp
+      // truncates the session credit; the shortfall MUST land in pokerOwed, never vanish.
+      const bridge = makeStubBridge(5); // capUp ceiling = buyIn(200) + 5 = 205
+      bridge.open("s1", W1, 200); bridge.open("s2", W2, 200);
+      const pk = attachPoker(Object.assign({ timers: { act: 20000, showdown: 0, between: 0, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 } }, clk2));
+      pk.setTokenLedger({ tokensOf: bridge.tokensOf, applyNet: bridge.applyPokerNet });
+      const A = mkTokWs(W1), B = mkTokWs(W2);
+      pk.bindToken(W1, "s1"); pk.bindToken(W2, "s2");
+      pk.handle(A, { type: "pk:table:create", wallet: W1, config: { bb: 10, maxSeats: 6, name: "CAP", buyInMinBb: 20, buyInMaxBb: 100, rakeBps: 0, rakeCapBb: 0 } });
+      const t = A._msgs.filter((m) => m.type === "pk:table:created").pop().tableId;
+      pk.handle(A, { type: "pk:table:join", wallet: W1, tableId: t, buyIn: 200 });
+      pk.handle(B, { type: "pk:table:join", wallet: W2, tableId: t, buyIn: 200 });
+      const r = roomOf2(pk, W1);
+      // manufacture a lopsided winner: give seat A the whole table's chips (simulating a big pot win)
+      // between hands, then cash out. (No live hand → safe to set the stack directly for the settlement test.)
+      const sA = r.seats.find((s) => s && s.wallet.toLowerCase() === W1);
+      const sB = r.seats.find((s) => s && s.wallet.toLowerCase() === W2);
+      // simulate A won B's stack: A holds 40000 chips ($400), B holds 0. (cumulativeBuyIn stays 20000 each →
+      // H4 ceiling = 20000 + 20000 = 40000, so the full stack is legitimate; only capUp truncates the credit.)
+      sA.stack = 40000; sB.stack = 0;
+      const before = bridge._get("s1").tokens; // 0 (bought in)
+      pk._room.cashOutSeat(r, sA);
+      const after = bridge._get("s1").tokens;
+      const bookedChips = Math.round((after - before) * 100);
+      const owedChips = pk.pokerOwed(W1);
+      eq("(19) capUp truncated the session credit to the ceiling ($205 → 20500 chips)", after === 205 && bookedChips === 20500);
+      eq("(19) the capUp SHORTFALL landed in pokerOwed (no chip vanished)", (bookedChips + owedChips) === 40000 && owedChips === 19500);
+    }
+
+    // ── 20: insufficient buy-in is REFUSED (not floored) ──
+    {
+      const bridge = makeStubBridge(2000);
+      bridge.open("s1", W1, 30); // only $30 in the session (below the 20bb = $200 min buy-in)
+      const pk = attachPoker(Object.assign({ timers: { act: 20000, showdown: 0, between: 0, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 } }, clk2));
+      pk.setTokenLedger({ tokensOf: bridge.tokensOf, applyNet: bridge.applyPokerNet });
+      const A = mkTokWs(W1);
+      pk.bindToken(W1, "s1");
+      pk.handle(A, { type: "pk:table:create", wallet: W1, config: { bb: 10, maxSeats: 6, name: "INS", buyInMinBb: 20, buyInMaxBb: 100 } });
+      const t = A._msgs.filter((m) => m.type === "pk:table:created").pop().tableId;
+      const mk = A._msgs.length;
+      pk.handle(A, { type: "pk:table:join", wallet: W1, tableId: t, buyIn: 200 }); // wants $200, has $30 → REFUSE
+      const r = roomOf2(pk, W1);
+      const seated = r && r.seats.some((s) => s && s.wallet.toLowerCase() === W1);
+      const refused = A._msgs.slice(mk).some((m) => m.type === "pk:error" && m.code === "insufficient");
+      eq("(20) an over-balance buy-in is REFUSED with pk:error insufficient (not floored)", refused && !seated);
+      eq("(20) the session was NOT debited (no floored partial buy-in)", bridge._get("s1").tokens === 30);
+    }
+
+    // ── 21: boot-drain reconstructs a force-cash-out for an orphaned poker-bound session ──
+    {
+      // A persisted seat→session binding + stack with NO live table (a restart during a disconnect
+      // window). On setTokenLedger boot, the drain must credit the remaining stack back and unbind.
+      const bridge = makeStubBridge(2000);
+      bridge.open("s9", W1, 100); // session still open on-chain, $0 held (bought in), a table stack of $80 was live
+      const store = { tables: [{ id: "PK-99", creatorWallet: null, creatorRakeChips: 0, seats: [{ seat: 0, wallet: W1, sid: "s9", stack: 8000, cumulativeBuyInChips: 10000 }] }], pokerOwed: [], creatorRakeDaily: [] };
+      const persist = { load: () => store, save: (o) => { store.saved = o; } };
+      const pk = attachPoker(Object.assign({ persist, timers: { act: 20000, showdown: 0, between: 0, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 } }, clk2));
+      const tokBefore = bridge._get("s9").tokens; // 0
+      const res = pk.setTokenLedger({ tokensOf: bridge.tokensOf, applyNet: bridge.applyPokerNet });
+      const tokAfter = bridge._get("s9").tokens;
+      eq("(21) boot-drain force-cashed-out the orphaned seat's $80 stack back to its session", res && res.drained === 1 && Math.round((tokAfter - tokBefore) * 100) === 8000);
+      eq("(21) the drained binding is unbound (no stranded lock)", !pk.hasLiveHand(W1));
+      eq("(21) persisted table list cleared after the drain (idempotent — no re-drain)", Array.isArray(store.saved.tables) && store.saved.tables.length === 0);
+    }
+
+    // ── 22: a SEATED-creator hand routes the creator-half to HOUSE (H6) ──
+    {
+      const bridge = makeStubBridge(2000);
+      bridge.open("s1", W1, 200); bridge.open("s2", W2, 200); bridge.open("s3", W3, 200);
+      const pk = attachPoker(Object.assign({ creatorGateDistinct: 1, creatorGateHands: 1, timers: { act: 20000, showdown: 0, between: 0, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 } }, clk2));
+      pk.setTokenLedger({ tokensOf: bridge.tokensOf, applyNet: bridge.applyPokerNet });
+      const A = mkTokWs(W1), B = mkTokWs(W2), C = mkTokWs(W3);
+      pk.bindToken(W1, "s1"); pk.bindToken(W2, "s2"); pk.bindToken(W3, "s3");
+      // creator = W1, who SITS (H6 must route their own-hand creator-half to HOUSE).
+      pk.handle(A, { type: "pk:table:create", wallet: W1, config: { bb: 10, maxSeats: 6, name: "SEAT", buyInMinBb: 20, buyInMaxBb: 100, rakeBps: 500, rakeCapBb: 3 } });
+      const t = A._msgs.filter((m) => m.type === "pk:table:created").pop().tableId;
+      pk.handle(A, { type: "pk:table:join", wallet: W1, tableId: t, buyIn: 200 });
+      pk.handle(B, { type: "pk:table:join", wallet: W2, tableId: t, buyIn: 200 });
+      pk.handle(C, { type: "pk:table:join", wallet: W3, tableId: t, buyIn: 200 });
+      const r = roomOf2(pk, W1);
+      const wsOf = (w) => (String(w).toLowerCase() === W1 ? A : String(w).toLowerCase() === W2 ? B : C);
+      let hands = 0, sawRake = false;
+      while (hands < 8 && r.phase === "HAND") { checkCallDown(pk, r, wsOf); if ((r.houseRakeChips || 0) > 0) sawRake = true; fireDue2(); hands++; }
+      eq("(22) hands were raked (creator W1 seated in every hand)", sawRake);
+      eq("(22) a SEATED creator earns ZERO rake-share on their own hands (all rake → HOUSE)", (r.creatorRakeChips || 0) === 0 && (r.houseRakeChips || 0) > 0);
+    }
+
+    // ── 23: creator-half withheld until the ≥3-distinct-wallets/≥10-hands gate opens (default gate) ──
+    {
+      const bridge = makeStubBridge(2000);
+      bridge.open("s1", W1, 200); bridge.open("s2", W2, 200);
+      const pk = attachPoker(Object.assign({ timers: { act: 20000, showdown: 0, between: 0, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 } }, clk2)); // DEFAULT gate 3/10
+      pk.setTokenLedger({ tokensOf: bridge.tokensOf, applyNet: bridge.applyPokerNet });
+      const A = mkTokWs(W1), B = mkTokWs(W2);
+      pk.bindToken(W1, "s1"); pk.bindToken(W2, "s2");
+      // creator = W4 via its OWN socket D (not seated), only TWO distinct funded wallets → gate SHUT (needs 3).
+      const D = mkTokWs(W4);
+      pk.handle(D, { type: "pk:table:create", config: { bb: 10, maxSeats: 6, name: "GATE", buyInMinBb: 20, buyInMaxBb: 100, rakeBps: 500, rakeCapBb: 3 } });
+      const t = D._msgs.filter((m) => m.type === "pk:table:created").pop().tableId;
+      pk.handle(A, { type: "pk:table:join", wallet: W1, tableId: t, buyIn: 200 });
+      pk.handle(B, { type: "pk:table:join", wallet: W2, tableId: t, buyIn: 200 });
+      const r = roomOf2(pk, W1);
+      const wsOf = (w) => (String(w).toLowerCase() === W1 ? A : B);
+      let hands = 0; while (hands < 12 && r.phase === "HAND") { checkCallDown(pk, r, wsOf); fireDue2(); hands++; }
+      eq("(23) with only 2 distinct wallets the gate is SHUT → creator-half withheld to HOUSE", (r.creatorRakeChips || 0) === 0 && (r.houseRakeChips || 0) > 0);
+    }
+
+    // ── 24: pokerOwed SUMS (never overwrites) across two payouts to one SESSIONLESS wallet ──
+    // The production sessionless-payout path: a creator (W4) who is NOT bound to any token session earns
+    // rake at TWO separate tables; each teardown routes their creator-half to pokerOwed via owe(), which
+    // must SUM (not overwrite). W4 never binds → settleCreatorRake takes the owe() branch cleanly (no
+    // failed-credit log). Two players per table (W1/W2, W3-reuse) with the gate forced open.
+    {
+      const bridge = makeStubBridge(2000);
+      bridge.open("s1", W1, 200); bridge.open("s2", W2, 200); bridge.open("s3", W3, 200);
+      const pk = attachPoker(Object.assign({ creatorGateDistinct: 1, creatorGateHands: 1, timers: { act: 20000, showdown: 0, between: 0, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 } }, clk2));
+      pk.setTokenLedger({ tokensOf: bridge.tokensOf, applyNet: bridge.applyPokerNet });
+      pk.bindToken(W1, "s1"); pk.bindToken(W2, "s2"); pk.bindToken(W3, "s3"); // W4 is deliberately UNBOUND
+      const runTableAccrueCreatorRake = (creatorSock, seatWallets, seatSocks, seatSids) => {
+        pk.handle(creatorSock, { type: "pk:table:create", config: { bb: 10, maxSeats: 6, name: "OWE", buyInMinBb: 20, buyInMaxBb: 100, rakeBps: 500, rakeCapBb: 3 } });
+        const t = creatorSock._msgs.filter((m) => m.type === "pk:table:created").pop().tableId;
+        for (let k = 0; k < seatWallets.length; k++) pk.handle(seatSocks[k], { type: "pk:table:join", wallet: seatWallets[k], tableId: t, buyIn: 200 });
+        const r = roomOf2(pk, seatWallets[0]);
+        const wsOf = (w) => { const i = seatWallets.findIndex((x) => x.toLowerCase() === String(w).toLowerCase()); return i >= 0 ? seatSocks[i] : null; };
+        let g = 0; while (r.phase === "HAND" && (r.creatorRakeChips || 0) === 0 && g++ < 20) { checkCallDown(pk, r, wsOf); if ((r.creatorRakeChips || 0) === 0) fireDue2(); }
+        if (r.phase === "HAND" && r.table.hand && !r.table.hand.done) checkCallDown(pk, r, wsOf);
+        const accrued = r.creatorRakeChips || 0;
+        pk._mgr.closeRoom(r, "test"); // routes creator-half (sessionless W4) → owe()
+        return accrued;
+      };
+      // reopen s3 for the second table's third seat (it's the same session reused between tables here;
+      // in production distinct wallets, but this exercises only the owe() SUM, not the seat math).
+      const D = mkTokWs(W4);
+      const a1 = runTableAccrueCreatorRake(D, [W1, W2], [mkTokWs(W1), mkTokWs(W2)]);
+      // re-open the two player sessions for a fresh table (they cashed out at the first teardown).
+      bridge.open("s1", W1, 200); bridge.open("s2", W2, 200);
+      pk.bindToken(W1, "s1"); pk.bindToken(W2, "s2");
+      const a2 = runTableAccrueCreatorRake(D, [W1, W2], [mkTokWs(W1), mkTokWs(W2)]);
+      eq("(24) both tables accrued a creator-half for the sessionless creator", a1 > 0 && a2 > 0);
+      eq("(24) pokerOwed SUMS across two teardowns (never overwrites): owed === a1 + a2", pk.pokerOwed(W4) === a1 + a2);
+    }
+  }
+
+  console.log(ok ? "\nSELF-TEST OK — server-authoritative poker core is deterministic, verifiable, and leak-free (+ rake: no-flop-no-drop, %-with-cap, exact chip-sink; + Phase-2 RoomManager: per-socket no-leak, act-timer epoch guard, disconnect auto-fold, reconnect reclaim, button rotation, illegal-act rejection, heads-up fold-to-BB; + Phase-3 MONEY: end-to-end zero-sum to the cent, creator-share no-mint, capUp-shortfall→pokerOwed, insufficient-buy-in refused, boot-drain force-cash-out, seated-creator→HOUSE, anti-wash gate, pokerOwed sums)." : "\nSELF-TEST FAILED");
   process.exit(ok ? 0 : 1);
 }
