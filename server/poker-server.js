@@ -937,6 +937,13 @@ function attachPoker(opts) {
     if (cur && cur !== String(sessionId)) { if (hasLiveHand(wallet) || hasSeatedStack(wallet)) return false; } // bound elsewhere & still has chips at stake (live pot OR a seated stack bought from `cur`) → refuse the swap. Audit CRIT: between hands hasLiveHand is false, so without hasSeatedStack a 2nd hello with a different session could re-point the bind → cash-out then credits the WRONG on-chain session (house drain).
     if (hasLiveHand(wallet)) return false;
     tokenBind.set(norm(wallet), String(sessionId));
+    // MEDIUM (deep-scan-2): a capUp-shortfall win parks in pokerOwed until the wallet's NEXT poker buy-in.
+    // A player who won >max-win NET in one session, recovered, and NEVER sits at a poker table again would
+    // otherwise strand that balance forever. bindToken fires on EVERY wallet-hello (server.js POKER_WS path)
+    // — so draining owed here pays it into the freshly-bound session the instant the wallet reconnects, with
+    // NO poker play required. Reuses claimOwed (flush-before-credit; capUp residual stays owed; idempotent —
+    // an already-drained/zero owed is a no-op, and a reconnect to the SAME session returns above before here).
+    try { claimOwed(wallet, String(sessionId)); } catch (e) {}
     return true;
   };
   // True if the wallet still OWNS a seat holding chips (seated OR disconnected-in-grace). The bind
@@ -1158,7 +1165,17 @@ function attachPoker(opts) {
   // routes any capUp SHORTFALL to pokerOwed (H3 — a deep P2P win never truncates/vanishes), asserts the
   // H4 absolute clamp fail-closed, then unbinds. Returns { creditedChips } = the ATTEMPTED credit
   // (booked OR owed) so the zero-sum assert (H8) sums over attempted, never only-successful.
+  // If a LIVE hand is still running, the room seat.stack is STALE — it is only synced at buy-in/rebuy and at
+  // finishHand, NOT decremented as chips are committed mid-hand (those live in the engine's p.committedTotal /
+  // decremented p.stack). A FOLDED player still sits in h.players with their chips in the live pot; cashing out
+  // their PRE-HAND s.stack would RETURN the committed chips that are ALSO awarded to the winner at finishHand →
+  // a house-funded DOUBLE-SPEND (and a broken zero-sum). Reconcile from the engine's live p.stack first so only
+  // the player's UNCOMMITTED chips are returned. No-op between hands / at teardown (hand done → skip).
+  function reconcileLiveStack(r, s) { const h = r.table && r.table.hand; if (h && !h.done && s) { const ep = h.players.find((p) => p.id === s.wallet); if (ep) s.stack = ep.stack; } }
   function cashOutSeat(r, s) {
+    reconcileLiveStack(r, s); // CHOKE-POINT defense: correct a stale mid-hand room stack for ANY caller (a folded
+                              // player's leave/drop) so we never return committed pot chips the winner is also
+                              // awarded (house-funded double-spend). No-op between hands / at teardown (h.done).
     const chips = Math.max(0, Math.round(s.stack || 0));
     s.stack = 0;
     // DEFENCE IN DEPTH (audit): a REAL seat's stack must credit its TOKEN session, never the demo bank.
@@ -1518,7 +1535,11 @@ function attachPoker(opts) {
     // one seat per wallet at THIS table
     if (seatOfWallet(r, wallet)) { err(sock, "already_seated", "You're already at this table", "join"); return false; }
     let idx = -1;
-    if (seatPref != null && seatPref >= 0 && seatPref < r.seats.length && !r.seats[seatPref]) idx = seatPref;
+    // Number.isInteger is REQUIRED: a fractional seatPref (e.g. 2.5) passes >=0 / <length and r.seats[2.5] is
+    // undefined, so the seat would be written to a NON-INTEGER array property that EVERY seat-enumeration path
+    // (for-i loops, map/find/filter, seatOfWallet, boot-drain, persist) SKIPS → a real buy-in debited into an
+    // invisible, unrecoverable seat (stranded on-chain lock). A bad seatPref falls through to the first open seat.
+    if (seatPref != null && Number.isInteger(seatPref) && seatPref >= 0 && seatPref < r.seats.length && !r.seats[seatPref]) idx = seatPref;
     else idx = r.seats.findIndex((s) => !s);
     if (idx < 0) { err(sock, "table_full", "Table is full", "join"); return false; }
     // clamp buy-in to table bounds, then debit the funding wallet (demo bank OR token session).
@@ -1681,7 +1702,10 @@ function attachPoker(opts) {
         } else broadcastState(r);
         broadcast(r, { type: "pk:event", kind: "seatLeaving", seat: i, wallet: s.wallet });
       } else {
-        // not in a live hand → cash out immediately (token seats: credit session/pokerOwed + unbind).
+        // not a LIVE (non-folded) contestant → cash out immediately (token seats: credit session/pokerOwed +
+        // unbind). A FOLDED player is still in h.players with committed chips in the pot → reconcile first so
+        // we return only their uncommitted stack, never the committed chips the winner will be awarded.
+        reconcileLiveStack(r, s);
         if (isTokenWallet(s.wallet)) { cashOutSeat(r, s); pushWallet(s.sock, s.wallet); }
         else if (s.stack > 0) { bank.credit(s.wallet, chipsToUnits(s.stack, s.wallet)); pushWallet(s.sock, s.wallet); }
         if (s._dcTimer) { clrT(s._dcTimer); s._dcTimer = null; }
@@ -1805,7 +1829,10 @@ function attachPoker(opts) {
       if (h.players[h.toAct] && h.players[h.toAct].id === s.wallet) { try { h.act(s.wallet, "fold"); } catch (e) {} broadcastState(r); advanceHand(r); }
       else broadcastState(r);
     } else {
-      // grace expired NOT mid-hand → force-cash-out so a disconnect can't strand an on-chain lock.
+      // grace expired NOT as a live (non-folded) contestant → force-cash-out so a disconnect can't strand an
+      // on-chain lock. A FOLDED player's committed chips are in the live pot → reconcile so we don't return
+      // (double-spend) the committed chips the winner will be awarded.
+      reconcileLiveStack(r, s);
       if (isTokenWallet(s.wallet)) { cashOutSeat(r, s); }
       else if (s.stack > 0) bank.credit(s.wallet, chipsToUnits(s.stack, s.wallet));
       r.seats[i] = null;
@@ -2608,6 +2635,11 @@ if (require.main === module) {
       pk.handle(A, { type: "pk:table:join", wallet: W1, tableId: t, buyIn: 200 });
       pk.handle(B, { type: "pk:table:join", wallet: W2, tableId: t, buyIn: 200 });
       const r = roomOf2(pk, W1);
+      // The 2nd join auto-started a heads-up hand; clear it so this is a genuine BETWEEN-hands settlement.
+      // (Required now that cashOutSeat reconciles a stale room stack from the live engine — a manufactured
+      // stack mid-hand would be correctly overwritten. A real 40000-chip winner only exists between hands,
+      // after finishHand syncs it, which is exactly the state this test means to exercise.)
+      r.table.hand = null; r.phase = "BETWEEN";
       // manufacture a lopsided winner: give seat A the whole table's chips (simulating a big pot win)
       // between hands, then cash out. (No live hand → safe to set the stack directly for the settlement test.)
       const sA = r.seats.find((s) => s && s.wallet.toLowerCase() === W1);
@@ -3047,6 +3079,88 @@ if (require.main === module) {
       const A = mkTokWs(W1); pk.bindToken(W1, "fr");
       pk.handle(A, { type: "pk:table:join", wallet: W1, tableId: tid, buyIn: 200 }); // first token buy-in → flip → reset, then count this REAL seat
       eq("(40) DEEP demo→real flip resets _fundedWallets/_handsPlayed/_everBuyIn/_everReturned to REAL-only", rr.kind === "real" && rr._fundedWallets.size === 1 && rr._handsPlayed === 0 && rr._everBuyInChips === 20000 && rr._everReturnedChips === 0);
+    }
+
+    // ── DEEP-SCAN-2 remediation (41–44) ─────────────────────────────────────────────────────────────
+    const lc = (w) => String(w).toLowerCase();
+    // Build a 3-seat REAL table, deal a hand, have the first actor CALL and the next actor (a blind poster
+    // whose chips are already committed to the pot) FOLD — then return the live-hand context. A folded seat is
+    // no longer a live contestant, so leave/drop cash it out immediately: the exact double-spend surface.
+    function mkFoldMidHand(timers) {
+      const bridge = makeStubBridge(2000);
+      bridge.open("s1", W1, 200); bridge.open("s2", W2, 200); bridge.open("s3", W3, 200);
+      const pk = attachPoker(Object.assign({ timers }, clk2));
+      pk.setTokenLedger({ tokensOf: bridge.tokensOf, applyNet: bridge.applyPokerNet });
+      const A = mkTokWs(W1), B = mkTokWs(W2), C = mkTokWs(W3);
+      pk.bindToken(W1, "s1"); pk.bindToken(W2, "s2"); pk.bindToken(W3, "s3");
+      const wsOf = (w) => (lc(w) === lc(W1) ? A : lc(w) === lc(W2) ? B : C);
+      const sidOf = (w) => (lc(w) === lc(W1) ? "s1" : lc(w) === lc(W2) ? "s2" : "s3");
+      pk.handle(A, { type: "pk:table:create", wallet: W1, config: { bb: 10, maxSeats: 6, name: "FLD", buyInMinBb: 20, buyInMaxBb: 100, rakeBps: 0, rakeCapBb: 0 } });
+      const t = A._msgs.filter((m) => m.type === "pk:table:created").pop().tableId;
+      pk.handle(A, { type: "pk:table:join", wallet: W1, tableId: t, buyIn: 200 });
+      pk.handle(B, { type: "pk:table:join", wallet: W2, tableId: t, buyIn: 200 }); // hand auto-starts HEADS-UP here
+      pk.handle(C, { type: "pk:table:join", wallet: W3, tableId: t, buyIn: 200 }); // W3 joins mid-hand → sits out hand 1
+      const r = roomOf2(pk, W1);
+      // Play the heads-up first hand out so the NEXT hand deals ALL THREE in — only a 3-handed hand can have a
+      // seat FOLD and stay LIVE (2 remain). Without that, a heads-up fold ENDS the hand (nothing to test).
+      { let g = 0; while (r.phase === "HAND" && r.table.hand && !r.table.hand.done && g++ < 400) { const hh = r.table.hand; const cur = hh.players[hh.toAct].id; const la = hh.legalActions(cur); pk.handle(wsOf(cur), { type: "pk:act", action: la.canCheck ? "check" : "call" }); } }
+      fireDue2(); // showdown:0 → between:0 → startNextHand (now 3-handed)
+      const h = r.table.hand;
+      if (!h || h.players.length < 3) throw new Error("(41/42) setup: expected a 3-handed hand");
+      pk.handle(wsOf(h.players[h.toAct].id), { type: "pk:act", action: "call" }); // first actor (button, committed 0) calls
+      const folder = h.players[h.toAct].id;                                       // next actor = a blind poster (committed>0)
+      const ep = h.players.find((p) => p.id === folder);
+      const engBefore = ep.stack, commit = ep.committedStreet;                     // uncommitted stack + committed blind
+      pk.handle(wsOf(folder), { type: "pk:act", action: "fold" });                 // folds — committed chips ride in the pot
+      return { pk, bridge, r, folder, wsOf, sidOf, engBefore, commit };
+    }
+
+    { // (41) DEEP-SCAN-2 CRITICAL: fold mid-hand then LEAVE → credit ONLY the uncommitted stack (never the
+      //   committed blind, which the winner is also awarded at showdown — a house-funded double-spend pre-fix).
+      const F = mkFoldMidHand({ act: 20000, showdown: 0, between: 0, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 });
+      const liveAfterFold = F.r.phase === "HAND" && F.r.table.hand && !F.r.table.hand.done;
+      const sessBefore = F.bridge._get(F.sidOf(F.folder)).tokens;      // 0 — buy-in fully in the table stack
+      F.pk.handle(F.wsOf(F.folder), { type: "pk:table:leave" });        // leave while folded, hand still live
+      const back = Math.round(F.bridge._get(F.sidOf(F.folder)).tokens * 100);
+      eq("(41) DEEP-SCAN-2 fold-then-LEAVE credits the UNCOMMITTED stack only (committed blind rides in the pot — no double-spend)", liveAfterFold && F.commit > 0 && sessBefore === 0 && back === F.engBefore);
+    }
+
+    { // (42) DEEP-SCAN-2 CRITICAL: the SAME over-credit via the disconnect-GRACE drop path (dropSeat else-branch).
+      const F = mkFoldMidHand({ act: 999999, showdown: 0, between: 0, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 });
+      const liveAfterFold = F.r.phase === "HAND" && F.r.table.hand && !F.r.table.hand.done;
+      const sessBefore = F.bridge._get(F.sidOf(F.folder)).tokens;
+      F.pk.onClose(F.wsOf(F.folder));   // disconnect → 90s reconnect-grace timer armed
+      clock2 += 90001; fireDue2();       // grace expires → dropSeat force-cash-out
+      const back = Math.round(F.bridge._get(F.sidOf(F.folder)).tokens * 100);
+      const gone = !F.r.seats.some((s) => s && lc(s.wallet) === lc(F.folder));
+      eq("(42) DEEP-SCAN-2 fold-then-GRACE-DROP credits the UNCOMMITTED stack only + frees the seat (no double-spend)", liveAfterFold && F.commit > 0 && sessBefore === 0 && back === F.engBefore && gone);
+    }
+
+    { // (43) DEEP-SCAN-2 HIGH: a NON-INTEGER pk:table:join seatPref must never write a seat to an invisible
+      //   non-integer array slot (every seat-enumeration path skips r.seats[2.5] → a stranded on-chain lock).
+      const bridge = makeStubBridge(2000); bridge.open("s1", W1, 200);
+      const pk = attachPoker(Object.assign({ timers: { act: 999999, showdown: 0, between: 999999, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 } }, clk2));
+      pk.setTokenLedger({ tokensOf: bridge.tokensOf, applyNet: bridge.applyPokerNet });
+      const A = mkTokWs(W1); pk.bindToken(W1, "s1");
+      pk.handle(A, { type: "pk:table:create", wallet: W1, config: { bb: 10, maxSeats: 6, name: "FRC", buyInMinBb: 20, buyInMaxBb: 100 } });
+      const t = A._msgs.filter((m) => m.type === "pk:table:created").pop().tableId;
+      pk.handle(A, { type: "pk:table:join", wallet: W1, tableId: t, buyIn: 200, seat: 2.5 }); // fractional seatPref
+      const r = Array.from(pk._mgr.rooms.values()).find((x) => x.id === t);
+      const atInteger = r.seats.some((s, i) => s && Number.isInteger(i) && lc(s.wallet) === lc(W1));
+      const noFracSlot = !Object.prototype.hasOwnProperty.call(r.seats, "2.5");
+      eq("(43) DEEP-SCAN-2 a fractional seatPref falls through to a real INTEGER seat (never a stranded non-integer slot)", atInteger && noFracSlot && r.seats.filter(Boolean).length === 1 && bridge._get("s1").tokens === 0);
+    }
+
+    { // (44) DEEP-SCAN-2 MEDIUM: a pokerOwed balance (a capUp-shortfall win parked with no open session) is
+      //   drained into the session at bindToken (wallet-hello) — no need to ever sit at a poker table again.
+      const bridge = makeStubBridge(2000); bridge.open("s1", W1, 200);
+      const persist = { load: () => ({ pokerOwed: [[lc(W1), 5000]] }), save: () => {} }; // $50 owed from a prior session
+      const pk = attachPoker(Object.assign({ persist, timers: { act: 999999, showdown: 0, between: 0, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 } }, clk2));
+      pk.setTokenLedger({ tokensOf: bridge.tokensOf, applyNet: bridge.applyPokerNet }); // hydrates owed=5000
+      const owedBefore = pk.pokerOwed(W1);
+      pk.bindToken(W1, "s1");             // wallet reconnects → drain owed into the freshly-bound session
+      const owedAfter = pk.pokerOwed(W1), sessTokens = bridge._get("s1").tokens;
+      eq("(44) DEEP-SCAN-2 bindToken drains pokerOwed into the freshly-bound session (owed→0, session credited $50)", owedBefore === 5000 && owedAfter === 0 && Math.round(sessTokens * 100) === 25000);
     }
   }
 
