@@ -656,14 +656,17 @@
     if (!legal.yourTurn) {
       // between turns: offer sit-out / rebuy when out of chips / leave
       const msg = document.createElement("span"); msg.className = "pk-ctl-msg";
-      if (seat && seat.stack < (state.bb || 0) && !inLiveHand(hand)) msg.textContent = "Out of chips — rebuy to keep playing";
+      // seat.stack is in CHIPS (cents for a real table); state.bb is the DOLLAR big blind — scale it to chips
+      // so a real short stack correctly triggers the rebuy affordance (was a 100× mismatch → never fired).
+      const bbChips = (state.bb || 0) * (state.kind === "real" ? 100 : 1);
+      if (seat && seat.stack < bbChips && !inLiveHand(hand)) msg.textContent = "Out of chips — rebuy to keep playing";
       else if (hand && !hand.done) msg.textContent = waitingName(hand);
       else msg.textContent = state.phase === "WAITING" ? "Waiting for players…" : "";
       c.appendChild(msg);
       // secondary row
       const row = document.createElement("div"); row.className = "pk-ctl-row2";
       if (seat && !inLiveHand(hand)) {
-        if (seat.stack < (state.bb || 0)) row.appendChild(mkBtn("REBUY", "raise", openRebuy));
+        if (seat.stack < bbChips) row.appendChild(mkBtn("REBUY", "raise", openRebuy)); // bbChips = chip-scaled big blind (see above)
         row.appendChild(mkBtn(seat.sittingOut ? "SIT IN" : "SIT OUT", "ghost", () => { if (net) net.send({ type: seat.sittingOut ? "pk:sit-in" : "pk:sit-out" }); }));
         row.appendChild(mkBtn("LEAVE", "ghost", () => { leaveTable(); showLobby(); }));
         // DEMO ONLY: fill empty seats with bots so you can play solo (bots never touch real money)
@@ -897,8 +900,9 @@
   function esc(s) { return String(s == null ? "" : s).replace(/[<>&"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c])); }
   function mkBtn(label, cls, fn) { const b = document.createElement("button"); b.className = "pk-btn " + cls; b.textContent = label; b.onclick = fn; return b; }
   function paintBalance() {
-    const r = lobbyRooms.find((x) => x.id === atTableId);
-    const isReal = r && r.kind === "real";
+    // Prefer the AUTHORITATIVE snapshot kind (mirrors render()) so a real token balance isn't momentarily
+    // rounded-to-dollars (losing cents) when a pk:wallet push lands before the lobby list does.
+    const isReal = (state && state.kind) ? state.kind === "real" : ((lobbyRooms.find((x) => x.id === atTableId) || {}).kind === "real");
     const disp = isReal ? balanceUnits : Math.round(balanceUnits);
     const t = cfg.usd(disp);
     const b1 = $("pk-bal"), b2 = $("pk-bal2"); if (b1) b1.textContent = t; if (b2) b2.textContent = t;

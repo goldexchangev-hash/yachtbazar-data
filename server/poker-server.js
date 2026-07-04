@@ -532,6 +532,26 @@ ServerHand.prototype._showdown = function () {
 };
 
 ServerHand.prototype._finish = function () {
+  // UNCALLED-BET RETURN (must run BEFORE pots are built): if exactly ONE player committed MORE than every
+  // other player, the excess over the next-highest commitment was never matched by anyone — it is an
+  // uncalled bet and must be returned to that player's stack, not left in a top-level side pot. Without
+  // this, when that lone over-committer FOLDS the pot they alone funded has eligible=[] and is DESTROYED
+  // (chips vanish, Σ-conservation breaks). Canonical trigger: an SB blind larger than a short BB's all-in,
+  // then the SB folds. Refunding here (adjusting stack +x and committedTotal −x, sum unchanged) keeps the
+  // pre-hand startStack correct AND excludes the uncalled chips from the raked pot — the standard rule.
+  {
+    let top = -1, second = -1, topId = null, topCount = 0;
+    for (const p of this.players) {
+      const c = p.committedTotal;
+      if (c > top) { second = top; top = c; topId = p.id; topCount = 1; }
+      else if (c === top) { topCount++; }
+      else if (c > second) { second = c; }
+    }
+    if (topCount === 1 && top > second && second >= 0) {
+      const refund = top - second, tp = this.players.find((p) => p.id === topId);
+      if (tp && refund > 0) { tp.stack += refund; tp.committedTotal -= refund; }
+    }
+  }
   const pots = buildPots(this.players.map((p) => ({ id: p.id, committedTotal: p.committedTotal, folded: p.folded })));
   this.pots = pots;
   const startStack = {};
@@ -856,6 +876,11 @@ function attachPoker(opts) {
   const chipsScale = (w) => realWallet(w) ? 100 : 1;
   const unitsToChips = (u, w) => Math.round((Number(u) || 0) * chipsScale(w));
   const chipsToUnits = (c, w) => { const sc = chipsScale(w); return sc === 100 ? round2((Number(c) || 0) / 100) : Math.round(Number(c) || 0); };
+  // The big blind IN CHIP SPACE (cents for a real table, 1:1 for demo). r.table.bigBlind is stored in
+  // DOLLAR units (for the "$5/$10" label); every seat-eligibility / sit-out guard that compares a CHIP
+  // stack against the blind must use this, else a real seat's cent-scaled stack is compared to a dollar
+  // blind (100× mismatch → busted real players never sit out and are force-all-in'd every hand).
+  const bbChips = (r) => r.table.bigBlind * (r.kind === "real" ? 100 : 1);
 
   /* ---------------- TOKEN SEAM (spec §5/§12 — Phase 3, the money settlement) ----------------
      setTokenLedger binds the applyPokerNet ledger; a real (0x) wallet at a REAL table has its
@@ -1026,15 +1051,20 @@ function attachPoker(opts) {
     return Math.round(r.potHistory.reduce((a, b) => a + b, 0) / r.potHistory.length);
   }
   function roomPublic(r) {
+    const priv = !!r.pwHash;
     return {
-      id: r.id, name: r.name, kind: r.kind || "demo",
+      id: r.id,
+      // A PRIVATE table's name/host can encode context (a family/club name, a password hint) — never
+      // disclose it to un-authenticated lobby viewers; show a generic placeholder. The table is still
+      // listed (joinable by id + password) but its identity stays hidden until you have the password.
+      name: priv ? "Private table" : r.name, kind: r.kind || "demo",
       sb: r.table.smallBlind, bb: r.table.bigBlind,
       seated: r.seats.filter(Boolean).length, maxSeats: r.table.maxSeats,
       openSeats: r.seats.filter((s) => !s).length,
       phase: r.phase, inHand: r.phase === "HAND" || r.phase === "SHOWDOWN",
       avgPot: avgPot(r), rakeBps: r.table.rakeBps, rakeCapBb: r.table.rakeCapBb,
       buyInMin: r.buyInMin, buyInMax: r.buyInMax,
-      private: !!r.pwHash, host: r.creatorId === "HOUSE" ? "HOUSE" : (r.creatorName || null),
+      private: priv, host: priv ? null : (r.creatorId === "HOUSE" ? "HOUSE" : (r.creatorName || null)),
       commit: (r.table.hand && r.table.hand.commit) || null,
     };
   }
@@ -1268,7 +1298,7 @@ function attachPoker(opts) {
   function maybeStartHand(r) {
     if (r.phase !== "WAITING" && r.phase !== "BETWEEN") return;
     refillBots(r); // demo: top up any busted bot so the table keeps playing
-    const eligible = seatedInWithChips(r, r.table.bigBlind);
+    const eligible = seatedInWithChips(r, bbChips(r));
     if (eligible.length < 2) { r.phase = "WAITING"; broadcastState(r); reapEmptyExtras(); return; }
     startNextHand(r);
   }
@@ -1277,8 +1307,7 @@ function attachPoker(opts) {
     // Rotate the button one live seat clockwise from the previous hand (except the first).
     // The engine's startHand takes a buttonIndex into the DEALT (eligible) subset — we compute
     // it over the room seat ring so it advances one occupied+eligible seat each hand.
-    const bb = r.table.bigBlind;
-    const eligible = seatedInWithChips(r, bb);
+    const eligible = seatedInWithChips(r, bbChips(r)); // chip-scaled threshold (real = cents) — a sub-blind real seat is held out of the deal
     if (eligible.length < 2) { r.phase = "WAITING"; broadcastState(r); return; }
 
     // SEEDS (spec §7): collect one clientSeed per SEATED-IN player, auto-gen if blank, FREEZE
@@ -1360,8 +1389,10 @@ function attachPoker(opts) {
       else fire();
       return;
     }
-    // Human to act. A DISCONNECTED seat on its turn auto-folds/checks immediately (spec §4).
-    if (roomSeat && roomSeat.disconnected) { autoAct(r, seat.id); return; }
+    // Human to act. A DISCONNECTED — or an explicitly-LEFT-but-still-connected — seat on its turn auto-folds
+    // immediately (spec §4) instead of stalling the whole table for the full 20s act-timer (a leave that isn't
+    // on your turn keeps the seat live until BETWEEN, so the action can still reach a left seat).
+    if (roomSeat && (roomSeat.disconnected || roomSeat.left)) { autoAct(r, seat.id); return; }
     // Arm the 20s act-timer with the epoch guard.
     armActTimer(r, seat.id);
     broadcastState(r);
@@ -1407,7 +1438,10 @@ function attachPoker(opts) {
     if (rake > 0) {
       const houseHalf = Math.floor(rake / 2);
       const creatorHalf = rake - houseHalf; // creator gets the odd chip (exact split, no mint/burn)
-      const creatorSeated = r.creatorId !== "HOUSE" && r.creatorWallet && h.players.some((p) => norm(p.id) === norm(r.creatorWallet)); // NORMALIZE both sides — a raw === let a creator seat under a different address casing (same token session verifies case-insensitively) so H6 read FALSE and they self-dealt the house rake
+      // H6: a creator who OWNS A SEAT at their own table earns ZERO rake-share — check SEAT OWNERSHIP, not
+      // just dealt-into-THIS-hand (h.players), else a seated creator who is sitting out / busted-below-blind /
+      // joined mid-hand slips the check and self-deals rake while present at the table steering collusion.
+      const creatorSeated = r.creatorId !== "HOUSE" && r.creatorWallet && r.seats.some((s) => s && norm(s.wallet) === norm(r.creatorWallet)); // seat OWNERSHIP, norm()'d (seatOfWallet is raw ===)
       const distinct = (r._fundedWallets ? r._fundedWallets.size : 0);
       const gateOpen = distinct >= CREATOR_GATE_DISTINCT && (r._handsPlayed || 0) >= CREATOR_GATE_HANDS;
       const creatorEligible = r.creatorId !== "HOUSE" && r.creatorWallet && !creatorSeated && gateOpen;
@@ -1416,6 +1450,10 @@ function attachPoker(opts) {
     }
     // Persist the engine's post-hand stacks back to the room seats (stacks carry across hands).
     for (const p of h.players) { const s = seatOfWallet(r, p.id); if (s) s.stack = p.stack; }
+    // A settled hand IS a money mutation — persist the new stacks so an UNGRACEFUL restart (SIGKILL/OOM)
+    // boot-drains the CURRENT stacks, not stacks frozen at the last buy-in (which would rob the winner +
+    // over-credit the loser + un-sink rake). Real tables flush synchronously (on-chain money); demo debounces.
+    if (r.kind === "real") flushPersist(); else savePersist();
     // rolling avg-pot (last 10)
     const pot = h.players.reduce((a, p) => a + p.committedTotal, 0);
     r.potHistory.push(pot); if (r.potHistory.length > 10) r.potHistory.shift();
@@ -1439,8 +1477,8 @@ function attachPoker(opts) {
         if (s._dcTimer) { clrT(s._dcTimer); s._dcTimer = null; }
         r.seats[i] = null;
         broadcast(r, { type: "pk:event", kind: "seatOpen", seat: i });
-      } else if (s.stack < r.table.bigBlind) {
-        s.sittingOut = true; // can't post a blind → sit out until a rebuy
+      } else if (s.stack < bbChips(r)) {
+        s.sittingOut = true; // can't post a (chip-scaled) blind → sit out until a rebuy
       }
     }
     r.table.hand = null;
@@ -1566,6 +1604,10 @@ function attachPoker(opts) {
     // guesses the (short, sequential) table id can watch the live board + every showdown hole card via
     // the broadcast spectator view, defeating the password entirely. Mirrors join()'s pwHash check.
     if (r.pwHash && String(pw || "") !== r.pwHash) return err(sock, "bad_password", "Wrong table password", "watch");
+    // A socket spectates at most ONE table: drop it from every other room's spectator set first, else a
+    // socket that watches table-after-table accumulates in all of them and each one's broadcast fans out to
+    // it forever (an amplifiable per-action fanout lever + a leak of tables it "left").
+    for (const other of rooms.values()) { if (other !== r) other.spectators.delete(sock); }
     r.spectators.add(sock);
     send(sock, stateFor(r, null)); // spectator view — no live holes
     pushLobby();
@@ -1647,7 +1689,7 @@ function attachPoker(opts) {
       // debit booked → apply the OTHER two legs atomically (pure in-memory, cannot throw).
       s.stack += addChips; s.cumulativeBuyInChips += addChips;
       r._everBuyInChips = (r._everBuyInChips || 0) + addChips;
-      if (s.sittingOut && s.stack >= r.table.bigBlind) s.sittingOut = false;
+      if (s.sittingOut && s.stack >= bbChips(r)) s.sittingOut = false; // chip-scaled: a real rebuy above one big blind (in cents) sits back in
       pushWallet(sock, s.wallet); broadcastState(r);
       if (isTokenWallet(s.wallet)) flushPersist(); else savePersist(); // rebuy is a real debit → persist the larger stack SYNCHRONOUSLY (stranded-lock window)
       maybeStartHand(r);
@@ -1659,9 +1701,15 @@ function attachPoker(opts) {
   /* ---------------- table create ---------------- */
   function createTableMsg(sock, wallet, name, cfg) {
     cfg = cfg || {};
-    // per-wallet concurrent open-table cap (anti-spam)
+    const CAP = opts.maxTablesPerWallet || 2;
+    // per-SOCKET concurrent open-table cap FIRST — the per-wallet cap below is bypassable by re-hello'ing
+    // fresh guest ids on the same connection (each fresh guest wallet gets an untouched budget), letting one
+    // socket fill all MAX_ROOMS and deny table creation to everyone. The creating socket is not spoofable
+    // within a connection, so cap by it too (still bounded further by MAX_WS_PER_IP).
+    const mineSock = Array.from(rooms.values()).filter((r) => r._creatorSock === sock).length;
+    if (mineSock >= CAP) return err(sock, "table_cap", "You already have the max open tables", "create");
     const mine = Array.from(rooms.values()).filter((r) => r.creatorWallet === wallet).length;
-    if (wallet && mine >= (opts.maxTablesPerWallet || 2)) return err(sock, "table_cap", "You already have the max open tables", "create");
+    if (wallet && mine >= CAP) return err(sock, "table_cap", "You already have the max open tables", "create");
     // CLAMP every field on receipt (client bounds cosmetic).
     let bb = Number(cfg.bb); if (STAKES_BB.indexOf(bb) < 0) bb = 10; const sb = Math.floor(bb / 2);
     const maxSeats = clampInt(cfg.maxSeats, SEATS_MIN, SEATS_MAX, 9);
@@ -1679,6 +1727,7 @@ function attachPoker(opts) {
       buyInMin: buyInMinBb * bb, buyInMax: buyInMaxBb * bb, pwHash,
     });
     if (!r) return err(sock, "lobby_full", "No table capacity", "create");
+    r._creatorSock = sock; // transient tag for the per-socket create cap (not persisted)
     send(sock, { type: "pk:table:created", tableId: r.id });
     pushLobby();
     // creator auto-subscribed + must sit (a 0-seat table reaps in idleEmpty)
@@ -2853,6 +2902,39 @@ if (require.main === module) {
       const refused = M._msgs.slice(mk).some((m) => m.type === "pk:error" && m.code === "bad_password") && !r.spectators.has(M);
       pk.handle(M, { type: "pk:table:watch", tableId: tid, pw: "secret" });   // correct pw → allowed
       eq("(34) HUNT2-C private table REFUSES watch w/o pw (not a spectator), ALLOWS with the correct pw", refused && r.spectators.has(M));
+    }
+
+    { // (35) HUNT3: UNCALLED-BET RETURN — an SB blind larger than a short all-in BB, then the SB folds: the
+      //          uncalled excess is REFUNDED to the folder (not destroyed in an empty side pot); Σ conserved.
+      const t = createTable({ smallBlind: 500, bigBlind: 1000, seats: 2 }); // cent-scaled real-style blinds
+      sit(t, { id: "a", isBot: false, stack: 530 });
+      sit(t, { id: "b", isBot: false, stack: 238 });
+      const before = t.seats.reduce((s, x) => s + x.stack, 0); // 768
+      startHand(t, { buttonIndex: 0 }); // a=button/SB posts 500; b=BB posts min(1000,238)=238 all-in; a to act
+      act(t, "a", "fold");              // a folds facing the raise → b wins; a's 262 uncalled excess must return
+      const h = t.hand, after = h.players.reduce((s, p) => s + p.stack, 0);
+      const pa = h.players.find((p) => p.id === "a"), pb = h.players.find((p) => p.id === "b");
+      eq("(35) HUNT3 uncalled-bet excess RETURNED to the folding over-committer (not destroyed) — Σ conserved", after === before && pa.stack === 292 && pb.stack === 476);
+    }
+
+    { // (36) HUNT3: H6 — a creator who OWNS A SEAT but is SITTING OUT (not in h.players) still earns ZERO rake
+      const bridge = makeStubBridge(999999);
+      const WC = "0x00000000000000000000000000000000000000cc"; // creator
+      bridge.open("hc0", WC, 500); bridge.open("hc1", W1, 500); bridge.open("hc2", W2, 500);
+      const pk = attachPoker(Object.assign({ timers: { act: 20000, showdown: 0, between: 0, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 }, creatorGateDistinct: 2, creatorGateHands: 0 }, clk2));
+      pk.setTokenLedger({ tokensOf: bridge.tokensOf, applyNet: bridge.applyPokerNet });
+      const C = mkTokWs(WC); pk.bindToken(WC, "hc0");
+      pk.handle(C, { type: "pk:table:create", wallet: WC, config: { bb: 10, maxSeats: 6, name: "H6SIT", buyInMinBb: 20, buyInMaxBb: 100, rakeBps: 500, rakeCapBb: 3 } });
+      const tid = C._msgs.filter((m) => m.type === "pk:table:created").pop().tableId;
+      pk.handle(C, { type: "pk:table:join", wallet: WC, tableId: tid, buyIn: 500 });
+      pk.handle(C, { type: "pk:sit-out" }); // creator OWNS a seat but sits out → NOT in h.players
+      const A = mkTokWs(W1), B = mkTokWs(W2); pk.bindToken(W1, "hc1"); pk.bindToken(W2, "hc2");
+      pk.handle(A, { type: "pk:table:join", wallet: W1, tableId: tid, buyIn: 500 });
+      pk.handle(B, { type: "pk:table:join", wallet: W2, tableId: tid, buyIn: 500 });
+      const r36 = roomOf2(pk, W1);
+      const wsOf36 = (w) => (String(w).toLowerCase() === W1.toLowerCase() ? A : B);
+      let hands = 0; while (hands < 6 && (r36.houseRakeChips || 0) === 0 && r36.phase === "HAND") { checkCallDown(pk, r36, wsOf36); hands++; fireDue2(); }
+      eq("(36) HUNT3 a SEATED-but-SITTING-OUT creator earns ZERO rake-share (H6 checks seat ownership, not dealt-in)", (r36.houseRakeChips || 0) > 0 && (r36.creatorRakeChips || 0) === 0);
     }
   }
 
