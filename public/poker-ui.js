@@ -318,9 +318,23 @@
     lastServerNow = m.serverNow || Date.now();
     lastActDeadline = m.actDeadline || 0;
     rttSkew = Date.now() - lastServerNow;
-    // pot-push detection: phase went HAND/SHOWDOWN and hand.done with winners
+    // pot-push detection + PROFILE STATS: fire ONCE per settled hand (edge-triggered on the first
+    // done-snapshot for this handNo). Records the LOCAL seated player's net for the hand — net =
+    // deltas[me] (chips), wager = my committedTotal (chips) — via cfg.recordResult. Spectators and
+    // players not dealt into this hand (no delta) are skipped, so nothing double-counts.
     if (m.hand && m.hand.done && (prevHandNo !== m.handNo || prevPhase !== "SHOWDOWN")) {
       if (m.hand.winners && m.hand.winners.length) queuePotPush(m.hand);
+      try {
+        const meP = (m.hand.players || []).find((p) => p.id === myWallet);
+        const dChips = m.hand.deltas ? m.hand.deltas[myWallet] : undefined;
+        if (meP && typeof dChips === "number" && cfg.recordResult) {
+          const isReal = m.kind === "real";
+          const toUsd = (chips) => isReal ? Math.round(chips) / 100 : chips; // real chips are cents; demo chips are dollars
+          const wagerUsd = toUsd(meP.committedTotal || 0);
+          const netUsd = toUsd(dChips);
+          if (wagerUsd > 0) cfg.recordResult("poker", netUsd > 0, wagerUsd, netUsd);
+        }
+      } catch (e) {}
     }
     prevPhase = m.phase; prevHandNo = m.handNo;
     showRoom();
