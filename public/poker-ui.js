@@ -457,8 +457,16 @@
      ========================================================================= */
   let pendingJoin = null; // { room }
   function openBuyIn(r) {
-    pendingJoin = { room: r };
     const isReal = r.kind === "real";
+    // Real tables need an in-game TOKEN balance. A guest, or a connected wallet that hasn't bought in
+    // (no token session), has none — guide them to the Wallet tab instead of opening a buy-in they can't
+    // fund (the bare "Not enough balance" the owner hit). Demo tables are unaffected.
+    if (isReal && !cfg.tokenSession) {
+      const connected = /^0x/i.test(String(myWallet || ""));
+      cfg.toast(connected ? "Buy in from the 💰 Wallet tab first, then sit at real tables." : "Connect your wallet and buy in (💰 Wallet) to play real-money tables.", "info");
+      return;
+    }
+    pendingJoin = { room: r };
     // buyInMin/buyInMax are already in UNITS (dollars): the server sets them = buyInBb·bb and
     // takeSeat clamps the incoming buyInUnits against them directly. Use them AS units — do NOT run
     // potUsd (its ÷100 is only right for CHIP fields like avgPot/stack). Same for demo (units==chips).
@@ -877,9 +885,10 @@
     const disp = isReal ? balanceUnits : Math.round(balanceUnits);
     const t = cfg.usd(disp);
     const b1 = $("pk-bal"), b2 = $("pk-bal2"); if (b1) b1.textContent = t; if (b2) b2.textContent = t;
-    // demo/guest players (no real token session) can top their play-money up; real balances come from the bridge.
-    // The reload is disabled once you are AT/OVER $20k — winnings may climb higher, but reloads stop at the cap.
-    const demo = !cfg.tokenSession;
+    // The demo reload is play-money for pure GUESTS only. A CONNECTED wallet (0x identity) plays with real
+    // tokens — never show it a "+ $5K demo chips" button; its balance is the in-game token balance (buy in
+    // from the Wallet tab). The reload is disabled once AT/OVER $20k — winnings may climb higher, reloads stop.
+    const demo = !/^0x/i.test(String(myWallet || cfg.wallet || ""));
     const atCap = Math.round(balanceUnits) >= DEMO_CHIP_CAP;
     [$("pk-reload"), $("pk-reload2")].forEach((rb) => {
       if (!rb) return;
@@ -897,6 +906,19 @@
     mounted: false,
     init(opts) { cfg = Object.assign(cfg, opts || {}); if (opts && opts.wallet != null) myWallet = opts.wallet || guestId(); },
     config(opts) { cfg = Object.assign(cfg, opts || {}); }, // legacy alias
+    // Re-bind identity when the wallet / token session changes (e.g. a buy-in created a session, or connect/
+    // disconnect). If already connected, the socket is warm with the OLD identity — so on a real change we
+    // close + reconnect so the server sees the new session and returns the real in-game balance. Only rebinds
+    // from the LOBBY (never yanks a seated player mid-hand — that defers until they leave the table).
+    setIdentity(opts) {
+      opts = opts || {};
+      const newWallet = (opts.wallet != null) ? (opts.wallet || guestId()) : myWallet;
+      const newTs = (opts.tokenSession !== undefined) ? (opts.tokenSession || null) : (cfg.tokenSession || null);
+      const changed = String(newWallet) !== String(myWallet) || JSON.stringify(newTs) !== JSON.stringify(cfg.tokenSession || null);
+      cfg = Object.assign(cfg, opts); cfg.tokenSession = newTs; myWallet = newWallet;
+      if (changed && net && !atTableId) { try { net.close(); } catch (e) {} net = null; connect(); }
+      try { paintBalance(); } catch (e) {}
+    },
     mount() { mount(); this.mounted = true; },
     show() {
       mount(); this.mounted = true;

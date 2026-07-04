@@ -3489,6 +3489,7 @@
   }
   function syncTokenGameBalances(force) {
     try { paintTvBalance(); } catch (e) {} // keep the bottom-right TV balance readout live on every token event (buy-in/bet/cash-out)
+    try { pokerSyncIdentity(); } catch (e) {} // poker: a buy-in/cash-out changed the session → rebind so the felt shows the real in-game balance (not $0 + a demo reload)
     // force=true (a buy-in / top-up / cash-out — see TokenMode.changed) must update the canvas HUD NOW,
     // even inside the fish reveal-window hold (#19). A bare poll/resync respects the hold.
     var bal = tokenStateBalanceUsd();
@@ -4817,15 +4818,22 @@
   }
   function initPoker() {
     if (!window.PokerUI) return;
-    PokerUI.init({
+    const opts = {
       wallet: account || bjGuestId(), // one guest identity spans blackjack/baccarat/poker
       tokenSession: pokerTokenSession(),
       usd: (n) => usd(n),
       toast: (m, t) => toast(m, t),
       recordResult: (game, mode, won, wagered, net) => recordGameResult(game, mode, won, wagered, net), // profile ledger: one record per settled hand. Poker passes its OWN table kind ("token"/"demo") — a poker table's mode is PER-TABLE, independent of the site-wide token/demo toggle, so statsMode() here would cross-contaminate (a demo hand logged as real, or vice-versa).
-    });
+    };
+    // Already up (a return visit, OR a buy-in/connect just changed the identity) → REBIND so the warm socket
+    // picks up the new token session and shows the real in-game balance (init+connect would no-op the socket).
+    if (PokerUI.mounted && PokerUI.setIdentity) { PokerUI.setIdentity(opts); return; }
+    PokerUI.init(opts);
     PokerUI.mount();
   }
+  // A buy-in / cash-out / connect changes the token session — if poker is the live channel, rebind it now so
+  // the balance updates without leaving the table list (mirrors syncTokenGameBalances for the other games).
+  function pokerSyncIdentity() { try { if (currentGame === "poker" && window.PokerUI && PokerUI.mounted && PokerUI.setIdentity) PokerUI.setIdentity({ wallet: account || bjGuestId(), tokenSession: pokerTokenSession() }); } catch (e) {} }
   function initDice() {
     const t = $("dice-target"); if (!t) return;
     t.oninput = () => diceReadouts();
