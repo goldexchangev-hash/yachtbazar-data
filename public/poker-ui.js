@@ -776,14 +776,24 @@
     const wrap = $("pk-stage-wrap"), felt = $("pk-felt");
     if (!wrap || !felt) return;
     if (!fsOn) {
-      // in-page: scale the fixed felt to the wrap width (never upscale past 1)
+      // in-page: scale the fixed felt to the wrap width (never upscale past 1). transform:scale does NOT
+      // shrink the felt's 620px LAYOUT box, so we scale from the TOP and set the wrap to the VISUAL height
+      // + clip the empty box below — otherwise the unscaled 620px reserves a huge gap that shoves the dock
+      // far below the fold (owner: "the menu is way too far down").
       const w = wrap.clientWidth || FELT_W;
       const s = Math.min(1, w / FELT_W);
+      felt.style.transformOrigin = "top center";
       felt.style.transform = "scale(" + s + ")";
-      wrap.style.height = (FELT_H * s + 12) + "px"; // reserve height under the scaled felt (dock flows below)
+      // transform:scale does NOT shrink the felt's 620px LAYOUT box, so the hole-cards + controls
+      // (siblings BELOW the felt in this wrap) sit at y=620 leaving a huge gap. Pull them up under the
+      // VISUAL felt with a negative margin = (visualH − layoutH). NOT overflow:hidden (that clipped the
+      // controls entirely — owner saw a blank felt with no buttons).
+      felt.style.marginBottom = Math.round(FELT_H * s - FELT_H) + "px";
+      wrap.style.overflow = ""; wrap.style.height = "";
       return;
     }
     // fullscreen
+    felt.style.transformOrigin = ""; felt.style.marginBottom = ""; wrap.style.overflow = "";
     const landscape = (window.innerWidth || 0) >= (window.innerHeight || 1);
     document.body.classList.toggle("pk-fs-landscape", landscape);
     document.body.classList.toggle("pk-fs-portrait", !landscape);

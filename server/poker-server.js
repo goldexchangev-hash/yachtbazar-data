@@ -825,6 +825,7 @@ function attachPoker(opts) {
   const MAX_ROOMS = opts.maxRooms || 200;
   const START_STACK = opts.startBalance != null ? opts.startBalance : 5000; // demo play-money bank (chips are stack-local; this is just the buy-in wallet)
   const DEMO_BUYIN_DEFAULT = opts.demoBuyIn != null ? opts.demoBuyIn : 1000;
+  const AUTO_DEMO_BOTS = !!opts.autoDemoBots; // opt-in: server.js sets true so a solo demo player auto-gets 2 bots
   const norm = (w) => String(w == null ? "" : w).toLowerCase();
   const realWallet = (w) => /^0x[0-9a-fA-F]{40}$/.test(String(w || ""));
   const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -1479,6 +1480,7 @@ function attachPoker(opts) {
     pushWallet(sock, wallet);
     broadcast(r, { type: "pk:event", kind: "seatTaken", seat: idx, wallet, name: r.seats[idx].name });
     broadcastState(r);
+    ensureDemoBots(r); // demo: auto-seat 2 bots for a solo player so a game starts immediately
     // Join mid-hand = seated but sits out until the next hand (the engine already built players[]
     // for the live hand from the pre-join snapshot, so this seat simply isn't in h.players).
     maybeStartHand(r);
@@ -1714,12 +1716,9 @@ function attachPoker(opts) {
      bot auto-act (advanceHand → botDecide, PF-seeded + epoch-guarded) drives them. */
   let _botSeq = 0;
   const BOT_NAMES = ["Ace", "Bluffy", "Chip", "Dredge", "Nitcat", "River", "Sharky", "Slowroll", "Tilt", "Vera", "Wolfe", "Zed"];
-  function addBot(sock, tableId) {
-    const r = tableId ? rooms.get(String(tableId)) : null;
-    if (!r) { err(sock, "no_table", "Table not found", "bot"); return; }
-    if (r.kind !== "demo") { err(sock, "demo_only", "Bots can only sit at DEMO tables", "bot"); return; } // NEVER real money
+  function addBotSeat(r) { // seat a demo bot in the first open chair; returns the seat index or null
     const idx = r.seats.findIndex((s) => !s);
-    if (idx < 0) { err(sock, "table_full", "No open seat for a bot", "bot"); return; }
+    if (idx < 0) return null;
     const id = "bot:" + (++_botSeq);
     const stackChips = Math.max(Math.round(r.buyInMin || r.table.bigBlind), Math.round(unitsToChips(r.buyInMax || (100 * r.table.bigBlind), id))); // demo chips (1:1)
     r.seats[idx] = {
@@ -1728,8 +1727,25 @@ function attachPoker(opts) {
       clientSeed: "", sittingOut: false, disconnected: false, dcAt: 0, _dcTimer: null, left: false,
       seatIndex: idx, aggression: 0.3 + rand() * 0.5,
     };
+    return idx;
+  }
+  function addBot(sock, tableId) {
+    const r = tableId ? rooms.get(String(tableId)) : null;
+    if (!r) { err(sock, "no_table", "Table not found", "bot"); return; }
+    if (r.kind !== "demo") { err(sock, "demo_only", "Bots can only sit at DEMO tables", "bot"); return; } // NEVER real money
+    const idx = addBotSeat(r);
+    if (idx == null) { err(sock, "table_full", "No open seat for a bot", "bot"); return; }
     broadcast(r, { type: "pk:event", kind: "botAdded", seat: idx, name: r.seats[idx].name });
     touch(r); broadcastState(r); pushLobby(); maybeStartHand(r);
+  }
+  // Auto-fill a DEMO table to at least 2 bots once a human is seated, so a solo player gets an instant
+  // game (owner: "auto deploy at least 2 bots every demo game"). The + BOT / − BOT controls add/remove more.
+  function ensureDemoBots(r) {
+    if (!AUTO_DEMO_BOTS || !r || r.kind !== "demo") return;
+    if (r.seats.filter((s) => s && !s.isBot).length !== 1) return; // only auto-fill for a SOLO human (don't force bots into a human-vs-human demo game)
+    let added = 0;
+    while (r.seats.filter((s) => s && s.isBot).length < 2 && r.seats.some((s) => !s)) { if (addBotSeat(r) == null) break; added++; }
+    if (added) { touch(r); broadcastState(r); pushLobby(); maybeStartHand(r); }
   }
   function removeBot(sock, tableId) {
     const r = tableId ? rooms.get(String(tableId)) : null;
@@ -2633,7 +2649,7 @@ if (require.main === module) {
     // ── 27: DEMO BOTS — a human adds bots to a DEMO table + plays a full hand; a REAL table
     //    HARD-REFUSES bots (no bot can ever win/lose real money). ──
     {
-      const pk = attachPoker(Object.assign({ timers: { act: 20000, showdown: 0, between: 0, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 } }, clk2));
+      const pk = attachPoker(Object.assign({ autoDemoBots: true, timers: { act: 20000, showdown: 0, between: 0, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 } }, clk2));
       const H = mkTokWs("guest:h1"); // demo human → play-money bank (no bridge)
       pk.handle(H, { type: "pk:seed", balance: 5000 });
       pk.handle(H, { type: "pk:table:create", config: { bb: 10, maxSeats: 6, name: "BOTS", buyInMinBb: 20, buyInMaxBb: 100, kind: "demo" } });
@@ -2641,11 +2657,11 @@ if (require.main === module) {
       pk.handle(H, { type: "pk:table:join", wallet: "guest:h1", tableId: tb, buyIn: 500 });
       const r = roomOf2(pk, "guest:h1");
       eq("(27) demo table + human seated", !!r && r.kind === "demo");
-      pk.handle(H, { type: "pk:table:addbot", tableId: tb });
-      pk.handle(H, { type: "pk:table:addbot", tableId: tb });
-      const botz = r.seats.filter((s) => s && s.isBot);
-      eq("(27) two demo bots seated (play-money, no token session)", botz.length === 2 && botz.every((b) => b._sid == null && b.stack > 0));
-      eq("(27) a hand auto-started (human + 2 bots)", r.phase === "HAND" && !!r.table.hand);
+      const autoBots = r.seats.filter((s) => s && s.isBot);
+      eq("(27) a solo human AUTO-gets 2 demo bots on sit (play-money, no token session)", autoBots.length === 2 && autoBots.every((b) => b._sid == null && b.stack > 0));
+      pk.handle(H, { type: "pk:table:addbot", tableId: tb }); // + BOT adds a 3rd
+      eq("(27) + BOT adds another bot (3 total)", r.seats.filter((s) => s && s.isBot).length === 3);
+      eq("(27) a hand auto-started (human + bots)", r.phase === "HAND" && !!r.table.hand);
       let g = 0;
       while (r.phase === "HAND" && r.table.hand && !r.table.hand.done && g++ < 400) {
         const h = r.table.hand, cur = h.players[h.toAct].id;

@@ -227,7 +227,7 @@ const pokerPersist = {
   },
   save(obj) { try { writeJsonAtomic(POKER_STATE_FILE, obj); } catch (e) {} },
 };
-const poker = attachPoker({ persist: pokerPersist });
+const poker = attachPoker({ persist: pokerPersist, autoDemoBots: true }); // demo tables auto-seat 2 bots for a solo player
 // Server-side kill switch: POKER_ENABLED="0" skips the ws routing + token bind (client config.js POKER_ENABLED
 // is the primary switch). Poker ships OFF at deploy, then flips ON after a healthy flag-off deploy (spec §9).
 const POKER_WS = process.env.POKER_ENABLED !== "0";
