@@ -991,9 +991,11 @@ function makeTokenService(opts) {
   // ── TOKEN-FUNDED POKER (spec §5/§12) — additive SIBLING of applyBaccaratNet, game:"poker". Same
   // gates (open session + player-match + liveCrashSession). Used for BUY-IN (betUnits>0 debit — the
   // applyExternal insufficient-tokens throw at :269 IS the H2 pre-check, so a buy-in can never floor)
-  // and LOSER/breakeven CASH-OUT (payoutUnits ≤ buy-in, never near the cap). ⚠️ A WINNING cash-out whose
-  // returned stack exceeds the buy-in (holds other seats' chips) is credited via applyPokerWin below,
-  // which bypasses capUp under an absolute poker clamp (H3/H4) — do NOT route a big win through here.
+  // and ALSO for WINNING cash-outs. NOTE: there is NO separate `applyPokerWin` — EVERY poker credit (incl. a
+  // deep P2P winner's) flows through THIS applyPokerNet → applyExternal → capUp (ceiling = session buyInUnits
+  // + TOKEN_MAX_WIN_USD). A capUp shortfall on a big win is NOT lost: poker-server tokenCredit measures the
+  // booked delta vs the intended credit and routes the remainder to pokerOwed (H3), claimed on next session
+  // open. Do NOT remove that pokerOwed shortfall-capture believing wins bypass capUp — they do not.
   function applyPokerNet(player, sessionId, betUnits, payoutUnits, ref) {
     const s = bridge.session(String(sessionId || ""));
     if (!s || s.closed || s.settlement) throw new Error("no open token session");

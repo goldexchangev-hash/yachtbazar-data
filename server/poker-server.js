@@ -1178,6 +1178,11 @@ function attachPoker(opts) {
       try { console.error("[pk] H4 CLAMP: seat stack " + chips + " > table-life ceiling " + ceil + " (engine bug?) — excess " + (chips - ceil) + " → pokerOwed"); } catch (e) {}
       owe(s.wallet, chips - ceil);
     }
+    // Persist the ZEROED stack (+ any H4 owe) to disk BEFORE booking the durable bridge credit — else a crash
+    // in the gap between the credit (durable instantly) and the trailing flush re-drives boot-drain from a
+    // stale stack on the next boot and RE-CREDITS the seat (house-funded double-pay). Flush-before-credit
+    // makes the worst case a house-safe under-pay (mirrors settleCreatorRake / the boot-drain pre-flush).
+    flushPersist();
     tokenCredit(s.wallet, Math.min(chips, ceil)); // routes any capUp shortfall → pokerOwed (never lost)
     unbindToken(s.wallet);
     if (s._sid) s._sid = null;
@@ -1504,6 +1509,12 @@ function attachPoker(opts) {
 
   /* ---------------- seat lifecycle ---------------- */
   function takeSeat(sock, wallet, name, r, seatPref, buyInUnits) {
+    // AUTH (the fresh-seat sibling of the reconnect-hijack fix): a REAL (0x) buy-in may ONLY be initiated by
+    // the SOCKET that authenticated that wallet. Without this, a helloed-but-sessionless socket could spoof
+    // m.wallet to buy a bound victim's real token session into an ATTACKER-owned seat (attacker then sees the
+    // seat's holes + dumps its chips). The grace-reclaim and resync paths already require this; the fresh
+    // takeSeat path gated only on isTokenWallet (bind existence, independent of who sent the message).
+    if (realWallet(wallet) && !(sock.wallet && norm(sock.wallet) === norm(wallet))) { err(sock, "auth", "Reconnect your wallet to sit at a real-money table", "join"); return false; }
     // one seat per wallet at THIS table
     if (seatOfWallet(r, wallet)) { err(sock, "already_seated", "You're already at this table", "join"); return false; }
     let idx = -1;
@@ -1541,7 +1552,15 @@ function attachPoker(opts) {
     }
     if (bank.get(wallet) < units - 1e-9) { err(sock, "insufficient", "Not enough balance to buy in", "join"); return false; } // H2 pre-check (tokenDebit also refuses)
     if (!bank.debit(wallet, units)) { err(sock, "insufficient", "Not enough balance to buy in", "join"); return false; } // debit-before-escrow; token debit is REFUSED (never floored) on insufficient
-    if (tokenSeat) r.kind = "real"; // flip ONLY after the buy-in is COMMITTED — a bindToken/insufficient failure above must not orphan a demo table (incl. the HOUSE warm table) as real with zero real seats
+    if (tokenSeat && r.kind !== "real") {
+      // FIRST token buy-in flips demo→real. Reset the per-table-life accumulators so they count REAL activity
+      // ONLY — prior DEMO guests/hands must not pre-open the H7 anti-wash gate (_fundedWallets/_handsPlayed)
+      // nor inflate the H4 cash-out ceiling / desync the zero-sum assert (_everBuyIn/_everReturned, whose
+      // demo 1:1 chips would otherwise mix with real cent-scaled chips). houseRake/creatorRake are already 0.
+      r._fundedWallets = new Set(); r._handsPlayed = 0; r._everBuyInChips = 0; r._everReturnedChips = 0;
+      r.houseRakeChips = 0; r.creatorRakeChips = 0;
+      r.kind = "real"; // flip ONLY after the buy-in is COMMITTED — a bindToken/insufficient failure above must not orphan a demo table as real with zero real seats
+    }
     r.seats[idx] = {
       sock, wallet, name: name || wallet, isBot: false,
       stack: unitsToChips(units, wallet), cumulativeBuyInChips: unitsToChips(units, wallet),
@@ -1798,7 +1817,7 @@ function attachPoker(opts) {
 
   /* ---------------- misc seams ---------------- */
   function seedGuest(sock, wallet, balance) {
-    if (!/^guest:/.test(String(wallet)) || typeof balance !== "number" || !isFinite(balance) || balance < 0) return;
+    if (!/^guest:[a-z0-9]{1,32}$/.test(String(wallet)) || typeof balance !== "number" || !isFinite(balance) || balance < 0) return; // charset+length bound: an unvalidated key permanently bloats the never-pruned bank.all Map (OOM DoS)
     bank.all.set(wallet, Math.round(balance));
     pushWallet(sock, wallet);
   }
@@ -1810,7 +1829,7 @@ function attachPoker(opts) {
   const DEMO_RELOAD_CAP = 20000; // owner: demo chips may never be topped up past $20,000
   function reloadGuest(sock, wallet) {
     const w = String(wallet || "");
-    if (!/^guest:/.test(w)) return;
+    if (!/^guest:[a-z0-9]{1,32}$/.test(w)) return; // charset+length bound (OOM-DoS guard, matches seedGuest)
     const cur = bank.get(w); // defaulting accessor → START_STACK for a fresh guest (raw .all.get would read 0 → first "+ $5K" was a silent no-op 5000→5000)
     if (cur < DEMO_RELOAD_CAP) bank.all.set(w, Math.min(DEMO_RELOAD_CAP, cur + 5000));
     pushWallet(sock, w);
@@ -1883,8 +1902,12 @@ function attachPoker(opts) {
   /* ---------------- router ---------------- */
   function messageWallet(sock, m) {
     if (sock.wallet) return sock.wallet;
+    // No authenticated socket identity: the ONLY message-supplied wallet we honor is a well-formed GUEST id
+    // (same charset+length cap the hello handler enforces) — never a raw 0x (that is the spoof vector the
+    // takeSeat auth guard also blocks) and never an unbounded string (that is the demo-bank OOM vector: an
+    // unvalidated per-message guest id becomes a permanent, huge, never-pruned bank.all Map key).
     const hinted = String((m && m.wallet) || "");
-    return /^guest:/.test(hinted) ? hinted : (hinted || "");
+    return /^guest:[a-z0-9]{1,32}$/.test(hinted) ? hinted : "";
   }
   function handle(sock, m) {
     if (!m || typeof m.type !== "string") return;
@@ -2994,6 +3017,36 @@ if (require.main === module) {
       let threw = false; try { act(t, actor, "raise", {}); } catch (e) { threw = true; } // crafted non-numeric amount
       let threw2 = false; try { act(t, actor, "raise", undefined); } catch (e) { threw2 = true; }
       eq("(38) HUNT5 a non-finite bet/raise amount THROWS + leaves the seat stack/commit uncorrupted (finite)", threw && threw2 && Number.isFinite(p.stack) && Number.isFinite(p.committedStreet));
+    }
+
+    { // (39) DEEP-SCAN CRITICAL: a sessionless socket CANNOT spoof m.wallet to buy a bound VICTIM's real session into a seat
+      const bridge = makeStubBridge(2000); bridge.open("sv", W1, 200); bridge.open("sh", W2, 200);
+      const pk = attachPoker(Object.assign({ timers: { act: 20000, showdown: 0, between: 0, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 } }, clk2));
+      pk.setTokenLedger({ tokensOf: bridge.tokensOf, applyNet: bridge.applyPokerNet });
+      pk.bindToken(W1, "sv"); // VICTIM funded + bound (browsing the lobby) but NOT seated
+      const H = mkTokWs(W2); pk.bindToken(W2, "sh"); // a legit token wallet opens a real table
+      pk.handle(H, { type: "pk:table:create", wallet: W2, config: { bb: 10, maxSeats: 6, name: "SPOOF", buyInMinBb: 20, buyInMaxBb: 100 } });
+      const tid = H._msgs.filter((m) => m.type === "pk:table:created").pop().tableId;
+      pk.handle(H, { type: "pk:table:join", wallet: W2, tableId: tid, buyIn: 200 });
+      const rr = roomOf2(pk, W2), vBefore = bridge._get("sv").tokens;
+      const ATK = { wallet: "", _msgs: [], send(m) { try { this._msgs.push(JSON.parse(m)); } catch (e) {} } }; // helloed-but-sessionless (sock.wallet="")
+      pk.handle(ATK, { type: "pk:table:join", wallet: W1, tableId: tid, buyIn: 100 }); // spoof the victim's wallet
+      const gotSeat = rr.seats.some((s) => s && String(s.wallet).toLowerCase() === W1.toLowerCase());
+      eq("(39) DEEP a sessionless socket CANNOT spoof a bound victim's real buy-in — no seat, victim's session UNTOUCHED, refused", !gotSeat && Math.round((bridge._get("sv").tokens - vBefore) * 100) === 0 && ATK._msgs.some((m) => m.type === "pk:error"));
+    }
+
+    { // (40) DEEP-SCAN: demo→real flip RESETS the per-table-life counters so DEMO activity can't pre-open H7 / inflate the H4 ceiling
+      const bridge = makeStubBridge(2000); bridge.open("fr", W1, 500);
+      const pk = attachPoker(Object.assign({ timers: { act: 20000, showdown: 0, between: 0, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 } }, clk2));
+      pk.setTokenLedger({ tokensOf: bridge.tokensOf, applyNet: bridge.applyPokerNet });
+      const G = mkTokWs("guest:fa");
+      pk.handle(G, { type: "pk:table:create", wallet: "guest:fa", config: { bb: 10, maxSeats: 6, name: "FLIP", buyInMinBb: 20, buyInMaxBb: 100 } });
+      const tid = G._msgs.filter((m) => m.type === "pk:table:created").pop().tableId;
+      const rr = Array.from(pk._mgr.rooms.values()).find((x) => x.id === tid);
+      rr._fundedWallets = new Set(["guest:x", "guest:y", "guest:z"]); rr._handsPlayed = 12; rr._everBuyInChips = 3000; rr._everReturnedChips = 2000; // prior DEMO activity
+      const A = mkTokWs(W1); pk.bindToken(W1, "fr");
+      pk.handle(A, { type: "pk:table:join", wallet: W1, tableId: tid, buyIn: 200 }); // first token buy-in → flip → reset, then count this REAL seat
+      eq("(40) DEEP demo→real flip resets _fundedWallets/_handsPlayed/_everBuyIn/_everReturned to REAL-only", rr.kind === "real" && rr._fundedWallets.size === 1 && rr._handsPlayed === 0 && rr._everBuyInChips === 20000 && rr._everReturnedChips === 0);
     }
   }
 

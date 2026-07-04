@@ -222,8 +222,14 @@ const BACCARAT_WS = process.env.BACCARAT_ENABLED !== "0";
 const POKER_STATE_FILE = String(process.env.POKER_STATE_FILE || path.join(__dirname, ".poker-state.json"));
 const pokerPersist = {
   load() {
-    try { return loadJsonStoreOrThrow(POKER_STATE_FILE, "poker state"); }
-    catch (e) { return {}; } // corrupt bytes already backed up + logged inside loadJsonStoreOrThrow
+    // POKER IS A REAL-MONEY store (the pokerOwed ledger + seat→session bindings + live stacks) — do NOT
+    // swallow a corrupt file to {} like the play-money bj/bac banks. Returning {} would silently drop every
+    // owed real-money obligation AND strand every seated buy-in (boot-drain sees no tables → the open on-chain
+    // session is later recovered as a FULL LOSS). Match the token-bridge money store: let STATE_FILE_CORRUPT
+    // propagate so boot HARD-FAILS loudly (the corrupt bytes are already quarantined + logged) and the
+    // operator restores from backup. A MISSING/EMPTY file still returns {} inside loadJsonStoreOrThrow, so a
+    // fresh install / normal first boot is unaffected — only genuinely corrupt (bit-rotted) bytes halt boot.
+    return loadJsonStoreOrThrow(POKER_STATE_FILE, "poker state");
   },
   save(obj) { try { writeJsonAtomic(POKER_STATE_FILE, obj); } catch (e) {} },
 };
