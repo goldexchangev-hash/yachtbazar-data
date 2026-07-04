@@ -642,6 +642,9 @@ ServerHand.prototype.snapshotFor = function (viewerId) {
         committedStreet: p.committedStreet, committedTotal: p.committedTotal,
         folded: p.folded, allIn: p.allIn,
         hole: hole, hasCards: p.hole.length > 0,
+        // expose mayRaise for YOUR OWN seat only (not secret) so the client can hide the RAISE control when
+        // a prior short all-in closed re-raising — else the UI offers a raise the server always rejects.
+        mayRaise: (viewerId != null && p.id === viewerId) ? p.mayRaise : undefined,
         cat: (revealHand && this.shown[p.id]) ? this.shown[p.id].cat : null,
       };
     }),
@@ -1301,8 +1304,13 @@ function attachPoker(opts) {
     // Drive the engine table directly so we control seed + button (startHand() would re-derive both).
     const round = PF.newRound();
     r.table.nonce++;
+    // Blinds are stored in DOLLAR units (so stakesLabel shows "$5/$10"); scale them into the SAME chip
+    // (cent, 100×) space as the stacks for a REAL table — else a "$5/$10" real table posts blinds of 5/10
+    // CHIPS = $0.05/$0.10 (stacks are cent-scaled but blinds were not). rakeCapChips = rakeCapBb·bb in the
+    // engine scales with the passed bb automatically, so the rake cap comes out right too. Demo stays 1:1.
+    const blindScale = r.kind === "real" ? 100 : 1;
     const hand = new ServerHand({
-      smallBlind: r.table.smallBlind, bigBlind: r.table.bigBlind,
+      smallBlind: r.table.smallBlind * blindScale, bigBlind: r.table.bigBlind * blindScale,
       buttonIndex: btnIdx, players: dealt,
       serverSeed: round.serverSeed, clientSeed: combined, nonce: r.table.nonce,
       rakeBps: r.table.rakeBps, rakeCapBb: r.table.rakeCapBb,
@@ -1551,9 +1559,13 @@ function attachPoker(opts) {
     return r;
   }
 
-  function watch(sock, tableId) {
+  function watch(sock, tableId, pw) {
     const r = rooms.get(tableId);
     if (!r) return err(sock, "no_table", "Table not found", "watch");
+    // A PRIVATE table's password must gate SPECTATING too, not just joining — otherwise anyone who
+    // guesses the (short, sequential) table id can watch the live board + every showdown hole card via
+    // the broadcast spectator view, defeating the password entirely. Mirrors join()'s pwHash check.
+    if (r.pwHash && String(pw || "") !== r.pwHash) return err(sock, "bad_password", "Wrong table password", "watch");
     r.spectators.add(sock);
     send(sock, stateFor(r, null)); // spectator view — no live holes
     pushLobby();
@@ -1815,7 +1827,7 @@ function attachPoker(opts) {
       case "pk:lobby:unsubscribe": lobbySubs.delete(sock); break;
       case "pk:table:create": createTableMsg(sock, wallet, name, m.config || m); break;
       case "pk:table:join": join(sock, wallet, name, m.tableId, m.seat != null ? m.seat : m.seatPref, m.buyIn != null ? m.buyIn : m.buyInUnits, m.pw); break;
-      case "pk:table:watch": watch(sock, m.tableId); break;
+      case "pk:table:watch": watch(sock, m.tableId, m.pw); break; // pw gates spectating a PRIVATE table
       case "pk:table:leave": case "pk:leave": leave(sock); break;
       case "pk:sit-out": setSitOut(sock, true); break;
       case "pk:sit-in": setSitOut(sock, false); break;
@@ -2807,6 +2819,40 @@ if (require.main === module) {
       let threw = false; try { act(t, "a", "raise", 300); } catch (e) { threw = true; } // capped → voluntary re-raise must THROW
       let called = false; try { act(t, "a", "call"); called = true; } catch (e) {}       // but CALL is still legal
       eq("(32) HUNT#4 short all-in closes the capped player's raise: a voluntary re-raise THROWS, CALL still allowed", aCapped && threw && called);
+    }
+
+    { // (33) HUNT2-A: a REAL table posts CENT-scaled blinds (bb*100) so a "$5/$10" real table is $5/$10, not $0.05/$0.10; DEMO stays 1:1
+      const bridge = makeStubBridge(999999); bridge.open("bs1", W1, 500); bridge.open("bs2", W2, 500);
+      const pk = attachPoker(Object.assign({ timers: { act: 20000, showdown: 0, between: 0, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 } }, clk2));
+      pk.setTokenLedger({ tokensOf: bridge.tokensOf, applyNet: bridge.applyPokerNet });
+      const A = mkTokWs(W1), B = mkTokWs(W2); pk.bindToken(W1, "bs1"); pk.bindToken(W2, "bs2");
+      pk.handle(A, { type: "pk:table:create", wallet: W1, config: { bb: 10, maxSeats: 6, name: "REALBL", buyInMinBb: 20, buyInMaxBb: 100 } });
+      const tid = A._msgs.filter((m) => m.type === "pk:table:created").pop().tableId;
+      pk.handle(A, { type: "pk:table:join", wallet: W1, tableId: tid, buyIn: 500 });
+      pk.handle(B, { type: "pk:table:join", wallet: W2, tableId: tid, buyIn: 500 });
+      const h = roomOf2(pk, W1).table.hand;
+      eq("(33) HUNT2-A a REAL '$5/$10' table posts CENT-scaled blinds (SB=500, BB=1000 chips)", !!h && h.bb === 1000 && h.sb === 500);
+      const pkd = attachPoker(Object.assign({ timers: { act: 20000, showdown: 0, between: 0, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 } }, clk2));
+      const G1 = mkTokWs("guest:b1"), G2 = mkTokWs("guest:b2");
+      pkd.handle(G1, { type: "pk:table:create", wallet: "guest:b1", config: { bb: 10, maxSeats: 6, name: "DEMOBL", buyInMinBb: 20, buyInMaxBb: 100 } });
+      const dtid = G1._msgs.filter((m) => m.type === "pk:table:created").pop().tableId;
+      pkd.handle(G1, { type: "pk:table:join", wallet: "guest:b1", tableId: dtid, buyIn: 500 });
+      pkd.handle(G2, { type: "pk:table:join", wallet: "guest:b2", tableId: dtid, buyIn: 500 });
+      const dh = roomOf2(pkd, "guest:b1").table.hand;
+      eq("(33) HUNT2-A a DEMO '$5/$10' table posts 1:1 blinds (SB=5, BB=10)", !!dh && dh.bb === 10 && dh.sb === 5);
+    }
+
+    { // (34) HUNT2-C: a PRIVATE table refuses pk:table:watch WITHOUT the password (spectator view no longer bypasses it), allows WITH it
+      const pk = attachPoker(Object.assign({ timers: { act: 20000, showdown: 0, between: 0, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 } }, clk2));
+      const H = mkTokWs("guest:pw1");
+      pk.handle(H, { type: "pk:table:create", wallet: "guest:pw1", config: { bb: 10, maxSeats: 6, name: "PRIV", buyInMinBb: 20, buyInMaxBb: 100, private: true, pw: "secret" } });
+      const tid = H._msgs.filter((m) => m.type === "pk:table:created").pop().tableId;
+      const r = Array.from(pk._mgr.rooms.values()).find((x) => x.id === tid);
+      const M = mkTokWs("guest:mal"); const mk = M._msgs.length;
+      pk.handle(M, { type: "pk:table:watch", tableId: tid });                 // no pw → refused
+      const refused = M._msgs.slice(mk).some((m) => m.type === "pk:error" && m.code === "bad_password") && !r.spectators.has(M);
+      pk.handle(M, { type: "pk:table:watch", tableId: tid, pw: "secret" });   // correct pw → allowed
+      eq("(34) HUNT2-C private table REFUSES watch w/o pw (not a spectator), ALLOWS with the correct pw", refused && r.spectators.has(M));
     }
   }
 

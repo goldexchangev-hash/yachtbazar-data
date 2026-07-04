@@ -90,7 +90,7 @@
     const toCall = Math.max(0, hand.currentBet - me.committedStreet);
     const maxRaiseTo = me.committedStreet + me.stack;
     const minRaiseTo = hand.currentBet + hand.minRaise;
-    const canRaise = me.stack > toCall && maxRaiseTo > hand.currentBet;
+    const canRaise = me.stack > toCall && maxRaiseTo > hand.currentBet && me.mayRaise !== false; // mayRaise=false → a prior short all-in closed re-raising; hide RAISE (server would reject it)
     return {
       yourTurn: true, toCall, canCheck: toCall === 0, canCall: toCall > 0,
       callAmount: Math.min(toCall, me.stack),
@@ -317,8 +317,21 @@
     net.on("pk:table:created", (m) => { pendingCreatedSit(m.tableId); });
     net.on("pk:event", (m) => onEvent(m));
     net.on("pk:reveal", (m) => onReveal(m));
-    net.on("pk:error", (m) => { cfg.toast(m.msg || "Error", "err"); if (m.intent === "join" || m.intent === "create") { pendingJoin = null; $("pk-buyin-modal").hidden = true; } if (m.intent === "act" && state) render(); }); // act rejected → repaint controls from the last snapshot (the server does NOT re-broadcast on a rejected act; without this the felt shows NO buttons until the 20s auto-act)
+    net.on("pk:error", (m) => {
+      // A RESYNC join (reconnect on a fresh socket) can RACE the old socket's close: the server still sees
+      // our seat as live on the old socket and replies 'already_seated'. That is transient — retry the
+      // resync with backoff until the server observes the old socket's FIN and the (wallet-matched, secure)
+      // reconnect-grace reclaim takes over. Without this the reconnected socket sits on a frozen felt while
+      // the seat auto-folds every turn. (Genuine same-socket resync hits the server RESYNC path, not this.)
+      if (m.intent === "join" && m.code === "already_seated" && atTableId && _resyncTries < 5) {
+        _resyncTries++; setTimeout(() => { if (atTableId) resync(); }, 700 * _resyncTries); return;
+      }
+      cfg.toast(m.msg || "Error", "err");
+      if (m.intent === "join" || m.intent === "create") { pendingJoin = null; $("pk-buyin-modal").hidden = true; }
+      if (m.intent === "act" && state) render(); // act rejected → repaint controls from the last snapshot (the server does NOT re-broadcast on a rejected act; without this the felt shows NO buttons until the 20s auto-act)
+    });
   }
+  let _resyncTries = 0; // reconnect-collision retry counter; reset once a real snapshot lands (onState)
   function subscribe() { if (net) net.send({ type: "pk:lobby:subscribe" }); }
   function resync() { if (net && atTableId) net.send({ type: "pk:table:join", tableId: atTableId }); } // re-pull our masked snapshot after a reconnect (RESYNC path is a no-op join for our own seat)
 
@@ -336,6 +349,7 @@
   function onState(m) {
     // Only track state for the table we're seated at / watching.
     if (atTableId && m.tableId !== atTableId) return;
+    _resyncTries = 0; // a real snapshot landed → the reconnect resynced; reset the collision-retry budget
     if (!atTableId) atTableId = m.tableId;
     if (m.you) { mySeatIndex = m.you.seat; if (typeof m.you.balance === "number") { balanceUnits = m.you.balance; } }
     else {
@@ -490,8 +504,11 @@
     $("pk-buyin-modal").hidden = true; pendingJoin = null;
   }
   function watchTable(r) {
+    // a PRIVATE table now gates spectating on the password too — ask for it (mirrors the join flow)
+    let pw = "";
+    if (r && r.private) { pw = prompt("This table is private — enter its password to watch:") || ""; if (!pw) return; }
     atTableId = r.id; mySeatIndex = -1;
-    if (net) net.send({ type: "pk:table:watch", tableId: r.id });
+    if (net) net.send({ type: "pk:table:watch", tableId: r.id, pw: pw });
   }
   function leaveTable() {
     if (net && atTableId) net.send({ type: "pk:table:leave" });
@@ -700,7 +717,7 @@
   }
   function openRebuy() {
     const r = lobbyRooms.find((x) => x.id === atTableId);
-    const minU = r ? potUsd(r, r.buyInMin) : (state.bb || 1) * 20;
+    const minU = r ? r.buyInMin : (state.bb || 1) * 20; // buyInMin is already in UNITS ($) — do NOT run potUsd (it /100s a real table → a 100×-too-small default), mirrors openBuyIn
     const amt = window.prompt("Rebuy amount ($):", String(minU));
     const units = Math.round(Number(amt) || 0);
     if (units > 0 && net) net.send({ type: "pk:rebuy", amount: units });
@@ -915,8 +932,16 @@
       const newWallet = (opts.wallet != null) ? (opts.wallet || guestId()) : myWallet;
       const newTs = (opts.tokenSession !== undefined) ? (opts.tokenSession || null) : (cfg.tokenSession || null);
       const changed = String(newWallet) !== String(myWallet) || JSON.stringify(newTs) !== JSON.stringify(cfg.tokenSession || null);
-      cfg = Object.assign(cfg, opts); cfg.tokenSession = newTs; myWallet = newWallet;
-      if (changed && net && !atTableId) { try { net.close(); } catch (e) {} net = null; connect(); }
+      // Refresh only the harmless display cfg always; NEVER swap the IDENTITY (wallet/tokenSession) while
+      // SEATED — myWallet drives seat detection + hole rendering + legalFor, so swapping it under a live seat
+      // makes the felt think it's spectating and the server auto-folds the seat every turn (v13.69 regression:
+      // the old guard deferred only the reconnect, not the myWallet/cfg mutation). Defer the WHOLE swap until
+      // we're back in the LOBBY, where the next identity sync applies it + reconnects.
+      ["usd", "toast", "recordResult", "onBalance"].forEach((k) => { if (opts[k] !== undefined) cfg[k] = opts[k]; });
+      if (changed && !atTableId) {
+        cfg.tokenSession = newTs; myWallet = newWallet;
+        if (net) { try { net.close(); } catch (e) {} net = null; connect(); }
+      }
       try { paintBalance(); } catch (e) {}
     },
     mount() { mount(); this.mounted = true; },
