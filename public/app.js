@@ -3364,6 +3364,7 @@
   let sessionBase = null, sesWagered = 0, sesWon = 0, _sesBal = null, _sesMode = null;
   let bjLastBal = null, bjReanchorNext = false; // #97: the blackjack felt's chips balance (its own iframe) + a "next change is a deposit, re-anchor" flag for RELOAD
   let bacLastBal = null, bacReanchorNext = false; // baccarat felt's chips balance (same iframe pattern — CH 21 is its own session "mode") + the "next change is a deposit, re-anchor" flag for RELOAD (mirrors bjReanchorNext)
+  let sesReanchorNext = false; // owner: a demo-credit TOP-UP is a DEPOSIT — the very next session paint (incl. the one demoSyncBalance fires) must re-anchor the NET instead of booking the +$X as a win. Set by demoReset just before it bumps demoUsd; the FIRST paintSession() consumes it. Preserves the wagered/won tally (a full reset was annoying).
   // The session tracker follows the ACTIVE balance: TokenMode tokens when a token session is live, else the
   // demo play-money balance. So wagered/won/NET update during TOKEN play too — it was demo-only, so it froze
   // the moment you connected + bought in (the "player info isn't updating" report). A demo↔token switch starts
@@ -3405,6 +3406,7 @@
   // reanchor=true → a buy-in / top-up / cash-out: shift the base by the deposit/withdrawal so NET (a P&L
   // figure) stays put and the deposit isn't misread as a win. A normal bet's balance delta is classified.
   function paintSession(reanchor) {
+    if (sesReanchorNext) { reanchor = true; sesReanchorNext = false; } // a demo top-up armed this — the first paint after it (often demoSyncBalance's) absorbs the deposit into the base, never the "won" tally
     const mode = sesMode();
     if (mode === "bj" && bjLastBal == null) return; // #97: blackjack chips balance not known yet — nothing to classify
     if (mode === "bac" && bacLastBal == null) return; // same guard for the baccarat felt
@@ -3674,8 +3676,9 @@
     if (fishGame && demoOn) try { fishGame.restartDemo(); } catch (e) {}
     if (fishshooterGame && demoOn) try { fishshooterGame.restartDemo(); } catch (e) {} // end any open Fish Shooter bonus/boss round on a demo top-up
     if (fishshooter2Game && demoOn) try { fishshooter2Game.restartDemo(); } catch (e) {} // same for V2
+    sesReanchorNext = true; // owner: the top-up below is a DEPOSIT — arm the re-anchor BEFORE demoUsd moves so the first paint (demoSyncBalance's) absorbs it into the base, not into "won", and the wagered/won tally is PRESERVED (a full reset was annoying). Felt games (bj/bac) don't move their balance here → their own reload flag re-anchors the async felt jump.
     demoUsd = Math.max(demoUsd, DEMO_START_USD); demoSave(); demoSyncBalance(); // top UP only — never knock a winning demo balance back down to the start grant
-    sessionReset(); // a credit top-up re-bases the session so it doesn't show as winnings
+    paintSession(); // final repaint (the deposit was already re-anchored by demoSyncBalance's paint via sesReanchorNext) — a no-op delta here
     if (pressureGame && demoOn) pressureGame.setBalance(demoUsd); // v5 #4: match the demoOn guard the siblings use — never set a demo balance on a connected wallet
     if (planeGame && demoOn) planeGame.setBalance(demoUsd);
     if (slots3dGame && demoOn) slots3dGame.setBalance(demoUsd);
@@ -4418,8 +4421,11 @@
       // an off-channel dock update can't clobber demoUsd while you're playing something else). A connected/token
       // player's chips ARE their token balance (owned by the top bar), never demoUsd — so this never touches them.
       if (changed && !account && currentGame === "blackjack" && !(window.TokenMode && TokenMode.active && TokenMode.active())) { demoUsd = nb; try { demoSave(); demoPaint(); } catch (e) {} }
-      if (changed || bjReanchorNext) paintSession(bjReanchorNext);
-      bjReanchorNext = false;
+      // Consume the re-anchor flag ONLY on a real balance change (mirrors renderBacDock) — an intermediate
+      // no-change dock arriving before the reseed lands must not eat the flag, or the real +$X deposit jump
+      // would be mis-booked as a "win".
+      if (changed) { paintSession(bjReanchorNext); bjReanchorNext = false; }
+      else if (bjReanchorNext) paintSession(false); // repaint, keep the re-anchor armed for the deposit jump
     }
     if (account) {
       // Token-funded table: the player's chips ARE their token balance (managed by the top token bar).
@@ -4756,8 +4762,13 @@
       // both felts seed from and write back to the SAME demoUsd under the SAME guest id). Demo-only; a
       // connected/token player's chips ARE their token balance (owned by the top bar), never demoUsd.
       if (changed && !account && currentGame === "baccarat" && !(window.TokenMode && TokenMode.active && TokenMode.active())) { demoUsd = nb; try { demoSave(); demoPaint(); } catch (e) {} }
-      if (changed || bacReanchorNext) paintSession(bacReanchorNext); // a reload is a DEPOSIT, not P&L — re-anchor the session net instead of booking the +$5k top-up as a "win" (mirrors renderBjDock)
-      bacReanchorNext = false;
+      // A reload is a DEPOSIT, not P&L — re-anchor the session net so the +$5k top-up isn't booked as a
+      // "win". The re-anchor must land on the ACTUAL balance jump the seed causes: consume the flag ONLY
+      // on a real change. Consuming it on an intermediate no-change dock (an ack/periodic refresh that
+      // arrives before the seed lands) would leave the real +$X jump to be mis-booked as winnings — the
+      // reported bug. Keep it armed across no-change renders until the deposit delta actually lands.
+      if (changed) { paintSession(bacReanchorNext); bacReanchorNext = false; }
+      else if (bacReanchorNext) paintSession(false); // repaint, but keep the re-anchor armed for the deposit jump
     }
     if (account) {
       // LIVE-SYNC the top token bar to the real token balance while at a token table (authoritative
@@ -6038,11 +6049,11 @@
     { const fb = $("bac-fs"); if (fb) fb.onclick = () => bacSetFullscreen(!bacFsOn); } // dock ⛶ mirrors the felt's corner button
     // (parent exit pill removed — owner 2026-07-03: covered the board; the felt's ⛶ posts bac:fs to exit)
     { const fb = $("bj-fs"); if (fb) fb.onclick = () => bjSetFullscreen(!bjFsOn); } // blackjack dock ⛶ (bac clone; same no-exit-pill rule — the felt's ⛶ exits)
-    { const br = $("bj-reload"); if (br) br.onclick = () => { if (!account && !(window.TokenMode && TokenMode.active && TokenMode.active())) demoReset(); bjReanchorNext = true; bjReload(); if (!account) toast("Demo chips reloaded — $" + Math.round(demoUsd).toLocaleString() + " 💰", "ok"); }; } // #97 / cluster-a + owner 2026-07-02: a busted guest's demoUsd is ALSO busted (write-back), so a pure sync would seed $0 — demoReset first TOPS UP to $5,000 (top-up-only, never knocks a winning balance down), then seed; a reload is a DEPOSIT → re-anchor the session net
+    { const br = $("bj-reload"); if (br) br.onclick = () => { if (!account && !(window.TokenMode && TokenMode.active && TokenMode.active())) demoReset(); bjReanchorNext = (account || (window.TokenMode && TokenMode.active && TokenMode.active())) ? true : ((Math.round(demoUsd * 100) / 100) !== bjLastBal); bjReload(); if (!account) toast("Demo chips reloaded — $" + Math.round(demoUsd).toLocaleString() + " 💰", "ok"); }; } // #97 / cluster-a + owner 2026-07-02: a busted guest's demoUsd is ALSO busted (write-back), so a pure sync would seed $0 — demoReset first TOPS UP to $5,000 (top-up-only, never knocks a winning balance down), then seed; a reload is a DEPOSIT → re-anchor the session net
     { const br = $("bac-reload"); if (br) br.onclick = () => {
         if (account || (window.TokenMode && TokenMode.active && TokenMode.active())) return; // demo/guest only — token players top up via the token bar
         demoReset(); // tops demoUsd back UP to $5,000 + re-bases the session tracker
-        bacReanchorNext = true; // the seed jump that follows is a DEPOSIT — re-anchor, don't count it as winnings (parity with bj-reload)
+        bacReanchorNext = (Math.round(demoUsd * 100) / 100) !== bacLastBal; // arm the re-anchor ONLY if the seed will actually move the felt balance — a no-op top-up has no deposit delta to re-anchor and must not stay armed to swallow a later real win
         bacFramePost(true); // posts bac:seed {balance: demoUsd} → server seedGuest exact-sets the table chips (guest-only, capped, refused mid-coup)
         toast("Demo chips reloaded — $" + Math.round(demoUsd).toLocaleString() + " 💰", "ok");
       }; }
