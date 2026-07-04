@@ -232,6 +232,12 @@ const pokerPersist = {
     return loadJsonStoreOrThrow(POKER_STATE_FILE, "poker state");
   },
   save(obj) { try { writeJsonAtomic(POKER_STATE_FILE, obj); } catch (e) {} },
+  // STRICT save for the boot-drain fail-closed barrier ONLY. The debounced `save` above swallows (best-effort,
+  // correct for routine writes), but that means poker's doSaveStrict() — which relies on save() THROWING to detect
+  // a failed durable write — was DEAD CODE in production (deep-scan-5 CRITICAL: the barrier could never fire). This
+  // path does NOT swallow: writeJsonAtomic throws on a real write/verify failure (ENOSPC/EIO/RO-remount/torn write),
+  // so doSaveStrict can OBSERVE it and abort the pre-drain clear before crediting → no replayable house double-pay.
+  saveStrict(obj) { writeJsonAtomic(POKER_STATE_FILE, obj); },
 };
 const poker = attachPoker({ persist: pokerPersist, autoDemoBots: true }); // demo tables auto-seat 2 bots for a solo player
 // Server-side kill switch: POKER_ENABLED="0" skips the ws routing + token bind (client config.js POKER_ENABLED

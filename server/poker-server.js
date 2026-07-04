@@ -1069,9 +1069,13 @@ function attachPoker(opts) {
   function flushPersist() { try { doSave(); } catch (e) {} }
   // STRICT flush: returns whether the write DURABLY landed (true if there's no persist to write). Used only by the
   // boot-drain fail-closed barrier — a swallowed pre-flush would let the credit proceed while the table list stayed
-  // stale on disk, replaying a house-funded double-pay on the next boot (deep-scan-4 MEDIUM). save() must throw on
-  // a real write/verify failure (server.js writeJsonAtomic does: torn-write readback mismatch, ENOSPC, EIO, RO-remount).
-  function doSaveStrict() { _saveT = null; if (!persist || !persist.save) return true; try { persist.save(persistSnapshot()); return true; } catch (e) { return false; } }
+  // stale on disk, replaying a house-funded double-pay on the next boot (deep-scan-4 MEDIUM). It MUST use a NON-
+  // SWALLOWING writer: deep-scan-5 CRITICAL caught that the production persist.save() wraps writeJsonAtomic in a
+  // try/catch (correct for the debounced best-effort save), so relying on save() to THROW made this barrier DEAD
+  // CODE — doSaveStrict always returned true. Prefer persist.saveStrict (server.js: lets writeJsonAtomic throw on a
+  // real write/verify failure — torn-write readback mismatch, ENOSPC, EIO, RO-remount); fall back to save only for a
+  // test persist that already throws. A persist with neither can't be observed → true (no worse than pre-barrier).
+  function doSaveStrict() { _saveT = null; const w = persist && (persist.saveStrict || persist.save); if (!w) return true; try { w(persistSnapshot()); return true; } catch (e) { return false; } }
   // Fatal boot condition (disk cannot durably persist a money-critical clear). Default: exit for a clean restart on a
   // healthy disk (mirrors preflightPokerStoreParse). Injectable via opts.onFatal so self-tests observe the abort.
   const bootFatal = () => { try { (typeof opts.onFatal === "function" ? opts.onFatal : () => { try { if (typeof process !== "undefined" && process.exit) process.exit(1); } catch (e) {} })(); } catch (e) {} };
@@ -2008,15 +2012,19 @@ function attachPoker(opts) {
     // On boot the live rooms map is empty, so persistSnapshot() already serializes tables:[] — this flush
     // just makes that durable up front (the hydrated pokerOwed/creatorRakeDaily are kept). Worst case after
     // this point is a rare under-pay of a not-yet-credited seat on a mid-loop crash, which is house-safe.
-    // FAIL CLOSED (deep-scan-4 MEDIUM): if that clear does NOT durably land, we must NOT credit — otherwise the
-    // stale table list reloads on the next boot and applyExternal (no idempotency key) re-credits every seat
-    // (replayable house-funded double-pay). Abort before any credit: the seats stay persisted (a stranded lock,
-    // house-safe + recoverable), and bootFatal exits for a clean restart so no later save can clear them uncredited.
-    if (!doSaveStrict()) {
+    // FAIL CLOSED (deep-scan-4 MEDIUM, made LIVE in deep-scan-5): if that clear does NOT durably land, we must NOT
+    // credit — otherwise the stale table list reloads on the next boot and applyExternal (no idempotency key) re-
+    // credits every seat (replayable house-funded double-pay). Abort before any credit: the seats stay persisted (a
+    // stranded lock, house-safe + recoverable), and bootFatal exits for a clean restart. Gate the barrier on whether
+    // a seat will ACTUALLY be credited (a real-wallet stack>0): with nothing to double-pay, a swallowed clear failure
+    // is harmless, so don't crash-loop the whole shared (all-games) process on an unwritable disk holding no orphans.
+    const willCredit = (st.tables || []).some((t) => t && (t.seats || []).some((s) => s && s.wallet && realWallet(s.wallet) && Math.round(Number(s.stack) || 0) > 0));
+    if (willCredit && !doSaveStrict()) {
       try { console.error("[pk] FATAL boot-drain: cannot durably clear the poker table list before crediting — refusing to credit (avoids replayable double-pay); exiting for a clean restart on a healthy disk."); } catch (e) {}
       bootFatal();
       return { drained: 0, aborted: true };
     }
+    if (!willCredit) flushPersist(); // nothing to credit → no double-pay to replay → a best-effort clear is safe
     let drained = 0;
     for (const tbl of (st.tables || [])) {
       // creator rake accrued but unpaid at the crash → owe it to the creator wallet, but subject to the
@@ -3263,19 +3271,35 @@ if (require.main === module) {
       }
     }
 
-    { // (47) DEEP-SCAN-4 MEDIUM: boot-drain FAILS CLOSED — if the pre-drain table-clear can't be durably written,
-      //   abort BEFORE crediting so a stale table list can't replay a house-funded double-pay on the next boot.
+    { // (47) DEEP-SCAN-5 CRITICAL: the boot-drain fail-closed barrier must observe a real write failure via the NON-
+      //   SWALLOWING saveStrict — NOT the production `save` (which swallows, making the barrier dead code). This persist
+      //   MIRRORS production: save() SWALLOWS, saveStrict() THROWS. If doSaveStrict trusted save(), the drain would
+      //   proceed and DOUBLE-PAY (session → $400). It must use saveStrict → abort before crediting (session stays $200).
       const bridge = makeStubBridge(2000); bridge.open("s9", W1, 200);
       let fatalCalled = false;
       const persist = {
         load: () => ({ tables: [{ id: "PK-01", creatorWallet: "house", creatorRakeChips: 0, seats: [{ seat: 0, wallet: W1, sid: "s9", stack: 20000, cumulativeBuyInChips: 20000 }] }], pokerOwed: [], creatorRakeDaily: [] }),
-        save: () => { throw new Error("ENOSPC — simulated unwritable disk"); }, // the pre-drain clear cannot land durably
+        save: () => {}, // SWALLOWS on failure (mirrors production pokerPersist.save) — the barrier must NOT trust this
+        saveStrict: () => { throw new Error("ENOSPC — simulated unwritable disk"); }, // NON-swallowing (mirrors writeJsonAtomic throwing)
       };
       const pk = attachPoker(Object.assign({ persist, onFatal: () => { fatalCalled = true; }, timers: { act: 999999, showdown: 0, between: 0, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 } }, clk2));
       const sessBefore = bridge._get("s9").tokens; // $200
       const res = pk.setTokenLedger({ tokensOf: bridge.tokensOf, applyNet: bridge.applyPokerNet }); // → hydrateAndBootDrain
       const sessAfter = bridge._get("s9").tokens;
-      eq("(47) DEEP-SCAN-4 boot-drain fails CLOSED on an unwritable store — NO seat credited (no double-pay window), fatal signaled", !!res && res.aborted === true && res.drained === 0 && sessBefore === 200 && sessAfter === 200 && fatalCalled);
+      eq("(47) DEEP-SCAN-5 boot-drain observes a SWALLOWING save via saveStrict → fails CLOSED, NO seat credited (barrier is LIVE, not dead), fatal signaled", !!res && res.aborted === true && res.drained === 0 && sessBefore === 200 && sessAfter === 200 && fatalCalled);
+    }
+
+    { // (48) DEEP-SCAN-5: the fail-closed barrier is GATED on a seat to CREDIT — an unwritable disk holding NO orphaned
+      //   real seats must NOT abort/crash-loop the shared (all-games) process (there is nothing to double-pay).
+      let fatalCalled = false;
+      const persist = {
+        load: () => ({ tables: [{ id: "PK-01", creatorWallet: "house", creatorRakeChips: 0, seats: [{ seat: 0, wallet: W1, sid: "s9", stack: 0, cumulativeBuyInChips: 20000 }] }], pokerOwed: [], creatorRakeDaily: [] }), // a busted seat (stack 0) → nothing to credit
+        save: () => {}, saveStrict: () => { throw new Error("ENOSPC"); }, // disk unwritable, but no credit is at risk
+      };
+      const bridge = makeStubBridge(2000);
+      const pk = attachPoker(Object.assign({ persist, onFatal: () => { fatalCalled = true; }, timers: { act: 999999, showdown: 0, between: 0, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 } }, clk2));
+      const res = pk.setTokenLedger({ tokensOf: bridge.tokensOf, applyNet: bridge.applyPokerNet });
+      eq("(48) DEEP-SCAN-5 an unwritable disk with NO real seat to credit does NOT fail-closed/crash-loop (nothing to double-pay)", !!res && !res.aborted && res.drained === 0 && !fatalCalled);
     }
   }
 
