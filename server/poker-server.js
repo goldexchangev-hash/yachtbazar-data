@@ -1706,14 +1706,17 @@ function attachPoker(opts) {
     bank.all.set(wallet, Math.round(balance));
     pushWallet(sock, wallet);
   }
-  // DEMO CHIP RELOAD (owner: "add more demo money"): top the guest's play-money WALLET up by $5,000
-  // (capped). Guests/demo only — a real balance comes from the bridge and is never touched here. The
-  // top-up is to the wallet you buy in FROM, so it works whether you are in the lobby or seated (rebuy).
+  // DEMO CHIP RELOAD (owner: "add more demo money", capped at $20,000): top the guest's play-money
+  // WALLET up by $5,000 but NEVER past DEMO_RELOAD_CAP. Guests/demo only — a real balance comes from
+  // the bridge and is never touched here. The top-up is to the wallet you buy in FROM, so it works
+  // whether you are in the lobby or seated (rebuy). If the wallet is already at/over the cap (e.g. it
+  // grew above $20k from winning chips) we do NOT reduce it — we just re-sync and add nothing.
+  const DEMO_RELOAD_CAP = 20000; // owner: demo chips may never be topped up past $20,000
   function reloadGuest(sock, wallet) {
     const w = String(wallet || "");
     if (!/^guest:/.test(w)) return;
     const cur = bank.all.get(w) || 0;
-    bank.all.set(w, Math.min(1000000, cur + 5000));
+    if (cur < DEMO_RELOAD_CAP) bank.all.set(w, Math.min(DEMO_RELOAD_CAP, cur + 5000));
     pushWallet(sock, w);
   }
   const rand = opts.rand || Math.random;
@@ -2696,12 +2699,20 @@ if (require.main === module) {
     { // (28) demo chip reload tops the play-money wallet up by $5,000; a real (token) wallet is refused (no mint)
       const mkWs = (w) => { const msgs = []; const ws = { wallet: w, send: (m) => { try { msgs.push(JSON.parse(m)); } catch (e) {} } }; ws._msgs = msgs; return ws; };
       const pk28 = attachPoker({ timers: { act: 20000, showdown: 0, between: 0, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 } });
+      const bal = (ws) => (ws._msgs.filter((m) => m.type === "pk:wallet").pop() || {}).balance;
       const G = mkWs("guest:reload");
       pk28.handle(G, { type: "pk:seed", wallet: "guest:reload", balance: 1000 });
-      const bal0 = (G._msgs.filter((m) => m.type === "pk:wallet").pop() || {}).balance;
+      const bal0 = bal(G);
       pk28.handle(G, { type: "pk:reload", wallet: "guest:reload" });
-      const bal1 = (G._msgs.filter((m) => m.type === "pk:wallet").pop() || {}).balance;
+      const bal1 = bal(G);
       eq("(28) demo reload adds $5,000 play-money to the guest wallet", bal0 === 1000 && bal1 === 6000);
+      // spam reload past the cap → tops up in $5k steps but NEVER exceeds $20,000
+      for (let i = 0; i < 10; i++) pk28.handle(G, { type: "pk:reload", wallet: "guest:reload" });
+      eq("(28) demo reload is CAPPED at $20,000 (never higher no matter how many clicks)", bal(G) === 20000);
+      // a wallet ABOVE the cap (chips won at the table) is NOT reduced and gains nothing from reload
+      pk28.handle(G, { type: "pk:seed", wallet: "guest:reload", balance: 33000 });
+      pk28.handle(G, { type: "pk:reload", wallet: "guest:reload" });
+      eq("(28) a >$20k balance (winnings) is left UNTOUCHED by reload — winnings may exceed the cap, reloads may not", bal(G) === 33000);
       const T = mkWs("0xRealWallet"); const before = T._msgs.length; // a non-guest (real) socket
       pk28.handle(T, { type: "pk:reload", wallet: "0xRealWallet" });
       eq("(28) reload REFUSES a non-guest wallet — never mints play-money onto a real balance", !T._msgs.slice(before).some((m) => m.type === "pk:wallet"));

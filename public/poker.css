@@ -49,7 +49,8 @@
 .pk-icon.pk-danger { color: var(--pk-red); border-color: rgba(255, 91, 115, .4); }
 /* demo chip reload — gold outline so it reads as "add play money", never mistaken for a real deposit */
 .pk-icon.pk-reload { color: var(--pk-gold); border-color: rgba(255, 210, 63, .45); font-weight: 800; letter-spacing: .3px; }
-.pk-icon.pk-reload:hover { background: rgba(255, 210, 63, .12); }
+.pk-icon.pk-reload:hover:not(:disabled) { background: rgba(255, 210, 63, .12); }
+.pk-icon.pk-reload:disabled { opacity: .38; cursor: not-allowed; filter: grayscale(.5); } /* at the $20k cap */
 /* the little "?" help pip next to a form label */
 .pk-help {
   display: inline-flex; align-items: center; justify-content: center; width: 17px; height: 17px; padding: 0;

@@ -44,6 +44,7 @@
   let lastServerNow = 0, lastActDeadline = 0, rttSkew = 0; // clock for the turn ring
   let timerRAF = null;
   let prevPhase = null, prevHandNo = null;
+  const DEMO_CHIP_CAP = 20000; // owner: the RELOAD button stops at $20k (winnings may exceed it, reloads may not)
 
   // client-side lobby filters (cosmetic; the server holds the source of truth)
   const filt = { stakes: "all", hideFull: false, hidePrivate: false, kind: "all" };
@@ -259,8 +260,13 @@
     $("pk-c-priv").onchange = (e) => { $("pk-c-pw-fld").hidden = !e.target.checked; };
     $("pk-c-go").onclick = submitCreate;
 
-    // demo chip reload (+$5,000 play-money) — guests only; the server hard-refuses a real balance
-    const reloadDemo = () => { if (net) net.send({ type: "pk:reload" }); cfg.toast("+$5,000 demo chips added 💰", "ok"); };
+    // demo chip reload (+$5,000 play-money, capped at $20,000) — guests only; the server hard-refuses
+    // a real balance and never tops past the cap. Button is disabled at the cap (see paintBalance).
+    const reloadDemo = () => {
+      if (balanceUnits >= DEMO_CHIP_CAP) { cfg.toast("Demo chips are capped at $20,000", "info"); return; }
+      if (net) net.send({ type: "pk:reload" });
+      cfg.toast("Demo chips added 💰", "ok");
+    };
     if ($("pk-reload")) $("pk-reload").onclick = reloadDemo;
     if ($("pk-reload2")) $("pk-reload2").onclick = reloadDemo;
 
@@ -870,11 +876,16 @@
     const disp = isReal ? balanceUnits : Math.round(balanceUnits);
     const t = cfg.usd(disp);
     const b1 = $("pk-bal"), b2 = $("pk-bal2"); if (b1) b1.textContent = t; if (b2) b2.textContent = t;
-    // demo/guest players (no real token session) can top their play-money up; real balances come from the bridge
+    // demo/guest players (no real token session) can top their play-money up; real balances come from the bridge.
+    // The reload is disabled once you are AT/OVER $20k — winnings may climb higher, but reloads stop at the cap.
     const demo = !cfg.tokenSession;
-    const rb1 = $("pk-reload"), rb2 = $("pk-reload2");
-    if (rb1) rb1.hidden = !demo;
-    if (rb2) rb2.hidden = !demo;
+    const atCap = Math.round(balanceUnits) >= DEMO_CHIP_CAP;
+    [$("pk-reload"), $("pk-reload2")].forEach((rb) => {
+      if (!rb) return;
+      rb.hidden = !demo;
+      rb.disabled = atCap;
+      rb.title = atCap ? "Demo chips reload is capped at $20,000" : "Add $5,000 play-money chips (up to $20,000)";
+    });
     try { cfg.onBalance(disp); } catch (e) {}
   }
 
