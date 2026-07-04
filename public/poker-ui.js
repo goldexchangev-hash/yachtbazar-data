@@ -178,6 +178,7 @@
           '<label class="pk-fld">Rake % <span id="pk-c-rakeval">5.0%</span>' +
             '<input id="pk-c-rake" type="range" min="100" max="500" step="25" value="500"></label>' +
           '<label class="pk-fld">Rake cap (bb) <input id="pk-c-rakecap" type="number" min="1" max="5" value="3"></label>' +
+          '<p class="pk-rake-note">Every raked pot is split 50 / 50: <b>you (the host) keep half</b>, and <b>the house takes the other half</b> to the platform treasury wallet. You only earn on hands you are not dealt into (after 3+ players).</p>' +
         '</details>' +
         '<label class="pk-check"><input type="checkbox" id="pk-c-priv"> Private table</label>' +
         '<label class="pk-fld pk-pw-fld" id="pk-c-pw-fld" hidden>Password <input id="pk-c-pw" maxlength="64" placeholder="password"></label>' +
@@ -611,6 +612,11 @@
         if (seat.stack < (state.bb || 0)) row.appendChild(mkBtn("REBUY", "raise", openRebuy));
         row.appendChild(mkBtn(seat.sittingOut ? "SIT IN" : "SIT OUT", "ghost", () => { if (net) net.send({ type: seat.sittingOut ? "pk:sit-in" : "pk:sit-out" }); }));
         row.appendChild(mkBtn("LEAVE", "ghost", () => { leaveTable(); showLobby(); }));
+        // DEMO ONLY: fill empty seats with bots so you can play solo (bots never touch real money)
+        if (state.kind === "demo") {
+          if ((state.seats || []).some((s) => !s)) row.appendChild(mkBtn("+ BOT", "ghost", () => { if (net) net.send({ type: "pk:table:addbot", tableId: atTableId }); }));
+          if ((state.seats || []).some((s) => s && String(s.wallet || "").indexOf("bot:") === 0)) row.appendChild(mkBtn("− BOT", "ghost", () => { if (net) net.send({ type: "pk:table:removebot", tableId: atTableId }); }));
+        }
       }
       if (row.children.length) c.appendChild(row);
       return;

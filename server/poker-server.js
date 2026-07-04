@@ -1253,6 +1253,7 @@ function attachPoker(opts) {
   // WAITING → HAND when ≥2 seated-in players have stack ≥ BB.
   function maybeStartHand(r) {
     if (r.phase !== "WAITING" && r.phase !== "BETWEEN") return;
+    refillBots(r); // demo: top up any busted bot so the table keeps playing
     const eligible = seatedInWithChips(r, r.table.bigBlind);
     if (eligible.length < 2) { r.phase = "WAITING"; broadcastState(r); reapEmptyExtras(); return; }
     startNextHand(r);
@@ -1706,6 +1707,54 @@ function attachPoker(opts) {
   const rand = opts.rand || Math.random;
   function randSeed() { return (typeof PF.randomSeed === "function") ? PF.randomSeed(8) : Math.random().toString(36).slice(2, 10); }
 
+  /* ---------------- DEMO-ONLY BOTS (owner: play against bots in demo) ----------------
+     A bot NEVER touches the token bridge: a synthetic "bot:" wallet with sock:null + _sid:null
+     → realWallet()/isTokenWallet() are both false → play-money only. HARD-REFUSED on a real table
+     (r.kind must be "demo"), so real money can never be dealt against or won by a bot. The engine's
+     bot auto-act (advanceHand → botDecide, PF-seeded + epoch-guarded) drives them. */
+  let _botSeq = 0;
+  const BOT_NAMES = ["Ace", "Bluffy", "Chip", "Dredge", "Nitcat", "River", "Sharky", "Slowroll", "Tilt", "Vera", "Wolfe", "Zed"];
+  function addBot(sock, tableId) {
+    const r = tableId ? rooms.get(String(tableId)) : null;
+    if (!r) { err(sock, "no_table", "Table not found", "bot"); return; }
+    if (r.kind !== "demo") { err(sock, "demo_only", "Bots can only sit at DEMO tables", "bot"); return; } // NEVER real money
+    const idx = r.seats.findIndex((s) => !s);
+    if (idx < 0) { err(sock, "table_full", "No open seat for a bot", "bot"); return; }
+    const id = "bot:" + (++_botSeq);
+    const stackChips = Math.max(Math.round(r.buyInMin || r.table.bigBlind), Math.round(unitsToChips(r.buyInMax || (100 * r.table.bigBlind), id))); // demo chips (1:1)
+    r.seats[idx] = {
+      sock: null, wallet: id, name: BOT_NAMES[_botSeq % BOT_NAMES.length], isBot: true,
+      stack: stackChips, cumulativeBuyInChips: stackChips, _sid: null,
+      clientSeed: "", sittingOut: false, disconnected: false, dcAt: 0, _dcTimer: null, left: false,
+      seatIndex: idx, aggression: 0.3 + rand() * 0.5,
+    };
+    broadcast(r, { type: "pk:event", kind: "botAdded", seat: idx, name: r.seats[idx].name });
+    touch(r); broadcastState(r); pushLobby(); maybeStartHand(r);
+  }
+  function removeBot(sock, tableId) {
+    const r = tableId ? rooms.get(String(tableId)) : null;
+    if (!r || r.kind !== "demo") return;
+    for (let i = r.seats.length - 1; i >= 0; i--) {
+      const s = r.seats[i];
+      if (!s || !s.isBot) continue;
+      // don't yank a bot that has chips in a LIVE pot (would corrupt the hand); pick another / wait
+      if (inHandPhase(r) && r.table.hand && !r.table.hand.done && r.table.hand.players.some((p) => p.id === s.wallet && !p.folded)) continue;
+      r.seats[i] = null;
+      broadcast(r, { type: "pk:event", kind: "botRemoved", seat: i });
+      touch(r); broadcastState(r); pushLobby();
+      return;
+    }
+  }
+  // keep demo bots in the game: a busted bot tops back up to a fresh stack (play-money mint — demo only)
+  function refillBots(r) {
+    if (r.kind !== "demo") return;
+    const bb = r.table.bigBlind;
+    for (const s of r.seats) if (s && s.isBot && (s.stack || 0) < bb) {
+      const top = Math.round(unitsToChips(r.buyInMax || (100 * bb), s.wallet));
+      s.stack = top; s.cumulativeBuyInChips = (s.cumulativeBuyInChips || 0) + top;
+    }
+  }
+
   /* ---------------- router ---------------- */
   function messageWallet(sock, m) {
     if (sock.wallet) return sock.wallet;
@@ -1728,6 +1777,8 @@ function attachPoker(opts) {
       case "pk:sit": setSitOut(sock, m.mode === "out"); break;
       case "pk:act": act(sock, m.action || m.actionType, m.amount); break;
       case "pk:rebuy": rebuy(sock, m.amount); break;
+      case "pk:table:addbot": addBot(sock, m.tableId); break;      // demo-only (refused on real tables)
+      case "pk:table:removebot": removeBot(sock, m.tableId); break;
       case "pk:seed": seedGuest(sock, wallet, +m.balance); break;
       case "pk:ping": send(sock, { type: "pk:pong" }); break;
       default: break;
@@ -2577,6 +2628,42 @@ if (require.main === module) {
       const sessAfter = bridge._get("s1").tokens, owed = pk.pokerOwed(W1);
       eq("(26) the real stack was credited to the TOKEN session (not the demo bank)", Math.round((sessAfter - sessBefore) * 100) + owed === Math.round(w1Stack));
       eq("(26) the token session actually increased by the stack", sessAfter > sessBefore);
+    }
+
+    // ── 27: DEMO BOTS — a human adds bots to a DEMO table + plays a full hand; a REAL table
+    //    HARD-REFUSES bots (no bot can ever win/lose real money). ──
+    {
+      const pk = attachPoker(Object.assign({ timers: { act: 20000, showdown: 0, between: 0, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 } }, clk2));
+      const H = mkTokWs("guest:h1"); // demo human → play-money bank (no bridge)
+      pk.handle(H, { type: "pk:seed", balance: 5000 });
+      pk.handle(H, { type: "pk:table:create", config: { bb: 10, maxSeats: 6, name: "BOTS", buyInMinBb: 20, buyInMaxBb: 100, kind: "demo" } });
+      const tb = H._msgs.filter((m) => m.type === "pk:table:created").pop().tableId;
+      pk.handle(H, { type: "pk:table:join", wallet: "guest:h1", tableId: tb, buyIn: 500 });
+      const r = roomOf2(pk, "guest:h1");
+      eq("(27) demo table + human seated", !!r && r.kind === "demo");
+      pk.handle(H, { type: "pk:table:addbot", tableId: tb });
+      pk.handle(H, { type: "pk:table:addbot", tableId: tb });
+      const botz = r.seats.filter((s) => s && s.isBot);
+      eq("(27) two demo bots seated (play-money, no token session)", botz.length === 2 && botz.every((b) => b._sid == null && b.stack > 0));
+      eq("(27) a hand auto-started (human + 2 bots)", r.phase === "HAND" && !!r.table.hand);
+      let g = 0;
+      while (r.phase === "HAND" && r.table.hand && !r.table.hand.done && g++ < 400) {
+        const h = r.table.hand, cur = h.players[h.toAct].id;
+        if (cur === "guest:h1") { const la = h.legalActions(cur); pk.handle(H, { type: "pk:act", action: la.canCheck ? "check" : "call" }); }
+        else break; // bots auto-act synchronously inside advanceHand; landing on a bot turn here = a bug
+      }
+      eq("(27) the hand played to completion with the bots acting", !!(r.table.hand && r.table.hand.done));
+      // a REAL (token) table HARD-REFUSES bots
+      const bridge = makeStubBridge(2000); bridge.open("sr", W1, 300);
+      const pkR = attachPoker(Object.assign({ timers: { act: 20000, showdown: 0, between: 0, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 } }, clk2));
+      pkR.setTokenLedger({ tokensOf: bridge.tokensOf, applyNet: bridge.applyPokerNet });
+      const R = mkTokWs(W1); pkR.bindToken(W1, "sr");
+      pkR.handle(R, { type: "pk:table:create", config: { bb: 10, maxSeats: 6, name: "REAL", buyInMinBb: 20, buyInMaxBb: 100, rakeBps: 500, rakeCapBb: 3 } });
+      const tr = R._msgs.filter((m) => m.type === "pk:table:created").pop().tableId;
+      pkR.handle(R, { type: "pk:table:join", wallet: W1, tableId: tr, buyIn: 200 });
+      const rr = roomOf2(pkR, W1); const mk = R._msgs.length;
+      pkR.handle(R, { type: "pk:table:addbot", tableId: tr });
+      eq("(27) a REAL table REFUSES bots (demo_only) — no bot seated, real money untouched", rr.seats.filter((s) => s && s.isBot).length === 0 && R._msgs.slice(mk).some((m) => m.type === "pk:error" && m.code === "demo_only"));
     }
   }
 
