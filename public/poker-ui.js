@@ -473,7 +473,7 @@
   function render() {
     if (!state) return;
     const hand = state.hand;
-    const isReal = /* kind */ (lobbyRooms.find((r) => r.id === atTableId) || {}).kind === "real";
+    const isReal = (state && state.kind) ? state.kind === "real" : ((lobbyRooms.find((r) => r.id === atTableId) || {}).kind === "real"); // prefer the AUTHORITATIVE snapshot kind (now always present) so real chip stacks/pot never flash 100× before the lobby list lands
     const toChips = (n) => n; // stacks are already chips
     const money = (chips) => cfg.usd(potUsd({ kind: isReal ? "real" : "demo" }, chips));
 

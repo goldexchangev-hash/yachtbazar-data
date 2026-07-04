@@ -896,7 +896,15 @@ function attachPoker(opts) {
     tokenBind.set(norm(wallet), String(sessionId));
     return true;
   };
-  const unbindToken = (wallet) => { if (hasLiveHand(wallet)) return false; return tokenBind.delete(norm(wallet)); };
+  // True if the wallet still OWNS a seat holding chips (seated OR disconnected-in-grace). The bind
+  // must survive until dropSeat/cashOutSeat credits that stack back to the token session.
+  function hasSeatedStack(wallet) { const w = norm(wallet); for (const r of rooms.values()) { const s = r.seats.find((x) => x && norm(x.wallet) === w); if (s && (s.stack || 0) > 0) return true; } return false; }
+  // Refuse the unbind while ANY chips are still at stake — a live pot OR a seated/in-grace stack.
+  // (Audit CRITICAL: the ws-close handler calls unbindToken right after onClose's 90s grace; between
+  // hands hasLiveHand is false, so without hasSeatedStack the bind was deleted and the grace-expiry
+  // force-cash-out then credited the REAL stack to the DEMO bank — real money lost.) cashOutSeat zeroes
+  // the stack before it unbinds, so a legitimate cash-out still releases the bind.
+  const unbindToken = (wallet) => { if (hasLiveHand(wallet) || hasSeatedStack(wallet)) return false; return tokenBind.delete(norm(wallet)); };
 
   // ── pokerOwed ledger (H1 fallback) — SUMMED, append-only, persisted ──
   function owe(wallet, chips) {
@@ -1099,6 +1107,10 @@ function attachPoker(opts) {
   function cashOutSeat(r, s) {
     const chips = Math.max(0, Math.round(s.stack || 0));
     s.stack = 0;
+    // DEFENCE IN DEPTH (audit): a REAL seat's stack must credit its TOKEN session, never the demo bank.
+    // If the bind was somehow lost (e.g. a close-handler unbind that slipped through), re-bind from the
+    // persisted _sid so isTokenWallet() is true below and the credit routes to the session / pokerOwed.
+    if (chips > 0 && s._sid && realWallet(s.wallet) && !isTokenWallet(s.wallet)) { try { tokenBind.set(norm(s.wallet), s._sid); } catch (e) {} }
     // TABLE-LIFE returned total for the zero-sum assert (F2): every cash-out EVER — including seats
     // that already left before teardown — must be summed, not just the seats present at closeRoom.
     const track = (credited) => { r._everReturnedChips = (r._everReturnedChips || 0) + credited; };
@@ -1197,7 +1209,7 @@ function attachPoker(opts) {
   function stateFor(r, viewerWallet) {
     const h = r.table.hand;
     const base = {
-      type: "pk:state", tableId: r.id, phase: r.phase, handNo: r.table.nonce,
+      type: "pk:state", tableId: r.id, kind: r.kind, phase: r.phase, handNo: r.table.nonce, // kind: the felt needs it to scale REAL chips (cents) → dollars for the balance HUD + the profile-stats record (audit: it was omitted → real hands logged 100× too big)
       button: r.table.button, sb: r.table.smallBlind, bb: r.table.bigBlind,
       serverNow: now(), actDeadline: r.actDeadline || 0,
       seats: r.seats.map((s, i) => s ? {
@@ -1478,6 +1490,13 @@ function attachPoker(opts) {
       for (let i = 0; i < r.seats.length; i++) {
         const s = r.seats[i];
         if (s && s.disconnected && s.wallet === wallet) {
+          // SECURITY (audit CRITICAL): a REAL (0x) seat may be reclaimed ONLY by an AUTHENTICATED
+          // socket that IS that wallet — sock.wallet is set at hello only via a VERIFIED bjSession.
+          // messageWallet falls back to the client-supplied m.wallet for an unauthenticated socket
+          // (empty sock.wallet), so without this guard an attacker sending {wallet:"<victim>"} passes
+          // s.wallet===wallet, HIJACKS the disconnected seat (s.sock=sock), and receives the victim's
+          // LIVE hole cards. Guest seats are play-money (localStorage id, same trust model as bj/bac).
+          if (realWallet(s.wallet) && !(sock.wallet && norm(sock.wallet) === norm(s.wallet))) continue;
           if (s._dcTimer) { clrT(s._dcTimer); s._dcTimer = null; }
           s.sock = sock; s.disconnected = false; s.dcAt = 0; s.left = false;
           r.spectators.delete(sock);
@@ -2501,6 +2520,63 @@ if (require.main === module) {
       const a2 = runTableAccrueCreatorRake(D, [W1, W2], [mkTokWs(W1), mkTokWs(W2)]);
       eq("(24) both tables accrued a creator-half for the sessionless creator", a1 > 0 && a2 > 0);
       eq("(24) pokerOwed SUMS across two teardowns (never overwrites): owed === a1 + a2", pk.pokerOwed(W4) === a1 + a2);
+    }
+
+    // ── 25: RECONNECT-GRACE HIJACK / HOLE-CARD LEAK REGRESSION (audit CRITICAL) — an unauthenticated
+    //    socket (empty sock.wallet) must NOT reclaim a REAL victim's disconnected seat via a spoofed
+    //    {wallet:victim}, nor receive the victim's live holes; a genuine authenticated reconnect still works. ──
+    {
+      const bridge = makeStubBridge(2000);
+      bridge.open("sv", W1, 300); bridge.open("so", W2, 300);
+      const pk = attachPoker(Object.assign({ reconnectGrace: 90000, timers: { act: 20000, showdown: 0, between: 999999, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 } }, clk2));
+      pk.setTokenLedger({ tokensOf: bridge.tokensOf, applyNet: bridge.applyPokerNet });
+      const V = mkTokWs(W1), O = mkTokWs(W2);
+      pk.bindToken(W1, "sv"); pk.bindToken(W2, "so");
+      pk.handle(V, { type: "pk:table:create", config: { bb: 10, maxSeats: 2, name: "HJ", buyInMinBb: 20, buyInMaxBb: 100, rakeBps: 0, rakeCapBb: 0 } });
+      const t = V._msgs.filter((m) => m.type === "pk:table:created").pop().tableId;
+      pk.handle(V, { type: "pk:table:join", wallet: W1, tableId: t, buyIn: 200 });
+      pk.handle(O, { type: "pk:table:join", wallet: W2, tableId: t, buyIn: 200 });
+      const r = roomOf2(pk, W1);
+      pk.onClose(V); // victim's socket drops MID-HAND → seat + live holes kept in the 90s grace
+      const vSeat = r.seats.find((s) => s && s.wallet === W1);
+      eq("(25) victim seat is disconnected-in-grace with its holes kept", !!vSeat && vSeat.disconnected);
+      // ATTACKER: empty sock.wallet, spoofs {wallet:victim}
+      const ATK = mkTokWs(""); const mark = ATK._msgs.length;
+      pk.handle(ATK, { type: "pk:table:join", wallet: W1, tableId: t, buyIn: 200 });
+      const atkLeak = ATK._msgs.slice(mark).some((m) => m.type === "pk:state" && m.hand && (m.hand.players || []).some((p) => p.id === W1 && p.hole));
+      eq("(25) attacker did NOT hijack the victim seat (sock unchanged)", r.seats.find((s) => s && s.wallet === W1).sock === V);
+      eq("(25) attacker received NO victim hole cards (leak blocked)", !atkLeak);
+      // GENUINE reconnect: a fresh AUTHENTICATED victim socket (sock.wallet===W1) reclaims cleanly
+      const V2 = mkTokWs(W1);
+      pk.handle(V2, { type: "pk:table:join", wallet: W1, tableId: t, buyIn: 200 });
+      eq("(25) the genuine authenticated victim RECONNECT still reclaims its seat", r.seats.find((s) => s && s.wallet === W1).sock === V2 && !r.seats.find((s) => s && s.wallet === W1).disconnected);
+    }
+
+    // ── 26: DISCONNECT-CLOSE MONEY REGRESSION (audit CRITICAL) — the real server.js close ordering
+    //    (onClose THEN unbindToken) must NOT strand a real stack: unbind is refused while a seated
+    //    stack awaits grace, and the +90s force-cash-out credits the TOKEN session, never the demo bank. ──
+    {
+      const bridge = makeStubBridge(2000);
+      bridge.open("s1", W1, 300); bridge.open("s2", W2, 300);
+      const pk = attachPoker(Object.assign({ reconnectGrace: 90000, timers: { act: 20000, showdown: 0, between: 999999, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 } }, clk2));
+      pk.setTokenLedger({ tokensOf: bridge.tokensOf, applyNet: bridge.applyPokerNet });
+      const A = mkTokWs(W1), B = mkTokWs(W2);
+      pk.bindToken(W1, "s1"); pk.bindToken(W2, "s2");
+      pk.handle(A, { type: "pk:table:create", config: { bb: 10, maxSeats: 2, name: "DC", buyInMinBb: 20, buyInMaxBb: 100, rakeBps: 0, rakeCapBb: 0 } });
+      const t = A._msgs.filter((m) => m.type === "pk:table:created").pop().tableId;
+      pk.handle(A, { type: "pk:table:join", wallet: W1, tableId: t, buyIn: 200 }); // session s1: 300 → 100 tokens
+      pk.handle(B, { type: "pk:table:join", wallet: W2, tableId: t, buyIn: 200 });
+      const r = roomOf2(pk, W1);
+      checkCallDown(pk, r, (w) => (String(w).toLowerCase() === W1 ? A : B)); // finish the hand → BETWEEN (hasLiveHand false — the dangerous timing)
+      const sessBefore = bridge._get("s1").tokens; // == 100 (post buy-in)
+      const w1Stack = r.seats.find((s) => s && s.wallet === W1).stack;
+      pk.onClose(A);                       // server.js step 1: mark disconnected + 90s grace (keeps chips)
+      const unbindRes = pk.unbindToken(W1); // server.js step 2: immediate unbind (single tab)
+      eq("(26) unbindToken is REFUSED while the seat holds chips in grace", unbindRes === false);
+      clock2 += 91000; fireDue2();          // grace expires → dropSeat force-cash-out
+      const sessAfter = bridge._get("s1").tokens, owed = pk.pokerOwed(W1);
+      eq("(26) the real stack was credited to the TOKEN session (not the demo bank)", Math.round((sessAfter - sessBefore) * 100) + owed === Math.round(w1Stack));
+      eq("(26) the token session actually increased by the stack", sessAfter > sessBefore);
     }
   }
 
