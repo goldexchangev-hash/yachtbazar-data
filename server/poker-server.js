@@ -2018,7 +2018,15 @@ function attachPoker(opts) {
     // stranded lock, house-safe + recoverable), and bootFatal exits for a clean restart. Gate the barrier on whether
     // a seat will ACTUALLY be credited (a real-wallet stack>0): with nothing to double-pay, a swallowed clear failure
     // is harmless, so don't crash-loop the whole shared (all-games) process on an unwritable disk holding no orphans.
-    const willCredit = (st.tables || []).some((t) => t && (t.seats || []).some((s) => s && s.wallet && realWallet(s.wallet) && Math.round(Number(s.stack) || 0) > 0));
+    // "Will credit" = ANY house-funded credit the drain loop below would book: a real-wallet SEAT stack>0 (returned
+    // to its session) OR unpaid creator-rake owe (a non-house creator-half → pokerOwed). deep-scan-6 (6 finders
+    // converged): the gate ORIGINALLY tested only seat stacks, so a rake-bearing table whose only real seat had
+    // busted to 0 skipped the barrier — then re-owed the SAME creator rake on the next boot's re-drain (a replayable
+    // house-funded double-pay of the exact class the barrier exists to stop). Include BOTH credit sources.
+    const willCredit = (st.tables || []).some((t) => t && (
+      (t.seats || []).some((s) => s && s.wallet && realWallet(s.wallet) && Math.round(Number(s.stack) || 0) > 0) ||
+      (Math.round(Number(t.creatorRakeChips) || 0) > 0 && t.creatorWallet && norm(t.creatorWallet) !== "house")
+    ));
     if (willCredit && !doSaveStrict()) {
       try { console.error("[pk] FATAL boot-drain: cannot durably clear the poker table list before crediting — refusing to credit (avoids replayable double-pay); exiting for a clean restart on a healthy disk."); } catch (e) {}
       bootFatal();
@@ -3300,6 +3308,22 @@ if (require.main === module) {
       const pk = attachPoker(Object.assign({ persist, onFatal: () => { fatalCalled = true; }, timers: { act: 999999, showdown: 0, between: 0, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 } }, clk2));
       const res = pk.setTokenLedger({ tokensOf: bridge.tokensOf, applyNet: bridge.applyPokerNet });
       eq("(48) DEEP-SCAN-5 an unwritable disk with NO real seat to credit does NOT fail-closed/crash-loop (nothing to double-pay)", !!res && !res.aborted && res.drained === 0 && !fatalCalled);
+    }
+
+    { // (49) DEEP-SCAN-6 HIGH: the willCredit gate must fire the barrier for an unpaid CREATOR-RAKE owe too (not just
+      //   seat stacks). A rake-bearing table whose only real seat busted to 0 still books a house-funded owe() in the
+      //   drain loop — so on an unwritable disk it must ABORT, else the creator rake is re-owed (double-paid) next boot.
+      let fatalCalled = false;
+      const CREATOR = "0xabcdef0000000000000000000000000000000049"; // a valid non-house 0x creator with accrued rake
+      const persist = {
+        load: () => ({ tables: [{ id: "PK-01", creatorWallet: CREATOR, creatorRakeChips: 1500, seats: [{ seat: 0, wallet: W1, sid: "s9", stack: 0, cumulativeBuyInChips: 20000 }] }], pokerOwed: [], creatorRakeDaily: [] }), // rake accrued; the only real seat busted to 0
+        save: () => {}, saveStrict: () => { throw new Error("ENOSPC"); }, // unwritable disk
+      };
+      const bridge = makeStubBridge(2000);
+      const pk = attachPoker(Object.assign({ persist, onFatal: () => { fatalCalled = true; }, timers: { act: 999999, showdown: 0, between: 0, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 } }, clk2));
+      const res = pk.setTokenLedger({ tokensOf: bridge.tokensOf, applyNet: bridge.applyPokerNet });
+      const creatorOwed = pk.pokerOwed(CREATOR);
+      eq("(49) DEEP-SCAN-6 unwritable disk + unpaid CREATOR-RAKE (all seats busted) fails CLOSED — barrier fires, creator NOT owed (no rake double-pay)", !!res && res.aborted === true && fatalCalled && creatorOwed === 0);
     }
   }
 
