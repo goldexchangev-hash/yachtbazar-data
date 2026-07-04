@@ -2487,6 +2487,9 @@ body.rr-fs-on #layer-fishshooter, body.rr-fs-on #layer-fishshooter * { visibilit
 .demo-session .ds-net.down strong, .demo-session strong.ds-net.down { color: #ff6f8a; }
 .demo-session strong.ds-net.up { color: #45f0a6; }
 .demo-session strong.ds-net.down { color: #ff6f8a; }
+.demo-session .ds-reset { margin-left: 4px; padding: 2px 9px; border-radius: 8px; cursor: pointer; font: inherit; font-size: .72rem; font-weight: 700; color: var(--muted, #8fa3c8); background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.14); transition: filter .12s, border-color .12s; }
+.demo-session .ds-reset:hover { color: var(--text, #cfe2ff); border-color: rgba(57,231,255,.4); filter: brightness(1.15); }
+.demo-session .ds-reset:active { transform: translateY(1px); }
 /* Fish Shooter help accordion (#fishshooter-panel) */
 .fish-help { margin: 6px 0 4px; border: 1px solid rgba(57,231,255,.18); border-radius: 10px; background: rgba(57,231,255,.05); overflow: hidden; }
 .fish-help > summary { cursor: pointer; list-style: none; padding: 8px 11px; font-weight: 800; font-size: .84rem; color: var(--s-gold, #ffd23f); user-select: none; }

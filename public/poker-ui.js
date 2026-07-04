@@ -361,7 +361,8 @@
           const toUsd = (chips) => isReal ? Math.round(chips) / 100 : chips; // real chips are cents; demo chips are dollars
           const wagerUsd = toUsd(meP.committedTotal || 0);
           const netUsd = toUsd(dChips);
-          if (wagerUsd > 0) cfg.recordResult("poker", netUsd > 0, wagerUsd, netUsd);
+          if (wagerUsd > 0) cfg.recordResult("poker", isReal ? "token" : "demo", netUsd > 0, wagerUsd, netUsd); // classify by the TABLE kind, not the site-wide toggle
+
         }
       } catch (e) {}
     }

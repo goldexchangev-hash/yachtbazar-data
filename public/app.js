@@ -4822,7 +4822,7 @@
       tokenSession: pokerTokenSession(),
       usd: (n) => usd(n),
       toast: (m, t) => toast(m, t),
-      recordResult: (game, won, wagered, net) => recordGameResult(game, statsMode(), won, wagered, net), // profile ledger: one record per settled hand for the local seated player (edge-triggered felt-side)
+      recordResult: (game, mode, won, wagered, net) => recordGameResult(game, mode, won, wagered, net), // profile ledger: one record per settled hand. Poker passes its OWN table kind ("token"/"demo") — a poker table's mode is PER-TABLE, independent of the site-wide token/demo toggle, so statsMode() here would cross-contaminate (a demo hand logged as real, or vice-versa).
     });
     PokerUI.mount();
   }
@@ -6043,6 +6043,9 @@
     $("connect-btn").onclick = () => { try { localStorage.removeItem("cf_no_autoconnect"); } catch (e) {} connect(); }; // W7: a manual Connect clears the sticky no-autoconnect flag
     $("disconnect-btn").onclick = disconnect;
     { const dr = $("demo-reset"); if (dr) dr.onclick = demoReset; }
+    // owner: a manual "↺ reset" on the session bar — zero the wagered/won/net tally for the CURRENT game/mode
+    // whenever the player wants a fresh count (does NOT touch the balance; adding credits no longer auto-resets).
+    { const dsr = $("ds-reset"); if (dsr) dsr.onclick = () => { sessionReset(); try { toast("Session totals reset ↺", "ok"); } catch (e) {} }; }
     { const dc = $("demo-connect"); if (dc) dc.onclick = () => { try { localStorage.removeItem("cf_no_autoconnect"); } catch (e) {} connect(); }; } // W7: manual Connect clears the sticky flag
     { const bs = $("bj-share"); if (bs) bs.onclick = bjShareTable; } // copy a link to the current blackjack table
     { const bs = $("bac-share"); if (bs) bs.onclick = bacShareTable; } // copy a link to the current baccarat table

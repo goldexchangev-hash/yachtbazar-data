@@ -432,6 +432,11 @@ ServerHand.prototype.act = function (id, type, amount) {
     if (target > maxTo) target = maxTo;
     const isAllIn = target === maxTo;
     const prevBet = this.currentBet;
+    // RE-OPEN GUARD (server is the sole validator): a player whose raise was closed by a prior SHORT
+    // all-in (mayRaise=false) may only call or fold — NOT voluntarily re-raise. Their own all-in shove
+    // for the rest of their stack is still allowed (that's not a sized re-raise). Without this, act()
+    // validated only the raise SIZE, so a crafted client could re-open betting poker rules say is shut.
+    if ((type === "bet" || type === "raise") && !isAllIn && target > prevBet && !p.mayRaise) throw new Error("raising is closed");
     if (target < prevBet && !isAllIn) throw new Error("raise below current bet");
     if (this.currentBet === 0) {
       if (!isAllIn && target < Math.min(this.bb, maxTo)) throw new Error("bet below min");
@@ -619,6 +624,11 @@ ServerHand.prototype.snapshotFor = function (viewerId) {
     commit: this.commit,
     // REVEAL: only after the hand is over. While live, the secret seed is withheld
     // so the deck cannot be re-derived to peek opponents' holes or the stub.
+    // PRIVACY NOTE (hunt #3, accepted tradeoff): because the deal is a pure function of the
+    // now-public serverSeed + clientSeed + nonce + seat order + button, once revealed a client can
+    // re-derive the full deck and thus compute the holes of players who FOLDED/mucked this hand. This
+    // is inherent to provably-fair commit-reveal (the reveal is what lets players verify the deal) and
+    // is post-completion only (no live-hand leak, fresh seed each hand). Documented, not a defect.
     serverSeed: this.done ? this.serverSeed : null,
     clientSeed: this.clientSeed,
     nonce: this.nonce,
@@ -892,7 +902,7 @@ function attachPoker(opts) {
     if (!realWallet(wallet) || !sessionId) return false;
     const cur = tokenBind.get(norm(wallet));
     if (cur === String(sessionId)) return true;              // idempotent reconnect
-    if (cur && cur !== String(sessionId)) { if (hasLiveHand(wallet)) return false; } // bound elsewhere & live → refuse
+    if (cur && cur !== String(sessionId)) { if (hasLiveHand(wallet) || hasSeatedStack(wallet)) return false; } // bound elsewhere & still has chips at stake (live pot OR a seated stack bought from `cur`) → refuse the swap. Audit CRIT: between hands hasLiveHand is false, so without hasSeatedStack a 2nd hello with a different session could re-point the bind → cash-out then credits the WRONG on-chain session (house drain).
     if (hasLiveHand(wallet)) return false;
     tokenBind.set(norm(wallet), String(sessionId));
     return true;
@@ -1375,6 +1385,7 @@ function attachPoker(opts) {
 
   function finishHand(r) {
     const h = r.table.hand;
+    if (r.phase !== "HAND") return; // IDEMPOTENCY: a hand settles exactly once. finishHand is not idempotent (it increments _handsPlayed, pushes potHistory, re-splits rake, arms a showdown timer) — a re-entry after phase already moved to SHOWDOWN/BETWEEN would double-count rake and break zero-sum. Only settle a hand still live in HAND phase.
     if (r.timers.act) { clrT(r.timers.act); r.timers.act = null; }
     r.actDeadline = 0;
     r.phase = "SHOWDOWN";
@@ -1388,7 +1399,7 @@ function attachPoker(opts) {
     if (rake > 0) {
       const houseHalf = Math.floor(rake / 2);
       const creatorHalf = rake - houseHalf; // creator gets the odd chip (exact split, no mint/burn)
-      const creatorSeated = r.creatorId !== "HOUSE" && r.creatorWallet && h.players.some((p) => p.id === r.creatorWallet);
+      const creatorSeated = r.creatorId !== "HOUSE" && r.creatorWallet && h.players.some((p) => norm(p.id) === norm(r.creatorWallet)); // NORMALIZE both sides — a raw === let a creator seat under a different address casing (same token session verifies case-insensitively) so H6 read FALSE and they self-dealt the house rake
       const distinct = (r._fundedWallets ? r._fundedWallets.size : 0);
       const gateOpen = distinct >= CREATOR_GATE_DISTINCT && (r._handsPlayed || 0) >= CREATOR_GATE_HANDS;
       const creatorEligible = r.creatorId !== "HOUSE" && r.creatorWallet && !creatorSeated && gateOpen;
@@ -1454,6 +1465,11 @@ function attachPoker(opts) {
     // sessionless payout) pay them down into the fresh session before the buy-in (H1 claim).
     const tokenSeat = isTokenWallet(wallet);
     if (tokenSeat) {
+      // A table holding ANY bot can NEVER take a real (token) buy-in. Bots are synthetic play-money
+      // wallets; flipping the table to real (r.kind="real") would deal them into real hands and, at
+      // teardown, cashOutSeat credits a bot's chips to the throwaway demo bank (real chips a bot won
+      // from a real player vanish + assertZeroSum breaks). Refuse the buy-in; keep the table demo.
+      if (r.seats.some((s) => s && s.isBot)) { err(sock, "demo_only", "This table has practice bots — real-money buy-ins aren’t allowed here. Join a table with no bots.", "join"); return false; }
       r.kind = "real";
       const sid = tokenSid(wallet);
       if (!bindToken(wallet, sid)) { err(sock, "bound_elsewhere", "Your session is busy in another game — finish that first", "join"); return false; }
@@ -1831,9 +1847,16 @@ function attachPoker(opts) {
     for (const [k, n] of (st.creatorRakeDaily || [])) { const c = Math.round(Number(n) || 0); if (c > 0) creatorRakeDaily.set(String(k), c); }
     let drained = 0;
     for (const tbl of (st.tables || [])) {
-      // creator rake accrued but unpaid at the crash → owe it to the creator wallet.
+      // creator rake accrued but unpaid at the crash → owe it to the creator wallet, but subject to the
+      // SAME H7 daily cap settleCreatorRake enforces (else a restart pays creator-rake past the ceiling).
       const cr = Math.round(Number(tbl.creatorRakeChips) || 0);
-      if (cr > 0 && tbl.creatorWallet && norm(tbl.creatorWallet) !== "house") owe(tbl.creatorWallet, cr);
+      if (cr > 0 && tbl.creatorWallet && norm(tbl.creatorWallet) !== "house") {
+        const cw = norm(tbl.creatorWallet);
+        const dayKey = cw + ":" + Math.floor(now() / 86400000);
+        const used = creatorRakeDaily.get(dayKey) || 0;
+        const pay = Math.max(0, Math.min(cr, Math.round(CREATOR_RAKE_CAP_DAILY_CHIPS) - used)); // clamp to remaining daily headroom
+        if (pay > 0) { creatorRakeDaily.set(dayKey, used + pay); owe(tbl.creatorWallet, pay); }
+      }
       for (const seat of (tbl.seats || [])) {
         const wallet = seat.wallet, sid = seat.sid, stack = Math.round(Number(seat.stack) || 0);
         if (!wallet || !realWallet(wallet)) continue;
@@ -2716,6 +2739,74 @@ if (require.main === module) {
       const T = mkWs("0xRealWallet"); const before = T._msgs.length; // a non-guest (real) socket
       pk28.handle(T, { type: "pk:reload", wallet: "0xRealWallet" });
       eq("(28) reload REFUSES a non-guest wallet — never mints play-money onto a real balance", !T._msgs.slice(before).some((m) => m.type === "pk:wallet"));
+    }
+
+    { // (29) HUNT #5 CRITICAL: a demo table holding a BOT hard-refuses a real (token) buy-in — a bot can never be dealt real money
+      const bridge = makeStubBridge(2000); bridge.open("sb1", W1, 200);
+      const pk = attachPoker(Object.assign({ timers: { act: 20000, showdown: 0, between: 0, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 } }, clk2));
+      pk.setTokenLedger({ tokensOf: bridge.tokensOf, applyNet: bridge.applyPokerNet });
+      const H = mkTokWs("guest:h5");
+      pk.handle(H, { type: "pk:table:create", wallet: "guest:h5", config: { bb: 10, maxSeats: 6, name: "DBOT", buyInMinBb: 20, buyInMaxBb: 100 } });
+      const tid5 = H._msgs.filter((m) => m.type === "pk:table:created").pop().tableId;
+      pk.handle(H, { type: "pk:table:join", wallet: "guest:h5", tableId: tid5, buyIn: 500 });
+      pk.handle(H, { type: "pk:table:addbot", tableId: tid5 });
+      const r5 = roomOf2(pk, "guest:h5");
+      const hadBot = !!r5 && r5.seats.some((s) => s && s.isBot);
+      const T5 = mkTokWs(W1); pk.bindToken(W1, "sb1");
+      const mk5 = T5._msgs.length;
+      pk.handle(T5, { type: "pk:table:join", wallet: W1, tableId: tid5, buyIn: 200 });
+      const gotSeat = r5.seats.some((s) => s && String(s.wallet).toLowerCase() === W1.toLowerCase());
+      eq("(29) HUNT#5 a demo table WITH a bot REFUSES a real buy-in (kind stays demo, token wallet NOT seated, bot never dealt real money)", hadBot && r5.kind === "demo" && !gotSeat && T5._msgs.slice(mk5).some((m) => m.type === "pk:error" && m.code === "demo_only"));
+    }
+
+    { // (30) HUNT #7 CRITICAL: bindToken REFUSES swapping a seated stack's token session BETWEEN hands (cross-session cash-out house-drain)
+      const bridge = makeStubBridge(2000); bridge.open("sx1", W2, 200); bridge.open("sx2", W2, 200); // same player, two funded sessions
+      const pk = attachPoker(Object.assign({ timers: { act: 20000, showdown: 0, between: 0, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 } }, clk2));
+      pk.setTokenLedger({ tokensOf: bridge.tokensOf, applyNet: bridge.applyPokerNet });
+      const A2 = mkTokWs(W2); pk.bindToken(W2, "sx1");
+      pk.handle(A2, { type: "pk:table:create", wallet: W2, config: { bb: 10, maxSeats: 6, name: "BND", buyInMinBb: 20, buyInMaxBb: 100 } });
+      const tid7 = A2._msgs.filter((m) => m.type === "pk:table:created").pop().tableId;
+      pk.handle(A2, { type: "pk:table:join", wallet: W2, tableId: tid7, buyIn: 200 }); // seated, stack bought from sx1 (no 2nd player → no live hand → hasLiveHand=false)
+      const seated7 = !!roomOf2(pk, W2);
+      const swapped = pk.bindToken(W2, "sx2"); // between hands must STILL refuse (a seated stack is bound to sx1)
+      eq("(30) HUNT#7 bindToken REFUSES swapping a seated stack's session between hands (no wrong-session cash-out drain)", seated7 && swapped === false);
+    }
+
+    { // (31) HUNT #1 HIGH: H6 self-deal guard NORMALIZES wallet casing — a creator seated under a different address casing STILL earns zero rake-share
+      const bridge = makeStubBridge(2000);
+      const Wm = "0xAbCdEf0000000000000000000000000000000009"; // mixed-case creator address
+      const Wl = Wm.toLowerCase();
+      bridge.open("sm1", Wm, 500); bridge.open("sm2", W3, 500);
+      const pk = attachPoker(Object.assign({ timers: { act: 20000, showdown: 0, between: 0, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 }, creatorGateDistinct: 2, creatorGateHands: 0 }, clk2));
+      pk.setTokenLedger({ tokensOf: bridge.tokensOf, applyNet: bridge.applyPokerNet });
+      const Cc = mkTokWs(Wm); pk.bindToken(Wm, "sm1"); // create under MIXED case → r.creatorWallet = Wm
+      pk.handle(Cc, { type: "pk:table:create", wallet: Wm, config: { bb: 10, maxSeats: 6, name: "H6", buyInMinBb: 20, buyInMaxBb: 100, rakeBps: 500, rakeCapBb: 3 } });
+      const tid1 = Cc._msgs.filter((m) => m.type === "pk:table:created").pop().tableId;
+      const Cl = mkTokWs(Wl); pk.bindToken(Wl, "sm1"); // seat under LOWER case → p.id = Wl
+      pk.handle(Cl, { type: "pk:table:join", wallet: Wl, tableId: tid1, buyIn: 500 });
+      const Op = mkTokWs(W3); pk.bindToken(W3, "sm2");
+      pk.handle(Op, { type: "pk:table:join", wallet: W3, tableId: tid1, buyIn: 500 });
+      const r1 = roomOf2(pk, Wl);
+      const wsOf1 = (w) => (String(w).toLowerCase() === Wl ? Cl : Op);
+      let hands = 0; while (hands < 6 && (r1.houseRakeChips || 0) === 0 && r1.phase === "HAND") { checkCallDown(pk, r1, wsOf1); hands++; fireDue2(); }
+      // gate is OPEN (2 distinct, 0 hands) so the ONLY thing withholding the creator-half is the H6 seated check → must still be 0
+      eq("(31) HUNT#1 a case-mismatched SEATED creator still earns ZERO rake-share (H6 normalizes both sides) — no self-deal of house rake", (r1.houseRakeChips || 0) > 0 && (r1.creatorRakeChips || 0) === 0);
+    }
+
+    { // (32) HUNT #4 HIGH: a SHORT all-in does NOT re-open a capped player's raise — act() enforces mayRaise (server is the sole validator)
+      const t = createTable({ smallBlind: 5, bigBlind: 10, seats: 2 });
+      sit(t, { id: "a", isBot: false, stack: 500 });
+      sit(t, { id: "b", isBot: false, stack: 160 }); // short stack → its all-in is a short (< min) raise
+      startHand(t, { buttonIndex: 0 });
+      const h = t.hand;
+      let g = 0; while (h.board.length < 3 && g++ < 12) { const p = h.players[h.toAct]; const tc = h.currentBet - p.committedStreet; act(t, p.id, tc > 0 ? "call" : "check"); } // limp/check to the flop
+      if (h.players[h.toAct].id === "b") act(t, "b", "check"); // BB acts first postflop
+      act(t, "a", "bet", 100);   // currentBet 100, minRaise 100, a.acted=true
+      act(t, "b", "allin");      // b all-in 150 → increment 50 < minRaise 100 → SHORT → a.mayRaise=false
+      const aCapped = !h.players.find((p) => p.id === "a").mayRaise;
+      let threw = false; try { act(t, "a", "raise", 300); } catch (e) { threw = true; } // capped → voluntary re-raise must THROW
+      let called = false; try { act(t, "a", "call"); called = true; } catch (e) {}       // but CALL is still legal
+      eq("(32) HUNT#4 short all-in closes the capped player's raise: a voluntary re-raise THROWS, CALL still allowed", aCapped && threw && called);
     }
   }
 
