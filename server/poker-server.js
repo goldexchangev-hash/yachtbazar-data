@@ -885,6 +885,12 @@ function attachPoker(opts) {
   // stack against the blind must use this, else a real seat's cent-scaled stack is compared to a dollar
   // blind (100× mismatch → busted real players never sit out and are force-all-in'd every hand).
   const bbChips = (r) => r.table.bigBlind * (r.kind === "real" ? 100 : 1);
+  // SEAT ORIGIN (deep-scan-4 CRITICAL): a seat is a REAL (token) seat iff it was FUNDED from a token session
+  // at buy-in — captured immutably as `_sid`. All cash-out / credit routing MUST key on this, NOT on the live
+  // isTokenWallet(wallet) bind state: an UNBOUND 0x wallet can take a play-money DEMO seat (chipsScale=100 →
+  // a ×100 stack from the free demo bank), LATER bind a real session, and — if routing looked at the live bind
+  // — cash that play-money stack into the real on-chain session (house-funded drain). Origin never changes.
+  const isRealSeat = (s) => !!(s && s._sid && realWallet(s.wallet));
 
   /* ---------------- TOKEN SEAM (spec §5/§12 — Phase 3, the money settlement) ----------------
      setTokenLedger binds the applyPokerNet ledger; a real (0x) wallet at a REAL table has its
@@ -1061,6 +1067,14 @@ function attachPoker(opts) {
   function doSave() { _saveT = null; if (!persist || !persist.save) return; try { persist.save(persistSnapshot()); } catch (e) {} }
   function savePersist() { if (!persist || !persist.save) return; if (_saveT) return; _saveT = setT(doSave, 800); }
   function flushPersist() { try { doSave(); } catch (e) {} }
+  // STRICT flush: returns whether the write DURABLY landed (true if there's no persist to write). Used only by the
+  // boot-drain fail-closed barrier — a swallowed pre-flush would let the credit proceed while the table list stayed
+  // stale on disk, replaying a house-funded double-pay on the next boot (deep-scan-4 MEDIUM). save() must throw on
+  // a real write/verify failure (server.js writeJsonAtomic does: torn-write readback mismatch, ENOSPC, EIO, RO-remount).
+  function doSaveStrict() { _saveT = null; if (!persist || !persist.save) return true; try { persist.save(persistSnapshot()); return true; } catch (e) { return false; } }
+  // Fatal boot condition (disk cannot durably persist a money-critical clear). Default: exit for a clean restart on a
+  // healthy disk (mirrors preflightPokerStoreParse). Injectable via opts.onFatal so self-tests observe the abort.
+  const bootFatal = () => { try { (typeof opts.onFatal === "function" ? opts.onFatal : () => { try { if (typeof process !== "undefined" && process.exit) process.exit(1); } catch (e) {} })(); } catch (e) {} };
 
   /* ---------------- lobby ---------------- */
   function avgPot(r) {
@@ -1178,15 +1192,17 @@ function attachPoker(opts) {
                               // awarded (house-funded double-spend). No-op between hands / at teardown (h.done).
     const chips = Math.max(0, Math.round(s.stack || 0));
     s.stack = 0;
-    // DEFENCE IN DEPTH (audit): a REAL seat's stack must credit its TOKEN session, never the demo bank.
-    // If the bind was somehow lost (e.g. a close-handler unbind that slipped through), re-bind from the
-    // persisted _sid so isTokenWallet() is true below and the credit routes to the session / pokerOwed.
-    if (chips > 0 && s._sid && realWallet(s.wallet) && !isTokenWallet(s.wallet)) { try { tokenBind.set(norm(s.wallet), s._sid); } catch (e) {} }
+    // ROUTE BY SEAT ORIGIN, never the live bind state (deep-scan-4 CRITICAL). A DEMO seat (isRealSeat false)
+    // ALWAYS cashes to the play-money bank — even if the wallet is bound to some OTHER real session right now
+    // (that would drain the house AND wrongly unbind the unrelated session). A REAL seat cashes to its token
+    // session; if its bind was somehow lost, re-bind from the persisted _sid so tokenCredit routes correctly.
+    const realSeat = isRealSeat(s);
+    if (chips > 0 && realSeat && !isTokenWallet(s.wallet)) { try { tokenBind.set(norm(s.wallet), s._sid); } catch (e) {} }
     // TABLE-LIFE returned total for the zero-sum assert (F2): every cash-out EVER — including seats
     // that already left before teardown — must be summed, not just the seats present at closeRoom.
     const track = (credited) => { r._everReturnedChips = (r._everReturnedChips || 0) + credited; };
-    if (chips === 0) { if (isTokenWallet(s.wallet)) { unbindToken(s.wallet); } return { creditedChips: 0 }; }
-    if (!isTokenWallet(s.wallet)) { bank.credit(s.wallet, chipsToUnits(chips, s.wallet)); track(chips); return { creditedChips: chips }; }
+    if (chips === 0) { if (realSeat) { unbindToken(s.wallet); } return { creditedChips: 0 }; }
+    if (!realSeat) { _demoBank.credit(s.wallet, chipsToUnits(chips, s.wallet)); track(chips); return { creditedChips: chips }; } // _demoBank DIRECTLY — bank.credit routes by live isTokenWallet, so a demo seat whose 0x wallet is now bound would drain to the real session
     // H4 ABSOLUTE clamp (fail-closed): with the table-life ceiling a legit stack can NEVER exceed it,
     // so this only fires on a genuine engine bug — and when it does the excess is routed to pokerOwed,
     // NEVER dropped on the floor (the F1 vanish). The credit's own capUp shortfall → pokerOwed too.
@@ -1268,7 +1284,7 @@ function attachPoker(opts) {
     // never vanish. NEVER close mid-hand (the idle scheduler already guards; belt-and-suspenders here too).
     if (r.kind === "real" && inHandPhase(r) && r.table.hand && !r.table.hand.done) { scheduleIdle(r); return; }
     if (r.kind === "real") { settleRealTable(r, reason); }
-    else { for (const s of r.seats) if (s) { if (s._dcTimer) { clrT(s._dcTimer); s._dcTimer = null; } if (s.stack > 0) { bank.credit(s.wallet, chipsToUnits(s.stack, s.wallet)); s.stack = 0; } } }
+    else { for (const s of r.seats) if (s) { if (s._dcTimer) { clrT(s._dcTimer); s._dcTimer = null; } if (s.stack > 0) { if (isRealSeat(s)) { cashOutSeat(r, s); } else { _demoBank.credit(s.wallet, chipsToUnits(s.stack, s.wallet)); s.stack = 0; } } } } // route by seat ORIGIN: a demo table's play-money seats credit _demoBank DIRECTLY, never a bound 0x wallet's real session (deep-scan-4 drain)
     for (const k in r.timers) clrT(r.timers[k]);
     broadcast(r, { type: "pk:event", kind: "tableClosing", id: r.id, reason });
     const h = r.table.hand;
@@ -1514,8 +1530,8 @@ function attachPoker(opts) {
       const s = r.seats[i];
       if (!s) continue;
       if (s.left) {
-        if (isTokenWallet(s.wallet)) { cashOutSeat(r, s); pushWallet(s.sock, s.wallet); }
-        else if (s.stack > 0) { bank.credit(s.wallet, chipsToUnits(s.stack, s.wallet)); pushWallet(s.sock, s.wallet); }
+        if (isRealSeat(s)) { cashOutSeat(r, s); pushWallet(s.sock, s.wallet); } // route by seat ORIGIN, not live bind (deep-scan-4 drain)
+        else if (s.stack > 0) { _demoBank.credit(s.wallet, chipsToUnits(s.stack, s.wallet)); s.stack = 0; pushWallet(s.sock, s.wallet); } // _demoBank DIRECTLY: a demo seat is play-money regardless of the wallet's current bind
         if (s._dcTimer) { clrT(s._dcTimer); s._dcTimer = null; }
         r.seats[i] = null;
         broadcast(r, { type: "pk:event", kind: "seatOpen", seat: i });
@@ -1567,6 +1583,11 @@ function attachPoker(opts) {
     // real hands at real chip scale — real players who lose to it lose real tokens while its "winnings" are
     // credited to the throwaway demo bank (real value destroyed, Σ real-nets ≠ −rake). Refuse it outright.
     if (r.kind === "real" && !tokenSeat) { err(sock, "real_only", "This is a real-money table — connect and fund your wallet to sit here.", "join"); return false; }
+    // DEFENSE IN DEPTH (deep-scan-4 CRITICAL): an UNBOUND real (0x) wallet must NOT take a play-money DEMO seat.
+    // chipsScale(0x)=100 so it would get a ×100 stack from the free demo bank; if it LATER binds a real session,
+    // the play-money stack could be cashed into the on-chain session (house drain). A demo table is for GUESTS
+    // (and a BOUND token wallet, which FLIPS it to real below). A 0x holder plays real: connect + fund a session.
+    if (r.kind !== "real" && realWallet(wallet) && !tokenSeat) { err(sock, "connect_session", "Connect and fund your wallet to play — real wallets can’t sit at a play-money table.", "join"); return false; }
     if (tokenSeat) {
       // Symmetric guard: a token buy-in can only FLIP a table to real if it holds NO non-token seats (bots
       // OR guests). Flipping a table that already has play-money players strands them at a real table (the
@@ -1711,8 +1732,8 @@ function attachPoker(opts) {
         // unbind). A FOLDED player is still in h.players with committed chips in the pot → reconcile first so
         // we return only their uncommitted stack, never the committed chips the winner will be awarded.
         reconcileLiveStack(r, s);
-        if (isTokenWallet(s.wallet)) { cashOutSeat(r, s); pushWallet(s.sock, s.wallet); }
-        else if (s.stack > 0) { bank.credit(s.wallet, chipsToUnits(s.stack, s.wallet)); pushWallet(s.sock, s.wallet); }
+        if (isRealSeat(s)) { cashOutSeat(r, s); pushWallet(s.sock, s.wallet); } // route by seat ORIGIN, not live bind (deep-scan-4 drain)
+        else if (s.stack > 0) { _demoBank.credit(s.wallet, chipsToUnits(s.stack, s.wallet)); s.stack = 0; pushWallet(s.sock, s.wallet); } // _demoBank DIRECTLY: a demo seat is play-money regardless of the wallet's current bind
         if (s._dcTimer) { clrT(s._dcTimer); s._dcTimer = null; }
         r.seats[i] = null;
         broadcast(r, { type: "pk:event", kind: "seatOpen", seat: i });
@@ -1838,8 +1859,8 @@ function attachPoker(opts) {
       // on-chain lock. A FOLDED player's committed chips are in the live pot → reconcile so we don't return
       // (double-spend) the committed chips the winner will be awarded.
       reconcileLiveStack(r, s);
-      if (isTokenWallet(s.wallet)) { cashOutSeat(r, s); }
-      else if (s.stack > 0) bank.credit(s.wallet, chipsToUnits(s.stack, s.wallet));
+      if (isRealSeat(s)) { cashOutSeat(r, s); } // route by seat ORIGIN, not live bind (deep-scan-4 drain)
+      else if (s.stack > 0) { _demoBank.credit(s.wallet, chipsToUnits(s.stack, s.wallet)); s.stack = 0; } // _demoBank DIRECTLY (play-money seat)
       r.seats[i] = null;
       broadcast(r, { type: "pk:event", kind: "seatOpen", seat: i });
       broadcastState(r); reapEmptyExtras(); savePersist();
@@ -1987,7 +2008,15 @@ function attachPoker(opts) {
     // On boot the live rooms map is empty, so persistSnapshot() already serializes tables:[] — this flush
     // just makes that durable up front (the hydrated pokerOwed/creatorRakeDaily are kept). Worst case after
     // this point is a rare under-pay of a not-yet-credited seat on a mid-loop crash, which is house-safe.
-    flushPersist();
+    // FAIL CLOSED (deep-scan-4 MEDIUM): if that clear does NOT durably land, we must NOT credit — otherwise the
+    // stale table list reloads on the next boot and applyExternal (no idempotency key) re-credits every seat
+    // (replayable house-funded double-pay). Abort before any credit: the seats stay persisted (a stranded lock,
+    // house-safe + recoverable), and bootFatal exits for a clean restart so no later save can clear them uncredited.
+    if (!doSaveStrict()) {
+      try { console.error("[pk] FATAL boot-drain: cannot durably clear the poker table list before crediting — refusing to credit (avoids replayable double-pay); exiting for a clean restart on a healthy disk."); } catch (e) {}
+      bootFatal();
+      return { drained: 0, aborted: true };
+    }
     let drained = 0;
     for (const tbl of (st.tables || [])) {
       // creator rake accrued but unpaid at the crash → owe it to the creator wallet, but subject to the
@@ -3190,6 +3219,63 @@ if (require.main === module) {
       const refused = WS2._msgs.slice(mk).some((m) => m.type === "pk:error" && m.code === "already_seated");
       const sess2 = bridge._get("s1").tokens; // must be UNCHANGED (no 2nd debit)
       eq("(45) DEEP-SCAN-3 a case-variant 2nd hello CANNOT take a 2nd seat — refused already_seated, session NOT double-debited (no multi-seat collusion)", seatCount === 1 && refused && sess1 === sess2);
+    }
+
+    { // (46) DEEP-SCAN-4 CRITICAL: a play-money DEMO seat can never be cashed into a real on-chain session.
+      const MIX = "0xAbCdEf0000000000000000000000000000000046";
+      // (46A) GUARD: an authenticated-but-UNBOUND 0x wallet is REFUSED at a demo table (can't create the ×100 seat).
+      {
+        const bridge = makeStubBridge(2000); bridge.open("sA", MIX, 200);
+        const pk = attachPoker(Object.assign({ timers: { act: 999999, showdown: 0, between: 999999, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 } }, clk2));
+        pk.setTokenLedger({ tokensOf: bridge.tokensOf, applyNet: bridge.applyPokerNet });
+        const G = mkTokWs("guest:yy");
+        pk.handle(G, { type: "pk:table:create", wallet: "guest:yy", config: { bb: 10, maxSeats: 6, name: "DEM", buyInMinBb: 20, buyInMaxBb: 100 } });
+        const tid = G._msgs.filter((m) => m.type === "pk:table:created").pop().tableId;
+        const WSa = mkTokWs(MIX); // sock.wallet=MIX but NOT bound (isTokenWallet false)
+        const mk = WSa._msgs.length;
+        pk.handle(WSa, { type: "pk:table:join", wallet: MIX, tableId: tid, buyIn: 200 });
+        const rr = Array.from(pk._mgr.rooms.values()).find((x) => x.id === tid);
+        const seated = rr.seats.some((s) => s && lc(s.wallet) === lc(MIX));
+        const refused = WSa._msgs.slice(mk).some((m) => m.type === "pk:error" && m.code === "connect_session");
+        eq("(46A) DEEP-SCAN-4 an authenticated-but-UNBOUND 0x wallet is REFUSED at a demo table (no play-money ×100 seat)", !seated && refused);
+      }
+      // (46B) ROUTING (belt-and-suspenders on the guard): even IF a demo 0x seat existed and the wallet LATER binds a
+      //   real session, cash-out routes by seat ORIGIN (_sid null) → the DEMO bank, NEVER the real session.
+      {
+        const bridge = makeStubBridge(2000); bridge.open("sB", MIX, 200);
+        const pk = attachPoker(Object.assign({ timers: { act: 999999, showdown: 0, between: 999999, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 } }, clk2));
+        pk.setTokenLedger({ tokensOf: bridge.tokensOf, applyNet: bridge.applyPokerNet });
+        const G = mkTokWs("guest:zz");
+        pk.handle(G, { type: "pk:table:create", wallet: "guest:zz", config: { bb: 10, maxSeats: 6, name: "DRN", buyInMinBb: 20, buyInMaxBb: 100 } });
+        const tid = G._msgs.filter((m) => m.type === "pk:table:created").pop().tableId;
+        const rr = Array.from(pk._mgr.rooms.values()).find((x) => x.id === tid);
+        const WSb = mkTokWs(MIX);
+        // Manually inject the pre-fix exploit state: a DEMO seat (origin _sid=null) held by a 0x wallet, ×100 play-money
+        // stack. _everBuyInChips is set as the real demo buy-in would (line ~1599) so the H4 ceiling does NOT mask the
+        // drain — without the origin-routing fix the full $200 credits the real session; with it, it routes to the demo bank.
+        rr.seats[1] = { sock: WSb, wallet: MIX, name: MIX, isBot: false, stack: 20000, cumulativeBuyInChips: 20000, _sid: null, clientSeed: "", sittingOut: false, disconnected: 0, _dcTimer: null, left: false, seatIndex: 1, aggression: 0.5 };
+        rr._everBuyInChips = 20000;
+        pk.bindToken(MIX, "sB"); // the wallet LATER binds a real session (exploit step 3) → isTokenWallet now true
+        const sessBefore = bridge._get("sB").tokens; // $200, untouched by the play-money seat
+        pk.handle(WSb, { type: "pk:table:leave" }); // cash out → MUST go to the demo bank, NOT the real session
+        const sessAfter = bridge._get("sB").tokens;
+        eq("(46B) DEEP-SCAN-4 a demo-origin 0x seat cashes to the DEMO bank even when the wallet is bound — real session UNTOUCHED (no house drain)", sessBefore === 200 && sessAfter === 200);
+      }
+    }
+
+    { // (47) DEEP-SCAN-4 MEDIUM: boot-drain FAILS CLOSED — if the pre-drain table-clear can't be durably written,
+      //   abort BEFORE crediting so a stale table list can't replay a house-funded double-pay on the next boot.
+      const bridge = makeStubBridge(2000); bridge.open("s9", W1, 200);
+      let fatalCalled = false;
+      const persist = {
+        load: () => ({ tables: [{ id: "PK-01", creatorWallet: "house", creatorRakeChips: 0, seats: [{ seat: 0, wallet: W1, sid: "s9", stack: 20000, cumulativeBuyInChips: 20000 }] }], pokerOwed: [], creatorRakeDaily: [] }),
+        save: () => { throw new Error("ENOSPC — simulated unwritable disk"); }, // the pre-drain clear cannot land durably
+      };
+      const pk = attachPoker(Object.assign({ persist, onFatal: () => { fatalCalled = true; }, timers: { act: 999999, showdown: 0, between: 0, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 } }, clk2));
+      const sessBefore = bridge._get("s9").tokens; // $200
+      const res = pk.setTokenLedger({ tokensOf: bridge.tokensOf, applyNet: bridge.applyPokerNet }); // → hydrateAndBootDrain
+      const sessAfter = bridge._get("s9").tokens;
+      eq("(47) DEEP-SCAN-4 boot-drain fails CLOSED on an unwritable store — NO seat credited (no double-pay window), fatal signaled", !!res && res.aborted === true && res.drained === 0 && sessBefore === 200 && sessAfter === 200 && fatalCalled);
     }
   }
 

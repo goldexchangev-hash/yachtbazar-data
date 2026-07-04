@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#0c0d16" />
     <meta name="referrer" content="same-origin" />
-    <link rel="manifest" href="manifest.webmanifest?v=1386" />
+    <link rel="manifest" href="manifest.webmanifest?v=1387" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -35,8 +35,8 @@
       <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Press+Start+2P&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
     </noscript>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=1386" />
-    <link rel="stylesheet" href="poker.css?v=1386" /><!-- Poker (CH 22) felt — baccarat-matched visuals, gated by POKER_ENABLED -->
+    <link rel="stylesheet" href="styles.css?v=1387" />
+    <link rel="stylesheet" href="poker.css?v=1387" /><!-- Poker (CH 22) felt — baccarat-matched visuals, gated by POKER_ENABLED -->
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -46,13 +46,13 @@
     <!-- ───────────────────────── Header ───────────────────────── -->
     <header class="topbar">
       <button id="rail-toggle" class="rail-toggle" aria-label="Open menu" title="Menu">☰</button>
-      <span class="build-tag-m" id="build-tag-m" title="Live build version — confirms the deploy is up to date">v13.86</span>
+      <span class="build-tag-m" id="build-tag-m" title="Live build version — confirms the deploy is up to date">v13.87</span>
       <div class="brand">
         <span class="brand-tv">📺</span>
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v13.86</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v13.87</span>
       </div>
       <div class="topbar-right">
         <div class="tb-tools">
@@ -489,7 +489,7 @@
                 <!-- Promo intro reel — autoplays once (muted) on first load, then fades
                      to black and hands off to the game. Replay button under the TV. -->
                 <!-- promo DISABLED for now (owner) — preload none so the reel isn't even downloaded; re-enable via PROMO_ENABLED in app.js -->
-                <video id="promo-video" class="promo-video hidden" playsinline preload="none" muted src="promo.mp4?v=1386"></video>
+                <video id="promo-video" class="promo-video hidden" playsinline preload="none" muted src="promo.mp4?v=1387"></video>
 
                 <!-- Shown while a bet tx is being signed + mined (esp. slow on mobile) -->
                 <div id="tv-pending" class="tv-pending hidden">⏳ SENDING BET…<br />confirm in your wallet, then hold tight</div>
@@ -1665,22 +1665,22 @@
     </aside>
 
     <script defer src="vendor/ethers.umd.min.js?v=ethers-1"></script>
-    <script defer src="config.js?v=1386"></script>
-    <script defer src="contract.js?v=1386"></script>
+    <script defer src="config.js?v=1387"></script>
+    <script defer src="contract.js?v=1387"></script>
     <!-- chiptune.js + scenes.js (119.5KB raw / 33.6KB br) are fetched AFTER first paint by app.js goExtras (window load) — music is gesture-gated and win-scene art is bet-gated, so neither is needed before first interaction; every call site is window.Chiptune/window.WinScenes-guarded -->
-    <script defer src="tv.js?v=1386"></script>
-    <script defer src="crash-engine.js?v=1386"></script>
+    <script defer src="tv.js?v=1387"></script>
+    <script defer src="crash-engine.js?v=1387"></script>
     <!-- crash-render.js (43.8KB raw / 13.6KB br) is lazy-loaded by app.js on CH11 crash-channel entry; every tv.js call site is window.CrashRender-guarded and _ensureCrash retries -->
-    <script defer src="profile.js?v=1386"></script>
-    <script defer src="token-client.js?v=1386"></script>
-    <script defer src="token-mode.js?v=1386"></script>
-    <script defer src="crash-rounds-client.js?v=1386"></script>
+    <script defer src="profile.js?v=1387"></script>
+    <script defer src="token-client.js?v=1387"></script>
+    <script defer src="token-mode.js?v=1387"></script>
+    <script defer src="crash-rounds-client.js?v=1387"></script>
     <script defer src="fullscreen-util.js"></script><!-- shared FsUtil for every game's fullscreen (no ?v= — network-first in the SW; maintainer bumps). Must be before app.js: its orientationchange listener opens the Chromium no-gesture grace window ahead of the tilt handlers -->
     <!-- Poker (CH 22) — LIVE PvP. The client is a THIN RENDERER of the server's per-viewer masked
          snapshots (no local engine/bots): poker-net.js (pk: WebSocket) + poker-ui.js (felt/lobby/
          create/host). Gated by window.POKER_ENABLED (config.js). AFTER fullscreen-util.js (uses FsUtil). -->
-    <script defer src="poker-net.js?v=1386"></script>
-    <script defer src="poker-ui.js?v=1386"></script>
-    <script defer src="app.js?v=1386"></script>
+    <script defer src="poker-net.js?v=1387"></script>
+    <script defer src="poker-ui.js?v=1387"></script>
+    <script defer src="app.js?v=1387"></script>
   </body>
 </html>
