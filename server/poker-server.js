@@ -426,8 +426,12 @@ ServerHand.prototype.act = function (id, type, amount) {
     this.log.push(p.name + (p.allIn ? " calls all-in " : " calls ") + put);
   } else if (type === "bet" || type === "raise" || type === "allin") {
     let target;
+    // COERCE + validate the client-supplied amount: a non-finite/non-numeric amount (undefined/{}/"x") makes
+    // target NaN, and every size guard below is FALSE for NaN → it slips through and _put(p,NaN) corrupts the
+    // seat's stack/committedStreet to NaN, which can NEVER _settle() → the whole table stalls to the 20s
+    // act-timeout every turn (a griefing DoS). Reject a bad amount up front (mirrors rebuy/seedGuest guards).
     if (type === "allin") target = p.committedStreet + p.stack;
-    else target = amount;
+    else { target = Math.round(Number(amount)); if (!Number.isFinite(target)) throw new Error("bad amount"); }
     const maxTo = p.committedStreet + p.stack;
     if (target > maxTo) target = maxTo;
     const isAllIn = target === maxTo;
@@ -937,7 +941,10 @@ function attachPoker(opts) {
   };
   // True if the wallet still OWNS a seat holding chips (seated OR disconnected-in-grace). The bind
   // must survive until dropSeat/cashOutSeat credits that stack back to the token session.
-  function hasSeatedStack(wallet) { const w = norm(wallet); for (const r of rooms.values()) { const s = r.seats.find((x) => x && norm(x.wallet) === w); if (s && (s.stack || 0) > 0) return true; } return false; }
+  // Only a REAL (token) seat should freeze a token session's bind / settle / recover. A play-money DEMO seat
+  // must NOT (a same-address 0x wallet can hold a demo seat, and gating a real cash-out/Recover on unrelated
+  // play-money state would lock the player's real funds until they leave a demo table).
+  function hasSeatedStack(wallet) { const w = norm(wallet); for (const r of rooms.values()) { if (r.kind !== "real") continue; const s = r.seats.find((x) => x && norm(x.wallet) === w); if (s && (s.stack || 0) > 0) return true; } return false; }
   // Refuse the unbind while ANY chips are still at stake — a live pot OR a seated/in-grace stack.
   // (Audit CRITICAL: the ws-close handler calls unbindToken right after onClose's 90s grace; between
   // hands hasLiveHand is false, so without hasSeatedStack the bind was deleted and the grace-expiry
@@ -1528,13 +1535,13 @@ function attachPoker(opts) {
       // OR guests). Flipping a table that already has play-money players strands them at a real table (the
       // same real-value-destruction bug from the other side). Keep the table demo; they open a fresh one.
       if (r.seats.some((s) => s && !isTokenWallet(s.wallet))) { err(sock, "demo_only", "This table has play-money players — real-money buy-ins aren’t allowed here. Start a fresh real table.", "join"); return false; }
-      r.kind = "real";
       const sid = tokenSid(wallet);
       if (!bindToken(wallet, sid)) { err(sock, "bound_elsewhere", "Your session is busy in another game — finish that first", "join"); return false; }
       claimOwed(wallet, sid);
     }
     if (bank.get(wallet) < units - 1e-9) { err(sock, "insufficient", "Not enough balance to buy in", "join"); return false; } // H2 pre-check (tokenDebit also refuses)
     if (!bank.debit(wallet, units)) { err(sock, "insufficient", "Not enough balance to buy in", "join"); return false; } // debit-before-escrow; token debit is REFUSED (never floored) on insufficient
+    if (tokenSeat) r.kind = "real"; // flip ONLY after the buy-in is COMMITTED — a bindToken/insufficient failure above must not orphan a demo table (incl. the HOUSE warm table) as real with zero real seats
     r.seats[idx] = {
       sock, wallet, name: name || wallet, isBot: false,
       stack: unitsToChips(units, wallet), cumulativeBuyInChips: unitsToChips(units, wallet),
@@ -1804,7 +1811,7 @@ function attachPoker(opts) {
   function reloadGuest(sock, wallet) {
     const w = String(wallet || "");
     if (!/^guest:/.test(w)) return;
-    const cur = bank.all.get(w) || 0;
+    const cur = bank.get(w); // defaulting accessor → START_STACK for a fresh guest (raw .all.get would read 0 → first "+ $5K" was a silent no-op 5000→5000)
     if (cur < DEMO_RELOAD_CAP) bank.all.set(w, Math.min(DEMO_RELOAD_CAP, cur + 5000));
     pushWallet(sock, w);
   }
@@ -2962,6 +2969,17 @@ if (require.main === module) {
       pk.handle(G, { type: "pk:table:join", wallet: "guest:spoof", tableId: tid, buyIn: 200 }); // non-token seat at a REAL table
       const gotSeat = rr.seats.some((s) => s && String(s.wallet) === "guest:spoof");
       eq("(37) HUNT4 a REAL table REFUSES a non-token seat (real_only) — play money never dealt real hands", rr.kind === "real" && !gotSeat && G._msgs.slice(mk).some((m) => m.type === "pk:error" && m.code === "real_only"));
+    }
+
+    { // (38) HUNT5 HIGH: a non-finite bet/raise amount is REJECTED (not applied as NaN → would corrupt the stack + stall the table to the 20s timeout every turn)
+      const t = createTable({ smallBlind: 5, bigBlind: 10, seats: 2 });
+      sit(t, { id: "a", isBot: false, stack: 500 });
+      sit(t, { id: "b", isBot: false, stack: 500 });
+      startHand(t, { buttonIndex: 0 });
+      const h = t.hand, actor = h.players[h.toAct].id, p = h.players.find((x) => x.id === actor);
+      let threw = false; try { act(t, actor, "raise", {}); } catch (e) { threw = true; } // crafted non-numeric amount
+      let threw2 = false; try { act(t, actor, "raise", undefined); } catch (e) { threw2 = true; }
+      eq("(38) HUNT5 a non-finite bet/raise amount THROWS + leaves the seat stack/commit uncorrupted (finite)", threw && threw2 && Number.isFinite(p.stack) && Number.isFinite(p.committedStreet));
     }
   }
 
