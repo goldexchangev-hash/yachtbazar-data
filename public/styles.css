@@ -1951,6 +1951,43 @@ body.chat-open .chat-tab { transform: translate(120%, -50%); opacity: 0; pointer
   body.has-betbar { padding-bottom: calc(58px + var(--betbar-action-h) + 104px + env(safe-area-inset-bottom)); }
 }
 
+/* ════════ Floating prediction strip — two-dice no-scroll bet controls (phones) ════════ */
+/* Desktop keeps the full panel; the strip is a mobile-only quick-picker inside the fixed action dock. */
+.predict-strip { display: none; }
+@media (max-width: 900px) {
+  body.has-betbar .predict-strip { display: block; margin-bottom: 9px; }
+  .ps-side { display: flex; gap: 6px; margin-bottom: 6px; }
+  .ps-side-btn { flex: 1; height: 38px; border-radius: 10px; border: 1px solid var(--s-border);
+    background: var(--s-surface); color: var(--s-text-2); font-family: var(--display); font-weight: 800;
+    font-size: 13px; letter-spacing: .04em; cursor: pointer; transition: filter .12s; }
+  /* active fallback background (so a toggle keyed on data-heads, not data-mode, is never invisible) */
+  .ps-side-btn.active { color: #04121a; border-color: transparent; background: linear-gradient(135deg, var(--s-cyan, #39e7ff), var(--s-green, #45f0a6)); }
+  .ps-side-btn[data-mode="under"].active { background: linear-gradient(135deg, var(--s-cyan, #39e7ff), var(--s-green, #45f0a6)); }
+  .ps-side-btn[data-mode="over"].active,
+  .ps-side-btn[data-heads="1"].active { background: linear-gradient(135deg, #ffd23f, #ff9e3f); } /* over / heads = gold */
+  .ps-side-btn[data-heads="0"].active { background: linear-gradient(135deg, var(--s-cyan, #39e7ff), var(--s-green, #45f0a6)); } /* tails */
+  .ps-side-btn:active { transform: scale(.97); }
+  .ps-nums { display: flex; gap: 3px; }
+  .ps-num { flex: 1 1 0; min-width: 0; height: 42px; border-radius: 8px; border: 1px solid var(--s-border);
+    background: var(--s-surface); color: var(--s-text-2); font-weight: 700; font-size: 14px; cursor: pointer; padding: 0;
+    transition: transform .08s, background .12s, color .12s, opacity .12s; }
+  .ps-num.wins { background: rgba(69,240,166,.15); color: var(--s-green, #45f0a6); border-color: rgba(69,240,166,.32); }
+  .ps-num.loses { opacity: .42; }
+  .ps-num.is-target { background: var(--s-gold, #ffd23f); color: #04121a; border-color: transparent; font-weight: 900;
+    transform: translateY(-3px); box-shadow: 0 5px 14px rgba(255,210,63,.42); opacity: 1; }
+  .ps-num:active { transform: scale(.9); }
+  .ps-odds { text-align: center; margin-top: 7px; font-size: 12.5px; color: var(--s-text-2); font-weight: 600; }
+  /* single-dice (0–100) variant: a slider with a green winning-side fill + a big live target number */
+  .ps-slide { display: flex; align-items: center; gap: 12px; }
+  .ps-range { flex: 1 1 auto; min-width: 0; height: 12px; border-radius: 999px; -webkit-appearance: none; appearance: none;
+    background: rgba(255,255,255,.12); outline: none; cursor: pointer; }
+  .ps-range::-webkit-slider-thumb { -webkit-appearance: none; width: 28px; height: 28px; border-radius: 50%; background: #fff;
+    border: 3px solid var(--s-gold, #ffd23f); box-shadow: 0 2px 7px rgba(0,0,0,.45); cursor: grab; }
+  .ps-range::-moz-range-thumb { width: 24px; height: 24px; border-radius: 50%; background: #fff; border: 3px solid var(--s-gold, #ffd23f); cursor: grab; }
+  .ps-numbig { flex: 0 0 auto; min-width: 64px; text-align: right; font-family: var(--display); font-weight: 800;
+    font-size: 21px; color: var(--s-gold, #ffd23f); }
+}
+
 /* ════════ Music dropdown (top bar) ════════ */
 .music-wrap { position: relative; }
 .music-menu {
@@ -3155,6 +3192,12 @@ body.bac-fs-on .action-dock.bac-dock { visibility: hidden !important; pointer-ev
 .dock-grip { display: none; }
 @media (max-width: 900px) {
   .action-dock.bj-dock, .action-dock.bac-dock { zoom: var(--dock-scale, 1); }
+  /* Betbar games: the grip scales the ACTION DOCK's CONTENT (predict strip + ROLL — the primary bet
+     controls). Zoom the CHILDREN, NOT the fixed container: zooming the container also scales its own
+     `bottom:58px` anchor (→46px), dropping it 12px and opening a see-through gap under the stake bar.
+     Zooming only the children keeps the container pinned at 58px and shrinks it to its content, so
+     syncBetbarHeights re-measures and the stake bar sits FLUSH above it. */
+  body.has-betbar .stage > .action-dock:not(.bj-dock) > * { zoom: var(--betbar-scale, 1); }
   .dock-grip { display: flex; justify-content: center; align-items: center; padding: 2px 0 8px; cursor: ns-resize; touch-action: none; }
   .dock-grip i { width: 44px; height: 5px; border-radius: 999px; background: var(--s-border, #2a3550); transition: background .15s ease; }
   .dock-grip:active i, .dock-grip:hover i { background: var(--s-text-2, #8a97b5); }

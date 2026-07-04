@@ -335,9 +335,12 @@
     // UX: confirm the chosen side AT the tap point (FLIP button verb) and keep the "You're HEADS/TAILS" note in sync
     // — the side toggle sits in a separate card, so this removes the "note says HEADS but I picked TAILS" contradiction.
     try {
-      var side = sideOf("house-side") ? "HEADS" : "TAILS";
+      var heads = sideOf("house-side");
+      var side = heads ? "HEADS" : "TAILS";
       var vb = document.querySelector("#play-house-btn .ab-verb"); if (vb) vb.textContent = "🪙 FLIP " + side;
       var nt = document.getElementById("house-side-note"); if (nt) nt.textContent = side;
+      // keep the floating (mobile) side picker in lockstep with the panel toggle
+      document.querySelectorAll("#house-side-float .ps-side-btn").forEach(function (x) { var on = (x.dataset.heads === "1") === heads; x.classList.toggle("active", on); x.setAttribute("aria-pressed", String(on)); });
     } catch (e) {}
   }
 
@@ -2207,6 +2210,19 @@
     $("dice-oddsbar").dataset.mode = diceMode;
     // A11y: mirror the drag-bar state for the role=slider (valuetext includes win chance — matches the visible ob-flag)
     { const ob = $("dice-oddsbar"); ob.setAttribute("aria-valuenow", pct.toFixed(2)); ob.setAttribute("aria-valuetext", "Target " + pct.toFixed(2) + " percent, win chance " + chance.toFixed(2) + " percent"); }
+    // Mirror onto the floating predict strip (mobile no-scroll): slider position + green winning-side fill,
+    // the big target number, live odds, and the UNDER/OVER toggle (kept in lockstep with #dice-mode).
+    { const rng = $("dice-predict-range");
+      if (rng) {
+        if (((+rng.value) | 0) !== T) rng.value = String(T);
+        const winFill = "var(--s-green,#45f0a6)", dim = "rgba(255,255,255,.12)";
+        rng.style.background = diceMode === "under"
+          ? "linear-gradient(90deg," + winFill + " 0 " + pct + "%," + dim + " " + pct + "% 100%)"
+          : "linear-gradient(90deg," + dim + " 0 " + pct + "%," + winFill + " " + pct + "% 100%)";
+      } }
+    { const n = $("dice-predict-num"); if (n) n.textContent = pct.toFixed(2); }
+    { const o = $("dice-predict-odds"); if (o) o.textContent = "Win " + chance.toFixed(2) + "% · pays " + mult.toFixed(2) + "×"; }
+    document.querySelectorAll("#dice-predict-mode .ps-side-btn, #dice-mode .side-btn").forEach((x) => { const on = x.dataset.mode === diceMode; x.classList.toggle("active", on); x.setAttribute("aria-pressed", String(on)); });
     if (currentGame === "dice" && !revealLock && window.TV && TV.previewDice) try { TV.previewDice({ target: pct, mode: diceMode }); } catch (e) {}
     // affordability guards
     let hint = "";
@@ -2321,6 +2337,18 @@
     const btn = $("td-roll-btn");
     if (btn) { btn.disabled = !!hint; btn.style.opacity = hint ? "0.55" : ""; }
     $("td-roll-hint").textContent = hint;
+    // Mirror onto the floating predict strip (mobile no-scroll picker): highlight the target, tint the
+    // winning totals green, dim the losers, and sync the UNDER/OVER toggle + live odds. Also keep the
+    // full panel's toggle in lockstep so both control sets agree no matter which one you touch.
+    { const ps = $("td-predict-nums");
+      if (ps) ps.querySelectorAll(".ps-num").forEach((b) => {
+        const n = +b.dataset.n, isT = n === T, wins = over ? n > T : n < T;
+        b.classList.toggle("is-target", isT);
+        b.classList.toggle("wins", wins && !isT);
+        b.classList.toggle("loses", !wins && !isT);
+      }); }
+    { const o = $("td-predict-odds"); if (o) o.textContent = combos > 0 ? ("Win " + chance.toFixed(1) + "% · pays " + mult.toFixed(2) + "×") : "Pick a target for this bet type"; }
+    document.querySelectorAll("#td-predict-mode .ps-side-btn, #td-mode .side-btn").forEach((x) => { const on = x.dataset.mode === tdMode; x.classList.toggle("active", on); x.setAttribute("aria-pressed", String(on)); });
     if (twoDiceSupported === false) applyTwoDiceSupport();
   }
   // Not every deployed house contract has Dice #2 — older deploys predate it.
@@ -4857,11 +4885,16 @@
         e.stopPropagation(); // the global ArrowUp/Down stake-step hotkey must not also fire
       });
     }
+    // Floating predict strip (mobile no-scroll): drag the target + UNDER/OVER right here → #dice-target/diceMode
+    { const rng = $("dice-predict-range");
+      if (rng) rng.oninput = () => { const t2 = $("dice-target"); if (t2) t2.value = rng.value; diceReadouts(); }; }
+    document.querySelectorAll("#dice-predict-mode .ps-side-btn").forEach((b) => {
+      b.onclick = () => { diceMode = b.dataset.mode; diceReadouts(); }; // diceReadouts re-clamps the target for the new side + syncs both toggles
+    });
     $("dice-stake").oninput = () => { setSliderUsd("dice-stake"); diceReadouts(); };
     document.querySelectorAll("#dice-mode .side-btn").forEach((b) => {
       b.onclick = () => {
-        document.querySelectorAll("#dice-mode .side-btn").forEach((x) => { x.classList.toggle("active", x === b); x.setAttribute("aria-pressed", String(x === b)); });
-        diceMode = b.dataset.mode; diceReadouts();
+        diceMode = b.dataset.mode; diceReadouts(); // diceReadouts syncs BOTH toggles' active state
       };
     });
     $("dice-roll-btn").onclick = playDiceClick;
@@ -4870,10 +4903,14 @@
       $("td-target").oninput = () => twoDiceReadouts();
       $("td-stake").oninput = () => { setSliderUsd("td-stake"); twoDiceReadouts(); };
       document.querySelectorAll("#td-mode .side-btn").forEach((b) => {
-        b.onclick = () => {
-          document.querySelectorAll("#td-mode .side-btn").forEach((x) => { x.classList.toggle("active", x === b); x.setAttribute("aria-pressed", String(x === b)); });
-          tdMode = b.dataset.mode; twoDiceReadouts();
-        };
+        b.onclick = () => { tdMode = b.dataset.mode; twoDiceReadouts(); }; // twoDiceReadouts syncs BOTH toggles' active state
+      });
+      // Floating predict strip (mobile no-scroll): UNDER/OVER toggle + tap-a-total picker → same tdMode/#td-target
+      document.querySelectorAll("#td-predict-mode .ps-side-btn").forEach((b) => {
+        b.onclick = () => { tdMode = b.dataset.mode; twoDiceReadouts(); };
+      });
+      document.querySelectorAll("#td-predict-nums .ps-num").forEach((b) => {
+        b.onclick = () => { const t = $("td-target"); if (t) t.value = b.dataset.n; twoDiceReadouts(); };
       });
       $("td-roll-btn").onclick = playTwoDiceClick;
       setSliderUsd("td-stake");
@@ -6044,6 +6081,11 @@
         };
       });
     });
+    // Floating (mobile) coin-flip side picker → just click the matching panel toggle so all the existing
+    // logic runs (active state + updateFlipButton, which mirrors the choice back onto this floating picker).
+    document.querySelectorAll("#house-side-float .ps-side-btn").forEach((b) => {
+      b.onclick = () => { const t = document.querySelector('#house-side .side-btn[data-heads="' + b.dataset.heads + '"]'); if (t) t.click(); };
+    });
   }
 
   function wireUI() {
@@ -6092,6 +6134,23 @@
       };
       wireDockGrip("bj-grip", ".action-dock.bj-dock");
       wireDockGrip("bac-grip", ".action-dock.bac-dock");
+      // Betbar games (flip/dice/twodice/crash/…): ONE grip on the floating bar scales the whole bottom
+      // bet cluster via --betbar-scale (shared across all betbar games). Drag DOWN = shrink → more TV.
+      { const grip = $("betbar-grip");
+        if (grip) {
+          const KEY = "betbarScale";
+          let scale = 1;
+          try { const s = parseFloat(localStorage.getItem(KEY)); if (isFinite(s) && s >= 0.7 && s <= 1) scale = s; } catch (e) {}
+          const apply = () => { document.body.style.setProperty("--betbar-scale", String(scale)); try { syncBetbarHeights(); } catch (e) {} };
+          apply();
+          let startY = 0, startScale = 1, dragging = false;
+          grip.addEventListener("pointerdown", (e) => { dragging = true; startY = e.clientY; startScale = scale; try { grip.setPointerCapture(e.pointerId); } catch (x) {} e.preventDefault(); });
+          grip.addEventListener("pointermove", (e) => { if (!dragging) return; const dy = e.clientY - startY; scale = Math.max(0.7, Math.min(1, Math.round((startScale - dy / 260) * 100) / 100)); apply(); });
+          const stop = () => { if (!dragging) return; dragging = false; try { localStorage.setItem(KEY, String(scale)); } catch (e) {} };
+          grip.addEventListener("pointerup", stop); grip.addEventListener("pointercancel", stop);
+          grip.addEventListener("dblclick", () => { scale = 1; apply(); try { localStorage.setItem(KEY, "1"); } catch (e) {} });
+        }
+      }
     }
     { const bc = $("bj-cashout"); if (bc) bc.onclick = bjCashout; }
     $("raise-max-btn").onclick = raiseMaxBet;

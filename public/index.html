@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#0c0d16" />
     <meta name="referrer" content="same-origin" />
-    <link rel="manifest" href="manifest.webmanifest?v=1369" />
+    <link rel="manifest" href="manifest.webmanifest?v=1377" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -35,8 +35,8 @@
       <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Press+Start+2P&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
     </noscript>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=1369" />
-    <link rel="stylesheet" href="poker.css?v=1369" /><!-- Poker (CH 22) felt — baccarat-matched visuals, gated by POKER_ENABLED -->
+    <link rel="stylesheet" href="styles.css?v=1377" />
+    <link rel="stylesheet" href="poker.css?v=1377" /><!-- Poker (CH 22) felt — baccarat-matched visuals, gated by POKER_ENABLED -->
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -46,13 +46,13 @@
     <!-- ───────────────────────── Header ───────────────────────── -->
     <header class="topbar">
       <button id="rail-toggle" class="rail-toggle" aria-label="Open menu" title="Menu">☰</button>
-      <span class="build-tag-m" id="build-tag-m" title="Live build version — confirms the deploy is up to date">v13.69</span>
+      <span class="build-tag-m" id="build-tag-m" title="Live build version — confirms the deploy is up to date">v13.77</span>
       <div class="brand">
         <span class="brand-tv">📺</span>
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v13.69</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v13.77</span>
       </div>
       <div class="topbar-right">
         <div class="tb-tools">
@@ -489,7 +489,7 @@
                 <!-- Promo intro reel — autoplays once (muted) on first load, then fades
                      to black and hands off to the game. Replay button under the TV. -->
                 <!-- promo DISABLED for now (owner) — preload none so the reel isn't even downloaded; re-enable via PROMO_ENABLED in app.js -->
-                <video id="promo-video" class="promo-video hidden" playsinline preload="none" muted src="promo.mp4?v=1369"></video>
+                <video id="promo-video" class="promo-video hidden" playsinline preload="none" muted src="promo.mp4?v=1377"></video>
 
                 <!-- Shown while a bet tx is being signed + mined (esp. slow on mobile) -->
                 <div id="tv-pending" class="tv-pending hidden">⏳ SENDING BET…<br />confirm in your wallet, then hold tight</div>
@@ -550,6 +550,7 @@
              dock so you can change your bet without scrolling to the panel. JS points it
              at the current game's real stake slider; desktop hides it. -->
         <div id="betbar-stake" class="betbar-stake" hidden aria-label="Quick bet amount">
+          <div class="dock-grip betbar-grip" id="betbar-grip" role="separator" aria-label="Drag up to grow the bet controls, down to shrink them. Double-tap to reset." title="Drag to resize the bet controls"><i></i></div>
           <div class="bbs-top">
             <button type="button" class="bbs-step" data-dir="-1" aria-label="Lower bet">−</button>
             <input type="range" class="slider bbs-slider" id="bbs-slider" min="10" max="500" step="5" value="25" aria-label="Slide to change bet" />
@@ -696,13 +697,55 @@
           <div class="muted dice-roll-hint" id="crash-roll-hint"></div>
         </div>
         <div class="action-dock" data-game="flip">
+          <!-- Floating no-scroll side picker (phones): choose Heads/Tails right here; mirrors #house-side. -->
+          <div class="predict-strip" id="flip-predict">
+            <div class="ps-side" id="house-side-float" role="group" aria-label="Pick heads or tails">
+              <button type="button" class="ps-side-btn active" data-heads="1" aria-pressed="true">◆ HEADS</button>
+              <button type="button" class="ps-side-btn" data-heads="0" aria-pressed="false">★ TAILS</button>
+            </div>
+          </div>
           <button id="play-house-btn" class="btn btn-primary btn-block act-btn"><span class="ab-verb">🪙 FLIP</span><span class="ab-amt">BET $<b id="house-bet-hint">25</b> · WIN $<b id="house-win-hint">23.50</b></span></button>
         </div>
         <div class="action-dock" data-game="dice">
+          <!-- Floating no-scroll prediction strip (phones): UNDER/OVER + drag the target 0–100 right here.
+               The slider fills green on the winning side; mirrors #dice-target / #dice-mode. -->
+          <div class="predict-strip dice-predict" id="dice-predict">
+            <div class="ps-side" id="dice-predict-mode" role="group" aria-label="Roll under or over the target">
+              <button type="button" class="ps-side-btn active" data-mode="under" aria-pressed="true">▼ UNDER</button>
+              <button type="button" class="ps-side-btn" data-mode="over" aria-pressed="false">▲ OVER</button>
+            </div>
+            <div class="ps-slide">
+              <input type="range" class="ps-range" id="dice-predict-range" min="100" max="9899" step="1" value="5000" aria-label="Target number, 0 to 100" />
+              <strong class="ps-numbig" id="dice-predict-num">50.00</strong>
+            </div>
+            <div class="ps-odds" id="dice-predict-odds">Win 50.00% · pays 1.96×</div>
+          </div>
           <button id="dice-roll-btn" class="btn btn-primary btn-block act-btn"><span class="ab-verb">🎲 ROLL</span><span class="ab-amt">BET $<b id="dice-bet-hint">25</b> · WIN $<b id="dice-payout-hint">0.00</b></span></button>
           <div class="muted dice-roll-hint" id="dice-roll-hint"></div>
         </div>
         <div class="action-dock" data-game="twodice">
+          <!-- Floating no-scroll prediction strip (phones): pick UNDER/OVER + the target total right here,
+               no scrolling to the panel. The 2–12 row tints the winning range live; taps drive #td-target. -->
+          <div class="predict-strip" id="td-predict">
+            <div class="ps-side" id="td-predict-mode" role="group" aria-label="Bet under or over the target">
+              <button type="button" class="ps-side-btn active" data-mode="under" aria-pressed="true">▼ UNDER</button>
+              <button type="button" class="ps-side-btn" data-mode="over" aria-pressed="false">▲ OVER</button>
+            </div>
+            <div class="ps-nums" id="td-predict-nums" role="group" aria-label="Target total — tap to choose">
+              <button type="button" class="ps-num" data-n="2">2</button>
+              <button type="button" class="ps-num" data-n="3">3</button>
+              <button type="button" class="ps-num" data-n="4">4</button>
+              <button type="button" class="ps-num" data-n="5">5</button>
+              <button type="button" class="ps-num" data-n="6">6</button>
+              <button type="button" class="ps-num" data-n="7">7</button>
+              <button type="button" class="ps-num" data-n="8">8</button>
+              <button type="button" class="ps-num" data-n="9">9</button>
+              <button type="button" class="ps-num" data-n="10">10</button>
+              <button type="button" class="ps-num" data-n="11">11</button>
+              <button type="button" class="ps-num" data-n="12">12</button>
+            </div>
+            <div class="ps-odds" id="td-predict-odds">Win 41.67% · pays 2.35×</div>
+          </div>
           <button id="td-roll-btn" class="btn btn-primary btn-block act-btn"><span class="ab-verb">🎲 ROLL</span><span class="ab-amt">BET $<b id="td-bet-hint">25</b> · WIN $<b id="td-payout-hint">0.00</b></span></button>
           <div class="muted dice-roll-hint" id="td-roll-hint"></div>
         </div>
@@ -1622,22 +1665,22 @@
     </aside>
 
     <script defer src="vendor/ethers.umd.min.js?v=ethers-1"></script>
-    <script defer src="config.js?v=1369"></script>
-    <script defer src="contract.js?v=1369"></script>
+    <script defer src="config.js?v=1377"></script>
+    <script defer src="contract.js?v=1377"></script>
     <!-- chiptune.js + scenes.js (119.5KB raw / 33.6KB br) are fetched AFTER first paint by app.js goExtras (window load) — music is gesture-gated and win-scene art is bet-gated, so neither is needed before first interaction; every call site is window.Chiptune/window.WinScenes-guarded -->
-    <script defer src="tv.js?v=1369"></script>
-    <script defer src="crash-engine.js?v=1369"></script>
+    <script defer src="tv.js?v=1377"></script>
+    <script defer src="crash-engine.js?v=1377"></script>
     <!-- crash-render.js (43.8KB raw / 13.6KB br) is lazy-loaded by app.js on CH11 crash-channel entry; every tv.js call site is window.CrashRender-guarded and _ensureCrash retries -->
-    <script defer src="profile.js?v=1369"></script>
-    <script defer src="token-client.js?v=1369"></script>
-    <script defer src="token-mode.js?v=1369"></script>
-    <script defer src="crash-rounds-client.js?v=1369"></script>
+    <script defer src="profile.js?v=1377"></script>
+    <script defer src="token-client.js?v=1377"></script>
+    <script defer src="token-mode.js?v=1377"></script>
+    <script defer src="crash-rounds-client.js?v=1377"></script>
     <script defer src="fullscreen-util.js"></script><!-- shared FsUtil for every game's fullscreen (no ?v= — network-first in the SW; maintainer bumps). Must be before app.js: its orientationchange listener opens the Chromium no-gesture grace window ahead of the tilt handlers -->
     <!-- Poker (CH 22) — LIVE PvP. The client is a THIN RENDERER of the server's per-viewer masked
          snapshots (no local engine/bots): poker-net.js (pk: WebSocket) + poker-ui.js (felt/lobby/
          create/host). Gated by window.POKER_ENABLED (config.js). AFTER fullscreen-util.js (uses FsUtil). -->
-    <script defer src="poker-net.js?v=1369"></script>
-    <script defer src="poker-ui.js?v=1369"></script>
-    <script defer src="app.js?v=1369"></script>
+    <script defer src="poker-net.js?v=1377"></script>
+    <script defer src="poker-ui.js?v=1377"></script>
+    <script defer src="app.js?v=1377"></script>
   </body>
 </html>
