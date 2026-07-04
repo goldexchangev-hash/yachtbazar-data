@@ -19,7 +19,10 @@
 }
 
 /* the view container (visibility toggled by body.game-poker rules in styles.css) */
-#poker-view { width: min(98vw, 1340px); margin: 0 auto; padding: 4px 0 30px; font-family: var(--pk-font); color: var(--pk-ink); }
+/* width tracks the CONTENT column (100%), not the viewport — 98vw ignored the 240px sidebar and
+   overflowed the right edge on desktop (clipping the lobby header buttons). Felt is capped at 900px
+   so any column ≥900 still renders it at full scale. */
+#poker-view { width: min(100%, 1340px); margin: 0 auto; padding: 4px 0 30px; font-family: var(--pk-font); color: var(--pk-ink); }
 #poker-view [hidden] { display: none !important; }
 
 /* ============================================================ LOBBY */
@@ -44,6 +47,20 @@
 .pk-chip.pk-join[disabled] { filter: grayscale(.7) brightness(.7); cursor: not-allowed; }
 .pk-chip.pk-watch { background: rgba(255, 255, 255, .05); flex: 1; }
 .pk-icon.pk-danger { color: var(--pk-red); border-color: rgba(255, 91, 115, .4); }
+/* demo chip reload — gold outline so it reads as "add play money", never mistaken for a real deposit */
+.pk-icon.pk-reload { color: var(--pk-gold); border-color: rgba(255, 210, 63, .45); font-weight: 800; letter-spacing: .3px; }
+.pk-icon.pk-reload:hover { background: rgba(255, 210, 63, .12); }
+/* the little "?" help pip next to a form label */
+.pk-help {
+  display: inline-flex; align-items: center; justify-content: center; width: 17px; height: 17px; padding: 0;
+  border-radius: 50%; border: 1px solid var(--pk-line); background: rgba(57, 231, 255, .1); color: var(--pk-cyan);
+  font-family: var(--pk-font); font-weight: 800; font-size: 11px; line-height: 1; cursor: pointer; vertical-align: middle;
+}
+.pk-help:hover { background: rgba(57, 231, 255, .22); border-color: var(--pk-cyan); }
+.pk-help-note {
+  margin: 2px 0 8px; padding: 9px 11px; border-radius: 9px; font-size: 12px; line-height: 1.5;
+  color: var(--pk-ink); background: rgba(57, 231, 255, .07); border: 1px solid rgba(57, 231, 255, .22);
+}
 
 .pk-filters { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin: 0 6px 14px; color: var(--pk-muted); font-size: 12px; }
 .pk-filters label { display: flex; align-items: center; gap: 6px; }

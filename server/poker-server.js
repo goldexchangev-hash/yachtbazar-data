@@ -1706,6 +1706,16 @@ function attachPoker(opts) {
     bank.all.set(wallet, Math.round(balance));
     pushWallet(sock, wallet);
   }
+  // DEMO CHIP RELOAD (owner: "add more demo money"): top the guest's play-money WALLET up by $5,000
+  // (capped). Guests/demo only — a real balance comes from the bridge and is never touched here. The
+  // top-up is to the wallet you buy in FROM, so it works whether you are in the lobby or seated (rebuy).
+  function reloadGuest(sock, wallet) {
+    const w = String(wallet || "");
+    if (!/^guest:/.test(w)) return;
+    const cur = bank.all.get(w) || 0;
+    bank.all.set(w, Math.min(1000000, cur + 5000));
+    pushWallet(sock, w);
+  }
   const rand = opts.rand || Math.random;
   function randSeed() { return (typeof PF.randomSeed === "function") ? PF.randomSeed(8) : Math.random().toString(36).slice(2, 10); }
 
@@ -1795,6 +1805,7 @@ function attachPoker(opts) {
       case "pk:rebuy": rebuy(sock, m.amount); break;
       case "pk:table:addbot": addBot(sock, m.tableId); break;      // demo-only (refused on real tables)
       case "pk:table:removebot": removeBot(sock, m.tableId); break;
+      case "pk:reload": reloadGuest(sock, wallet); break;          // demo-only (+$5k play-money; real balance untouched)
       case "pk:seed": seedGuest(sock, wallet, +m.balance); break;
       case "pk:ping": send(sock, { type: "pk:pong" }); break;
       default: break;
@@ -2680,6 +2691,20 @@ if (require.main === module) {
       const rr = roomOf2(pkR, W1); const mk = R._msgs.length;
       pkR.handle(R, { type: "pk:table:addbot", tableId: tr });
       eq("(27) a REAL table REFUSES bots (demo_only) — no bot seated, real money untouched", rr.seats.filter((s) => s && s.isBot).length === 0 && R._msgs.slice(mk).some((m) => m.type === "pk:error" && m.code === "demo_only"));
+    }
+
+    { // (28) demo chip reload tops the play-money wallet up by $5,000; a real (token) wallet is refused (no mint)
+      const mkWs = (w) => { const msgs = []; const ws = { wallet: w, send: (m) => { try { msgs.push(JSON.parse(m)); } catch (e) {} } }; ws._msgs = msgs; return ws; };
+      const pk28 = attachPoker({ timers: { act: 20000, showdown: 0, between: 0, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 } });
+      const G = mkWs("guest:reload");
+      pk28.handle(G, { type: "pk:seed", wallet: "guest:reload", balance: 1000 });
+      const bal0 = (G._msgs.filter((m) => m.type === "pk:wallet").pop() || {}).balance;
+      pk28.handle(G, { type: "pk:reload", wallet: "guest:reload" });
+      const bal1 = (G._msgs.filter((m) => m.type === "pk:wallet").pop() || {}).balance;
+      eq("(28) demo reload adds $5,000 play-money to the guest wallet", bal0 === 1000 && bal1 === 6000);
+      const T = mkWs("0xRealWallet"); const before = T._msgs.length; // a non-guest (real) socket
+      pk28.handle(T, { type: "pk:reload", wallet: "0xRealWallet" });
+      eq("(28) reload REFUSES a non-guest wallet — never mints play-money onto a real balance", !T._msgs.slice(before).some((m) => m.type === "pk:wallet"));
     }
   }
 

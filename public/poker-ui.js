@@ -121,6 +121,7 @@
           '<p>Create a table or grab a seat. You host — you earn 50% of your table’s rake.</p></div>' +
           '<div class="pk-lobby-actions">' +
             '<span class="pk-bal" id="pk-bal">$0</span>' +
+            '<button class="pk-icon pk-reload" id="pk-reload" hidden title="Add $5,000 play-money chips">+ $5K CHIPS</button>' +
             '<button class="pk-chip pk-create" id="pk-open-create">+ CREATE TABLE</button>' +
           '</div>' +
         '</div>' +
@@ -139,6 +140,7 @@
           '<span class="pk-room-name" id="pk-room-name"></span>' +
           '<div class="pk-room-right">' +
             '<span class="pk-bal" id="pk-bal2">$0</span>' +
+            '<button class="pk-icon pk-reload" id="pk-reload2" hidden title="Add $5,000 play-money chips">+ $5K</button>' +
             '<button class="pk-icon pk-host-btn" id="pk-host-btn" hidden>⚙ HOST</button>' +
             '<button class="pk-icon" id="pk-fs">⛶</button>' +
           '</div>' +
@@ -175,9 +177,10 @@
           '<input id="pk-c-seats" type="range" min="2" max="9" step="1" value="9"></label>' +
         '<label class="pk-fld">Mode <select id="pk-c-kind"><option value="demo">Demo (play money)</option><option value="real">Real (token)</option></select></label>' +
         '<details class="pk-adv"><summary>Advanced</summary>' +
-          '<label class="pk-fld">Rake % <span id="pk-c-rakeval">5.0%</span>' +
+          '<label class="pk-fld">Rake % <button type="button" class="pk-help" data-help="rakepct" aria-label="What is rake?">?</button> <span id="pk-c-rakeval">5.0%</span>' +
             '<input id="pk-c-rake" type="range" min="100" max="500" step="25" value="500"></label>' +
-          '<label class="pk-fld">Rake cap (bb) <input id="pk-c-rakecap" type="number" min="1" max="5" value="3"></label>' +
+          '<label class="pk-fld">Rake cap (bb) <button type="button" class="pk-help" data-help="rakecap" aria-label="What is the rake cap?">?</button> <input id="pk-c-rakecap" type="number" min="1" max="5" value="3"></label>' +
+          '<p class="pk-help-note" id="pk-help-note" hidden></p>' +
           '<p class="pk-rake-note">Every raked pot is split 50 / 50: <b>you (the host) keep half</b>, and <b>the house takes the other half</b> to the platform treasury wallet. You only earn on hands you are not dealt into (after 3+ players).</p>' +
         '</details>' +
         '<label class="pk-check"><input type="checkbox" id="pk-c-priv"> Private table</label>' +
@@ -255,6 +258,25 @@
     $("pk-c-rake").oninput = (e) => { $("pk-c-rakeval").textContent = (e.target.value / 100).toFixed(1) + "%"; };
     $("pk-c-priv").onchange = (e) => { $("pk-c-pw-fld").hidden = !e.target.checked; };
     $("pk-c-go").onclick = submitCreate;
+
+    // demo chip reload (+$5,000 play-money) — guests only; the server hard-refuses a real balance
+    const reloadDemo = () => { if (net) net.send({ type: "pk:reload" }); cfg.toast("+$5,000 demo chips added 💰", "ok"); };
+    if ($("pk-reload")) $("pk-reload").onclick = reloadDemo;
+    if ($("pk-reload2")) $("pk-reload2").onclick = reloadDemo;
+
+    // rake "?" help — click to reveal a plain-English explanation, click again to hide
+    const HELP = {
+      rakepct: "Rake % is the small fee the table takes from each pot that reaches the flop — 5% is the standard online cap. That fee is split 50 / 50 between you (the host) and the house.",
+      rakecap: "Rake cap (bb) is the MOST the table can ever take from one pot, measured in big blinds. Example: a cap of 3 on a $1 / $2 table means the fee never tops $6 (3 × the $2 big blind) no matter how big the pot gets — it stops large pots from paying a big flat fee.",
+    };
+    Array.prototype.forEach.call(document.querySelectorAll("#poker-view .pk-help"), (b) => {
+      b.onclick = () => {
+        const note = $("pk-help-note"); if (!note) return;
+        const key = b.getAttribute("data-help");
+        if (note._key === key && !note.hidden) { note.hidden = true; note._key = null; return; }
+        note.textContent = HELP[key] || ""; note.hidden = false; note._key = key;
+      };
+    });
 
     // buy-in modal
     $("pk-buyin-cancel").onclick = () => { $("pk-buyin-modal").hidden = true; pendingJoin = null; };
@@ -848,6 +870,11 @@
     const disp = isReal ? balanceUnits : Math.round(balanceUnits);
     const t = cfg.usd(disp);
     const b1 = $("pk-bal"), b2 = $("pk-bal2"); if (b1) b1.textContent = t; if (b2) b2.textContent = t;
+    // demo/guest players (no real token session) can top their play-money up; real balances come from the bridge
+    const demo = !cfg.tokenSession;
+    const rb1 = $("pk-reload"), rb2 = $("pk-reload2");
+    if (rb1) rb1.hidden = !demo;
+    if (rb2) rb2.hidden = !demo;
     try { cfg.onBalance(disp); } catch (e) {}
   }
 
