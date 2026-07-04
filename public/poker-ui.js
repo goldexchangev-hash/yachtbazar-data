@@ -687,6 +687,19 @@
         const seatEl = $("pk-seats").children[ring];
         const sr = seatEl.getBoundingClientRect();
         const to = { x: sr.left + sr.width / 2 - feltRect.left, y: sr.top + sr.height / 2 - feltRect.top };
+        // WIN MOMENT: gold-halo the winner seat + float a "+$" pill up over it (the satisfying payoff)
+        seatEl.classList.add("is-winner");
+        setTimeout(() => { try { seatEl.classList.remove("is-winner"); } catch (e) {} }, 2400);
+        try {
+          const isReal = state && state.kind === "real";
+          const share = Math.round(w.amount / Math.max(1, w.ids.length));
+          const pill = document.createElement("div"); pill.className = "pk-winpill";
+          pill.textContent = "+" + cfg.usd(isReal ? Math.round(share) / 100 : share);
+          pill.style.left = to.x + "px"; pill.style.top = to.y + "px";
+          fx.appendChild(pill);
+          requestAnimationFrame(() => pill.classList.add("show"));
+          setTimeout(() => { try { fx.removeChild(pill); } catch (e) {} }, 2050);
+        } catch (e) {}
         for (let n = 0; n < 6; n++) {
           const chip = document.createElement("div"); chip.className = "pk-fxchip";
           chip.style.left = from.x + "px"; chip.style.top = from.y + "px";

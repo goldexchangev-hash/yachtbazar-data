@@ -56,7 +56,8 @@
   transition: transform .12s, border-color .15s, box-shadow .15s; }
 .pk-tcard:hover { transform: translateY(-2px); border-color: rgba(57, 231, 255, .4); box-shadow: 0 10px 30px rgba(0, 0, 0, .35); }
 .pk-tcard::before { content: ""; position: absolute; inset: -40% 30% 60% -40%; background: radial-gradient(closest-side, rgba(255, 210, 63, .14), transparent); pointer-events: none; }
-.pk-tcard.live { border-color: rgba(69, 240, 166, .4); }
+.pk-tcard.live { border-color: rgba(69, 240, 166, .45); animation: pkLivePulse 2.2s ease-in-out infinite; }
+@keyframes pkLivePulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(69, 240, 166, 0); } 50% { box-shadow: 0 0 15px 1px rgba(69, 240, 166, .38); } }
 .pk-tcard-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .pk-tname { font-family: var(--pk-pixel); font-size: 11px; color: var(--pk-cyan); letter-spacing: .5px; }
 .pk-lock { filter: grayscale(.3); }
@@ -118,7 +119,7 @@
 
 /* ---------- cards ---------- */
 .pkcard {
-  position: relative; width: 62px; height: 88px; border-radius: 9px; flex: none;
+  position: relative; width: 72px; height: 101px; border-radius: 10px; flex: none;
   background: linear-gradient(158deg, #ffffff 0%, #eef3fb 62%, #dfe7f4 100%); color: #14213d;
   box-shadow: 0 6px 14px rgba(0, 0, 0, .5), inset 0 1px 0 rgba(255, 255, 255, .9), inset 0 0 0 1px rgba(255, 210, 63, .28);
   font-family: var(--pk-font); font-weight: 800; user-select: none;
@@ -128,19 +129,19 @@
 .pkcard .pk-corner.br { top: auto; left: auto; bottom: 4px; right: 5px; transform: rotate(180deg); }
 .pkcard .pk-corner b { font-size: calc(100% + 4px); display: block; }
 .pkcard .pk-corner i { font-style: normal; font-size: calc(100% - 1px); display: block; }
-.pkcard .pk-pip { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); text-align: center; font-size: 30px; z-index: 1; opacity: .9; }
+.pkcard .pk-pip { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); text-align: center; font-size: 34px; z-index: 1; opacity: .9; }
 .pkcard.slot { background: rgba(255, 255, 255, .03); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .06); }
 .pkcard.back { background: repeating-linear-gradient(45deg, #123, #123 5px, #1c2f4e 5px, #1c2f4e 10px); box-shadow: 0 4px 10px rgba(0, 0, 0, .5), inset 0 0 0 1px rgba(57, 231, 255, .25); }
 .pkcard.back .pk-bk { position: absolute; inset: 8px; border-radius: 5px; border: 1px solid rgba(57, 231, 255, .3); }
 .pkcard.dealing { animation: pkDeal .35s cubic-bezier(.2, .85, .25, 1) both; }
 @keyframes pkDeal { 0% { opacity: 0; transform: translate(120px, -150px) scale(.9); } 100% { opacity: 1; transform: none; } }
 /* mini (seat cards) */
-.pkcard.mini { width: 26px; height: 37px; border-radius: 4px; box-shadow: 0 2px 5px rgba(0, 0, 0, .5); }
+.pkcard.mini { width: 30px; height: 42px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0, 0, 0, .5); }
 .pkcard.mini .pk-corner { top: 2px; left: 2px; font-size: 8px; }
 .pkcard.mini .pk-corner.br, .pkcard.mini .pk-pip { display: none; }
-/* big (hero hole dock) */
-.pkcard.big { width: 78px; height: 110px; border-radius: 11px; }
-.pkcard.big .pk-pip { font-size: 40px; }
+/* big (hero hole dock) — the focal point, sized toward baccarat's card presence */
+.pkcard.big { width: 96px; height: 134px; border-radius: 13px; }
+.pkcard.big .pk-pip { font-size: 46px; }
 
 /* ---------- seats ---------- */
 .pk-seats { position: absolute; inset: 0; z-index: 3; }
@@ -173,6 +174,19 @@
     conic-gradient(var(--pk-cyan) var(--pk-timer, 360deg), rgba(57, 231, 255, .12) 0),
     radial-gradient(circle at 35% 30%, #223, #0c1526); }
 .pk-seat.is-active .pk-seat-info { border-color: var(--pk-cyan); }
+/* WIN MOMENT: the winner seat gets a gold halo pulse + gold-edged info; a "+$" win pill floats up
+   over the seat (spawned in poker-ui on the settle edge). Quiet losses stay quiet — no red. */
+.pk-seat.is-winner .pk-seat-ring { border-color: var(--pk-gold) !important; box-shadow: 0 0 26px rgba(255, 210, 63, .8), 0 0 10px rgba(255, 210, 63, .95) !important; animation: pkWinPulse 1s ease-out 2; }
+.pk-seat.is-winner .pk-seat-info { border-color: var(--pk-gold); box-shadow: 0 0 16px rgba(255, 210, 63, .5); }
+.pk-seat.is-winner .pk-seat-stack { color: var(--pk-gold); }
+@keyframes pkWinPulse { 0%, 100% { transform: translateX(-50%) scale(1); } 50% { transform: translateX(-50%) scale(1.14); } }
+.pk-winpill { position: absolute; z-index: 45; font: 800 15px/1 var(--pk-pixel); color: #06210f;
+  background: linear-gradient(180deg, #ffe58a, #ffce3a); border: 1px solid #fff6cf; border-radius: 999px;
+  padding: 7px 13px; box-shadow: 0 6px 22px rgba(255, 210, 63, .55); white-space: nowrap;
+  transform: translate(-50%, -50%) scale(.4); opacity: 0; pointer-events: none; }
+.pk-winpill.show { animation: pkWinPill 1.9s cubic-bezier(.2, .9, .25, 1) forwards; }
+@keyframes pkWinPill { 0% { opacity: 0; transform: translate(-50%, -50%) scale(.4); } 16% { opacity: 1; transform: translate(-50%, -78%) scale(1.12); } 30% { transform: translate(-50%, -78%) scale(1); } 78% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -120%) scale(1); } }
+@media (prefers-reduced-motion: reduce) { .pk-seat.is-winner .pk-seat-ring { animation: none; } .pk-winpill.show { animation: none; opacity: 1; } }
 .pk-seat.is-folded { opacity: .34; filter: grayscale(.6); }
 .pk-seat.is-allin .pk-seat-stack { color: var(--pk-red); }
 .pk-seat.is-allin .pk-seat-badge { color: var(--pk-red); }
