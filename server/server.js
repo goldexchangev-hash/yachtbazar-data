@@ -380,7 +380,7 @@ const tokenSvc = attachTokenBridge(app, {
   experimentalBridgeOn: () => process.env.ENABLE_EXPERIMENTAL_BRIDGE === "1",
   // OR'd across BOTH felt engines (spec §8): token cash-out/recover is refused while EITHER game has
   // money in flight for this player — a settle must never lock in a debited stake before a hand/coup resolves.
-  hasLiveExternal: (player) => { try { return blackjack.hasLiveHand(player) || baccarat.hasLiveHand(player) || poker.hasLiveHand(player); } catch (e) { return false; } },
+  hasLiveExternal: (player) => { try { return blackjack.hasLiveHand(player) || baccarat.hasLiveHand(player) || poker.hasLiveHand(player) || poker.hasSeatedStack(player); } catch (e) { return false; } }, // poker: also refuse a token settle/recover while a real stack is SEATED between hands (the buy-in already moved out of the session; without this a cash-out signs a full-loss settle + strands the stack in pokerOwed)
   // STRICTER: only a DEALT, in-play hand (not a bet placed in the betting phase). The token top-up guard uses
   // this so adding funds between hands / during betting credits immediately, while mid-hand top-up still refuses.
   hasDealtExternal: (player) => { try { return blackjack.hasDealtHand(player) || baccarat.hasDealtHand(player); } catch (e) { return false; } },

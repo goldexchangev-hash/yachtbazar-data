@@ -965,7 +965,10 @@ function attachPoker(opts) {
     const paid = Math.max(0, Math.min(owed, booked));
     const remain = owed - paid;
     if (remain > 0) pokerOwed.set(w, remain); else pokerOwed.delete(w);
-    savePersist();
+    // The bridge credit is ALREADY durable (applyExternal save()s synchronously) — the pokerOwed decrement
+    // MUST be equally durable, else a crash in the debounced 800ms window reloads the un-reduced owed on
+    // restart and claimOwed re-credits it (a replayable house-funded DOUBLE-PAY). Flush synchronously.
+    if (paid > 0) flushPersist(); else savePersist();
   }
   function tokensNow(sessionId) { try { const t = TL && TL.tokensOf(sessionId); return t == null ? 0 : round2(t); } catch (e) { return 0; } }
 
@@ -1192,6 +1195,11 @@ function attachPoker(opts) {
     if (used + pay > cap) pay = Math.max(0, cap - used); // withhold the excess to HOUSE
     if (pay <= 0) return;
     creatorRakeDaily.set(dayKey, used + pay);
+    // Persist the ZEROED creatorRakeChips + the daily-cap increment SYNCHRONOUSLY *before* booking the
+    // (immediately-durable) bridge credit — else a crash between the credit and the debounced poker-disk
+    // write lets boot-drain re-owe the same accrual (creator DOUBLE-PAY / rake minted). Flushing first makes
+    // the worst case a rare single-accrual under-pay (house-safe) instead of an over-pay.
+    flushPersist();
     if (isTokenWallet(r.creatorWallet)) { tokenCredit(r.creatorWallet, pay); } // house-funded credit (or pokerOwed if capUp/sessionless)
     else { owe(r.creatorWallet, pay); } // creator not currently bound → accrue owed, claimed on next session open
     savePersist();
@@ -1510,12 +1518,16 @@ function attachPoker(opts) {
     // TOKEN (real) table: FREEZE the funding pool and (if the wallet had owed chips from a prior
     // sessionless payout) pay them down into the fresh session before the buy-in (H1 claim).
     const tokenSeat = isTokenWallet(wallet);
+    // A REAL table only ever seats FUNDED token wallets. A non-token wallet (guest / demo / an unbound 0x
+    // that never token-verified) at a real table would buy in from the PLAY-MONEY demo bank yet be dealt
+    // real hands at real chip scale — real players who lose to it lose real tokens while its "winnings" are
+    // credited to the throwaway demo bank (real value destroyed, Σ real-nets ≠ −rake). Refuse it outright.
+    if (r.kind === "real" && !tokenSeat) { err(sock, "real_only", "This is a real-money table — connect and fund your wallet to sit here.", "join"); return false; }
     if (tokenSeat) {
-      // A table holding ANY bot can NEVER take a real (token) buy-in. Bots are synthetic play-money
-      // wallets; flipping the table to real (r.kind="real") would deal them into real hands and, at
-      // teardown, cashOutSeat credits a bot's chips to the throwaway demo bank (real chips a bot won
-      // from a real player vanish + assertZeroSum breaks). Refuse the buy-in; keep the table demo.
-      if (r.seats.some((s) => s && s.isBot)) { err(sock, "demo_only", "This table has practice bots — real-money buy-ins aren’t allowed here. Join a table with no bots.", "join"); return false; }
+      // Symmetric guard: a token buy-in can only FLIP a table to real if it holds NO non-token seats (bots
+      // OR guests). Flipping a table that already has play-money players strands them at a real table (the
+      // same real-value-destruction bug from the other side). Keep the table demo; they open a fresh one.
+      if (r.seats.some((s) => s && !isTokenWallet(s.wallet))) { err(sock, "demo_only", "This table has play-money players — real-money buy-ins aren’t allowed here. Start a fresh real table.", "join"); return false; }
       r.kind = "real";
       const sid = tokenSid(wallet);
       if (!bindToken(wallet, sid)) { err(sock, "bound_elsewhere", "Your session is busy in another game — finish that first", "join"); return false; }
@@ -1940,7 +1952,7 @@ function attachPoker(opts) {
     // ({ tokensOf, applyNet, recordOwed?, persist? }); on (re)bind, run the boot-drain so any orphaned
     // poker-bound session from a prior process is force-cashed-out (no stranded lock).
     setTokenLedger: (tl) => { TL = tl || null; const res = hydrateAndBootDrain(); return res; },
-    bindToken, unbindToken, hasLiveHand,
+    bindToken, unbindToken, hasLiveHand, hasSeatedStack, // hasSeatedStack: a token cash-out/recover must be refused while a real stack is SEATED (not just mid-hand) — see server.js hasLiveExternal
     // owed-ledger + persistence introspection (server.js flushes on SIGTERM; tests assert owed sums)
     pokerOwed: (wallet) => pokerOwed.get(norm(wallet)) || 0,
     flushPersist, bootDrain: hydrateAndBootDrain,
@@ -2935,6 +2947,21 @@ if (require.main === module) {
       const wsOf36 = (w) => (String(w).toLowerCase() === W1.toLowerCase() ? A : B);
       let hands = 0; while (hands < 6 && (r36.houseRakeChips || 0) === 0 && r36.phase === "HAND") { checkCallDown(pk, r36, wsOf36); hands++; fireDue2(); }
       eq("(36) HUNT3 a SEATED-but-SITTING-OUT creator earns ZERO rake-share (H6 checks seat ownership, not dealt-in)", (r36.houseRakeChips || 0) > 0 && (r36.creatorRakeChips || 0) === 0);
+    }
+
+    { // (37) HUNT4 CRITICAL: a REAL table REFUSES a non-token (guest/spoofed) seat — play money is never dealt real hands
+      const bridge = makeStubBridge(999999); bridge.open("rt1", W1, 500);
+      const pk = attachPoker(Object.assign({ timers: { act: 20000, showdown: 0, between: 0, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 } }, clk2));
+      pk.setTokenLedger({ tokensOf: bridge.tokensOf, applyNet: bridge.applyPokerNet });
+      const A = mkTokWs(W1); pk.bindToken(W1, "rt1");
+      pk.handle(A, { type: "pk:table:create", wallet: W1, config: { bb: 10, maxSeats: 6, name: "RONLY", buyInMinBb: 20, buyInMaxBb: 100 } });
+      const tid = A._msgs.filter((m) => m.type === "pk:table:created").pop().tableId;
+      pk.handle(A, { type: "pk:table:join", wallet: W1, tableId: tid, buyIn: 200 }); // token buy-in flips r.kind → real
+      const rr = roomOf2(pk, W1);
+      const G = mkTokWs("guest:spoof"); const mk = G._msgs.length;
+      pk.handle(G, { type: "pk:table:join", wallet: "guest:spoof", tableId: tid, buyIn: 200 }); // non-token seat at a REAL table
+      const gotSeat = rr.seats.some((s) => s && String(s.wallet) === "guest:spoof");
+      eq("(37) HUNT4 a REAL table REFUSES a non-token seat (real_only) — play money never dealt real hands", rr.kind === "real" && !gotSeat && G._msgs.slice(mk).some((m) => m.type === "pk:error" && m.code === "real_only"));
     }
   }
 
