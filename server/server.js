@@ -295,6 +295,22 @@ let _tokenStoreWritable = false;
     // silent-empty-of-corrupt-money-state hazard, and the writable preflight above already warns.
   }
 })();
+// Poker state is ALSO a real-money store (pokerOwed ledger + seat→session bindings + live stacks). A corrupt
+// file would silently drop owed obligations and strand open on-chain sessions as full losses. Making
+// pokerPersist.load() re-throw is NOT enough on its own: its only caller (hydrateAndBootDrain) is deliberately
+// FAIL-OPEN (it try/catches so a throw can never strand a live room), so the throw is swallowed and boot
+// continues on empty state. Preflight the parse HERE and crash loudly — exactly like the token store — so a
+// genuinely corrupt poker money store halts boot for operator restore BEFORE any live save() overwrites it.
+(function preflightPokerStoreParse() {
+  try { loadJsonStoreOrThrow(POKER_STATE_FILE, "poker state"); }
+  catch (e) {
+    if (e && e.code === "STATE_FILE_CORRUPT" && process.env.POKER_ALLOW_CORRUPT_RESET !== "1") {
+      try { console.error("FATAL: poker state is corrupt — refusing to boot (would drop the pokerOwed ledger + strand open on-chain sessions). Fix/restore the disk, or set POKER_ALLOW_CORRUPT_RESET=1 to start fresh.", (e && e.message) || e); } catch (_) {}
+      process.exit(1);
+    }
+    // Other read errors (permissions/etc.) fall through to the normal fail-open path — not a silent-money hazard.
+  }
+})();
 // Durability diagnostic (exposed on /api/token/status): durable = the state file is on a CONFIGURED
 // (non-default) path AND writable — i.e. a mounted disk, so sessions survive restarts.
 function tokenStoreInfo() {
