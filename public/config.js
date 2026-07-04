@@ -28,4 +28,4 @@ window.COINFLIP_CONFIG = {
 window.FS_WEBP_PACK = true;
 window.FS2_ENABLED = true; // Fish Shooter V2 (CH 20) kill switch — set false to hide the whole channel (v1 untouched)
 window.BACCARAT_ENABLED = true; // Baccarat (CH 21) kill switch — set false to hide the whole channel (tile + rotation + felt)
-window.POKER_ENABLED = false; // Poker (CH 22) kill switch — OFF on live until the P6 money audit + P7 flip-on. Hides the tile + rotation + felt. (Preview: set window.POKER_ENABLED=true at runtime to test; do NOT commit it true.)
+window.POKER_ENABLED = true; // Poker (CH 22) LIVE — P6 money+security audit passed (2 CRITICALs found, fixed, regression-tested; re-audit CLEAR), P7 flip 2026-07-04. Kill switch: set false to instantly hide the tile + rotation + felt.
