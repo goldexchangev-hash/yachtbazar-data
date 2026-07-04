@@ -1296,7 +1296,7 @@ function attachPoker(opts) {
       seats: r.seats.map((s, i) => s ? {
         seat: i, wallet: s.wallet, name: s.name, stack: s.stack,
         sittingOut: !!s.sittingOut, away: !!s.disconnected, left: !!s.left,
-        isHost: s.wallet === r.creatorWallet && r.creatorId !== "HOUSE",
+        isHost: norm(s.wallet) === norm(r.creatorWallet) && r.creatorId !== "HOUSE", // norm both (deep-scan-3): consistent case-insensitive identity everywhere
         inHand: !!(h && h.players.some((p) => p.id === s.wallet)),
       } : null),
       buyInMin: r.buyInMin, buyInMax: r.buyInMax,
@@ -1326,7 +1326,12 @@ function attachPoker(opts) {
 
   /* ---------------- seat helpers ---------------- */
   function seatIndexOfSock(r, sock) { for (let i = 0; i < r.seats.length; i++) if (r.seats[i] && r.seats[i].sock === sock) return i; return -1; }
-  function seatOfWallet(r, wallet) { for (let i = 0; i < r.seats.length; i++) if (r.seats[i] && r.seats[i].wallet === wallet) return r.seats[i]; return null; }
+  // norm() BOTH sides (deep-scan-3 HIGH): auth/binding/settlement all key by norm(lowercase), but ws.wallet is
+  // stored case-preserved (server.js hello) and verifySession only compares .toLowerCase(). A raw === here let one
+  // real wallet evade the "one seat per wallet" guards (1536/1651) by helloing the SAME funded session in two
+  // letter-cases across two sockets → TWO seats in one real hand → the attacker sees all hole cards + squeezes
+  // honest players (self-collusion / chip-dumping). Case-insensitive membership makes that impossible.
+  function seatOfWallet(r, wallet) { const w = norm(wallet); for (let i = 0; i < r.seats.length; i++) if (r.seats[i] && norm(r.seats[i].wallet) === w) return r.seats[i]; return null; }
   // an "IN" seat is eligible to be dealt into the next hand
   function seatedInWithChips(r, bb) { return r.seats.filter((s) => s && !s.sittingOut && !s.left && !s.disconnected && s.stack >= bb); } // !disconnected: an in-grace dropped seat sits out of NEW deals (stack preserved for the 90s reclaim) instead of being auto-folded every hand and bleeding blinds it never chose to post (review LOW-3)
 
@@ -1613,7 +1618,7 @@ function attachPoker(opts) {
     for (const r of rooms.values()) {
       for (let i = 0; i < r.seats.length; i++) {
         const s = r.seats[i];
-        if (s && s.disconnected && s.wallet === wallet) {
+        if (s && s.disconnected && norm(s.wallet) === norm(wallet)) { // norm both (deep-scan-3): case-insensitive, consistent with the auth guard below + seatOfWallet — a legit case-variant reconnect still reclaims
           // SECURITY (audit CRITICAL): a REAL (0x) seat may be reclaimed ONLY by an AUTHENTICATED
           // socket that IS that wallet — sock.wallet is set at hello only via a VERIFIED bjSession.
           // messageWallet falls back to the client-supplied m.wallet for an unauthenticated socket
@@ -1770,7 +1775,7 @@ function attachPoker(opts) {
     // within a connection, so cap by it too (still bounded further by MAX_WS_PER_IP).
     const mineSock = Array.from(rooms.values()).filter((r) => r._creatorSock === sock).length;
     if (mineSock >= CAP) return err(sock, "table_cap", "You already have the max open tables", "create");
-    const mine = Array.from(rooms.values()).filter((r) => r.creatorWallet === wallet).length;
+    const mine = Array.from(rooms.values()).filter((r) => norm(r.creatorWallet) === norm(wallet)).length; // norm both (deep-scan-3): a case-variant wallet must not dodge the per-wallet open-table cap
     if (wallet && mine >= CAP) return err(sock, "table_cap", "You already have the max open tables", "create");
     // CLAMP every field on receipt (client bounds cosmetic).
     let bb = Number(cfg.bb); if (STAKES_BB.indexOf(bb) < 0) bb = 10; const sb = Math.floor(bb / 2);
@@ -3161,6 +3166,30 @@ if (require.main === module) {
       pk.bindToken(W1, "s1");             // wallet reconnects → drain owed into the freshly-bound session
       const owedAfter = pk.pokerOwed(W1), sessTokens = bridge._get("s1").tokens;
       eq("(44) DEEP-SCAN-2 bindToken drains pokerOwed into the freshly-bound session (owed→0, session credited $50)", owedBefore === 5000 && owedAfter === 0 && Math.round(sessTokens * 100) === 25000);
+    }
+
+    { // (45) DEEP-SCAN-3 HIGH: one real wallet CANNOT occupy TWO seats in one hand via a case-variant hello.
+      //   seatOfWallet is now case-insensitive (norm both sides), matching the norm-keyed auth/binding, so the
+      //   "one seat per wallet" guard can't be evaded by helloing the same funded session in two letter-cases
+      //   across two sockets — closing the multi-seat information/collusion exploit (see all-hole-card leak).
+      const MIX = "0xAbCdEf0000000000000000000000000000000009";
+      const LOW = "0xabcdef0000000000000000000000000000000009"; // SAME address, lowercased
+      const bridge = makeStubBridge(2000); bridge.open("s1", MIX, 400); // one session funded to 2x the min buy-in
+      const pk = attachPoker(Object.assign({ timers: { act: 999999, showdown: 0, between: 999999, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 } }, clk2));
+      pk.setTokenLedger({ tokensOf: bridge.tokensOf, applyNet: bridge.applyPokerNet });
+      const WS1 = mkTokWs(MIX), WS2 = mkTokWs(LOW); // two sockets, same wallet in two letter-cases
+      pk.bindToken(MIX, "s1"); pk.bindToken(LOW, "s1"); // both bind the SAME (norm-keyed) session — idempotent
+      pk.handle(WS1, { type: "pk:table:create", wallet: MIX, config: { bb: 10, maxSeats: 6, name: "COLL", buyInMinBb: 20, buyInMaxBb: 100 } });
+      const t = WS1._msgs.filter((m) => m.type === "pk:table:created").pop().tableId;
+      pk.handle(WS1, { type: "pk:table:join", wallet: MIX, tableId: t, buyIn: 200 }); // seat 1 (debits $200 → $200 left)
+      const r = Array.from(pk._mgr.rooms.values()).find((x) => x.id === t);
+      const sess1 = bridge._get("s1").tokens;
+      const mk = WS2._msgs.length;
+      pk.handle(WS2, { type: "pk:table:join", wallet: LOW, tableId: t, buyIn: 200 }); // 2nd-seat attempt (case variant)
+      const seatCount = r.seats.filter((s) => s && lc(s.wallet) === lc(MIX)).length;
+      const refused = WS2._msgs.slice(mk).some((m) => m.type === "pk:error" && m.code === "already_seated");
+      const sess2 = bridge._get("s1").tokens; // must be UNCHANGED (no 2nd debit)
+      eq("(45) DEEP-SCAN-3 a case-variant 2nd hello CANNOT take a 2nd seat — refused already_seated, session NOT double-debited (no multi-seat collusion)", seatCount === 1 && refused && sess1 === sess2);
     }
   }
 
