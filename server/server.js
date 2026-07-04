@@ -20,6 +20,7 @@ const express = require("express");
 const { WebSocketServer } = require("ws");
 const { attachBlackjack } = require("./blackjack-server.js");
 const { attachBaccarat } = require("./baccarat-server.js");
+const { attachPoker } = require("./poker-server.js");
 const { attachBridge } = require("./bridge-server.js");
 const { makeCrashWs } = require("./crash-rounds-ws.js");
 
@@ -214,6 +215,23 @@ const baccarat = attachBaccarat({
 // token bind below. The client flag (config.js BACCARAT_ENABLED) is the primary switch (FS2 precedent).
 const BACCARAT_WS = process.env.BACCARAT_ENABLED !== "0";
 
+// Multiplayer Poker (CH 22) — LIVE PvP No-Limit Hold'em on the SAME ws server (spec §4/§12). Its own
+// durable persist file carries the token seat→session bindings + stacks + cumulativeBuyIn + accrued
+// creator rake + the pokerOwed ledger, so a Render restart during a disconnect window can boot-drain a
+// force-cash-out and never strand an on-chain lock (H5, the v12.94 class). Same atomic-write posture.
+const POKER_STATE_FILE = String(process.env.POKER_STATE_FILE || path.join(__dirname, ".poker-state.json"));
+const pokerPersist = {
+  load() {
+    try { return loadJsonStoreOrThrow(POKER_STATE_FILE, "poker state"); }
+    catch (e) { return {}; } // corrupt bytes already backed up + logged inside loadJsonStoreOrThrow
+  },
+  save(obj) { try { writeJsonAtomic(POKER_STATE_FILE, obj); } catch (e) {} },
+};
+const poker = attachPoker({ persist: pokerPersist });
+// Server-side kill switch: POKER_ENABLED="0" skips the ws routing + token bind (client config.js POKER_ENABLED
+// is the primary switch). Poker ships OFF at deploy, then flips ON after a healthy flag-off deploy (spec §9).
+const POKER_WS = process.env.POKER_ENABLED !== "0";
+
 // ── Server-side TOKEN bridge (the new commit-reveal token games: coinflip/dice/dice2/
 //    crash/pressure/slots/slots3d). FLAG-GATED + OFF by default, so the live demo is
 //    untouched. Enable with ENABLE_TOKEN_BRIDGE=1 plus HOUSE_SIGNER_KEY (signer) and an
@@ -362,7 +380,7 @@ const tokenSvc = attachTokenBridge(app, {
   experimentalBridgeOn: () => process.env.ENABLE_EXPERIMENTAL_BRIDGE === "1",
   // OR'd across BOTH felt engines (spec §8): token cash-out/recover is refused while EITHER game has
   // money in flight for this player — a settle must never lock in a debited stake before a hand/coup resolves.
-  hasLiveExternal: (player) => { try { return blackjack.hasLiveHand(player) || baccarat.hasLiveHand(player); } catch (e) { return false; } },
+  hasLiveExternal: (player) => { try { return blackjack.hasLiveHand(player) || baccarat.hasLiveHand(player) || poker.hasLiveHand(player); } catch (e) { return false; } },
   // STRICTER: only a DEALT, in-play hand (not a bet placed in the betting phase). The token top-up guard uses
   // this so adding funds between hands / during betting credits immediately, while mid-hand top-up still refuses.
   hasDealtExternal: (player) => { try { return blackjack.hasDealtHand(player) || baccarat.hasDealtHand(player); } catch (e) { return false; } },
@@ -379,6 +397,11 @@ try { blackjack.setTokenLedger({ tokensOf: (sid) => (_tokenBridgeEnabled() ? tok
 // TOKEN-FUNDED BACCARAT: identical wiring, its own additive ledger sibling (applyBaccaratNet →
 // applyExternal game:"baccarat") so the audited blackjack path stays byte-identical (spec §8).
 try { baccarat.setTokenLedger({ tokensOf: (sid) => (_tokenBridgeEnabled() ? tokenSvc.tokensOf(sid) : null), applyNet: tokenSvc.applyBaccaratNet }); } catch (e) {}
+// TOKEN-FUNDED POKER (spec §5/§12): a real wallet's poker chips ARE their token session. Buy-in debits /
+// cash-out credits route through applyPokerNet (game:"poker" sibling of applyBaccaratNet — audited path
+// byte-identical). setTokenLedger ALSO runs the boot-drain: any poker-bound session orphaned by a prior
+// process is force-cashed-out (credit remaining stack / pokerOwed, unbind) so no lock is ever stranded (H5).
+try { const r = poker.setTokenLedger({ tokensOf: (sid) => (_tokenBridgeEnabled() ? tokenSvc.tokensOf(sid) : null), applyNet: tokenSvc.applyPokerNet }); if (r && r.drained) console.log("[pk] boot-drain force-cashed-out " + r.drained + " orphaned poker session(s)"); } catch (e) {}
 
 // ── Live crash rounds over the ws (cr:* sub-protocol) ───────────────────────────
 // The server-paced round-runner that makes MANUAL tap-to-cash-out provably fair for the
@@ -397,7 +420,7 @@ try { tokenSvc.setActiveCrashCheck((sessionId) => crashWs.hasActiveRound(session
 // stray throw/rejection anywhere must NOT silently exit and wipe the in-memory bank. Log it, flush
 // balances to disk, and keep serving. Also flush on a graceful shutdown (Render sends SIGTERM on
 // deploy/spin-down) so the last balances are persisted.
-function flushGameBanks() { try { blackjack.bank && blackjack.bank.flush && blackjack.bank.flush(); } catch (e) {} try { baccarat.bank && baccarat.bank.flush && baccarat.bank.flush(); } catch (e) {} } // BOTH felt engines' guest banks (was flushBjBank)
+function flushGameBanks() { try { blackjack.bank && blackjack.bank.flush && blackjack.bank.flush(); } catch (e) {} try { baccarat.bank && baccarat.bank.flush && baccarat.bank.flush(); } catch (e) {} try { poker.flushPersist && poker.flushPersist(); } catch (e) {} } // felt engines' guest banks + poker's durable token-binding/owed state (H5)
 // Flush BOTH money stores on the way down/sideways (audit #143/#144): the GUEST blackjack bank AND the
 // token bridge's HTTP-guard state (spent buy-ins, open sessions, bearers, pendingSettle obligations).
 // The token bridge already persists synchronously on every op, but a final flush guarantees the very
@@ -577,6 +600,7 @@ wss.on("connection", (ws, req) => {
     }
     if (data.type === "bj:ping") { try { ws.send(JSON.stringify({ type: "bj:pong" })); } catch {} return; } // liveness probe so the client can detect a half-open socket + recover a frozen felt
     if (data.type === "bac:ping") { try { ws.send(JSON.stringify({ type: "bac:pong" })); } catch {} return; } // baccarat felt's identical liveness probe
+    if (data.type === "pk:ping") { try { ws.send(JSON.stringify({ type: "pk:pong" })); } catch {} return; } // poker felt's identical liveness probe
     if (typeof data.type === "string" && data.type.startsWith("cr:")) {
       // Live crash rounds (token mode). Self-authorizing via the bridge session token in
       // the message itself — no `hello` required. Errors are returned as cr:error, never thrown.
@@ -618,6 +642,24 @@ wss.on("connection", (ws, req) => {
       }
       return;
     }
+    if (typeof data.type === "string" && data.type.startsWith("pk:")) {
+      if (!POKER_WS) return; // server kill switch (POKER_ENABLED="0") — routing off, engine dormant
+      // Poker shares the SAME hello identity gate as blackjack/baccarat (one hello marks the socket
+      // identified for all three felts; identical {type:"hello", address, bjToken, bjSession} frame).
+      const allowedBeforeHello = data.type === "pk:lobby:subscribe" || data.type === "pk:lobby:unsubscribe";
+      if (!ws.bjHelloSeen && !allowedBeforeHello) {
+        try { ws.send(JSON.stringify({ type: "pk:error", code: "auth_required", message: "Identify before joining poker" })); } catch {}
+        return;
+      }
+      // Poker sub-protocol: route any pk:* intent to the engine after identity.
+      try {
+        poker.handle(ws, data);
+      } catch (e) {
+        try { ws.send(JSON.stringify({ type: "pk:error", code: "server", message: "Poker message could not be processed" })); } catch {}
+        console.error("poker ws error:", e && e.message ? e.message : e);
+      }
+      return;
+    }
     if (data.type === "hello" && typeof data.address === "string") {
       const addr = data.address;
       const realWallet = /^0x[0-9a-fA-F]{40}$/.test(addr);
@@ -644,6 +686,9 @@ wss.on("connection", (ws, req) => {
             // the OR'd hasLiveExternal guard covers both). bindToken self-refuses mid-coup per engine — its own
             // try so a frozen baccarat bind can never break the blackjack identity path.
             if (BACCARAT_WS) { try { baccarat.bindToken(addr, data.bjSession); } catch (e) {} }
+            // One token session ALSO funds poker (ledger-safe: applyPokerNet is atomic+nonced; the OR'd
+            // hasLiveExternal guard covers poker too). bindToken self-refuses mid-hand per engine — its own try.
+            if (POKER_WS) { try { poker.bindToken(addr, data.bjSession); } catch (e) {} }
             tokenOk = true;
           }
         } catch (e) {}
@@ -711,6 +756,7 @@ wss.on("connection", (ws, req) => {
   ws.on("close", () => {
     blackjack.onClose(ws); // free the player's seat / spectator slot
     baccarat.onClose(ws);  // ditto on the baccarat felt (disconnect grace keeps the seat + bets)
+    poker.onClose(ws);     // ditto on the poker felt (90s reconnect grace keeps the seat + committed chips)
     crashWs.onClose(ws);   // detach any live crash round (it still settles via the server timer)
     // Drop any token-session binding so a settled/replaced session can't keep routing this wallet's chips —
     // BUT only if no OTHER open socket still holds the same wallet's token session (#36 two-tab safety):
@@ -723,7 +769,7 @@ wss.on("connection", (ws, req) => {
         if (other === ws) continue;
         if (other.readyState === other.OPEN && other.wallet && other.tokenSession && other.wallet.toLowerCase() === w) { othersHold = true; break; }
       }
-      if (!othersHold) { try { blackjack.unbindToken(ws.wallet); } catch (e) {} try { baccarat.unbindToken(ws.wallet); } catch (e) {} } // each engine self-guards on its own live hand/coup
+      if (!othersHold) { try { blackjack.unbindToken(ws.wallet); } catch (e) {} try { baccarat.unbindToken(ws.wallet); } catch (e) {} try { poker.unbindToken(ws.wallet); } catch (e) {} } // each engine self-guards on its own live hand/coup
     }
     if (ws._ip) { const n = (wsByIp.get(ws._ip) || 0) - 1; if (n <= 0) wsByIp.delete(ws._ip); else wsByIp.set(ws._ip, n); } // v6 #4: release the per-IP slot
     clients.delete(ws);

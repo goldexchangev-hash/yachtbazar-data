@@ -1426,7 +1426,15 @@ function attachPoker(opts) {
     if (idx < 0) { err(sock, "table_full", "Table is full", "join"); return false; }
     // clamp buy-in to table bounds, then debit the funding wallet (demo bank OR token session).
     let units = Number(buyInUnits);
-    if (!isFinite(units) || units <= 0) units = DEMO_BUYIN_DEFAULT;
+    if (!isFinite(units) || units <= 0) {
+      // NEVER auto-debit a default REAL buy-in: a bare `pk:table:join {tableId}` with no amount
+      // (e.g. a client resync whose seat was already dropped past the 90s grace) must not silently
+      // debit DEMO_BUYIN_DEFAULT of real tokens. A live reconnect is handled by the grace-reclaim
+      // branch ABOVE this call, so reaching here with no amount + a token wallet means "new seat" →
+      // require an explicit buy-in. Demo (play-money) may default.
+      if (isTokenWallet(wallet)) { err(sock, "buyin_required", "Choose a buy-in amount to sit down", "join"); return false; }
+      units = DEMO_BUYIN_DEFAULT;
+    }
     units = Math.max(r.buyInMin, Math.min(r.buyInMax, Math.round(units)));
     // TOKEN (real) table: FREEZE the funding pool and (if the wallet had owed chips from a prior
     // sessionless payout) pay them down into the fresh session before the buy-in (H1 claim).

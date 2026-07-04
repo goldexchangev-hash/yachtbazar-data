@@ -81,6 +81,7 @@
   let fishshooter2Game = null, fishshooter2LoadPromise = null; // Fish Shooter V2 · NEON ABYSS (CH 20) — own engine/assets, FS2_ENABLED kill switch
   const FS2_ENABLED = () => window.FS2_ENABLED !== false; // config.js flag: set false to hide the whole V2 channel (v1 untouched)
   const BACCARAT_ENABLED = () => window.BACCARAT_ENABLED !== false; // config.js flag: set false to hide the whole Baccarat channel (CH 21)
+  const POKER_ENABLED = () => window.POKER_ENABLED === true; // config.js flag (default TRUE for local preview; orchestrator flips OFF before deploy): show the whole Poker channel (CH 22)
   let fishshooterGame = null;     // the Fish Shooter instance, built on first visit to CH 19
   let coinFlip3dLoadPromise = null; // lazy-load guard for the 3D coin (Three.js)
   let coinFlip3d = null;          // the CoinFlip3D instance, built on first visit to CH 8
@@ -2550,7 +2551,7 @@
     return new Promise((res, rej) => {
       // v13 #38: dedup by src so a watchdog re-kick (an ensure*Ready promise nulled) never appends a SECOND <script>
       // for the same file while the first is still downloading (the load race). The selector keys on the exact
-      // versioned src ("...?v=1354"), so a later ?v bump is a distinct file and still loads fresh — no stale cache.
+      // versioned src ("...?v=1355"), so a later ?v bump is a distinct file and still loads fresh — no stale cache.
       const sel = 'script[data-loadonce="' + src.replace(/"/g, "&quot;") + '"]';
       const existing = document.querySelector(sel);
       if (existing) {
@@ -2586,7 +2587,7 @@
     if (window.CryptoReels) return Promise.resolve(true);
     if (slotsLoadPromise) return slotsLoadPromise;
     slotsLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("slots.js?v=1354"))
+      .then(() => loadScriptOnce("slots.js?v=1355"))
       .then(() => { if (window.TV && TV._activeChannel === 12 && TV._slotsIdle) TV._slotsIdle(); return true; })
       .catch((e) => { slotsLoadPromise = null; throw e; });
     return slotsLoadPromise;
@@ -2596,11 +2597,11 @@
     if (window.PressureGame) return Promise.resolve(true);
     if (pressureLoadPromise) return pressureLoadPromise;
     pressureLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("pressure-engine.js?v=1354"))
-      .then(() => loadScriptOnce("pressure-render.js?v=1354"))
-      .then(() => loadScriptOnce("pressure-ui.js?v=1354"))
+      .then(() => loadScriptOnce("pressure-engine.js?v=1355"))
+      .then(() => loadScriptOnce("pressure-render.js?v=1355"))
+      .then(() => loadScriptOnce("pressure-ui.js?v=1355"))
       // optional 3D red balloon (Three.js) — falls back to the 2D balloon if it can't load
-      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1354")).catch(() => {}))
+      .then(() => loadThreeOnce().then(() => loadScriptOnce("pressure3d.js?v=1355")).catch(() => {}))
       .then(() => true)
       .catch((e) => { pressureLoadPromise = null; throw e; });
     return pressureLoadPromise;
@@ -2673,10 +2674,10 @@
     if (window.PlaneGame) return Promise.resolve(true);
     if (planeLoadPromise) return planeLoadPromise;
     planeLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("plane-engine.js?v=1354"))
-      .then(() => loadScriptOnce("plane-render.js?v=1354"))
-      .then(() => loadScriptOnce("plane-feed.js?v=1354"))
-      .then(() => loadScriptOnce("plane-ui.js?v=1354"))
+      .then(() => loadScriptOnce("plane-engine.js?v=1355"))
+      .then(() => loadScriptOnce("plane-render.js?v=1355"))
+      .then(() => loadScriptOnce("plane-feed.js?v=1355"))
+      .then(() => loadScriptOnce("plane-ui.js?v=1355"))
       .then(() => true)
       .catch((e) => { planeLoadPromise = null; throw e; });
     return planeLoadPromise;
@@ -2788,8 +2789,8 @@
     if (window.Slots3D) return Promise.resolve(true);
     if (slots3dLoadPromise) return slots3dLoadPromise;
     slots3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("slots3d-engine.js?v=1354"))
-      .then(() => loadScriptOnce("slots3d.js?v=1354"))
+      .then(() => loadScriptOnce("slots3d-engine.js?v=1355"))
+      .then(() => loadScriptOnce("slots3d.js?v=1355"))
       .then(() => true)
       .catch((e) => { slots3dLoadPromise = null; throw e; });
     return slots3dLoadPromise;
@@ -2847,8 +2848,8 @@
     if (window.FishTable) return Promise.resolve(true);
     if (fishLoadPromise) return fishLoadPromise;
     fishLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishtable-engine.js?v=1354"))
-      .then(() => loadScriptOnce("fishtable.js?v=1354"))
+      .then(() => loadScriptOnce("fishtable-engine.js?v=1355"))
+      .then(() => loadScriptOnce("fishtable.js?v=1355"))
       .then(() => true)
       .catch((e) => { fishLoadPromise = null; throw e; });
     return fishLoadPromise;
@@ -2932,7 +2933,7 @@
     if (window.SwoopGame) return Promise.resolve(true);
     if (swoopLoadPromise) return swoopLoadPromise;
     swoopLoadPromise = loadPlayCanvasOnce()
-      .then(() => loadScriptOnce("swoop3d.js?v=1354"))
+      .then(() => loadScriptOnce("swoop3d.js?v=1355"))
       .then(() => true)
       .catch((e) => { swoopLoadPromise = null; throw e; });
     return swoopLoadPromise;
@@ -3014,8 +3015,8 @@
     if (window.FishShooter) return Promise.resolve(true);
     if (fishshooterLoadPromise) return fishshooterLoadPromise;
     fishshooterLoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishshooter-engine.js?v=1354")) // OWN engine (decoupled from Reef's fishtable-engine.js)
-      .then(() => loadScriptOnce("fishshooter.js?v=1354"))
+      .then(() => loadScriptOnce("fishshooter-engine.js?v=1355")) // OWN engine (decoupled from Reef's fishtable-engine.js)
+      .then(() => loadScriptOnce("fishshooter.js?v=1355"))
       .then(() => true)
       .catch((e) => { fishshooterLoadPromise = null; throw e; });
     return fishshooterLoadPromise;
@@ -3103,8 +3104,8 @@
     if (window.FishShooter2) return Promise.resolve(true);
     if (fishshooter2LoadPromise) return fishshooter2LoadPromise;
     fishshooter2LoadPromise = loadPixiOnce()
-      .then(() => loadScriptOnce("fishshooter2-engine.js?v=1354"))
-      .then(() => loadScriptOnce("fishshooter2.js?v=1354"))
+      .then(() => loadScriptOnce("fishshooter2-engine.js?v=1355"))
+      .then(() => loadScriptOnce("fishshooter2.js?v=1355"))
       .then(() => true)
       .catch((e) => { fishshooter2LoadPromise = null; throw e; });
     return fishshooter2LoadPromise;
@@ -3186,7 +3187,7 @@
     if (window.CoinFlip3D) return Promise.resolve(true);
     if (coinFlip3dLoadPromise) return coinFlip3dLoadPromise;
     coinFlip3dLoadPromise = loadThreeOnce()
-      .then(() => loadScriptOnce("coinflip3d.js?v=1354"))
+      .then(() => loadScriptOnce("coinflip3d.js?v=1355"))
       .then(() => true)
       .catch((e) => { coinFlip3dLoadPromise = null; throw e; });
     return coinFlip3dLoadPromise;
@@ -3213,7 +3214,7 @@
   function loadRail3dOnce() {
     if (window.Rail3D) return Promise.resolve(true);
     if (rail3dLoadPromise) return rail3dLoadPromise;
-    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1354")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
+    rail3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice3d.js?v=1355")).then(() => true).catch((e) => { rail3dLoadPromise = null; throw e; });
     return rail3dLoadPromise;
   }
   function buildRail3d() {
@@ -3234,7 +3235,7 @@
   function loadDice2_3dOnce() {
     if (window.TwoDice3D) return Promise.resolve(true);
     if (d2_3dLoadPromise) return d2_3dLoadPromise;
-    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1354")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
+    d2_3dLoadPromise = loadThreeOnce().then(() => loadScriptOnce("dice2-3d.js?v=1355")).then(() => true).catch((e) => { d2_3dLoadPromise = null; throw e; });
     return d2_3dLoadPromise;
   }
   function buildDice2_3d() {
@@ -3882,10 +3883,12 @@
   }
 
   // ── Game switcher ("change the channel") ──
-  // Poker is temporarily disabled (hidden from the channel bar) — to be revisited.
-  const GAME_CHANNEL = { flip: 8, dice: 9, twodice: 10, crash: 11, pressure: 13, plane: 14, slots3d: 15, blackjack: 16, fish: 17, swoop: 18, fishshooter: 19, fishshooter2: 20, baccarat: 21 };
-  const GAME_TITLE = { flip: "CRYPTO TV FLIP", dice: "CRYPTO TV 0-100", twodice: "CRYPTO TV DICE #2", crash: "CRYPTO TV CRASH", pressure: "BALLOON POP", plane: "CRYPTO TV PLANE", slots3d: "GEM VAULT", blackjack: "BLACKJACK", fish: "REEF RAIDERS", swoop: "SKY SWOOP", fishshooter: "FISH SHOOTER", fishshooter2: "FISH SHOOTER V2", baccarat: "BACCARAT" };
-  const GAME_ORDER = ["flip", "dice", "twodice", "crash", "pressure", "plane", "slots3d", "fish", "fishshooter", "fishshooter2", "blackjack", "baccarat"]; // Sky Swoop hidden for now; fishshooter2/baccarat removed at boot when their kill switches are off
+  // Poker (CH 22) is a full-width LIVE PvP view (no TV iframe). GAME_CHANNEL carries a nominal 22 so
+  // switchGame's `!GAME_CHANNEL[game]` guard passes; the poker branch routes to PokerUI.show(), NOT
+  // TV.changeChannel. Gated by POKER_ENABLED — spliced out of GAME_ORDER + tile hidden at boot when off.
+  const GAME_CHANNEL = { flip: 8, dice: 9, twodice: 10, crash: 11, pressure: 13, plane: 14, slots3d: 15, blackjack: 16, fish: 17, swoop: 18, fishshooter: 19, fishshooter2: 20, baccarat: 21, poker: 22 };
+  const GAME_TITLE = { flip: "CRYPTO TV FLIP", dice: "CRYPTO TV 0-100", twodice: "CRYPTO TV DICE #2", crash: "CRYPTO TV CRASH", pressure: "BALLOON POP", plane: "CRYPTO TV PLANE", slots3d: "GEM VAULT", blackjack: "BLACKJACK", fish: "REEF RAIDERS", swoop: "SKY SWOOP", fishshooter: "FISH SHOOTER", fishshooter2: "FISH SHOOTER V2", baccarat: "BACCARAT", poker: "POKER" };
+  const GAME_ORDER = ["flip", "dice", "twodice", "crash", "pressure", "plane", "slots3d", "fish", "fishshooter", "fishshooter2", "blackjack", "baccarat", "poker"]; // Sky Swoop hidden for now; fishshooter2/baccarat/poker removed at boot when their kill switches are off
   if (!FS2_ENABLED()) { // kill switch: hide the V2 tile + drop it from the rotation (v1 untouched)
     { const t = $("ch-fishshooter2"); if (t) t.hidden = true; }
     { const i = GAME_ORDER.indexOf("fishshooter2"); if (i >= 0) GAME_ORDER.splice(i, 1); }
@@ -3893,6 +3896,11 @@
   if (!BACCARAT_ENABLED()) { // kill switch: hide the Baccarat tile + drop it from the rotation (FS2 pattern)
     { const t = $("ch-baccarat"); if (t) t.hidden = true; }
     { const i = GAME_ORDER.indexOf("baccarat"); if (i >= 0) GAME_ORDER.splice(i, 1); }
+  }
+  if (POKER_ENABLED()) { // kill switch (default OFF at deploy): SHOW the Poker tile only when enabled (baccarat pattern, inverted — the tile ships `hidden`)
+    { const t = $("ch-poker"); if (t) t.hidden = false; }
+  } else {
+    { const i = GAME_ORDER.indexOf("poker"); if (i >= 0) GAME_ORDER.splice(i, 1); }
   }
   function paintGameTabs(game) {
     document.body.classList.toggle("game-dice", game === "dice");
@@ -3960,13 +3968,13 @@
     document.body.classList.toggle("bac-channel", game === "baccarat"); // baccarat felt owns its balance too — hide demo credits
     if (game === "blackjack") { const wl = $("bj-wallet"); if (wl) wl.textContent = "🪪 " + short(account || bjGuestId()); }
     if (game === "baccarat") { const wl = $("bac-wallet"); if (wl) wl.textContent = "🪪 " + short(account || bjGuestId()); } // one guest identity spans both tables (bjGuestId reused)
-    // Poker is its own full-width view (no TV); everything else uses the TV channel.
-    if (game === "poker") { if (window.PokerUI) PokerUI.show(); }
+    // Poker is its own full-width LIVE PvP view (no TV); everything else uses the TV channel.
+    if (game === "poker") { if (window.PokerUI) { initPoker(); PokerUI.show(); } } // re-init to pick up a token session bound since boot
     else { if (window.PokerUI) PokerUI.hide(); if (window.TV && TV.changeChannel) TV.changeChannel(GAME_CHANNEL[game]); }
     if (game === "flip") { ensureCoinFlip3dReady(); }
     else if (game === "dice") { refreshDiceHouse(); diceReadouts(); ensureDice3dReady(); }
     else if (game === "twodice") { refreshDiceHouse(); twoDiceReadouts(); ensureTwoDiceSupport(); ensureDice2_3dReady(); }
-    else if (game === "crash") { if (!window.CrashRender) loadScriptOnce("crash-render.js?v=1354").then(() => { try { if (window.TV && TV._crashIdle && currentGame === "crash") TV._crashIdle(); } catch (e) {} }).catch(() => {}); refreshDiceHouse(); crashReadouts(); ensureCrashSupport(); }
+    else if (game === "crash") { if (!window.CrashRender) loadScriptOnce("crash-render.js?v=1355").then(() => { try { if (window.TV && TV._crashIdle && currentGame === "crash") TV._crashIdle(); } catch (e) {} }).catch(() => {}); refreshDiceHouse(); crashReadouts(); ensureCrashSupport(); }
     else if (game === "pressure") { ensurePressureReady(); }
     else if (game === "plane") { refreshDiceHouse(); ensurePlaneReady(); }
     else if (game === "slots3d") { ensureSlots3dReady(); }
@@ -4082,7 +4090,7 @@
       const tableWallet = account || bjGuestId();
       // &r=<nonce> in the QUERY forces a real iframe reload (so the felt re-reads the #bjsession from the
       // hash and re-sends its hello → the server re-binds the table to the token session).
-      let src = "blackjack.html?tv=1&v=1354&r=" + (++bjFeltNonce % 8) + "&guest=" + encodeURIComponent(tableWallet); // %8: consecutive nonces still ALWAYS differ (n vs n+1 mod 8) so the iframe truly reloads, but the URL set is bounded → the SW's ?v= cache-first path can actually HIT (instant felt load from cache) instead of storing a new never-reusable copy per open
+      let src = "blackjack.html?tv=1&v=1355&r=" + (++bjFeltNonce % 8) + "&guest=" + encodeURIComponent(tableWallet); // %8: consecutive nonces still ALWAYS differ (n vs n+1 mod 8) so the iframe truly reloads, but the URL set is bounded → the SW's ?v= cache-first path can actually HIT (instant felt load from cache) instead of storing a new never-reusable copy per open
       let tokenHash = "";
       // PREFERRED real-money path: fund the table with the player's TOKEN session (chips = tokens, no lock step).
       if (account && window.TokenMode && TokenMode.active && TokenMode.active() && TokenMode.session) {
@@ -4372,7 +4380,7 @@
     // + dead-bridge screen), re-init it so it binds to the account + token session. Throttled so it can't loop.
     try {
       const f0 = $("bj-frame");
-      // v13.54: the felt is ALSO stale if it's bound to a DIFFERENT (or no) token bjsession than the live one —
+      // v13.55: the felt is ALSO stale if it's bound to a DIFFERENT (or no) token bjsession than the live one —
       // e.g. it loaded as a $0 GUEST and the post-buy-in re-bind raced the just-created session, so the seat
       // shows $0 and the bet controls never appear until a manual ⟳ Reload. Reloading it (via the proven
       // ensureBlackjackReady) re-funds the seat from the token session AUTOMATICALLY. Guarded by !bjDockLive
@@ -4543,7 +4551,7 @@
     if (f && !f.getAttribute("src") && account && window.TokenMode && TokenMode.resumePending && TokenMode.resumePending()) return;
     if (f && !f.getAttribute("src")) {
       const tableWallet = account || bjGuestId(); // REUSE the blackjack guest identity — one guest + one demo balance spans both tables
-      let src = "baccarat.html?tv=1&v=1354&r=" + (++bacFeltNonce % 8) + "&guest=" + encodeURIComponent(tableWallet); // %8 bounds the URL set so the SW ?v= cache can HIT (bj pattern)
+      let src = "baccarat.html?tv=1&v=1355&r=" + (++bacFeltNonce % 8) + "&guest=" + encodeURIComponent(tableWallet); // %8 bounds the URL set so the SW ?v= cache can HIT (bj pattern)
       let tokenHash = "";
       // Real-money path: fund the table with the player's TOKEN session (chips = tokens; hello frame identical to BJ).
       if (account && window.TokenMode && TokenMode.active && TokenMode.active() && TokenMode.session) {
@@ -4639,7 +4647,7 @@
     const maxAmt = Math.max(10, Math.floor(Math.min(bal, maxHeadroom) / 5) * 5);
     bacChip = Math.max(10, Math.min(maxAmt, Math.round(bacChip / 5) * 5)); // clamp the dial into today's range
     const persistAmt = () => { try { localStorage.setItem("bacChip", String(bacChip)); } catch (e) {} }; // storage event syncs the felt's tap amount
-    try { if (localStorage.getItem("bacChip") !== String(bacChip)) persistAmt(); } catch (e) {} // persist the clamp so the felt's tap amount can never exceed this readout (review v13.54 #1)
+    try { if (localStorage.getItem("bacChip") !== String(bacChip)) persistAmt(); } catch (e) {} // persist the clamp so the felt's tap amount can never exceed this readout (review v13.55 #1)
     // 2) slider row built first so the chip handlers can reference it (inserted under the tray)
     const amtRow = document.createElement("div"); amtRow.className = "bac-amtrow";
     const sl = document.createElement("input"); sl.type = "range"; sl.className = "slider bac-amt";
@@ -4788,19 +4796,19 @@
     if (d.roomId) { bacRoomId = d.roomId; const sb = $("bac-share"); if (sb) sb.disabled = false; } // enable Share once at a table
     if (currentGame === "baccarat") renderBacDock(d);
   });
-  // Poker chips are a session-local pool seeded from your in-game balance.
-  // Phase 1 (vs house bots) plays out client-side; net results are NOT yet
-  // written on-chain — the trusted house-signed settlement lands with the
-  // authoritative server in the multiplayer phase.
-  let pokerPoolUsd = null;
-  function pokerSeedUsd() { return gameWei > 0n ? weiToUsd(gameWei) : 0; }
-  function pokerAvailUsd() { return pokerPoolUsd != null ? pokerPoolUsd : pokerSeedUsd(); }
+  // Poker (CH 22) is SERVER-AUTHORITATIVE LIVE PvP — the felt is a thin renderer of the server's
+  // per-viewer masked snapshots over the pk: WebSocket. There is NO client-side pool: buy-ins debit
+  // and cash-outs credit the same token bridge session the whole site shares (bjSession), or a demo
+  // guest bank. We just hand PokerUI our identity (wallet + token session) + display helpers.
+  function pokerTokenSession() {
+    try { if (account && window.TokenMode && TokenMode.active && TokenMode.active() && TokenMode.session) { const si = TokenMode.session(); if (si && si.sessionId) return { sessionId: si.sessionId, sessionToken: si.sessionToken || "" }; } } catch (e) {}
+    return null;
+  }
   function initPoker() {
     if (!window.PokerUI) return;
-    PokerUI.config({
-      getBalanceUsd: pokerAvailUsd,
-      onSit: (amt) => { if (pokerPoolUsd == null) pokerPoolUsd = pokerSeedUsd(); pokerPoolUsd = Math.max(0, pokerPoolUsd - amt); },
-      onLeave: (amt) => { if (pokerPoolUsd == null) pokerPoolUsd = pokerSeedUsd(); pokerPoolUsd += amt; },
+    PokerUI.init({
+      wallet: account || bjGuestId(), // one guest identity spans blackjack/baccarat/poker
+      tokenSession: pokerTokenSession(),
       usd: (n) => usd(n),
       toast: (m, t) => toast(m, t),
     });
@@ -4894,12 +4902,13 @@
     } catch (e) {}
     if (saved === "slots") saved = "slots3d";
     if (saved === "baccarat" && !BACCARAT_ENABLED()) saved = "flip"; // kill switch off: a stale ctf_game="baccarat" falls back cleanly
+    if (saved === "poker" && !POKER_ENABLED()) saved = "flip"; // ditto for a stale ctf_game="poker" when the poker kill switch is off
     if (!GAME_CHANNEL[saved]) saved = "flip";
     currentGame = saved;
     paintGameTabs(saved);
-    if (saved === "poker" && window.PokerUI) PokerUI.show();
+    if (saved === "poker" && window.PokerUI) { initPoker(); PokerUI.show(); }
     if (window.TV) TV._activeChannel = GAME_CHANNEL[saved] || 8;
-    if (saved === "crash") { if (window.TV && TV._crashIdle) { try { TV._crashIdle(); } catch (e) {} } if (!window.CrashRender) loadScriptOnce("crash-render.js?v=1354").then(() => { try { if (window.TV && TV._crashIdle && currentGame === "crash") TV._crashIdle(); } catch (e) {} }).catch(() => {}); }
+    if (saved === "crash") { if (window.TV && TV._crashIdle) { try { TV._crashIdle(); } catch (e) {} } if (!window.CrashRender) loadScriptOnce("crash-render.js?v=1355").then(() => { try { if (window.TV && TV._crashIdle && currentGame === "crash") TV._crashIdle(); } catch (e) {} }).catch(() => {}); }
     // Balloon Pop needs its engine built + activated on reload too (enterDemo,
     // which runs just after, flips it to enabled once it exists).
     if (saved === "pressure") ensurePressureReady();
@@ -6571,7 +6580,7 @@
     // them AFTER first paint. loadScriptOnce dedupes; scenes.js self-boots on inject (readyState !== "loading").
     // The window.* guards make this a no-op if the classic <script defer> tags are still in index.html
     // (never double-execute the IIFEs — a second chiptune.js run would rebind window.Chiptune mid-song).
-    { const goExtras = () => { if (!window.WinScenes) loadScriptOnce("scenes.js?v=1354").catch(() => {}); if (!window.Chiptune) loadScriptOnce("chiptune.js?v=1354").then(() => { try { syncSoundBtn(); } catch (e) {} }).catch(() => {}); };
+    { const goExtras = () => { if (!window.WinScenes) loadScriptOnce("scenes.js?v=1355").catch(() => {}); if (!window.Chiptune) loadScriptOnce("chiptune.js?v=1355").then(() => { try { syncSoundBtn(); } catch (e) {} }).catch(() => {}); };
       if (document.readyState === "complete") setTimeout(goExtras, 0);
       else window.addEventListener("load", () => setTimeout(goExtras, 0), { once: true }); }
     wireUI();

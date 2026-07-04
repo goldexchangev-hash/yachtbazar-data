@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#0c0d16" />
     <meta name="referrer" content="same-origin" />
-    <link rel="manifest" href="manifest.webmanifest?v=1354" />
+    <link rel="manifest" href="manifest.webmanifest?v=1355" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -35,7 +35,8 @@
       <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Press+Start+2P&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
     </noscript>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=1354" />
+    <link rel="stylesheet" href="styles.css?v=1355" />
+    <link rel="stylesheet" href="poker.css?v=1355" /><!-- Poker (CH 22) felt — baccarat-matched visuals, gated by POKER_ENABLED -->
   </head>
   <body>
     <!-- Animated backdrop -->
@@ -45,13 +46,13 @@
     <!-- ───────────────────────── Header ───────────────────────── -->
     <header class="topbar">
       <button id="rail-toggle" class="rail-toggle" aria-label="Open menu" title="Menu">☰</button>
-      <span class="build-tag-m" id="build-tag-m" title="Live build version — confirms the deploy is up to date">v13.54</span>
+      <span class="build-tag-m" id="build-tag-m" title="Live build version — confirms the deploy is up to date">v13.55</span>
       <div class="brand">
         <span class="brand-tv">📺</span>
         <span class="brand-name">CRYPTO<span class="brand-accent"> TV</span> FLIP</span>
         <span class="brand-live"><i></i>ON&nbsp;AIR</span>
         <span class="testnet-chip" title="This game runs on the Sepolia test network with play-money ETH. Never use real funds.">TESTNET · play money</span>
-        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v13.54</span>
+        <span class="build-tag" id="build-tag" title="Live build version — confirms the deploy is up to date">v13.55</span>
       </div>
       <div class="topbar-right">
         <div class="tb-tools">
@@ -488,7 +489,7 @@
                 <!-- Promo intro reel — autoplays once (muted) on first load, then fades
                      to black and hands off to the game. Replay button under the TV. -->
                 <!-- promo DISABLED for now (owner) — preload none so the reel isn't even downloaded; re-enable via PROMO_ENABLED in app.js -->
-                <video id="promo-video" class="promo-video hidden" playsinline preload="none" muted src="promo.mp4?v=1354"></video>
+                <video id="promo-video" class="promo-video hidden" playsinline preload="none" muted src="promo.mp4?v=1355"></video>
 
                 <!-- Shown while a bet tx is being signed + mined (esp. slow on mobile) -->
                 <div id="tv-pending" class="tv-pending hidden">⏳ SENDING BET…<br />confirm in your wallet, then hold tight</div>
@@ -1446,44 +1447,11 @@
       </aside>
     </main>
 
-    <!-- ───────────── Poker room (CH 11) — full-width, no TV ───────────── -->
-    <section class="poker-view" id="poker-view" hidden>
-      <div class="poker-topline">
-        <div><span class="pk-title">♠ POKER ROOM</span> <span class="pk-sub">No-Limit Texas Hold'em · vs the house</span></div>
-        <div class="pk-house">Your chips: <b id="poker-chips">$0</b> &nbsp;·&nbsp; <button id="poker-leave" class="btn btn-ghost" hidden>Leave table</button></div>
-      </div>
-      <div class="poker-table" id="poker-table">
-        <div class="poker-rail">
-          <div class="poker-center">
-            <div class="poker-pot" id="poker-pot">POT $0</div>
-            <ol class="poker-board" id="poker-board"></ol>
-            <div class="poker-status" id="poker-status">Take a seat to start playing.</div>
-          </div>
-          <!-- seats injected by poker-ui.js -->
-        </div>
-      </div>
-      <div class="poker-herozone">
-        <div class="poker-hole" id="poker-hole"></div>
-        <div class="poker-hint" id="poker-hint"></div>
-        <div class="poker-actions" id="poker-actions"></div>
-      </div>
-
-      <!-- buy-in modal -->
-      <div class="poker-modal hidden" id="poker-buyin" role="dialog" aria-modal="true" aria-labelledby="poker-buyin-title">
-        <div class="poker-card-modal">
-          <h3 id="poker-buyin-title">Sit down</h3>
-          <p>Buy in with your in-game balance. Play No-Limit Hold'em against the house bots — stand up any time and your chips settle back to your balance.</p>
-          <div class="pm-row">
-            <input id="poker-buyin-range" type="range" min="0" max="100" step="1" value="50" aria-label="Buy-in amount" />
-            <span class="pm-amt" id="poker-buyin-amt">$0</span>
-          </div>
-          <div class="bankroll-actions" style="justify-content:center;">
-            <button id="poker-buyin-cancel" class="btn btn-ghost">Cancel</button>
-            <button id="poker-buyin-go" class="btn btn-primary">Sit &amp; deal</button>
-          </div>
-        </div>
-      </div>
-    </section>
+    <!-- ───────────── Poker room (CH 22) — full-width LIVE PvP, no TV ─────────────
+         The whole view (lobby / felt / create+buy-in+host modals) is built by
+         poker-ui.js buildShell() into this container. It renders per-viewer masked
+         server snapshots (pk:state) — a THIN renderer, no client game logic. -->
+    <section class="poker-view" id="poker-view" hidden></section>
 
     <!-- Toast -->
     <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
@@ -1653,23 +1621,22 @@
     </aside>
 
     <script defer src="vendor/ethers.umd.min.js?v=ethers-1"></script>
-    <script defer src="config.js?v=1354"></script>
-    <script defer src="contract.js?v=1354"></script>
+    <script defer src="config.js?v=1355"></script>
+    <script defer src="contract.js?v=1355"></script>
     <!-- chiptune.js + scenes.js (119.5KB raw / 33.6KB br) are fetched AFTER first paint by app.js goExtras (window load) — music is gesture-gated and win-scene art is bet-gated, so neither is needed before first interaction; every call site is window.Chiptune/window.WinScenes-guarded -->
-    <script defer src="tv.js?v=1354"></script>
-    <!-- P6: poker is a hidden, unopenable channel (absent from GAME_CHANNEL, no UI/URL entry) — its 3 scripts
-         (~42KB) were parsed by every visitor for nothing. Removed. Every PokerUI call site is `if (window.PokerUI)`
-         -guarded, so this is inert. To re-enable: lazy-load these via loadScriptOnce + add a GAME_CHANNEL entry.
-    <script defer src="poker-engine.js?v=1354"></script>
-    <script defer src="poker-bots.js?v=1354"></script>
-    <script defer src="poker-ui.js?v=1354"></script> -->
-    <script defer src="crash-engine.js?v=1354"></script>
+    <script defer src="tv.js?v=1355"></script>
+    <script defer src="crash-engine.js?v=1355"></script>
     <!-- crash-render.js (43.8KB raw / 13.6KB br) is lazy-loaded by app.js on CH11 crash-channel entry; every tv.js call site is window.CrashRender-guarded and _ensureCrash retries -->
-    <script defer src="profile.js?v=1354"></script>
-    <script defer src="token-client.js?v=1354"></script>
-    <script defer src="token-mode.js?v=1354"></script>
-    <script defer src="crash-rounds-client.js?v=1354"></script>
+    <script defer src="profile.js?v=1355"></script>
+    <script defer src="token-client.js?v=1355"></script>
+    <script defer src="token-mode.js?v=1355"></script>
+    <script defer src="crash-rounds-client.js?v=1355"></script>
     <script defer src="fullscreen-util.js"></script><!-- shared FsUtil for every game's fullscreen (no ?v= — network-first in the SW; maintainer bumps). Must be before app.js: its orientationchange listener opens the Chromium no-gesture grace window ahead of the tilt handlers -->
-    <script defer src="app.js?v=1354"></script>
+    <!-- Poker (CH 22) — LIVE PvP. The client is a THIN RENDERER of the server's per-viewer masked
+         snapshots (no local engine/bots): poker-net.js (pk: WebSocket) + poker-ui.js (felt/lobby/
+         create/host). Gated by window.POKER_ENABLED (config.js). AFTER fullscreen-util.js (uses FsUtil). -->
+    <script defer src="poker-net.js?v=1355"></script>
+    <script defer src="poker-ui.js?v=1355"></script>
+    <script defer src="app.js?v=1355"></script>
   </body>
 </html>
