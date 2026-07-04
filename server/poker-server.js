@@ -1925,6 +1925,14 @@ function attachPoker(opts) {
     let st = null; try { st = persist.load() || {}; } catch (e) { return { drained: 0 }; }
     for (const [w, n] of (st.pokerOwed || [])) { const c = Math.round(Number(n) || 0); if (c > 0) pokerOwed.set(norm(w), c); }
     for (const [k, n] of (st.creatorRakeDaily || [])) { const c = Math.round(Number(n) || 0); if (c > 0) creatorRakeDaily.set(String(k), c); }
+    // CLEAR the persisted table list to disk NOW — BEFORE crediting any seat. Each tokenCredit below is
+    // durable the instant it books (the bridge save()s synchronously) but applyExternal has no idempotency
+    // key, so if the batched clear ran only AFTER the loop, a crash mid-drain would reload the stale table
+    // list on the next boot and re-credit every already-paid seat (a replayable house-funded DOUBLE-PAY).
+    // On boot the live rooms map is empty, so persistSnapshot() already serializes tables:[] — this flush
+    // just makes that durable up front (the hydrated pokerOwed/creatorRakeDaily are kept). Worst case after
+    // this point is a rare under-pay of a not-yet-credited seat on a mid-loop crash, which is house-safe.
+    flushPersist();
     let drained = 0;
     for (const tbl of (st.tables || [])) {
       // creator rake accrued but unpaid at the crash → owe it to the creator wallet, but subject to the
@@ -2619,14 +2627,20 @@ if (require.main === module) {
       const bridge = makeStubBridge(2000);
       bridge.open("s9", W1, 100); // session still open on-chain, $0 held (bought in), a table stack of $80 was live
       const store = { tables: [{ id: "PK-99", creatorWallet: null, creatorRakeChips: 0, seats: [{ seat: 0, wallet: W1, sid: "s9", stack: 8000, cumulativeBuyInChips: 10000 }] }], pokerOwed: [], creatorRakeDaily: [] };
-      const persist = { load: () => store, save: (o) => { store.saved = o; } };
+      // DURABLE mock: load returns the last SAVED snapshot (like a real disk) so a re-boot sees the cleared list
+      const persist = { load: () => store.saved || store, save: (o) => { store.saved = JSON.parse(JSON.stringify(o)); } };
       const pk = attachPoker(Object.assign({ persist, timers: { act: 20000, showdown: 0, between: 0, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 } }, clk2));
       const tokBefore = bridge._get("s9").tokens; // 0
       const res = pk.setTokenLedger({ tokensOf: bridge.tokensOf, applyNet: bridge.applyPokerNet });
       const tokAfter = bridge._get("s9").tokens;
       eq("(21) boot-drain force-cashed-out the orphaned seat's $80 stack back to its session", res && res.drained === 1 && Math.round((tokAfter - tokBefore) * 100) === 8000);
       eq("(21) the drained binding is unbound (no stranded lock)", !pk.hasLiveHand(W1));
-      eq("(21) persisted table list cleared after the drain (idempotent — no re-drain)", Array.isArray(store.saved.tables) && store.saved.tables.length === 0);
+      eq("(21) persisted table list cleared after the drain (idempotent — no re-drain)", Array.isArray(store.saved.tables) && !store.saved.tables.some((t) => (t.seats || []).some((s) => s && s.wallet === W1)));
+      // HUNT6: a RE-BOOT (crash-restart) over the now-flushed persist must NOT re-credit the already-paid seat (no house-funded double-pay)
+      const reBefore = bridge._get("s9").tokens;
+      const pk2 = attachPoker(Object.assign({ persist, timers: { act: 20000, showdown: 0, between: 0, idleEmpty: 999999, idleSeated: 999999, botMin: 0, botMax: 0 } }, clk2));
+      const res2 = pk2.setTokenLedger({ tokensOf: bridge.tokensOf, applyNet: bridge.applyPokerNet });
+      eq("(21) HUNT6 a RE-BOOT does NOT re-drain the already-credited seat (no double-pay)", res2.drained === 0 && Math.round((bridge._get("s9").tokens - reBefore) * 100) === 0);
     }
 
     // ── 22: a SEATED-creator hand routes the creator-half to HOUSE (H6) ──

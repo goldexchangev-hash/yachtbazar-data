@@ -333,7 +333,15 @@
   }
   let _resyncTries = 0; // reconnect-collision retry counter; reset once a real snapshot lands (onState)
   function subscribe() { if (net) net.send({ type: "pk:lobby:subscribe" }); }
-  function resync() { if (net && atTableId) net.send({ type: "pk:table:join", tableId: atTableId }); } // re-pull our masked snapshot after a reconnect (RESYNC path is a no-op join for our own seat)
+  let _watchPw = ""; // password captured when watching a private table, replayed on a spectator reconnect
+  function resync() {
+    if (!net || !atTableId) return;
+    // Re-pull our masked snapshot after a reconnect. A SEATED player re-joins (the server RESYNC path is a
+    // no-op for their own seat). A SPECTATOR (mySeatIndex<0) must re-WATCH, NOT join — a bare join with no
+    // buyIn would default a guest to DEMO_BUYIN_DEFAULT and involuntarily SEAT + charge the watcher.
+    if (mySeatIndex < 0) net.send({ type: "pk:table:watch", tableId: atTableId, pw: _watchPw });
+    else net.send({ type: "pk:table:join", tableId: atTableId });
+  }
 
   function guestId() {
     try {
@@ -507,7 +515,7 @@
     // a PRIVATE table now gates spectating on the password too — ask for it (mirrors the join flow)
     let pw = "";
     if (r && r.private) { pw = prompt("This table is private — enter its password to watch:") || ""; if (!pw) return; }
-    atTableId = r.id; mySeatIndex = -1;
+    atTableId = r.id; mySeatIndex = -1; _watchPw = pw; // remember the pw so a spectator reconnect can re-watch
     if (net) net.send({ type: "pk:table:watch", tableId: r.id, pw: pw });
   }
   function leaveTable() {
