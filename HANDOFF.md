@@ -1,7 +1,35 @@
 # Crypto TV — Project Handoff
 
 Everything another AI (or developer) needs to continue this project flawlessly.
-Last updated at build **v12.05**.
+Last updated at build **v13.89**.
+
+> **NOTE FOR THE NEXT AI (v13.89, 2026-07-04) — SESSION HANDOFF + current-state reset. READ THIS FIRST.**
+>
+> ⚠️ **The prose in `START-HERE-NEW-AI.md` and everything in this file BELOW this note is STALE** (frozen ~v11.74 /
+> v12.05 — it still says "poker is hidden", "v11.74", "Blackjack bridge gated off"). Since then the site advanced to
+> **v13.89** and a LOT shipped (token bridge LIVE, Baccarat, Fish Shooter V2, Poker). **The authoritative, current
+> project knowledge lives in the Claude Code MEMORY system** (`~/.claude/projects/.../memory/` — esp. `poker-rebuild.md`,
+> `crypto-tv-token-mode-build.md`, `baccarat-game.md`, `fishshooter-v2-rebuild.md`, `code-like-fable.md`, `MEMORY.md`).
+> **Trust the CODE + memory over the stale prose.** If you're a fresh Claude, MEMORY.md auto-loads — start there.
+>
+> **CURRENT LIVE STATE** — build **v13.89**, https://tv-crypto-flip.onrender.com, branch `claude/ethereum-betting-game-vrf-2dq50k`, GitHub `goldexchangev-hash/yachtbazar-data`, Render service `tv-crypto-flip` (auto-deploys on push):
+> - **REAL money is LIVE** via a **server commit-reveal token bridge (NO Chainlink VRF)** — `server/token-http.js` + `server/token-bridge.js`. Blackjack (CH16), **Baccarat (CH21)**, **Poker (CH22)**, and the on-chain flip/dice/crash games all settle real Sepolia value through it. The old `bridge-server.js` is superseded — do NOT re-enable it.
+> - **New channels since the stale map:** CH16 Blackjack (real, multiplayer), CH20 Fish Shooter V2, CH21 **Baccarat** (real), CH22 **Poker** (real PvP No-Limit Hold'em — now LIVE, no longer hidden). Kill switches (env): `POKER_ENABLED`, `FS2_ENABLED`, `PROMO_ENABLED=false`. Max-win cap `TOKEN_MAX_WIN_USD=$2000` (house ≈$3,500 — raise as it grows).
+> - ⚠️ **Owner env must point `TOKEN_BRIDGE_FILE` / `BJ_BANK_FILE` / `POKER_STATE_FILE` at the MOUNTED Render disk** (not ephemeral `__dirname`). Poker's boot-drain now fails-closed on an unwritable disk (see below).
+>
+> **THIS SESSION (v13.85→v13.89): POKER adversarial hardening — 9 real bugs found + fixed + deployed.** 2 CRIT fold-cashout double-spend (`reconcileLiveStack`); HIGH fractional-seat strand (`Number.isInteger`); MED stranded pokerOwed (drain at `bindToken`); HIGH case-variant **multi-seat collusion** (`seatOfWallet` now `norm()` both sides); CRIT **demo→real house drain** (cash-out was routed by live bind, not seat origin); CRIT boot-drain barrier was **inert** in prod (relied on a swallowed throw); HIGH boot-drain gate omitted the creator-rake credit source. Converged after **7 deep scans + a whole-path end-to-end trace** (both returned 0 findings). Self-tests **126/126** (`node server/poker-server.js`).
+>
+> **⚠️ CRITICAL POKER INVARIANTS — do not regress (each was a real money bug this session):**
+> 1. **Money routes by SEAT ORIGIN, never the live wallet bind.** `isRealSeat(s)=!!(s._sid && realWallet(s.wallet))`. `chipsScale` / `bank.get|credit|debit` / `isTokenWallet` ALL key on the LIVE 0x-address/bind, which can DIVERGE from how a stack was funded → **any NEW money path MUST key on `isRealSeat(s)` / `s._sid`, never the live bind**, or the demo→real drain reopens. A demo-origin seat cashes to `_demoBank` **directly** (bypassing the wallet-aware `bank`).
+> 2. **The boot-drain fail-closed barrier (`hydrateAndBootDrain`) is the single most fragile subsystem** — 3 consecutive self-regressions lived here. `doSaveStrict` MUST use the NON-swallowing `pokerPersist.saveStrict` (server.js), and the `willCredit` gate MUST enumerate EVERY credit the drain loop books (today: real-seat stack>0 **OR** unpaid non-house creator-rake). Adding a credit source ⇒ update the gate.
+> 3. **Identity is case-insensitive everywhere** — `seatOfWallet` and all wallet comparisons use `norm()` (lowercase); `ws.wallet` is stored case-preserved so the *comparisons* must normalize.
+> 4. **Rake is the ONLY chip-sink** (Σ real-seat nets === −totalRake). Per-socket masked snapshots (mask by SOCKET→seat identity, never a spoofable `m.wallet`). **Flush-before/around-credit** (`applyExternal` save()s synchronously with NO idempotency key). A poker throw must NEVER crash the shared Node process.
+>
+> **STANDING RULE (hard-won):** run at least ONE **deep scan** (adversarial fleet, not a quick hunt) after ANY poker change — **3 of the last 4 scans found a real CRIT/HIGH *after* a prior "clean" checkpoint**, and ~1/3 of findings are inert/regressed PRIOR fixes. A fail-closed fix is worthless if a wrapper eats its signal, and a test that *injects* the signal masks the gap — trace every fail-closed signal through the REAL wiring, test the ACTUAL failure mode, keep a `self-regression` dimension. (Full method: memory `code-like-fable.md`; full poker log: `poker-rebuild.md`; spec: `crypto-tv-tools/poker-spec.md`.)
+>
+> **OPEN / NEXT:** the one thing code-tracing can't substitute — a **live 2-wallet smoke test** on the real URL (connect two wallets → buy-in → play a raked hand → cash-out → Recover) to confirm the on-chain settle end-to-end. Kill switch `POKER_ENABLED=false` reverts poker instantly.
+>
+> **DEPLOY DISCIPLINE (poker/client):** `node --check` touched JS → run the co-located poker self-tests → bump `?v=NNNN` in `index.html` + `ctf-vX` in `sw.js` → commit (root-cause + fix + verification) → push (branch auto-deploys) → watch the live `v=NNNN`. Server-only changes still need a Render restart (push does it). Build 1389.
 
 > **NOTE FOR CLAUDE/CHATGPT (v12.05):** Fish Shooter mobile/load polish — 3 owner-reported bugs.
 > (1) **Black screen on first load** (no loading screen; refresh fixed it; phone OK): `tv.js#_fishshooterIdle`

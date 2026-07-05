@@ -1,5 +1,16 @@
 # START HERE — Onboarding for a new AI (Crypto TV)
 
+> ## ⚠️ THIS FILE IS STALE (frozen ~v11.74). Current build is **v13.89** (2026-07-04).
+> Much has shipped since: **real money is LIVE** via a server commit-reveal token bridge (NO VRF); new channels
+> **CH16 Blackjack, CH20 Fish Shooter V2, CH21 Baccarat, CH22 Poker** (Poker is **LIVE, no longer hidden**).
+> **Read `HANDOFF.md`'s top "NOTE FOR THE NEXT AI (v13.89)" entry FIRST** — it is the current source of truth. If
+> you are a fresh Claude Code session, the **memory system auto-loads `MEMORY.md`** — that + the topic files
+> (`poker-rebuild.md`, `crypto-tv-token-mode-build.md`, `baccarat-game.md`, `fishshooter-v2-rebuild.md`,
+> `code-like-fable.md`) are authoritative. The durable parts below (access, deploy, contract model, house rules)
+> still hold; the channel map / version / "poker hidden" / "bridge gated off" lines are OUTDATED — trust the code.
+>
+> ---
+
 > Hand this whole file to a fresh Claude (or any AI) to get fully up to speed on this
 > project and continue exactly where the last session left off. The durable parts (access,
 > deploy, channel map, contract model, math invariants, house rules) stay true; for the
