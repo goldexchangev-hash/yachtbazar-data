@@ -671,7 +671,8 @@
 
   function fmt(n) { return Math.round(n).toLocaleString("en-US"); }
   function loadCredits() {
-    const v = parseInt(localStorage.getItem(CREDITS_KEY), 10);
+    let v = NaN;
+    try { v = parseInt(localStorage.getItem(CREDITS_KEY), 10); } catch (e) {} // storage-disabled contexts (private mode / enterprise lock) throw on getItem — never let it abort the module init (the IIFE would never export window.CryptoReels → the slots channel would be permanently dead)
     return Number.isFinite(v) && v >= 0 ? v : 1000;
   }
   function saveCredits() { try { localStorage.setItem(CREDITS_KEY, String(Math.round(credits))); } catch (e) {} }
