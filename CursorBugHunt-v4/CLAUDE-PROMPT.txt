@@ -1,0 +1,50 @@
+You are continuing **Crypto TV v12.55** bug fix work after **Pass 7 / Bug Hunt v4**.
+
+## Mission
+
+1. Read **`CursorBugHunt-v4/REPORT.md`** (23 new findings on v12.55 baseline).
+2. Read **`AGENTS.md`** — coordination hub (probe gate + fix rules).
+3. Read **`CursorBugHunt-v3/REPORT.md`** FIXES LANDED table — do NOT re-file Wave 0–4 without regression proof.
+4. Fix in wave order (A money → B client → C PF/ops); probe-gate everything.
+
+## Where everything lives
+
+| What | Path |
+|------|------|
+| **Pass 7 report (primary)** | `CursorBugHunt-v4/REPORT.md` |
+| Pass 6 report (history) | `CursorBugHunt-v3/REPORT.md` |
+| Claude ⇄ Cursor hub | `AGENTS.md` |
+| v4 probes | `CursorBugHunt-v4/*.js` |
+| v3 probes (probe gate) | `CursorBugHunt-v3/*.js` |
+| v2 probes (probe gate) | `CursorBugHunt-v2/*.js` |
+| Money invariants | `cursor/AUDIT-NOTES.md` |
+| Deploy rules | `cursor/HANDOFF.md` |
+
+## Probe gate
+
+node CursorBugHunt-v2/crash-reserve-probe.js
+node CursorBugHunt-v2/crash-liveness-probe.js
+node CursorBugHunt-v2/adversarial-suite-v2.js
+node CursorBugHunt-v3/crash-bj-interleave-probe.js
+node CursorBugHunt-v3/security-headers-probe.js
+node CursorBugHunt-v3/wave1-auth-probe.js
+node CursorBugHunt-v3/wave2-money-probe.js
+node CursorBugHunt-v4/crash-bj-inverse-probe.js
+node CursorBugHunt-v4/verify-rederive-crash-probe.js
+node CursorBugHunt/settlement-math-probe.js
+node CursorBugHunt/slots3d-parity-probe.js
+npm test
+npx hardhat test test/pass4-exploits.test.js
+
+## Repo
+
+- Deploy branch: `claude/ethereum-betting-game-vrf-2dq50k`
+- Live: https://tv-crypto-flip.onrender.com (?v=1255)
+- v4 hunt branch: `cursor/bug-hunt-v4-1255-d4cd`
+
+## Fix priority (Wave A — P0)
+
+1. **#1** — `liveCrashSession` guard in `applyBlackjackNet` (inverse of v3 #1)
+2. **#13** — integer-cent check in `applyExternal`
+
+Go.

@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#06091a" />
+    <meta name="referrer" content="same-origin" />
+    <title>🎴 BACCARAT — Crypto TV</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Load fonts non-render-blocking so a slow/unreachable Google Fonts never stalls
+         the felt's scripts (they'd otherwise wait on this stylesheet before running). -->
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Space+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
+    <noscript><link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Space+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet" /></noscript>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎴</text></svg>" />
+    <link rel="stylesheet" href="baccarat.css" />
+    <style>
+      /* TV-embed mode (?tv=1): just the felt, scaled to fill the 4:3 screen. The chip
+         tray / UNDO / CLEAR / REBET controls render in the PARENT page's dock under the
+         TV (the felt zones stay live as a second tap surface), so the in-iframe dock +
+         page chrome are hidden here. All countdowns live UNDER the TV, never on it. */
+      body.tv-embed { padding: 0; margin: 0; height: 100vh; overflow: hidden; background: transparent; }
+      body.tv-embed .wrap { max-width: none; margin: 0; padding: 0; height: 100%; }
+      body.tv-embed .top, body.tv-embed #lobby, body.tv-embed .pf, body.tv-embed .dock { display: none !important; }
+      body.tv-embed #table { display: block !important; height: 100%; }
+      body.tv-embed .stage-wrap { position: absolute; inset: 0; width: 100%; height: 100%; }
+      body.tv-embed .stage { top: 50%; left: 50%; transform-origin: center center; } /* fit() = min(w/720, h/540) */
+
+      /* ── fullscreen-util.js (FsUtil) contract — STANDALONE felt only (in TV-embed the PARENT
+         page owns FsUtil). html.fsu-fake = no Fullscreen API here (iPhone Safari, MetaMask
+         in-app browser): the fixed 100dvh overlay IS the fullscreen. Make the DOCUMENT slightly
+         scrollable (#fsu-spacer, inline-styled ~100.5lvh) so the user's first upward swipe
+         collapses the browser URL bar — the only mechanism iOS allows; no API can hide it.
+         Overrides baccarat.css's `html/body.rr-fs-on { height:100dvh; overflow:hidden }`. ── */
+      html.fsu-fake { height: auto !important; min-height: 100.5lvh !important; overflow-y: auto !important; }
+      html.fsu-fake body { height: auto !important; min-height: 100.5lvh !important; overflow-y: auto !important; }
+      /* fullscreen bet bar: keep the chips/controls clear of the notch in landscape + the home
+         indicator (viewport-fit=cover is now on this page, so env() is live in standalone mode;
+         in TV-embed the parent insets the whole iframe instead — env() is 0 inside an iframe). */
+      body.fs-embed .fsbar { padding-left: max(10px, env(safe-area-inset-left)); padding-right: max(10px, env(safe-area-inset-right)); }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="top">
+        <div class="brand"><span class="be">🎴</span><h1>BACCARAT</h1></div>
+        <div class="top-actions">
+          <div class="bal"><span id="bal-usd">$5,000</span><small id="bal-eth">≈ Ξ1.4706</small></div>
+          <button class="icon-btn" id="sound-btn" title="Sound on/off" aria-label="Sound on/off" aria-pressed="false">🔊</button>
+          <button class="icon-btn hidden" id="back">↩ LOBBY</button>
+        </div>
+      </div>
+
+      <!-- ============ LOBBY ============ -->
+      <section id="lobby">
+        <div class="lobby-head">
+          <div>
+            <h2><span class="live-dot"></span>LIVE TABLES</h2>
+            <p>Grab an open seat to play, or watch a table live. New tables open automatically when one fills.</p>
+          </div>
+        </div>
+        <div class="tables" id="tables"></div>
+      </section>
+
+      <!-- ============ TABLE ============ -->
+      <section id="table" class="hidden">
+        <div class="stage-wrap" id="stage-wrap">
+          <div class="stage" id="stage">
+            <!-- top band: Big Road 6×16 + B/P/T counters + PF breadcrumb -->
+            <div class="topband">
+              <div class="road-wrap"><div class="road" id="road"></div></div>
+              <div class="counts" id="road-counts"></div>
+              <div class="pf-chip" id="pf-chip">commit <code>—</code></div>
+            </div>
+            <!-- HAND BAND (sacred): PLAYER cyan left · BANKER red right, cards 92×129 -->
+            <div class="handband">
+              <div class="hstage player" id="p-stage">
+                <div class="hlabel">PLAYER <span class="score-pill" id="p-total"></span></div>
+                <div class="slots" id="p-hand"></div>
+              </div>
+              <div class="hgap"></div>
+              <div class="hstage banker" id="b-stage">
+                <div class="hlabel"><span class="score-pill" id="b-total"></span> BANKER</div>
+                <div class="slots" id="b-hand"></div>
+              </div>
+            </div>
+            <div class="caption" id="caption"></div>
+            <div class="ticker" id="ticker"></div>
+            <!-- bet zones: tap = add the selected chip (payouts always printed) -->
+            <div class="zones" id="zones">
+              <button type="button" class="zone player" id="zone-player" data-zone="player">
+                <span class="zlabel">PLAYER · 1:1</span>
+                <div class="zstacks"><div class="agg" id="agg-player"></div><div class="mine" id="mine-player"></div></div>
+                <span class="stake-pill" id="stake-player"></span>
+              </button>
+              <button type="button" class="zone tie" id="zone-tie" data-zone="tie">
+                <span class="zlabel">TIE · 8:1</span>
+                <div class="zstacks"><div class="agg" id="agg-tie"></div><div class="mine" id="mine-tie"></div></div>
+                <span class="stake-pill" id="stake-tie"></span>
+              </button>
+              <button type="button" class="zone banker" id="zone-banker" data-zone="banker">
+                <span class="zlabel">BANKER · 0.95:1</span>
+                <div class="zstacks"><div class="agg" id="agg-banker"></div><div class="mine" id="mine-banker"></div></div>
+                <span class="stake-pill" id="stake-banker"></span>
+              </button>
+            </div>
+            <!-- puck rail: 4 seats, YOU rim-lit -->
+            <div class="rail" id="rail"></div>
+            <div class="rim-text">PLAYER 1:1 · TIE 8:1 · BANKER 0.95:1 · 8 DECKS · PROVABLY FAIR</div>
+            <button type="button" class="fs-corner" id="fs-btn" title="Fullscreen" aria-label="Fullscreen">⛶</button>
+          </div>
+          <!-- fullscreen-only bet bar (body.fs-embed) + exit -->
+          <div class="fsbar" id="fsbar"></div>
+          <button type="button" class="fs-exit" id="fs-exit">✕ Exit fullscreen</button>
+        </div>
+
+        <div class="dock">
+          <div class="msg" id="dock-msg" role="status" aria-live="polite" aria-atomic="true">Loading…</div>
+          <div class="count-strip" id="count-strip"><div class="cbar"><div id="count-bar"></div></div><span class="csec" id="count-sec"></span></div>
+          <div class="row" id="dock-row"></div>
+        </div>
+
+        <div class="pf">
+          <div class="pf-r"><b>Provably fair</b> · commit <code id="pf-commit">—</code></div>
+          <div class="pf-r">your client seed <input id="pf-client" type="text" placeholder="(auto)" maxlength="32" aria-label="Your client seed (optional, auto-generated if left blank)" />
+            <button class="pf-verify" id="pf-verify">Verify last round</button></div>
+          <div class="pf-reveal" id="pf-reveal"></div>
+          <div id="pf-out" style="margin-top:6px"></div>
+          <p style="margin:8px 0 0;color:var(--muted)">The 8-deck shoe is committed (hashed) <b>before</b> any bet and the seed revealed after — combine it with every
+            seat's client seed to recompute the exact shoe, then the fixed tableau replays the whole round. One fresh committed
+            shoe per round (that's what makes per-round verification possible). USD value, settled in ETH · play money.</p>
+        </div>
+      </section>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+
+    <script src="fullscreen-util.js"></script><!-- shared FsUtil (no ?v= — network-first in the SW; maintainer bumps) -->
+    <script src="blackjack-shuffle.js?v=1362"></script>
+    <script src="baccarat-rules.js?v=1362"></script>
+    <script src="baccarat-net.js?v=1362"></script>
+    <script src="baccarat-fx.js?v=1362"></script>
+    <script src="blackjack-sfx.js?v=1362"></script>
+    <script src="baccarat-ui.js?v=1393"></script>
+    <script>
+      window.addEventListener("DOMContentLoaded", function () {
+        var id = function (x) { return document.getElementById(x); };
+        var back = id("back");
+        var els = {
+          balUsd: id("bal-usd"), balEth: id("bal-eth"), back: back, soundBtn: id("sound-btn"),
+          lobby: id("lobby"), tables: id("tables"), table: id("table"),
+          stageWrap: id("stage-wrap"), stage: id("stage"),
+          road: id("road"), roadCounts: id("road-counts"), pfChip: id("pf-chip"),
+          pStage: id("p-stage"), pHand: id("p-hand"), pTotal: id("p-total"),
+          bStage: id("b-stage"), bHand: id("b-hand"), bTotal: id("b-total"),
+          caption: id("caption"), ticker: id("ticker"),
+          zonePlayer: id("zone-player"), zoneTie: id("zone-tie"), zoneBanker: id("zone-banker"),
+          rail: id("rail"), fsBtn: id("fs-btn"), fsExit: id("fs-exit"), fsbar: id("fsbar"),
+          dockMsg: id("dock-msg"), dockRow: id("dock-row"),
+          countStrip: id("count-strip"), countBar: id("count-bar"), countSec: id("count-sec"),
+          pfCommit: id("pf-commit"), pfClient: id("pf-client"), pfVerify: id("pf-verify"), pfReveal: id("pf-reveal"), pfOut: id("pf-out"),
+          toast: id("toast"),
+        };
+        var params = new URLSearchParams(location.search);
+        var hashParams = new URLSearchParams((location.hash || "").replace(/^#/, ""));
+        var tv = params.get("tv") === "1"; // embedded inside the Crypto TV channel
+        var guest = params.get("guest") || null; // temp identity handed in by the host page
+        var bjToken = hashParams.get("bjtoken") || "";
+        var bjSession = hashParams.get("bjsession") || ""; // token-bridge session id ⇒ real-money table funded by tokens
+        var table = params.get("table") || null; // a specific shared table to sit at
+        var bal = params.get("bal"); // demo balance to seed the table with
+        if (tv) document.body.classList.add("tv-embed");
+        window.BAC = new BaccaratClient({ els: els, embed: tv, wallet: guest, bjToken: bjToken, bjSession: bjSession, joinTable: table, seedBalance: bal != null ? +bal : null });
+        if (tv) {
+          // tell the host page we're alive so it can seed our demo balance + post bac:active
+          try { window.parent.postMessage({ type: "bac:ready" }, window.location.origin); } catch (e) {} // same-origin parent only
+          // messages from the TV page: channel gate + control intents from the dock under the TV
+          window.addEventListener("message", function (e) {
+            if (!e.source || e.source !== window.parent || e.origin !== window.location.origin) return; // same-origin + exact-parent only (blackjack.html #8)
+            var d = e.data; if (!d) return;
+            if (d.type === "bac:active") {
+              if (window.BlackjackSFX) window.BlackjackSFX.muted = !d.active; // off-channel mute (site rule)
+              if (d.ethUsd && window.BAC && window.BAC.setRate) window.BAC.setRate(d.ethUsd); // cosmetic ≈Ξ rate
+              if (d.fs != null && window.BAC) window.BAC.setFsEmbed(!!d.fs, d.portrait); // parent toggled the fs layer; d.portrait = the PARENT viewport's orientation (fs-landscape bug fix — our own iframe size can be stale at fs-enter)
+              if (d.active && window.BAC && window.BAC.room) window.BAC._renderDock(); // re-sync the parent dock on channel re-entry
+            }
+            else if (d.type === "bac:seed" && window.BAC && window.BAC.net) {
+              window.BAC.net.send({ type: "bac:seed", balance: d.balance }); // sync our table balance to the site demo balance
+            }
+            else if (d.type === "bac:cmd" && window.BAC) {
+              var bac = window.BAC;
+              if (d.cmd === "add") bac.addChip(d.zone, d.amount);
+              else if (d.cmd === "undo") bac.undoBet();
+              else if (d.cmd === "clear") bac.clearBets();
+              else if (d.cmd === "rebet") bac.rebet(d.mult === 2 ? 2 : 1);
+              else if (d.cmd === "topUp") bac.topUp(d.amount);
+            }
+          });
+        }
+        // Mobile: coming back from another app can freeze the socket — resync on resume.
+        document.addEventListener("visibilitychange", function () { if (!document.hidden && window.BAC && window.BAC.resume) window.BAC.resume(); });
+        window.addEventListener("pageshow", function () { if (window.BAC && window.BAC.resume) window.BAC.resume(); });
+        if (!tv) {
+          setInterval(function () { back.classList.toggle("hidden", window.BAC.view !== "table"); }, 200);
+        }
+      });
+    </script>
+  </body>
+</html>

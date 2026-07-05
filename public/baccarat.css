@@ -1,0 +1,531 @@
+/* ============================================================
+   baccarat.css — BACCARAT (CH 21) felt for Crypto TV.
+   Design tokens are blackjack.css VERBATIM (spec: differentiate via layout,
+   not material). Layout: fixed 720×540 stage (4:3 TV), two communal card
+   stages (PLAYER cyan left / BANKER red right), Big Road 6×16 top-left,
+   three bet zones, 4-seat puck rail. Zone identity (spec R7):
+   PLAYER #39e7ff · BANKER #ff5b73 · TIE #00e701 · gold = win only.
+   ============================================================ */
+:root {
+  --bg: #06091a; --panel: rgba(14, 20, 40, .74); --line: rgba(255, 255, 255, .09);
+  --ink: #eaf2ff; --muted: #9aa7c7; --cyan: #39e7ff; --magenta: #ff4d9d;
+  --gold: #ffd23f; --green: #45f0a6; --red: #ff5b73; --tie: #00e701;
+  --felt-1: #0c5a45; --felt-2: #073a2e; --felt-edge: #2a1d4a;
+  --pixel: "Press Start 2P", monospace; --font: "Space Grotesk", system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; }
+body {
+  font-family: var(--font); color: var(--ink);
+  background: radial-gradient(1100px 640px at 50% -12%, #1c2150 0%, transparent 60%), var(--bg);
+  padding: 14px 12px 80px; -webkit-tap-highlight-color: transparent;
+}
+.wrap { max-width: 1080px; margin: 0 auto; }
+.hidden { display: none !important; }
+
+/* ---------- top bar (blackjack.css verbatim) ---------- */
+.top { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.brand { display: flex; align-items: center; gap: 9px; }
+.brand .be { font-size: 24px; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, .6)); }
+.brand h1 {
+  font-family: var(--pixel); font-size: 16px; letter-spacing: 1px; margin: 0; color: var(--cyan);
+  text-shadow: 2px 0 var(--magenta), -2px 0 var(--gold), 3px 3px 0 #04060f;
+}
+.top-actions { display: flex; gap: 8px; align-items: center; }
+.bal { font-family: var(--pixel); font-size: 13px; color: var(--gold); text-align: right; line-height: 1.5; }
+.bal small { display: block; font-family: ui-monospace, monospace; font-size: 9px; color: var(--muted); }
+.icon-btn, .chip {
+  background: rgba(255, 255, 255, .06); border: 1px solid var(--line); border-radius: 9px;
+  color: var(--ink); font-family: var(--font); font-weight: 700; font-size: 12px; padding: 8px 11px; cursor: pointer;
+  transition: filter .15s, transform .06s, border-color .15s;
+}
+.icon-btn:hover, .chip:hover { filter: brightness(1.18); border-color: rgba(255, 255, 255, .22); }
+.chip:active, .icon-btn:active { transform: translateY(1px); }
+.chip.ghost { background: transparent; }
+
+/* ---------- lobby (blackjack.css verbatim) ---------- */
+.lobby-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin: 2px 2px 12px; flex-wrap: wrap; }
+.lobby-head h2 { font-family: var(--pixel); font-size: 12px; color: var(--ink); margin: 0; letter-spacing: .5px; }
+.lobby-head p { margin: 0; color: var(--muted); font-size: 13px; }
+.live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--green); margin-right: 6px;
+  box-shadow: 0 0 0 0 rgba(69, 240, 166, .6); animation: livePulse 1.8s infinite; vertical-align: middle; }
+@keyframes livePulse { 0% { box-shadow: 0 0 0 0 rgba(69, 240, 166, .5); } 70% { box-shadow: 0 0 0 7px rgba(69, 240, 166, 0); } 100% { box-shadow: 0 0 0 0 rgba(69, 240, 166, 0); } }
+.tables { display: grid; grid-template-columns: repeat(auto-fill, minmax(248px, 1fr)); gap: 14px; }
+.tcard {
+  position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 14px;
+  overflow: hidden; transition: transform .12s, border-color .15s, box-shadow .15s;
+}
+.tcard:hover { transform: translateY(-2px); border-color: rgba(57, 231, 255, .4); box-shadow: 0 10px 30px rgba(0, 0, 0, .35); }
+.tcard::before { content: ""; position: absolute; inset: -40% 30% 60% -40%; background: radial-gradient(closest-side, rgba(255, 210, 63, .14), transparent); pointer-events: none; }
+.tcard .tname { font-family: var(--pixel); font-size: 11px; color: var(--cyan); letter-spacing: .5px; }
+.tcard .trow { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; }
+.tcard .badge { font-family: var(--pixel); font-size: 8px; padding: 5px 7px; border-radius: 7px; border: 1px solid var(--line); color: var(--muted); }
+.badge.live { color: var(--green); border-color: rgba(69, 240, 166, .45); }
+.badge.open { color: var(--gold); border-color: rgba(255, 210, 63, .45); }
+.badge.idle { color: var(--muted); }
+.seat-dots { display: flex; gap: 6px; margin: 14px 0 12px; }
+.seat-dots i {
+  width: 22px; height: 22px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .18); display: grid; place-items: center;
+  font-size: 10px; color: var(--muted); font-style: normal;
+}
+.seat-dots i.taken { background: radial-gradient(circle at 35% 30%, #6a78a8, #2c3556); border-color: rgba(255, 255, 255, .35); color: #fff; }
+.seat-dots i.open { border-color: var(--gold); color: var(--gold); box-shadow: 0 0 10px rgba(255, 210, 63, .25); }
+.tcard .meta { display: flex; gap: 10px; color: var(--muted); font-size: 12px; margin-bottom: 12px; }
+.tcard .meta b { color: var(--ink); }
+.tcard .cta { display: flex; gap: 8px; }
+.tcard .cta .chip { flex: 1; text-align: center; }
+.chip.join { background: linear-gradient(135deg, var(--cyan), var(--green)); color: #04121a; border: none; font-weight: 800; }
+.chip.join[disabled] { filter: grayscale(.7) brightness(.7); cursor: not-allowed; }
+.chip.watch { background: rgba(255, 255, 255, .05); }
+.empty-note { color: var(--muted); font-size: 14px; padding: 24px; text-align: center; grid-column: 1 / -1; }
+
+/* ============================================================
+   THE STAGE — fixed 720×540 felt, one coordinate system everywhere.
+   Non-embed: width-scaled into .stage-wrap; ?tv=1: centered viewport-scaled
+   (fit() in baccarat.html); fullscreen portrait: fluid flex column.
+   ============================================================ */
+.stage-wrap { position: relative; width: 100%; }
+.stage {
+  --cw: 92px; --ch: 129px; /* card felt-units (spec R10) */
+  position: absolute; top: 0; left: 50%; width: 720px; height: 540px;
+  transform-origin: top center; transform: translateX(-50%);
+  display: flex; flex-direction: column; padding: 12px 24px 8px;
+  border-radius: 64px / 40px; overflow: hidden;
+  background:
+    radial-gradient(120% 92% at 50% 6%, rgba(57, 231, 255, .10), transparent 38%),
+    radial-gradient(140% 130% at 50% 120%, #0a4d3b 0%, #073a2e 52%, #04241c 100%);
+  box-shadow:
+    inset 0 0 0 6px rgba(0, 0, 0, .40), inset 0 0 80px rgba(0, 0, 0, .60),
+    0 0 0 3px #2a1d4a, 0 0 0 5px rgba(57, 231, 255, .55), 0 0 22px 4px rgba(57, 231, 255, .30),
+    0 0 0 8px rgba(255, 77, 157, .18), 0 26px 70px rgba(0, 0, 0, .55);
+  animation: rimBreathe 6s ease-in-out infinite;
+}
+@keyframes rimBreathe { 50% { box-shadow:
+  inset 0 0 0 6px rgba(0, 0, 0, .40), inset 0 0 80px rgba(0, 0, 0, .60),
+  0 0 0 3px #2a1d4a, 0 0 0 5px rgba(57, 231, 255, .78), 0 0 30px 6px rgba(57, 231, 255, .42),
+  0 0 0 8px rgba(255, 77, 157, .22), 0 26px 70px rgba(0, 0, 0, .55); } }
+.stage::after { /* vignette + pit sheen + drifting hex caustic (blackjack felt verbatim) */
+  content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: inherit; z-index: 0;
+  background:
+    radial-gradient(closest-side at 50% 38%, rgba(234, 242, 255, .08), transparent 46%),
+    radial-gradient(closest-side at 50% 50%, transparent 60%, rgba(0, 0, 0, .62) 100%),
+    repeating-linear-gradient(60deg, rgba(57, 231, 255, .05) 0 1px, transparent 1px 48px),
+    repeating-linear-gradient(-60deg, rgba(57, 231, 255, .05) 0 1px, transparent 1px 48px);
+  animation: feltDrift 24s linear infinite;
+}
+@keyframes feltDrift { to { background-position: 0 0, 0 0, 96px 56px, -96px 56px; } }
+.stage > * { position: relative; z-index: 1; flex: none; }
+
+/* ---------- top band: Big Road + counters + PF breadcrumb ---------- */
+.topband { display: flex; align-items: flex-start; gap: 8px; height: 72px; padding-top: 2px; }
+.road-wrap { width: 181px; height: 71px; background: rgba(0, 0, 0, .38); border: 1px solid var(--line); border-radius: 8px; padding: 2px; flex: none; }
+.road { position: relative; width: 175px; height: 65px; }
+.road i {
+  position: absolute; width: 10px; height: 10px; border-radius: 50%; border: 2px solid transparent; font-style: normal;
+}
+.road i.P { border-color: var(--cyan); }
+.road i.B { border-color: var(--red); }
+.road i.new { animation: roadPop .15s cubic-bezier(.2, 1.6, .3, 1) both; }
+@keyframes roadPop { 0% { transform: scale(.2); } 100% { transform: scale(1); } }
+/* ties never take a cell — green diagonal slash on the ring (+ count digit for 2+) */
+.road i.t::after { content: ""; position: absolute; left: -3px; top: 2px; width: 12px; height: 2px; background: var(--tie); transform: rotate(-45deg); border-radius: 2px; }
+.road i.t[data-ties]:not([data-ties="1"])::before { content: attr(data-ties); position: absolute; top: -8px; right: -5px; font-family: var(--pixel); font-size: 6px; color: var(--tie); }
+.counts { display: flex; flex-direction: column; gap: 4px; margin-left: 2px; }
+.cpill { font-family: var(--pixel); font-size: 8px; padding: 4px 6px; border-radius: 6px; border: 1px solid var(--line); background: rgba(0, 0, 0, .35); white-space: nowrap; }
+.cpill.b { color: var(--red); border-color: rgba(255, 91, 115, .4); }
+.cpill.p { color: var(--cyan); border-color: rgba(57, 231, 255, .4); }
+.cpill.t { color: var(--tie); border-color: rgba(0, 231, 1, .4); }
+.pf-chip { margin-left: auto; margin-right: 46px; text-align: right; font-family: ui-monospace, monospace; font-size: 9px; color: rgba(255, 255, 255, .45); line-height: 1.6; }
+.pf-chip code { color: var(--cyan); }
+.fs-corner {
+  position: absolute; top: 10px; right: 12px; z-index: 9; width: 40px; height: 40px; border-radius: 11px;
+  background: rgba(0, 0, 0, .4); border: 1px solid var(--line); color: var(--ink); font-size: 17px; cursor: pointer;
+  display: grid; place-items: center; transition: filter .15s;
+}
+.fs-corner:hover { filter: brightness(1.3); }
+
+/* ---------- hand band (SACRED — nothing overlaps it) ---------- */
+.handband { display: flex; justify-content: center; align-items: flex-start; margin-top: 4px; height: 182px; }
+.hstage { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.hgap { width: 72px; flex: none; }
+.hlabel { display: flex; align-items: center; gap: 12px; height: 34px; font-family: var(--pixel); font-size: 12px; letter-spacing: 1px; }
+.hstage.player .hlabel { color: var(--cyan); text-shadow: 0 0 12px rgba(57, 231, 255, .5); }
+.hstage.banker .hlabel { color: var(--red); text-shadow: 0 0 12px rgba(255, 91, 115, .5); }
+/* big pixel-font score pill — the ONLY score display (never make players add pips) */
+.score-pill {
+  font-family: var(--pixel); font-size: 16px; min-width: 42px; text-align: center; padding: 8px 10px; border-radius: 999px;
+  background: rgba(0, 0, 0, .58); color: var(--ink); border: 1px solid rgba(255, 210, 63, .44);
+  box-shadow: 0 0 14px rgba(255, 210, 63, .14); transition: color .2s;
+}
+.score-pill:empty { visibility: hidden; }
+.score-pill.tick { animation: pillTick .12s ease-out; }
+@keyframes pillTick { 50% { transform: scale(1.22); } }
+.score-pill.natural { animation: pillNatural .7s ease both; }
+@keyframes pillNatural { 0%, 100% { background: rgba(0, 0, 0, .58); color: var(--ink); } 35% { background: var(--gold); color: #06091a; box-shadow: 0 0 26px rgba(255, 210, 63, .7); } }
+.score-pill.winner { color: var(--gold); border-color: var(--gold); box-shadow: 0 0 18px rgba(255, 210, 63, .4); }
+/* three pre-reserved card slots — zero reflow, flat 8px gaps, zero overlap */
+.slots { display: flex; gap: 8px; perspective: 900px; }
+.slot { position: relative; width: var(--cw); height: var(--ch); border-radius: 12px; flex: none;
+  background: rgba(255, 255, 255, .025); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .05); }
+.slot.s3 { transform: translateY(10px); } /* the deciding card sits slightly low (R4: UPRIGHT, never rotated) */
+.card {
+  position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 12px;
+  background: linear-gradient(158deg, #ffffff 0%, #eef3fb 62%, #dfe7f4 100%); color: #14213d;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, .5), inset 0 1px 0 rgba(255, 255, 255, .9),
+    inset 0 0 0 1px rgba(255, 210, 63, .28), inset -2px -2px 0 rgba(29, 44, 94, .12);
+  font-family: var(--font); font-weight: 800; user-select: none;
+}
+.card .corner { position: absolute; top: 6px; left: 7px; line-height: .92; text-align: center; z-index: 2; }
+.card .corner.br { top: auto; left: auto; bottom: 6px; right: 7px; transform: rotate(180deg); }
+.card .corner .r { font-size: calc(var(--cw) * .21); display: block; font-weight: 800; }
+.card .corner .s { font-size: calc(var(--cw) * .14); display: block; }
+.card .pip { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); text-align: center; font-size: calc(var(--cw) * .38); z-index: 1; opacity: .9; }
+.card.red { color: #e8284e; } .card.black { color: #14213d; }
+.card::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 0;
+  background: linear-gradient(120deg, transparent 44%, rgba(57, 231, 255, .06) 50%, transparent 56%); }
+.card.dealing { animation: bacDealIn .4s cubic-bezier(.2, .85, .25, 1) both; }
+@keyframes bacDealIn { 0% { opacity: 0; transform: translate(130px, -170px) rotate(6deg) scale(.9); } 60% { opacity: 1; } 100% { opacity: 1; transform: none; } }
+/* the third card arrives ALONE: slower 650ms flip + gold rim flash (spec R4) */
+.card.flip-slow { animation: bacFlipSlow .65s cubic-bezier(.34, 1.3, .5, 1) both; }
+@keyframes bacFlipSlow {
+  0% { transform: rotateY(180deg) scale(1.04); box-shadow: 0 0 0 3px rgba(255, 210, 63, .9), 0 0 26px rgba(255, 210, 63, .55), 0 6px 14px rgba(0, 0, 0, .5); }
+  45% { transform: rotateY(90deg) translateZ(30px) scale(1.08); box-shadow: 0 0 0 3px rgba(255, 210, 63, .9), 0 0 32px rgba(255, 210, 63, .65); }
+  80% { box-shadow: 0 0 0 3px rgba(255, 210, 63, .55), 0 0 18px rgba(255, 210, 63, .35), 0 6px 14px rgba(0, 0, 0, .5); }
+  100% { transform: rotateY(0) scale(1); box-shadow: 0 6px 14px rgba(0, 0, 0, .5), inset 0 1px 0 rgba(255, 255, 255, .9), inset 0 0 0 1px rgba(255, 210, 63, .28); }
+}
+/* settle: winning cards edged gold/green; losing hand just sits dimmer (never red) */
+.hstage.won .card { box-shadow: 0 0 0 2px var(--gold), 0 0 16px rgba(255, 210, 63, .35), 0 6px 14px rgba(0, 0, 0, .5); }
+.hstage.lost { opacity: .7; }
+
+/* ---------- caption + winners ticker ---------- */
+.caption { height: 30px; margin-top: 2px; text-align: center; font-family: var(--pixel); font-size: 13px; letter-spacing: 1px;
+  color: var(--ink); text-shadow: 0 2px 8px rgba(0, 0, 0, .6); pointer-events: none; }
+.caption.player { color: var(--cyan); }
+.caption.banker { color: var(--red); }
+.caption.tie { color: var(--tie); }
+.caption.gold { color: var(--gold); }
+.caption.sub { font-size: 10px; color: var(--muted); }
+.ticker { height: 16px; text-align: center; font-size: 11px; font-weight: 700; color: var(--muted); pointer-events: none; }
+.ticker b { color: var(--green); }
+
+/* ---------- bet zones ---------- */
+.zones { margin-top: auto; display: flex; gap: 16px; justify-content: center; align-items: stretch; height: 130px; }
+.zone {
+  position: relative; flex: none; border: 2px dashed var(--zc, var(--line)); border-radius: 16px; cursor: pointer;
+  background: rgba(0, 0, 0, .22); color: var(--ink); font-family: var(--font); padding: 8px 6px 26px;
+  display: flex; flex-direction: column; align-items: center; min-height: 44px;
+  transition: background .2s, border-color .2s, box-shadow .2s;
+}
+.zone.player { --zc: rgba(57, 231, 255, .6); width: 250px; }
+.zone.tie { --zc: rgba(0, 231, 1, .6); width: 130px; }
+.zone.banker { --zc: rgba(255, 91, 115, .65); width: 250px; }
+.zone .zlabel { font-family: var(--pixel); font-size: 10px; letter-spacing: .5px; pointer-events: none; }
+.zone.player .zlabel { color: var(--cyan); }
+.zone.tie .zlabel { color: var(--tie); }
+.zone.banker .zlabel { color: var(--red); }
+.stage.phase-betting .zone { animation: zoneBreath 1.6s ease-in-out infinite; }
+@keyframes zoneBreath { 50% { border-color: var(--zc); box-shadow: 0 0 14px 0 var(--zc); } }
+.zone.has-bet { border-style: solid; background: linear-gradient(180deg, rgba(0, 0, 0, .1), rgba(0, 0, 0, .3)); box-shadow: inset 0 0 24px -12px var(--zc); }
+.stage.locked .zone { animation: none; border-style: solid; cursor: default; }
+.zone.win-glow { border-style: solid; border-color: var(--gold) !important; animation: zoneGold .55s ease-in-out 2 both !important; }
+@keyframes zoneGold {
+  0%, 100% { box-shadow: 0 0 0 2px var(--gold), 0 0 28px rgba(255, 210, 63, .45); }
+  50% { box-shadow: 0 0 0 2px var(--gold), 0 0 12px rgba(255, 210, 63, .2); }
+}
+.zone.dimmed { animation: zoneDim .8s ease both; }
+@keyframes zoneDim { 0%, 100% { opacity: 1; } 35% { opacity: .6; } }
+.zstacks { flex: 1; display: flex; align-items: flex-end; justify-content: center; gap: 16px; width: 100%; min-height: 0; pointer-events: none; }
+.zstacks .agg { position: relative; filter: grayscale(.45) brightness(.8); opacity: .75; }
+.zstacks .agg .agg-label { position: absolute; left: 50%; bottom: -4px; transform: translateX(-50%); white-space: nowrap;
+  font-family: ui-monospace, monospace; font-size: 8px; color: var(--muted); }
+.zstacks .mine { position: relative; filter: drop-shadow(0 0 6px rgba(57, 231, 255, .35)); }
+.stake-pill {
+  position: absolute; left: 50%; bottom: 5px; transform: translateX(-50%); white-space: nowrap; pointer-events: none;
+  font-family: var(--pixel); font-size: 9px; color: var(--gold); background: #0c2018;
+  border: 1px solid rgba(255, 210, 63, .3); border-radius: 999px; padding: 4px 8px;
+}
+.stake-pill:empty { display: none; }
+.stake-pill .e { color: var(--muted); font-family: ui-monospace, monospace; font-size: 8px; }
+
+/* ---------- chips (LED denomination stacks — blackjack verbatim) ---------- */
+.chipstack { position: relative; width: 38px; height: 46px; margin: 2px auto 0; filter: drop-shadow(0 3px 4px rgba(0, 0, 0, .5)); }
+.chip3d { position: absolute; left: 50%; width: 30px; height: 30px; border-radius: 50%; transform: translateX(-50%);
+  background:
+    repeating-conic-gradient(from 0deg, var(--cc) 0 18deg, #06091a 18deg 26deg),
+    radial-gradient(circle at 38% 32%, color-mix(in srgb, var(--cc) 70%, #fff 30%), var(--cc) 56%, color-mix(in srgb, var(--cc) 70%, #000 30%) 100%);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .6), inset 0 0 0 4px rgba(255, 255, 255, .5), 0 0 8px var(--cc);
+  border: 1px solid rgba(0, 0, 0, .35); }
+.chip3d .v { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--pixel); font-size: 7px; color: #06091a; text-shadow: 0 0 3px rgba(255, 255, 255, .7); }
+.chip-pill { position: absolute; left: 50%; top: -6px; transform: translateX(-50%); font-family: var(--pixel); font-size: 7px; color: #06091a; background: var(--gold); border-radius: 6px; padding: 1px 4px; }
+
+/* ---------- puck rail (4 seats) ---------- */
+.rail { display: flex; gap: 10px; justify-content: center; align-items: center; height: 56px; margin-top: 6px; }
+.puck { position: relative; display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px;
+  background: rgba(0, 0, 0, .32); border: 1px solid var(--line); min-height: 32px; max-width: 160px; }
+.puck .dot { width: 12px; height: 12px; border-radius: 50%; flex: none;
+  background: radial-gradient(circle at 35% 30%, #6a78a8, #2c3556); border: 1px solid rgba(255, 255, 255, .3); }
+.puck.you { border-color: rgba(57, 231, 255, .6); box-shadow: 0 0 0 1px rgba(57, 231, 255, .35), 0 0 16px rgba(57, 231, 255, .18); }
+.puck.you .dot { background: radial-gradient(circle at 35% 30%, #9ff2ff, #0f7f95); }
+.puck.away { opacity: .55; }
+.puck .pname { font-weight: 700; font-size: 11px; color: var(--ink); max-width: 82px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.puck .pname .me { color: var(--cyan); }
+.puck .pbet { font-family: var(--pixel); font-size: 8px; color: var(--gold); white-space: nowrap; }
+.puck.empty { background: transparent; border-style: dashed; opacity: .5; padding: 0; }
+.puck.empty .take-seat { font-family: var(--pixel); font-size: 8px; color: var(--muted); background: transparent; border: 0;
+  padding: 10px 16px; cursor: pointer; min-height: 32px; }
+.puck.empty:hover { opacity: .9; border-color: rgba(255, 210, 63, .5); }
+.puck.empty:hover .take-seat { color: var(--gold); }
+
+.rim-text { text-align: center; font-family: var(--pixel); font-size: 8px; letter-spacing: 2px; color: rgba(255, 255, 255, .28); height: 18px; margin-top: 2px; pointer-events: none; }
+/* budget check (720×540, padding 12+8): 72 topband + 186 handband + 32 caption
+   + 16 ticker + 130 zones + 62 rail + 20 rim = 518 + 20 padding = 538 ≤ 540;
+   .zones{margin-top:auto} absorbs the slack and pins the betting band low. */
+
+/* ---------- FX (baccarat-fx.js companions) ---------- */
+.bacfx-chip { position: fixed; width: 26px; height: 26px; border-radius: 50%; z-index: 2147483647; pointer-events: none;
+  transform: translate(-50%, -50%); box-shadow: inset 0 0 0 3px rgba(255, 255, 255, .5), 0 2px 6px rgba(0, 0, 0, .5); }
+.bacfx-winpill { position: absolute; left: 50%; top: 47%; z-index: 8; pointer-events: none; white-space: nowrap;
+  transform: translate(-50%, -50%) scale(.4); opacity: 0;
+  font-family: var(--pixel); font-size: 15px; color: var(--gold); background: rgba(6, 9, 26, .92);
+  border: 1px solid rgba(255, 210, 63, .5); border-radius: 12px; padding: 12px 18px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .55), 0 0 22px rgba(255, 210, 63, .25);
+  transition: transform .18s cubic-bezier(.2, 1.6, .3, 1), opacity .18s; }
+.bacfx-winpill.in { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+.bacfx-winpill.out { opacity: 0; transition: opacity .3s ease; }
+.bacfx-float { position: absolute; left: 50%; top: -10px; transform: translateX(-50%); pointer-events: none; white-space: nowrap;
+  font-family: var(--pixel); font-size: 9px; color: var(--green); z-index: 9; animation: bacFloat 1.5s ease-out both; }
+@keyframes bacFloat { 0% { opacity: 0; } 15% { opacity: 1; } 100% { transform: translateX(-50%) translateY(-26px); opacity: 0; } }
+.bacfx-lossdrift { animation: bacLossDrift .6s ease-out both; }
+@keyframes bacLossDrift { to { opacity: .3; transform: translateY(12px); } }
+.bacfx-sweep { animation: bacSweep .35s ease-in both; }
+@keyframes bacSweep { to { opacity: 0; transform: translate(-70px, -46px) scale(.85); } }
+.bacfx-pushback { animation: bacPushBack .5s ease-out both; }
+@keyframes bacPushBack { to { opacity: 0; transform: translateY(36px); } }
+.bacfx-confetti { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
+
+/* ---------- controls: chip tray + UNDO/CLEAR/REBET (dock + fullscreen bar) ---------- */
+.tray { display: flex; gap: 8px; align-items: center; justify-content: center; flex-wrap: wrap; }
+.chipbtn {
+  width: 48px; height: 48px; border-radius: 50%; border: 0; cursor: pointer; flex: none;
+  font-family: var(--pixel); font-size: 9px; color: #06091a;
+  background: var(--cc); /* SOLID fallback FIRST: color-mix() (next line) is unsupported on iOS Safari <16.2 / older Android WebView, where the whole declaration is dropped as invalid → an INVISIBLE chip. A supporting engine overrides this with the richer gradient. */
+  background: radial-gradient(circle at 38% 32%, color-mix(in srgb, var(--cc) 65%, #fff 35%), var(--cc) 58%, color-mix(in srgb, var(--cc) 70%, #000 30%) 100%);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, .55), inset 0 0 0 3px rgba(255, 255, 255, .5), 0 0 0 2px var(--cc);
+  transition: transform .12s cubic-bezier(.34, 1.56, .64, 1), box-shadow .15s, filter .15s;
+}
+.chipbtn.active { transform: scale(1.12); box-shadow: 0 2px 5px rgba(0, 0, 0, .55), inset 0 0 0 3px rgba(255, 255, 255, .6), 0 0 0 2px var(--cc), 0 0 14px var(--cc); }
+.chipbtn:disabled { filter: grayscale(.6); opacity: .45; cursor: not-allowed; }
+.ctl {
+  height: 46px; min-width: 46px; padding: 0 14px; border-radius: 13px; cursor: pointer; border: 0;
+  font-family: var(--font); font-weight: 700; font-size: 13px; color: var(--ink);
+  background: rgba(234, 242, 255, .07); box-shadow: inset 0 0 0 1.5px rgba(234, 242, 255, .14);
+  transition: transform .12s, filter .15s;
+}
+.ctl:active { transform: scale(.95); }
+.ctl:disabled { filter: grayscale(.55) brightness(.62); cursor: not-allowed; }
+.ctl.clear { color: var(--red); box-shadow: inset 0 0 0 1px rgba(255, 91, 115, .4); background: transparent; margin-left: 8px; }
+.rebet-row { display: flex; gap: 8px; width: 100%; max-width: 420px; margin: 0 auto; }
+.ctl.rebet { flex: 1; height: 48px; color: #241a00; background: linear-gradient(135deg, #ffe49a, var(--gold)); box-shadow: 0 4px 14px -4px rgba(255, 210, 63, .5); }
+.ctl.rebet:disabled { background: rgba(234, 242, 255, .07); color: var(--muted); box-shadow: inset 0 0 0 1.5px rgba(234, 242, 255, .14); }
+
+/* ---------- control dock (Soft Glass — blackjack verbatim) ---------- */
+.dock { margin: 16px auto 0; width: min(560px, 96%); box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; padding: 16px 18px 18px;
+  border-radius: 24px; background: linear-gradient(180deg, rgba(10, 14, 32, .72), rgba(6, 9, 26, .84));
+  -webkit-backdrop-filter: blur(20px) saturate(135%); backdrop-filter: blur(20px) saturate(135%);
+  border: 1px solid rgba(234, 242, 255, .12); box-shadow: 0 -6px 30px rgba(0, 0, 0, .45), inset 0 1px 0 rgba(255, 255, 255, .06); font-family: var(--font); }
+.dock .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.dock .msg { text-align: center; color: var(--muted); font-size: 14px; font-weight: 600; min-height: 20px; letter-spacing: .2px; }
+.dock .msg b { color: var(--ink); }
+.btn { position: relative; appearance: none; border: 0; cursor: pointer; font-family: var(--font); font-weight: 700; font-size: 16px; letter-spacing: .2px;
+  line-height: 1; color: var(--bg); height: 54px; padding: 0 22px; display: inline-flex; align-items: center; justify-content: center; border-radius: 17px;
+  -webkit-tap-highlight-color: transparent; user-select: none;
+  box-shadow: inset 0 1.5px 0 rgba(255, 255, 255, .5), 0 6px 16px -5px var(--glow, rgba(0, 0, 0, .5)), 0 2px 6px rgba(0, 0, 0, .35);
+  transition: transform .12s cubic-bezier(.34, 1.56, .64, 1), filter .15s ease, box-shadow .15s ease; }
+.btn:active { transform: scale(.95); }
+.btn:disabled { filter: grayscale(.55) brightness(.62); cursor: not-allowed; box-shadow: none; }
+.btn.ghost { height: 50px; font-size: 14px; font-weight: 600; background: rgba(255, 255, 255, .06); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
+/* betting countdown strip (non-embed dock — the TV channel countdown lives in the PARENT dock) */
+.count-strip { display: none; align-items: center; gap: 10px; }
+.count-strip.on { display: flex; }
+.count-strip .cbar { flex: 1; height: 4px; border-radius: 999px; background: rgba(255, 255, 255, .1); overflow: hidden; }
+.count-strip .cbar > div { height: 100%; width: 100%; background: var(--cyan); border-radius: inherit; transition: width .2s linear; }
+.count-strip.warn .cbar > div { background: var(--gold); }
+.count-strip.crit .cbar > div { background: var(--red); }
+.count-strip .csec { font-family: var(--pixel); font-size: 10px; color: var(--cyan); min-width: 74px; text-align: right; }
+.count-strip.warn .csec { color: var(--gold); }
+.count-strip.crit .csec { color: var(--red); animation: critPulse .5s ease-in-out infinite; }
+@keyframes critPulse { 50% { opacity: .45; } }
+
+/* ---------- provably fair + toast (blackjack verbatim) ---------- */
+.pf { margin-top: 12px; border-top: 1px dashed var(--line); padding-top: 10px; font-size: 11px; color: var(--muted); line-height: 1.7; }
+.pf code { font-family: ui-monospace, monospace; color: var(--cyan); word-break: break-all; }
+.pf .pf-r { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+.pf input { font-size: 12px; padding: 6px 8px; max-width: 160px; background: rgba(8, 12, 24, .7); border: 1px solid var(--line); border-radius: 8px; color: var(--ink); }
+.pf-verify { font-size: 11px; font-weight: 700; cursor: pointer; color: #06121a; background: var(--green); border: none; border-radius: 8px; padding: 7px 11px; }
+.pf-reveal { font-family: ui-monospace, monospace; font-size: 10px; color: var(--green); word-break: break-all; }
+.pf-cards { font-family: ui-monospace, monospace; font-size: 12px; color: var(--ink); }
+.toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: rgba(10, 16, 30, .95); border: 1px solid var(--line);
+  color: var(--ink); padding: 10px 16px; border-radius: 10px; font-size: 13px; z-index: 2147483647; box-shadow: 0 10px 30px rgba(0, 0, 0, .5); opacity: 0; transition: opacity .2s, transform .2s; pointer-events: none; }
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(-4px); }
+.toast.err { border-color: rgba(255, 91, 115, .5); color: #ffd7de; }
+
+/* ============================================================
+   FULLSCREEN — proven fish-game rr-fs pattern (styles.css 2327–2395),
+   adapted: standalone mode reparents .stage-wrap to <body>; TV-embed mode
+   the PARENT reparents #layer-baccarat and posts bac:active {fs:true} →
+   body.fs-embed here. Either way the felt renders its own bet bar.
+   ============================================================ */
+.stage-wrap.rr-fs { position: fixed !important; inset: 0 !important; width: 100vw !important; height: 100dvh !important;
+  z-index: 2147483646 !important; background: var(--bg); margin: 0 !important; max-width: none !important; }
+html.rr-fs-on, body.rr-fs-on { width: 100vw !important; height: 100dvh !important; overflow: hidden !important; overscroll-behavior: none !important; background: var(--bg) !important; padding: 0 !important; }
+body.rr-fs-on > *:not(.stage-wrap):not(.toast) { display: none !important; }
+.fs-exit { display: none; position: fixed; top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right));
+  z-index: 2147483647; background: rgba(4, 19, 38, .82); color: #fff; border: 2px solid rgba(255, 255, 255, .55); border-radius: 12px;
+  padding: 11px 16px; font-weight: 800; font-size: 15px; cursor: pointer; min-height: 44px;
+  -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+body.fs-embed:not(.tv-embed) .fs-exit { display: block; } /* embed mode: the parent layer owns the exit button */
+/* landscape: the pill's fixed top-right home is now the RAIL's top — it hid the countdown and a
+   chip tap could exit fullscreen mid-betting (review v13.51). The felt's own ⛶ (topband) exits,
+   consistent with the owner's 2026-07-03 site-wide pill removal. */
+body.fs-embed.fs-landscape:not(.tv-embed) .fs-exit { display: none; }
+
+/* the in-felt bet bar — fullscreen only; height clamp + safe-area padded (spec §4.2) */
+.fsbar { display: none; }
+body.fs-embed .fsbar {
+  display: flex; align-items: center; justify-content: flex-start; gap: 8px; flex: none;
+  height: calc(clamp(64px, 12dvh, 96px) + env(safe-area-inset-bottom));
+  padding: 6px 10px calc(6px + env(safe-area-inset-bottom));
+  background: rgba(6, 9, 26, .78); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  border-top: 1px solid var(--line); overflow-x: auto; overflow-y: hidden; z-index: 6;
+  -webkit-overflow-scrolling: touch;
+}
+/* the shared control builder emits a .tray CONTAINER — it must be ONE non-wrapping row inside the
+   bar (owner hit: the tray wrapped, CLEAR landed on a clipped second row → "can't bet").
+   margin:auto centers it when it fits; when it doesn't, the bar scrolls from the LEFT edge
+   (justify flex-start above — a centered overflow clips its start unreachably). */
+body.fs-embed .fsbar .tray { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; margin: 0 auto; min-width: 0; flex: none; }
+body.fs-embed .fsbar .chipbtn { width: 52px; height: 52px; flex: none; }
+body.fs-embed .fsbar .ctl { height: 48px; flex: none; white-space: nowrap; }
+body.fs-embed .fsbar .ctl.rebet { flex: none; padding: 0 12px; font-size: 12px; }
+/* dial row (owner 2026-07-03: "make the amount I bet clearer to see and adjust with slider"):
+   slider dials the exact $5-step amount, the gold readout is what the next zone tap places.
+   Full-width row by default (under the chips); landscape fullscreen inlines it. */
+.amtwrap { display: flex; align-items: center; gap: 10px; flex: 1 1 100%; min-width: 0; padding: 0 2px; }
+.amtwrap .amtsl { -webkit-appearance: none; appearance: none; flex: 1; min-width: 60px; height: 8px; border-radius: 999px; background: linear-gradient(90deg, var(--cyan), var(--gold)); outline: none; }
+.amtwrap .amtsl::-webkit-slider-thumb { -webkit-appearance: none; width: 26px; height: 26px; border-radius: 50%; background: #fff; border: 3px solid var(--gold); cursor: pointer; box-shadow: 0 2px 8px rgba(0, 0, 0, .5); }
+.amtwrap .amtsl::-moz-range-thumb { width: 24px; height: 24px; border-radius: 50%; background: #fff; border: 3px solid var(--gold); cursor: pointer; }
+.amtwrap .amtsl:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+.amtwrap .amt { font-family: var(--pixel); font-size: 16px; line-height: 1; color: var(--gold); min-width: 70px; text-align: right; flex: none; text-shadow: 0 0 12px rgba(255, 210, 63, .5); }
+/* portrait fullscreen: the bar wraps — row 1 = count + chips + UNDO/CLEAR, row 2 = the dial */
+body.fs-embed.fs-portrait .fsbar { flex-wrap: wrap; height: auto; min-height: calc(64px + env(safe-area-inset-bottom)); row-gap: 8px; }
+/* landscape fullscreen: controls live in a RIGHT-SIDE RAIL (the 4:3 felt is pillarboxed in
+   landscape — width was free, height was not; the rail buys the felt ~25% more scale).
+   --railw is the single source of truth: the stage centering calc AND _fit's offsetWidth
+   measurement both derive from it. */
+body.fs-embed { --railw: clamp(124px, 17vw, 156px); }
+body.fs-embed.fs-landscape .fsbar {
+  position: fixed; top: 0; right: 0; bottom: 0; left: auto;
+  width: var(--railw); height: auto;
+  flex-direction: column; flex-wrap: nowrap; justify-content: flex-start; gap: 8px;
+  padding: 10px calc(6px + env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) 6px;
+  border-top: none; border-left: 1px solid var(--line);
+  overflow-y: auto; overflow-x: hidden;
+}
+/* centering via GROWABLE SPACERS, not justify-content:center — `safe center` is a no-op on
+   iOS/WebKit (never shipped), and a plain-centered overflowing column clips its TOP
+   unreachably (the prior "can't bet" class of bug). Spacers grow when space is free
+   (visually centered) and sit at 0 when content overflows (top-anchored, scrollable). */
+body.fs-embed.fs-landscape .fsbar::before, body.fs-embed.fs-landscape .fsbar::after { content: ""; flex: 1 0 0; min-height: 0; }
+body.fs-embed.fs-landscape .fsbar .fs-count { width: 100%; min-width: 0; text-align: center; flex: none; }
+body.fs-embed.fs-landscape .fsbar .tray { width: 100%; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 0; }
+body.fs-embed.fs-landscape .fsbar .chipbtn { width: 46px; height: 46px; font-size: 11px; }
+body.fs-embed.fs-landscape .fsbar .ctl { width: calc(50% - 3px); height: 42px; padding: 0; font-size: 11px; }
+body.fs-embed.fs-landscape .fsbar .amtwrap { flex: none; width: 100%; flex-wrap: wrap; gap: 4px; padding: 0; }
+body.fs-embed.fs-landscape .fsbar .amtsl { flex: 1 1 100%; min-width: 0; }
+body.fs-embed.fs-landscape .fsbar .amt { width: 100%; min-width: 0; text-align: center; font-size: 17px; }
+body.fs-embed.fs-landscape .fsbar .ctl.rebet { width: 100%; font-size: 11px; padding: 0 4px; }
+body.fs-embed.fs-landscape .fsbar > span:not(.fs-count) { width: 100%; text-align: center; } /* status text (non-betting) */
+/* base .fs-count MUST precede the phone media blocks below — equal specificity, source order decides */
+.fsbar .fs-count { font-family: var(--pixel); font-size: 10px; color: var(--cyan); min-width: 56px; text-align: center; flex: none; }
+.fsbar .fs-count.warn { color: var(--gold); }
+.fsbar .fs-count.crit { color: var(--red); animation: critPulse .5s ease-in-out infinite; }
+/* phones: compact everything so count + 4 chips + UNDO + CLEAR fit ONE row on a 375px screen */
+@media (max-width: 480px) {
+  body.fs-embed .fsbar { gap: 6px; }
+  body.fs-embed .fsbar .tray { gap: 6px; }
+  body.fs-embed .fsbar .chipbtn { width: 44px; height: 44px; font-size: 11px; }
+  body.fs-embed .fsbar .ctl { height: 44px; padding: 0 10px; font-size: 11px; }
+  .fsbar .fs-count { min-width: 40px; }
+}
+/* ≤400px (iPhone portrait is 375–393): shave chips/buttons/gaps so the WHOLE row fits with zero
+   scroll — 40px chips ×4 + icon-size UNDO/CLEAR + count ≈ 354px < 374px viewport. The bar keeps
+   overflow-x:auto purely as a 320px-SE safety net. */
+@media (max-width: 400px) {
+  body.fs-embed .fsbar { gap: 4px; padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); }
+  body.fs-embed .fsbar .tray { gap: 4px; }
+  body.fs-embed .fsbar .chipbtn { width: 40px; height: 40px; font-size: 10px; }
+  body.fs-embed .fsbar .ctl { height: 40px; padding: 0 8px; font-size: 10px; }
+  .fsbar .fs-count { min-width: 34px; }
+}
+@media (max-width: 420px) { body.fs-embed .fsbar .ctl.rebet { display: none; } } /* zones remain the way to bet when width is tight */
+
+/* fullscreen layout: the wrap becomes a flex column (stage above bar) */
+body.fs-embed .stage-wrap { position: fixed; inset: 0; display: flex; flex-direction: column; width: 100vw; height: 100dvh; }
+body.fs-embed .stage-wrap > .stage { z-index: 1; }
+/* landscape: keep the 720×540 felt, scaled by fit() to the space LEFT of the side rail */
+body.fs-embed.fs-landscape .stage { position: absolute; top: 50%; left: calc((100% - var(--railw, 140px)) / 2); transform-origin: center center; }
+/* portrait phone: fluid flex column — hands flex:1, controls flex:none = the
+   "betting section auto-adjusts" requirement in pure CSS. Banker far/top. */
+body.fs-embed.fs-portrait .stage {
+  position: relative; top: auto; left: auto; transform: none !important;
+  width: 100%; height: auto; flex: 1; min-height: 0; border-radius: 0; padding: 8px 10px 6px;
+  --cw: min(24vw, 106px); --ch: calc(min(24vw, 106px) * 1.4);
+  animation: none; box-shadow: inset 0 0 80px rgba(0, 0, 0, .55);
+}
+body.fs-embed.fs-portrait .topband { height: 52px; }
+body.fs-embed.fs-portrait .road-wrap { transform: scale(.72); transform-origin: top left; }
+body.fs-embed.fs-portrait .pf-chip { display: none; }
+body.fs-embed.fs-portrait .handband { flex-direction: column-reverse; align-items: center; justify-content: space-evenly; flex: 1; height: auto; min-height: 0; gap: 4px; margin-top: 0; }
+body.fs-embed.fs-portrait .hgap { display: none; }
+body.fs-embed.fs-portrait .hlabel { height: 26px; font-size: 11px; }
+body.fs-embed.fs-portrait .score-pill { font-size: 14px; padding: 6px 9px; }
+body.fs-embed.fs-portrait .caption { font-size: clamp(11px, 3.2vw, 14px); }
+body.fs-embed.fs-portrait .zones { height: auto; min-height: 96px; width: 100%; gap: 8px; padding: 0 2px; margin-top: 6px; }
+body.fs-embed.fs-portrait .zone.player, body.fs-embed.fs-portrait .zone.banker { width: auto; flex: 1.2; }
+body.fs-embed.fs-portrait .zone.tie { width: auto; flex: .8; }
+body.fs-embed.fs-portrait .rail { height: 34px; margin-top: 4px; }
+body.fs-embed.fs-portrait .puck { padding: 3px 8px; min-height: 26px; }
+body.fs-embed.fs-portrait .puck .pbet { display: none; }
+body.fs-embed.fs-portrait .rim-text { display: none; }
+/* height-pressure order (spec §4.2): the road collapses FIRST, then cards clamp;
+   controls never shrink below 44px targets */
+@media (max-height: 620px) {
+  body.fs-embed.fs-portrait .road-wrap { display: none; }
+  body.fs-embed.fs-portrait .topband { height: 26px; }
+  body.fs-embed.fs-portrait .counts { flex-direction: row; }
+  body.fs-embed.fs-portrait .stage { --cw: min(20vw, 88px); --ch: calc(min(20vw, 88px) * 1.4); }
+  body.fs-embed.fs-portrait .rail { display: none; }
+}
+
+/* non-embed small screens: the stage is JS width-scaled; just relax page padding */
+@media (max-width: 760px) {
+  body { padding: 10px 6px 70px; }
+  .dock { padding: 12px 10px 14px; }
+}
+
+/* ---------- a11y: keyboard focus rings + reduced-motion kill-switch (blackjack.css block verbatim, widened) ---------- */
+.btn:focus-visible, .chip:focus-visible, .icon-btn:focus-visible, .zone:focus-visible,
+.chipbtn:focus-visible, .ctl:focus-visible, .take-seat:focus-visible, .fs-corner:focus-visible,
+.fs-exit:focus-visible, .pf-verify:focus-visible {
+  outline: 2px solid var(--cyan); outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .stage, .stage::after, .live-dot, .zone, .zone.win-glow, .zone.dimmed, .score-pill.tick, .score-pill.natural,
+  .count-strip.crit .csec, .fsbar .fs-count.crit, .road i.new { animation: none !important; }
+  .card.dealing, .card.flip-slow { animation-duration: .01s !important; }
+  .bacfx-lossdrift { animation: none !important; opacity: .3; }
+  .bacfx-sweep, .bacfx-pushback { animation: none !important; opacity: 0; }
+  .bacfx-float { animation: none !important; opacity: 0; }
+  .bacfx-winpill { transition: none !important; transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  .btn, .chip, .ctl, .chipbtn, .tcard, .zone { transition: none !important; }
+}

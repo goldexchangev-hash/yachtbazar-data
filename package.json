@@ -1,0 +1,28 @@
+{
+  "name": "tv-crypto-flip",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Provably-simple two-player ETH coin-flip game — on-chain randomness, no oracle or subscription",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "chain": "hardhat node",
+    "deploy:local": "hardhat run scripts/deploy.js --network localhost",
+    "deploy:sepolia": "hardhat run scripts/deploy.js --network sepolia",
+    "fundhouse:local": "hardhat run scripts/fundHouse.js --network localhost",
+    "fundhouse:sepolia": "hardhat run scripts/fundHouse.js --network sepolia",
+    "artifact": "hardhat run scripts/exportArtifact.js",
+    "serve": "node server/server.js",
+    "play": "node scripts/play.js"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "hardhat": "^2.22.10"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "ethers": "^6.17.0",
+    "express": "^4.19.2",
+    "ws": "^8.18.0"
+  }
+}

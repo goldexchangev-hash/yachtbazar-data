@@ -1,0 +1,74 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Sky Swoop — preview</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #7ec4f5; overflow: hidden; font-family: system-ui, sans-serif; }
+    #stage { position: fixed; inset: 0; }
+    #status { position: fixed; left: 8px; top: 8px; font: 12px monospace; color: #06324f; z-index: 5; pointer-events: none; }
+    /* multiplier readout (host chrome, not in the 3D screen) */
+    #mult { position: fixed; top: 14%; left: 0; right: 0; text-align: center; z-index: 6;
+      font: 800 64px/1 system-ui, sans-serif; color: #fff; text-shadow: 0 3px 18px rgba(0,40,80,.45); pointer-events: none; letter-spacing: -2px; }
+    #mult.win { color: #7CFFB2; } #mult.bust { color: #ff6a6a; }
+    /* control dock UNDER the screen */
+    #dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; padding: 14px 14px calc(14px + env(safe-area-inset-bottom));
+      display: flex; gap: 12px; align-items: center; justify-content: center; background: linear-gradient(transparent, rgba(3,28,50,.5)); }
+    #bal { color: #eaf6ff; font-weight: 700; font-size: 15px; min-width: 110px; text-shadow: 0 1px 4px rgba(0,0,0,.4); }
+    #go { border: 0; border-radius: 14px; padding: 16px 26px; font-size: 19px; font-weight: 800; color: #042033; cursor: pointer;
+      background: #ffd23f; box-shadow: 0 6px 0 #b9912a, 0 10px 22px rgba(0,0,0,.25); min-width: 220px; transition: transform .05s, background .15s; }
+    #go:active { transform: translateY(3px); box-shadow: 0 3px 0 #b9912a; }
+    #go.cash { background: #36e06f; box-shadow: 0 6px 0 #1f9b4c, 0 10px 22px rgba(0,0,0,.25); }
+    #go.dead { background: #cfd8e0; color: #6b7682; box-shadow: 0 6px 0 #9aa6b0; }
+  </style>
+</head>
+<body>
+  <div id="stage"></div>
+  <div id="status">booting…</div>
+  <div id="mult"></div>
+  <div id="dock">
+    <div id="bal">$0.00</div>
+    <button id="go">LAUNCH</button>
+    <button id="music" style="border:0;border-radius:12px;padding:14px 16px;font-weight:700;background:#1d5a86;color:#eaf6ff;cursor:pointer;">🔇 Music</button>
+  </div>
+  <script src="/vendor/playcanvas.min.js"></script>
+  <script src="/vendor/gsap.min.js"></script>
+  <script src="/crash-engine.js"></script>
+  <script src="/chiptune.js"></script>
+  <script src="/swoop3d.js"></script>
+  <script>
+    (function () {
+      var status = function (m) { document.getElementById('status').textContent = m; };
+      var multEl = document.getElementById('mult'), goEl = document.getElementById('go'), balEl = document.getElementById('bal');
+      var usd = function (n) { return '$' + (Math.round((+n || 0) * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+      try {
+        var game = new SwoopGame({
+          mount: document.getElementById('stage'), width: window.innerWidth, height: window.innerHeight, initialBalance: 5000,
+          onBalance: function (b) { balEl.textContent = usd(b); },
+          onTick: function (m) { multEl.textContent = m.toFixed(2) + 'x'; },
+          onState: function (s) {
+            balEl.textContent = usd(s.balance);
+            multEl.className = ''; goEl.className = '';
+            if (s.state === 'idle') { multEl.textContent = ''; goEl.textContent = 'LAUNCH  ' + usd(game.unitBet); }
+            else if (s.state === 'climbing') { goEl.textContent = 'CASH OUT'; goEl.className = 'cash'; }
+            else if (s.state === 'cashed') { multEl.className = 'win'; multEl.textContent = s.mult.toFixed(2) + 'x'; goEl.textContent = '✓ +' + usd(s.won); goEl.className = 'dead'; }
+            else if (s.state === 'crashed') { multEl.className = 'bust'; multEl.textContent = 'BUST @ ' + (s.bust || s.mult).toFixed(2) + 'x'; goEl.textContent = '💥 CRASHED'; goEl.className = 'dead'; }
+          },
+        });
+        game.start();
+        window.__swoop3d = game; window.__pcApp = game.app;
+        balEl.textContent = usd(game.balance); goEl.textContent = 'LAUNCH  ' + usd(game.unitBet);
+        goEl.addEventListener('click', function () {
+          if (game._state === 'idle') game.launch();
+          else if (game._state === 'climbing') game.cashOut();
+        });
+        var musicEl = document.getElementById('music');
+        musicEl.addEventListener('click', function () { var on = window.Chiptune && window.Chiptune.toggle(); musicEl.textContent = on ? '🔊 Music' : '🔇 Music'; });
+        var frames = 0; game.app.on('frameend', function () { frames++; window.__frames = frames; });
+        setTimeout(function () { status('Sky Swoop · ' + (window.__frames || 0) + ' frames'); }, 700);
+      } catch (e) { status('ERROR: ' + e.message); console.error(e); window.__bootError = e.message; }
+    })();
+  </script>
+</body>
+</html>
