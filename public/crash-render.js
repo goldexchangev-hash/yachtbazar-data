@@ -566,6 +566,11 @@
     if (scene.state === "idle" && !fx.length && !plume.length && now - last < 33) { requestAnimationFrame(frame); return; }
     let dt = (now - last) / 1000; last = now; dt = Math.min(dt, 0.05);
     if (onFrameCb) try { onFrameCb(dt); } catch (e) { }
+    // Guard the pure-visual render body: a stray draw throw (NaN into a transform, a null scene sub-object during a
+    // fast channel switch mid-animation) otherwise skips the tail requestAnimationFrame and FREEZES the whole
+    // crash/plane/swoop/pressure renderer until reload. The money callback (onFrameCb) is already guarded above, so
+    // this touches no settlement path. A leaked ctx.save level self-heals on the next frame's clearRect + fresh save.
+    try {
     const m = Math.max(1, scene.mult), t = now / 1000;
     const speed = clamp(Math.log(m) * 0.35, 0, 2.2);
     const progress = clamp(Math.log(m) / Math.log(25), 0, 1);
@@ -614,6 +619,7 @@
     for (const f of fx) if (f.renderFlash) f.renderFlash();
     ctx.restore();
     drawVignette();
+    } catch (e) { try { console.error("crash-render frame:", e); } catch (e2) {} }
     requestAnimationFrame(frame);
   }
 

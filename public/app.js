@@ -2002,14 +2002,17 @@
     recordGameResult("flip", "token", won, v, won ? tokenBanked(result) - v : -v);
     setTimeout(() => {
       if (TV._seq !== seq) { unlockReveal(); release(); return; } // #15: tuned away mid round-trip — also clear the reveal lock so token bets aren't frozen for ~20s
-      playOutcome({ won, netUsd: weiToUsd(rv.netWei), betUsd: v, side });
-      TV.revealResult({
-        side, youWon: won, role: "participant", picked: wantsHeads ? "HEADS" : "TAILS",
-        amountUsd: won ? weiToUsd(rv.netWei) : rv.amountUsd, tier: rv.tier,
-        sub: won ? "TOKEN win" : "TOKEN play",
-      });
-      if (window.TokenMode && TokenMode.syncBalance) TokenMode.syncBalance(); // coin has landed — now reveal the new balance (held until now so it didn't spoil the flip)
-      release();
+      // A throw inside this reveal callback (playOutcome / TV.revealResult) must NEVER strand demoFlipBusy=true
+      // and leave the flip button permanently disabled (no 20s net covers demoFlipBusy — only release() clears it).
+      try {
+        playOutcome({ won, netUsd: weiToUsd(rv.netWei), betUsd: v, side });
+        TV.revealResult({
+          side, youWon: won, role: "participant", picked: wantsHeads ? "HEADS" : "TAILS",
+          amountUsd: won ? weiToUsd(rv.netWei) : rv.amountUsd, tier: rv.tier,
+          sub: won ? "TOKEN win" : "TOKEN play",
+        });
+        if (window.TokenMode && TokenMode.syncBalance) TokenMode.syncBalance(); // coin has landed — now reveal the new balance (held until now so it didn't spoil the flip)
+      } finally { release(); }
     }, 2800);
   }
 
@@ -3774,14 +3777,17 @@
       // Tuned away mid-flip → release the frozen balance now instead of waiting
       // out the 20s safety timer.
       if (!demoOn || TV._seq !== seq) { release(); try { window.__onTvReveal && window.__onTvReveal({}); } catch (e) {} return; }
-      playOutcome({ won, netUsd: weiToUsd(rv.netWei), betUsd: v, side });
-      TV.revealResult({
-        side, youWon: won, role: "participant",
-        picked: wantsHeads ? "HEADS" : "TAILS", // show the player exactly what they bet vs what landed
-        amountUsd: won ? weiToUsd(rv.netWei) : rv.amountUsd, tier: rv.tier,
-        sub: won ? "DEMO win — play money (connect a wallet to play for real)" : "DEMO — play money, nothing real lost",
-      });
-      release();
+      // A throw inside this reveal callback (playOutcome / TV.revealResult) must NEVER strand demoFlipBusy=true
+      // and leave the flip button permanently disabled (no 20s net covers demoFlipBusy — only release() clears it).
+      try {
+        playOutcome({ won, netUsd: weiToUsd(rv.netWei), betUsd: v, side });
+        TV.revealResult({
+          side, youWon: won, role: "participant",
+          picked: wantsHeads ? "HEADS" : "TAILS", // show the player exactly what they bet vs what landed
+          amountUsd: won ? weiToUsd(rv.netWei) : rv.amountUsd, tier: rv.tier,
+          sub: won ? "DEMO win — play money (connect a wallet to play for real)" : "DEMO — play money, nothing real lost",
+        });
+      } finally { release(); }
     }, 2800); // land sooner — then the TV holds on the flat, fully-facing coin so the side is clear
   }
   function demoDice() {
@@ -4030,7 +4036,7 @@
     if (game === "flip") { ensureCoinFlip3dReady(); }
     else if (game === "dice") { refreshDiceHouse(); diceReadouts(); ensureDice3dReady(); }
     else if (game === "twodice") { refreshDiceHouse(); twoDiceReadouts(); ensureTwoDiceSupport(); ensureDice2_3dReady(); }
-    else if (game === "crash") { if (!window.CrashRender) loadScriptOnce("crash-render.js?v=1362").then(() => { try { if (window.TV && TV._crashIdle && currentGame === "crash") TV._crashIdle(); } catch (e) {} }).catch(() => {}); refreshDiceHouse(); crashReadouts(); ensureCrashSupport(); }
+    else if (game === "crash") { if (!window.CrashRender) loadScriptOnce("crash-render.js?v=1392").then(() => { try { if (window.TV && TV._crashIdle && currentGame === "crash") TV._crashIdle(); } catch (e) {} }).catch(() => {}); refreshDiceHouse(); crashReadouts(); ensureCrashSupport(); }
     else if (game === "pressure") { ensurePressureReady(); }
     else if (game === "plane") { refreshDiceHouse(); ensurePlaneReady(); }
     else if (game === "slots3d") { ensureSlots3dReady(); }
@@ -4989,7 +4995,7 @@
     paintGameTabs(saved);
     if (saved === "poker" && window.PokerUI) { initPoker(); PokerUI.show(); }
     if (window.TV) TV._activeChannel = GAME_CHANNEL[saved] || 8;
-    if (saved === "crash") { if (window.TV && TV._crashIdle) { try { TV._crashIdle(); } catch (e) {} } if (!window.CrashRender) loadScriptOnce("crash-render.js?v=1362").then(() => { try { if (window.TV && TV._crashIdle && currentGame === "crash") TV._crashIdle(); } catch (e) {} }).catch(() => {}); }
+    if (saved === "crash") { if (window.TV && TV._crashIdle) { try { TV._crashIdle(); } catch (e) {} } if (!window.CrashRender) loadScriptOnce("crash-render.js?v=1392").then(() => { try { if (window.TV && TV._crashIdle && currentGame === "crash") TV._crashIdle(); } catch (e) {} }).catch(() => {}); }
     // Balloon Pop needs its engine built + activated on reload too (enterDemo,
     // which runs just after, flips it to enabled once it exists).
     if (saved === "pressure") ensurePressureReady();
@@ -5447,13 +5453,13 @@
       let per = "";
       try {
         const rows = Object.keys(s.perWL || {}).sort((a, b) => s.perWL[b].n - s.perWL[a].n).slice(0, 8)
-          .map((g) => '<span class="ph-per-item">' + (lbl[g] || g) + " <b>" + s.perWL[g].w + "W–" + s.perWL[g].l + "L</b> " + netStr(s.perWL[g].netWei) + "</span>");
+          .map((g) => '<span class="ph-per-item">' + (lbl[g] || escapeHtml(g)) + " <b>" + s.perWL[g].w + "W–" + s.perWL[g].l + "L</b> " + netStr(s.perWL[g].netWei) + "</span>");
         if (rows.length > 1) per = '<div class="ph-per muted">' + rows.join(" · ") + "</div>";
       } catch (e) {}
       if (!s.history.length) { hist.innerHTML = '<p class="muted">No games yet — go play a channel!</p>'; }
       else {
         hist.innerHTML = per + s.history.map((h) =>
-          '<div class="ph-row ' + (h.won ? "win" : "lose") + '"><span class="ph-game">' + (lbl[h.game] || h.game) +
+          '<div class="ph-row ' + (h.won ? "win" : "lose") + '"><span class="ph-game">' + (lbl[h.game] || escapeHtml(h.game)) +
           '</span><span class="ph-net">' + netStr(h.net) + "</span></div>").join("");
       }
     }
