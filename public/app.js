@@ -3137,7 +3137,7 @@
     if (fishshooter2LoadPromise) return fishshooter2LoadPromise;
     fishshooter2LoadPromise = loadPixiOnce()
       .then(() => loadScriptOnce("fishshooter2-engine.js?v=1362"))
-      .then(() => loadScriptOnce("fishshooter2.js?v=1393"))
+      .then(() => loadScriptOnce("fishshooter2.js?v=1395"))
       .then(() => true)
       .catch((e) => { fishshooter2LoadPromise = null; throw e; });
     return fishshooter2LoadPromise;

@@ -20,7 +20,7 @@
   // P5: version-stamp every texture URL so the service worker treats the ~25MB fish pack as immutable
   // (cache-first) instead of network-first — otherwise each of the 150+ files costs a round-trip per session.
   // Dedicated token, NOT the site build number: bump fs1→fs2 ONLY when a texture file is actually replaced.
-  var ASSET_Q = "?v=fs1";
+  var ASSET_Q = "?v=fs2";
   var JACKPOT_RAKE = 0.02; // % of every paid shot skimmed to the boss-jackpot pool. KEPT LOW (was 0.05) so the
   // RTP is FELT on regular catches instead of being locked inside a rare boss round — the boss is a small
   // cherry on top, not where most of your money hides. The bulk of the return rides the kill-prob knob (catches).
