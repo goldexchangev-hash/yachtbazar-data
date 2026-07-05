@@ -901,6 +901,8 @@
       if (document.hidden) { this._holding = false; try { this.app.ticker.stop(); } catch (e) {} }
       else if (this._active) { try { this.app.ticker.start(); } catch (e) {} }
     });
+    // iOS bfcache restore fires pageshow{persisted} but often NOT visibilitychange (same reason app.js reconnects the WS on pageshow) → without this the stopped ticker leaves the Reef frozen/black on return. Restart it on any bfcache restore.
+    window.addEventListener("pageshow", (e) => { if (e && e.persisted && this._active) { try { this.app.ticker.start(); } catch (e2) {} } });
     const e = this.els;
     if (e.betSlider) e.betSlider.addEventListener("input", () => this.setBet(parseFloat(e.betSlider.value) || MIN_BET));
     if (e.powerUp) e.powerUp.addEventListener("click", () => this.setPower(this.power + 1));
@@ -1021,18 +1023,6 @@
     const turningOn = !(target.classList && target.classList.contains("rr-fs"));
     if (turningOn) {
       this.enterFullscreen(target, { auto: false });
-      return;
-      // REPARENT the game layer to <body> so it escapes the TV's stacking context.
-      // Then a single CSS rule (`body.rr-fs-on > *:not(#layer-fish){display:none}`)
-      // hides EVERYTHING else — top bar, bottom nav, the landscape side menu, the ETH
-      // ticker, the Share-win button — regardless of layout or orientation. Whitelisting
-      // elements one by one kept missing things; this covers them all.
-      if (!this._fsHome) this._fsHome = { parent: target.parentNode, next: target.nextSibling };
-      document.body.appendChild(target);
-      target.classList.add("rr-fs");
-      document.body.classList.add("rr-fs-on");
-      try { const req = target.requestFullscreen || target.webkitRequestFullscreen || target.webkitRequestFullScreen || target.msRequestFullscreen; if (req) req.call(target); } catch (e) {}
-      if (this.els.fsBtn) this.els.fsBtn.classList.add("on");
     } else {
       this._fsExit(target);
     }

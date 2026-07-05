@@ -150,6 +150,7 @@
     if (E.soundBtn) E.soundBtn.onclick = function () {
       var sfx = root.BlackjackSFX; if (!sfx) return;
       sfx.muted = !sfx.muted; E.soundBtn.textContent = sfx.muted ? "🔇" : "🔊";
+      E.soundBtn.setAttribute("aria-pressed", String(sfx.muted)); // pressed = muted (state now announced to SRs)
       if (!sfx.muted) sfx.card(0);
     };
     if (E.tables) E.tables.addEventListener("click", function (e) {

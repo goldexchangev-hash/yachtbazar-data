@@ -89,7 +89,7 @@
     var s = app.view.style; s.width = "100%"; s.height = "100%"; s.display = "block"; s.touchAction = "none";
     if (this.mount) this.mount.appendChild(app.view);
     app.ticker.autoStart = false; app.ticker.stop();
-    this._tick = function () { self._frame(Math.min(0.05, app.ticker.deltaMS / 1000)); };
+    this._tick = function () { try { self._frame(Math.min(0.05, app.ticker.deltaMS / 1000)); } catch (e) { try { console.error("fish tick:", e); } catch (e2) {} } }; // guard: a render/physics throw must not kill the PIXI ticker (freezes the table). Logs (never silent) so a real fault still surfaces; bets settle server-side out-of-band, so no money math is masked.
     app.ticker.add(this._tick);
     this._onResize = function () { self._resize(); };
     window.addEventListener("resize", this._onResize);
@@ -1044,10 +1044,13 @@
       v.addEventListener("mousedown", down); v.addEventListener("touchstart", down, { passive: false });
       window.addEventListener("mouseup", up); window.addEventListener("touchend", up);
       window.addEventListener("touchcancel", up); window.addEventListener("pointercancel", up); window.addEventListener("blur", up);
+      var _fsResume = function () { if (self._active) { if (self._ready) { try { self.app.ticker.start(); } catch (e) {} } var C = root.Chiptune; if (C) { try { C.wake && C.wake(); } catch (e) {} } } }; // resume + re-wake audio (chiptune.js owns the music resync; no playTrack here = no doubled bar / no track-choice clobber)
       document.addEventListener("visibilitychange", function () {
         if (document.hidden) { self._holding = false; try { self.app.ticker.stop(); } catch (e) {} } // pause the loop when backgrounded — no background auto-fire / no frozen-mid-round resuming on return
-        else if (self._active) { if (self._ready) { try { self.app.ticker.start(); } catch (e) {} } var C = root.Chiptune; if (C) { try { C.wake && C.wake(); } catch (e) {} } } // resume + re-wake audio (chiptune.js owns the music resync; no playTrack here = no doubled bar / no track-choice clobber)
+        else _fsResume();
       });
+      // iOS bfcache restore fires pageshow{persisted} but often NOT visibilitychange (same reason app.js reconnects the WS here) → without this the ticker stays stopped and the game is frozen/black on return. Restart it on any bfcache restore.
+      window.addEventListener("pageshow", function (e) { if (e && e.persisted) _fsResume(); });
       window.addEventListener("focus", function () { if (self._active) { var C = root.Chiptune; if (C) { try { C.wake && C.wake(); } catch (e) {} } } }); // re-wake audio after app-switch
       var el = self.els;
       if (el.betSlider) el.betSlider.addEventListener("input", function () { self.setBet(parseFloat(el.betSlider.value) || MIN_BET); });

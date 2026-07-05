@@ -541,7 +541,12 @@ function activePlayers() {
 function broadcast(obj) {
   const msg = JSON.stringify(obj);
   for (const ws of clients.keys()) {
-    if (ws.readyState === ws.OPEN) ws.send(msg);
+    // Guard each send: ws.send can throw (socket flipped to CLOSING between the readyState check
+    // and the send, or an internal buffer error). broadcast() runs both inside a setTimeout callback
+    // (broadcastPlayersNow) AND inside the ws.on("message") chat/relay branches — an uncaught throw
+    // there is the historically-fatal class that once wiped the in-memory bank. Contain it per-socket
+    // so one dead socket can't abort notifying the rest (nor bubble to the process guard).
+    if (ws.readyState === ws.OPEN) { try { ws.send(msg); } catch (e) {} }
   }
 }
 
@@ -626,6 +631,12 @@ wss.on("connection", (ws, req) => {
     } catch {
       return;
     }
+    // A top-level JSON primitive (null / 5 / true / "str") PARSES fine, so the catch above never fires,
+    // but `data.type` on it throws TypeError — which escapes the ws message listener as an uncaughtException.
+    // The process-level handler doesn't exit, but it fires drainCrashRounds() (force-settling every live crash
+    // round site-wide) + flushAllStores() on EVERY such frame — a 1-byte `null` payload, spammable at the WS
+    // rate limit, is a global griefing/DoS vector. Require an object with a type before any dispatch.
+    if (!data || typeof data !== "object" || typeof data.type !== "string") return;
     if (data.type === "bj:ping") { try { ws.send(JSON.stringify({ type: "bj:pong" })); } catch {} return; } // liveness probe so the client can detect a half-open socket + recover a frozen felt
     if (data.type === "bac:ping") { try { ws.send(JSON.stringify({ type: "bac:pong" })); } catch {} return; } // baccarat felt's identical liveness probe
     if (data.type === "pk:ping") { try { ws.send(JSON.stringify({ type: "pk:pong" })); } catch {} return; } // poker felt's identical liveness probe

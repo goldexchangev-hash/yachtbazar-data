@@ -2881,7 +2881,7 @@
     if (fishLoadPromise) return fishLoadPromise;
     fishLoadPromise = loadPixiOnce()
       .then(() => loadScriptOnce("fishtable-engine.js?v=1362"))
-      .then(() => loadScriptOnce("fishtable.js?v=1362"))
+      .then(() => loadScriptOnce("fishtable.js?v=1393"))
       .then(() => true)
       .catch((e) => { fishLoadPromise = null; throw e; });
     return fishLoadPromise;
@@ -3048,7 +3048,7 @@
     if (fishshooterLoadPromise) return fishshooterLoadPromise;
     fishshooterLoadPromise = loadPixiOnce()
       .then(() => loadScriptOnce("fishshooter-engine.js?v=1362")) // OWN engine (decoupled from Reef's fishtable-engine.js)
-      .then(() => loadScriptOnce("fishshooter.js?v=1362"))
+      .then(() => loadScriptOnce("fishshooter.js?v=1393"))
       .then(() => true)
       .catch((e) => { fishshooterLoadPromise = null; throw e; });
     return fishshooterLoadPromise;
@@ -3137,7 +3137,7 @@
     if (fishshooter2LoadPromise) return fishshooter2LoadPromise;
     fishshooter2LoadPromise = loadPixiOnce()
       .then(() => loadScriptOnce("fishshooter2-engine.js?v=1362"))
-      .then(() => loadScriptOnce("fishshooter2.js?v=1362"))
+      .then(() => loadScriptOnce("fishshooter2.js?v=1393"))
       .then(() => true)
       .catch((e) => { fishshooter2LoadPromise = null; throw e; });
     return fishshooter2LoadPromise;
@@ -4616,7 +4616,7 @@
     if (f && !f.getAttribute("src") && account && window.TokenMode && TokenMode.resumePending && TokenMode.resumePending()) return;
     if (f && !f.getAttribute("src")) {
       const tableWallet = account || bjGuestId(); // REUSE the blackjack guest identity — one guest + one demo balance spans both tables
-      let src = "baccarat.html?tv=1&v=1362&r=" + (++bacFeltNonce % 8) + "&guest=" + encodeURIComponent(tableWallet); // %8 bounds the URL set so the SW ?v= cache can HIT (bj pattern)
+      let src = "baccarat.html?tv=1&v=1393&r=" + (++bacFeltNonce % 8) + "&guest=" + encodeURIComponent(tableWallet); // %8 bounds the URL set so the SW ?v= cache can HIT (bj pattern)
       let tokenHash = "";
       // Real-money path: fund the table with the player's TOKEN session (chips = tokens; hello frame identical to BJ).
       if (account && window.TokenMode && TokenMode.active && TokenMode.active() && TokenMode.session) {

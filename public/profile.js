@@ -52,7 +52,7 @@
     // Browser-local by design (same trust level as the demo balance itself).
     resKey(addr) { return "ctf_results_" + String(addr || "").toLowerCase(); },
     loadResults(addr) {
-      try { return JSON.parse(localStorage.getItem(this.resKey(addr))) || []; }
+      try { const v = JSON.parse(localStorage.getItem(this.resKey(addr))); return Array.isArray(v) ? v : []; }
       catch { return []; }
     },
     recordResult(addr, r) {
