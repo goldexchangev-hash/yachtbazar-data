@@ -1,7 +1,7 @@
 {
   "name": "Crypto TV Flip",
   "short_name": "TV Flip",
-  "description": "Retro 16-bit ETH coin-flip on the Sepolia testnet — play money.",
+  "description": "A retro 16-bit crypto arcade on the Sepolia testnet — blackjack, poker, fish shooter, dice, crash & coin flip. Play money only, never real funds.",
   "start_url": "./?pwa=1",
   "scope": "./",
   "display": "fullscreen",
