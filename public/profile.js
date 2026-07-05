@@ -61,12 +61,32 @@
         const bet = Math.max(0, +r.betUsd || 0), profit = +r.profitUsd || 0;
         if (!(bet > 0) && !r.won) return; // nothing at stake, nothing won → not a round
         const list = this.loadResults(addr);
-        list.push({ g: String(r.game || "?"), m: String(r.mode || "demo"), w: !!r.won,
+        const entry = { g: String(r.game || "?"), m: String(r.mode || "demo"), w: !!r.won,
                     b: Math.round(bet * 100) / 100, p: Math.round(profit * 100) / 100,
-                    ts: Math.floor(Date.now() / 1000) });
+                    ts: Math.floor(Date.now() / 1000) };
+        if (r.push) entry.k = 1; // push / tie (net 0) — counts as neither a win nor a loss
+        list.push(entry);
         while (list.length > 600) list.shift(); // ring buffer — newest 600 rounds
         localStorage.setItem(this.resKey(addr), JSON.stringify(list));
       } catch {}
+    },
+    // Merge a source ledger (the pre-connect "guest" ring) INTO an address's ledger, once, deduped by
+    // (ts,g,p,b). Called on wallet connect so play done BEFORE connecting isn't stranded under "guest".
+    // Removes the source only after a successful destination write; dedupe makes it idempotent. localStorage only.
+    mergeResults(fromAddr, toAddr) {
+      try {
+        if (!fromAddr || !toAddr || String(fromAddr).toLowerCase() === String(toAddr).toLowerCase()) return;
+        const src = this.loadResults(fromAddr); if (!src.length) return;
+        const dst = this.loadResults(toAddr);
+        const seen = new Set(dst.map((e) => e.ts + "|" + e.g + "|" + e.p + "|" + e.b));
+        let added = 0;
+        for (const e of src) { const k = e.ts + "|" + e.g + "|" + e.p + "|" + e.b; if (!seen.has(k)) { dst.push(e); seen.add(k); added++; } }
+        if (!added) { localStorage.removeItem(this.resKey(fromAddr)); return; }
+        dst.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+        while (dst.length > 600) dst.shift();
+        localStorage.setItem(this.resKey(toAddr), JSON.stringify(dst));
+        localStorage.removeItem(this.resKey(fromAddr));
+      } catch (e) {}
     },
 
     // Aggregate a single player's stats from already-fetched recent arrays.
@@ -87,17 +107,17 @@
       const note = (ts) => { if (ts && (!memberSinceSec || ts < memberSinceSec)) memberSinceSec = ts; };
       // netOverrideWei: pass for ledger entries where the loss side can be partial
       // (e.g. a blackjack push) — the default won/lost formula assumes all-or-nothing.
-      const record = (game, won, betWei, payoutWei, ts, netOverrideWei) => {
+      const record = (game, won, betWei, payoutWei, ts, netOverrideWei, isPush) => {
         per[game] = (per[game] || 0) + 1;
-        if (won) wins++; else losses++;
+        if (!isPush) { if (won) wins++; else losses++; } // a push/tie is neither a win nor a loss
         wageredWei += betWei;
-        const net = netOverrideWei != null ? netOverrideWei : (won ? (payoutWei - betWei) : -betWei);
+        const net = isPush ? 0n : (netOverrideWei != null ? netOverrideWei : (won ? (payoutWei - betWei) : -betWei));
         netWei += net;
-        if (won && net > biggestWinWei) biggestWinWei = net;
+        if (!isPush && won && net > biggestWinWei) biggestWinWei = net;
         const w = perWL[game] || (perWL[game] = { n: 0, w: 0, l: 0, netWei: 0n });
-        w.n++; if (won) w.w++; else w.l++; w.netWei += net;
+        w.n++; if (!isPush) { if (won) w.w++; else w.l++; } w.netWei += net;
         note(ts);
-        history.push({ game, won, betWei, payoutWei, net, ts });
+        history.push({ game, won, betWei, payoutWei, net, ts, push: !!isPush });
       };
 
       // Coin Flip (rooms have no .player — derive participation)
@@ -149,7 +169,7 @@
             const betWei = toWei(Math.max(0, +e.b || 0));
             const netW = toWei(Math.abs(+e.p || 0)) * (+e.p < 0 ? -1n : 1n);
             const payoutWei = betWei + netW > 0n ? betWei + netW : 0n;
-            record(e.g, !!e.w, betWei, payoutWei, Number(e.ts || 0), netW);
+            record(e.g, !!e.w, betWei, payoutWei, Number(e.ts || 0), netW, !!e.k);
           } catch {}
         }
       }
@@ -163,6 +183,7 @@
       // current streak: consecutive same-outcome runs from the most recent game (+wins / −losses)
       let curStreak = 0;
       for (const h of history) {
+        if (h.push) continue; // a push/tie neither breaks nor extends a streak
         if (curStreak === 0) curStreak = h.won ? 1 : -1;
         else if (h.won && curStreak > 0) curStreak++;
         else if (!h.won && curStreak < 0) curStreak--;

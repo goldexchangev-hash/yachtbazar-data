@@ -669,6 +669,7 @@
       _cbtns.forEach(function (b) { b.textContent = "Loading game…"; }); // W9a: all popups answered — the rest is RPC reads
       signer = await provider.getSigner();
       account = await signer.getAddress();
+      try { if (window.Profile && Profile.mergeResults) Profile.mergeResults("guest", account); } catch (e) {} // fold pre-connect "guest" results into this wallet's profile ledger (stats-only, deduped, idempotent)
       renderWallet(); // W6: show the wallet chip the INSTANT the account resolves — before the registry await; every downstream path repaints it once the address is final
       await Promise.race([resolveActiveGame(provider), new Promise(function (r) { setTimeout(r, 10000); })]); // honor the registry's active game — BOUNDED: a hung registry eth_call must never latch connect() ("Connecting…" + suppressed account/chain handlers) forever; on timeout proceed on the config/cached address — if the live read lands later the late-landing guard banners instead of rebinding
 
@@ -3425,8 +3426,31 @@
   // Profile results ledger: every settled demo/token round records {game, won, bet, net} under the
   // active identity, so the profile modal shows real cross-game stats (the chain only sees wallet
   // flip/dice/twodice). Guests accumulate under "guest" until they connect.
-  function recordGameResult(game, mode, won, betUsd, netUsd) {
-    try { if (window.Profile && Profile.recordResult) Profile.recordResult(account || "guest", { game, mode, won, betUsd, profitUsd: netUsd }); } catch (e) {}
+  function recordGameResult(game, mode, won, betUsd, netUsd, push) {
+    try { if (window.Profile && Profile.recordResult) Profile.recordResult(account || "guest", { game, mode, won, betUsd, profitUsd: netUsd, push: !!push }); } catch (e) {}
+  }
+  // Canvas SHOOTERS (Fish Shooter / V2 / Reef) bet per-SHOT via TokenMode.bet many times/sec — one profile entry
+  // per shot would blast the 600-entry ledger ring, so they were never recorded at all (the "my Fish Shooter
+  // winnings aren't tracked" report). Instead accumulate in the engine's own _sesSpent/_sesWon session totals and
+  // flush ONE aggregated result per session-slice when it ends (channel switch away / page hide). Records only the
+  // DELTA since the last flush (high-water marks per game key) so a hide→resume→switch can never double-count; a
+  // new session shrinks the counters → marks reset. STATS-ONLY: reads two display accumulators the engine already
+  // renders in its HUD and writes only the localStorage ledger — never a balance/token/settle/poker path.
+  var _shootFlush = {};
+  function flushShooterSession(g, gameKey) {
+    try {
+      if (!g) return;
+      var spent = Math.round((+g._sesSpent || 0) * 100) / 100;
+      var won = Math.round((+g._sesWon || 0) * 100) / 100;
+      var fl = _shootFlush[gameKey] || (_shootFlush[gameKey] = { s: 0, w: 0 });
+      if (spent < fl.s || won < fl.w) { fl.s = 0; fl.w = 0; } // engine started a fresh session (counters shrank)
+      var dSpent = Math.round((spent - fl.s) * 100) / 100;
+      var dWon = Math.round((won - fl.w) * 100) / 100;
+      fl.s = spent; fl.w = won;
+      if (!(dSpent > 0)) return; // nothing newly wagered since the last flush → not a recordable round
+      var net = Math.round((dWon - dSpent) * 100) / 100;
+      recordGameResult(gameKey, statsMode(), net > 0, dSpent, net);
+    } catch (e) {}
   }
   // Canvas games (pressure/plane/slots3d) resolve rounds inside their engines and report via onRound —
   // classify the mode at settle time (token session > demo play-money > wallet real).
@@ -3986,10 +4010,10 @@
       try { if (window.TokenMode && TokenMode.active() && TokenMode.refreshTokens) TokenMode.refreshTokens(); } catch (e) {}
     }
     if (game !== "slots3d" && slots3dGame) slots3dGame.setActive(false);
-    if (game !== "fish" && fishGame) fishGame.setActive(false);
+    if (game !== "fish" && fishGame) { flushShooterSession(fishGame, "fish"); fishGame.setActive(false); }
     if (game !== "swoop" && swoopGame) swoopGame.setActive(false);
-    if (game !== "fishshooter" && fishshooterGame) fishshooterGame.setActive(false);
-    if (game !== "fishshooter2" && fishshooter2Game) fishshooter2Game.setActive(false);
+    if (game !== "fishshooter" && fishshooterGame) { flushShooterSession(fishshooterGame, "fishshooter"); fishshooterGame.setActive(false); }
+    if (game !== "fishshooter2" && fishshooter2Game) { flushShooterSession(fishshooter2Game, "fishshooter2"); fishshooter2Game.setActive(false); }
     if (game !== "flip" && coinFlip3d) coinFlip3d.setActive(false);
     if (game !== "dice" && rail3d) rail3d.setActive(false);
     if (game !== "twodice" && d2_3d) d2_3d.setActive(false);
@@ -4402,7 +4426,7 @@
     // overlay was off, chips bar inside the TV). The felt reports its fs belief on every dock state;
     // if it disagrees with ours, re-post the authoritative state so both sides converge in one render.
     if (s.fs != null && !!s.fs !== bjFsOn) bjFramePost(currentGame === "blackjack");
-    if (s.mode === "settle" && s.net != null && !bjStatRecorded) { bjStatRecorded = true; recordGameResult("blackjack", statsMode(), s.net > 0, s.stake || 0, s.net); }
+    if (s.mode === "settle" && s.net != null && !bjStatRecorded) { bjStatRecorded = true; recordGameResult("blackjack", statsMode(), s.net > 0, s.stake || 0, s.net, s.net === 0); } // push (net 0) → neither win nor loss
     else if (s.mode !== "settle") bjStatRecorded = false;
     // #25: track whether money is committed to the current/next hand (a placed bet, an active hand bet, or
     // the player's turn) so the ⟳ Reload can refuse to tear down the iframe mid-hand (which would disconnect).
@@ -4749,7 +4773,7 @@
     if (s.mode === "settle" && s.net != null && !bacStatRecorded) {
       bacStatRecorded = true;
       const st = s.staked || {};
-      recordGameResult("baccarat", statsMode(), s.net > 0, (st.player || 0) + (st.banker || 0) + (st.tie || 0), s.net);
+      recordGameResult("baccarat", statsMode(), s.net > 0, (st.player || 0) + (st.banker || 0) + (st.tie || 0), s.net, s.net === 0); // tie/push (net 0) → neither win nor loss
     } else if (s.mode !== "settle") bacStatRecorded = false;
     // money committed to the current coup? (parent guard, spec §5.5): chips down, or the coup in flight
     try { bacDockLive = !!(s && ((s.totalStaked > 0) || s.phase === "dealing" || s.phase === "reveal")); } catch (e) { bacDockLive = false; }
@@ -5399,6 +5423,10 @@
     const since = s.memberSinceSec ? new Date(s.memberSinceSec * 1000).toLocaleDateString() : "—";
     const cell = (k, v) => '<div class="ps-cell"><span class="ps-k muted">' + k + '</span><strong class="ps-v">' + v + "</strong></div>";
     const roi = s.wageredWei > 0n ? (Number(s.netWei) / Number(s.wageredWei) * 100) : null;
+    // Split the ledger net into REAL (token) vs DEMO (play-money) so real winnings are legible on a real-money site.
+    let realNet = 0, demoNet = 0;
+    for (const e of (local || [])) { const p = +e.p || 0; if (e.m === "token") realNet += p; else if (e.m === "demo") demoNet += p; }
+    const money = (v) => (v >= 0 ? "+" : "−") + "$" + Math.abs(Math.round(v * 100) / 100).toLocaleString();
     box.innerHTML =
       cell("Games played", s.played) +
       cell("Win rate", s.played ? (s.winRate * 100).toFixed(0) + "%" : "—") +
@@ -5406,6 +5434,8 @@
       cell("Total wagered", usdOf(s.wageredWei)) +
       cell("Biggest win", s.biggestWinWei > 0n ? usdOf(s.biggestWinWei) : "—") +
       cell("Net result", netStr(s.netWei)) +
+      cell("Real net (token)", money(realNet)) +
+      cell("Demo net (play)", money(demoNet)) +
       cell("Return", roi == null ? "—" : (roi >= 0 ? "+" : "") + roi.toFixed(1) + "%") +
       cell("Avg bet", s.played ? usdOf(s.avgBetWei) : "—") +
       cell("Streak", !s.curStreak ? "—" : (s.curStreak > 0 ? "🔥 " + s.curStreak + " win" + (s.curStreak > 1 ? "s" : "") : "❄ " + (-s.curStreak) + " loss" + (s.curStreak < -1 ? "es" : ""))) +
@@ -6622,9 +6652,18 @@
 
   // Always flush the play balance before the page is hidden/backgrounded (iOS may
   // reload the tab after a share/app-switch) so it's never lost.
-  window.addEventListener("pagehide", () => { try { if (demoOn) demoSave(); } catch (e) {} });
+  // Flush the active shooter's session P&L when the tab is closed/backgrounded (delta-dedupe means a later
+  // switch-away flush of the same session records nothing new). Stats-only.
+  function _flushActiveShooter() {
+    try {
+      if (currentGame === "fishshooter" && fishshooterGame) flushShooterSession(fishshooterGame, "fishshooter");
+      else if (currentGame === "fishshooter2" && fishshooter2Game) flushShooterSession(fishshooter2Game, "fishshooter2");
+      else if (currentGame === "fish" && fishGame) flushShooterSession(fishGame, "fish");
+    } catch (e) {}
+  }
+  window.addEventListener("pagehide", () => { try { _flushActiveShooter(); } catch (e) {} try { if (demoOn) demoSave(); } catch (e) {} });
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden) { try { if (demoOn) demoSave(); } catch (e) {} return; }
+    if (document.hidden) { try { _flushActiveShooter(); } catch (e) {} try { if (demoOn) demoSave(); } catch (e) {} return; }
     // Back in view: a real-money settle event can drop while the tab is hidden (and the
     // poll is paused), leaving an in-flight round without its TV reveal. Catch it up.
     try { if (activeRoomId && read && chainOK) reconcile(); } catch (e) {}
