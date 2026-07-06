@@ -68,16 +68,16 @@ export async function fetchBinanceHistory({
   return all.slice(0, bars);
 }
 
-/** Coinbase Pro/Exchange candles fallback (4h = 14400 seconds). */
+/** Coinbase Exchange candles fallback — aggregates 1h bars into 4h. */
 export async function fetchCoinbaseHistory({
   product = "ETH-USD",
   bars = 3000,
 }) {
-  const granularity = 14400;
-  const all = [];
+  const granularity = 3600;
+  const hourly = [];
   let before;
 
-  while (all.length < bars) {
+  while (hourly.length < bars * 4 + 4) {
     const params = new URLSearchParams({ granularity: String(granularity) });
     if (before) params.set("before", String(before));
     const url = `https://api.exchange.coinbase.com/products/${product}/candles?${params}`;
@@ -99,12 +99,25 @@ export async function fetchCoinbaseHistory({
       }))
       .reverse();
 
-    all.unshift(...batch);
+    hourly.unshift(...batch);
     before = raw.at(-1)[0];
     if (raw.length < 300) break;
   }
 
-  return all.slice(-bars);
+  const fourHour = [];
+  for (let i = 0; i + 3 < hourly.length; i += 4) {
+    const chunk = hourly.slice(i, i + 4);
+    fourHour.push({
+      time: chunk[0].time,
+      open: chunk[0].open,
+      high: Math.max(...chunk.map((b) => b.high)),
+      low: Math.min(...chunk.map((b) => b.low)),
+      close: chunk[3].close,
+      volume: chunk.reduce((s, b) => s + b.volume, 0),
+    });
+  }
+
+  return fourHour.slice(-bars);
 }
 
 /** Try Binance first, fall back to Coinbase. */
