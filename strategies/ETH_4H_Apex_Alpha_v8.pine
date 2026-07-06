@@ -1,0 +1,201 @@
+//@version=5
+strategy("ETH 4H - Apex Alpha Enhanced v8 (Fixed Exits + Risk)", overlay=true, initial_capital=1000000, default_qty_type=strategy.percent_of_equity, default_qty_value=100, currency=currency.USD, pyramiding=1, commission_type=strategy.commission.percent, commission_value=0.1, process_orders_on_close=true, calc_on_order_fills=false)
+
+// v8 improvements over v7:
+// - Stops/trails anchored to ENTRY price (v7 recalculated from close every bar → inflated backtests)
+// - Macro EMA uses lookahead_off (no repaint)
+// - Single Long/Short entry IDs + flip logic (cleaner fills)
+// - Optional trade cooldown + block reverse until flat
+// - Alerts include stop level; optional stop line on chart
+
+// ==========================================
+// 1. SETTINGS & INPUTS
+// ==========================================
+useMacroFilter = input.bool(false, "Use Daily EMA 200 Macro Trend Filter?", group="1. Macro Trend Filter")
+macroTF        = input.timeframe("D", "Macro Timeframe", group="1. Macro Trend Filter")
+macroEmaLen    = input.int(200, "Macro EMA Length", group="1. Macro Trend Filter")
+
+useEmaFilter = input.bool(true, "Use 150 EMA Trend Filter (4H)?", group="1. Filters")
+emaLen       = input.int(150, "Intermediate EMA Length (4H)", group="1. Filters")
+
+useRsiFilter = input.bool(true, "Use RSI Filter?", group="1. Filters")
+rsi_ok_level = input.int(78, "RSI Level for Longs (<)", group="1. Filters")
+rsi_ok_short_level = input.int(22, "RSI Level for Shorts (>)", group="1. Filters")
+
+atr_len      = input.int(10, "ATR Length", group="2. Strategy Core")
+factor       = input.float(2.4, "ATR Factor (lower = more signals)", group="2. Strategy Core")
+
+k_len        = input.int(3, "K Length", group="2. Strategy Core")
+d_len        = input.int(3, "D Length", group="2. Strategy Core")
+rsi_len      = input.int(14, "RSI Length", group="2. Strategy Core")
+stoch_len    = input.int(14, "Stoch Length", group="2. Strategy Core")
+over_sold    = input.int(38, "Oversold Level (higher = more buys)", group="2. Strategy Core")
+over_bought  = input.int(62, "Overbought Level (lower = more sells)", group="2. Strategy Core")
+
+useMfiGod    = input.bool(true, "Use MFI for God Trades?", group="3. God Mode")
+mfi_len      = input.int(14, "MFI Length", group="3. God Mode")
+mfi_strong   = input.int(42, "Strong Volume Threshold (higher = more god trades)", group="3. God Mode")
+
+base_pct     = input.float(25.0, "Base Trade Equity %", group="4. Risk & Sizing")
+god_pct      = input.float(80.0, "God Trade Equity %", group="4. Risk & Sizing")
+cap_god_pct  = input.float(50.0, "Live-style God Cap % (0 = use god_pct)", minval=0.0, maxval=100.0, group="4. Risk & Sizing", tooltip="Backtest with a lower God size to stress-test live deployment.")
+
+cooldownBars = input.int(0, "Min Bars Between New Entries (0 = off)", minval=0, group="4. Risk & Sizing")
+allowReverse = input.bool(true, "Allow Reverse (close opposite on new signal)?", group="4. Risk & Sizing")
+
+sl_pct       = input.float(5.5, "Hard Stop Loss (%) from Entry", group="5. Exits")
+trail_pct    = input.float(2.2, "Trailing Stop (%)", group="5. Exits")
+trail_offset_pct = input.float(0.9, "Trailing Offset (%) — profit before trail activates", group="5. Exits")
+
+showStopLine = input.bool(true, "Plot Active Stop Level?", group="6. Display")
+
+// ==========================================
+// 2. INDICATOR CALCULATIONS
+// ==========================================
+macroEma = request.security(syminfo.tickerid, macroTF, ta.ema(close, macroEmaLen), lookahead=barmerge.lookahead_off, gaps=barmerge.gaps_off)
+bool macro_bull = close > macroEma
+
+ema150 = ta.ema(close, emaLen)
+
+[supertrend, direction] = ta.supertrend(factor, atr_len)
+bool st_bull = direction < 0
+bool st_bear = direction > 0
+
+rsi1 = ta.rsi(close, rsi_len)
+k = ta.sma(ta.stoch(rsi1, rsi1, rsi1, stoch_len), k_len)
+d = ta.sma(k, d_len)
+
+mfi = ta.mfi(hlc3, mfi_len)
+rsi_main = ta.rsi(close, 14)
+
+// ==========================================
+// 3. LOGIC & CONDITIONS
+// ==========================================
+macro_ok_long  = useMacroFilter ? macro_bull : true
+macro_ok_short = useMacroFilter ? not macro_bull : true
+
+trend_ok_long  = useEmaFilter ? close > ema150 : true
+trend_ok_short = useEmaFilter ? close < ema150 : true
+
+rsi_ok_long    = useRsiFilter ? rsi_main < rsi_ok_level : true
+rsi_ok_short   = useRsiFilter ? rsi_main > rsi_ok_short_level : true
+
+base_long_cond  = st_bull and ta.crossover(k, d) and k < over_sold and trend_ok_long and rsi_ok_long and macro_ok_long
+base_short_cond = st_bear and ta.crossunder(k, d) and k > over_bought and trend_ok_short and rsi_ok_short and macro_ok_short
+
+god_long_cond   = useMfiGod and base_long_cond and mfi > mfi_strong
+god_short_cond  = useMfiGod and base_short_cond and mfi < (100 - mfi_strong)
+
+long_signal  = god_long_cond or base_long_cond
+short_signal = god_short_cond or base_short_cond
+
+effective_god_pct = cap_god_pct > 0 ? math.min(god_pct, cap_god_pct) : god_pct
+
+// ==========================================
+// 4. COOLDOWN
+// ==========================================
+var int last_entry_bar = na
+
+bars_since_entry = na(last_entry_bar) ? 10e6 : bar_index - last_entry_bar
+cooldown_ok = cooldownBars == 0 or bars_since_entry >= cooldownBars
+
+flat = strategy.position_size == 0
+
+// ==========================================
+// 5. SIZING & EXECUTION
+// ==========================================
+qty_for_pct(pct) =>
+    strategy.equity * (pct / 100) / close
+
+qty_base = qty_for_pct(base_pct)
+qty_god  = qty_for_pct(effective_god_pct)
+
+long_qty  = god_long_cond ? qty_god : qty_base
+short_qty = god_short_cond ? qty_god : qty_base
+
+long_comment  = god_long_cond ? "GOD " + str.tostring(effective_god_pct, "#") + "%" : "BASE " + str.tostring(base_pct, "#") + "%"
+short_comment = god_short_cond ? "GOD " + str.tostring(effective_god_pct, "#") + "%" : "BASE " + str.tostring(base_pct, "#") + "%"
+
+can_open_long  = long_signal and cooldown_ok and (flat or (allowReverse and strategy.position_size < 0))
+can_open_short = short_signal and cooldown_ok and (flat or (allowReverse and strategy.position_size > 0))
+
+if can_open_long
+    if strategy.position_size < 0
+        strategy.close("Short", comment="Flip to Long")
+    if strategy.position_size <= 0
+        strategy.entry("Long", strategy.long, qty=long_qty, comment=long_comment)
+        last_entry_bar := bar_index
+
+if can_open_short
+    if strategy.position_size > 0
+        strategy.close("Long", comment="Flip to Short")
+    if strategy.position_size >= 0
+        strategy.entry("Short", strategy.short, qty=short_qty, comment=short_comment)
+        last_entry_bar := bar_index
+
+// ==========================================
+// 6. ENTRY-ANCHORED EXITS (fixed from v7)
+// ==========================================
+var float active_stop = na
+var float active_trail_pts = na
+var float active_trail_off = na
+
+tick = syminfo.mintick
+
+set_long_exits(entry) =>
+    active_stop := entry * (1 - sl_pct / 100)
+    active_trail_pts := entry * trail_pct / 100 / tick
+    active_trail_off := entry * trail_offset_pct / 100 / tick
+
+set_short_exits(entry) =>
+    active_stop := entry * (1 + sl_pct / 100)
+    active_trail_pts := entry * trail_pct / 100 / tick
+    active_trail_off := entry * trail_offset_pct / 100 / tick
+
+just_opened_long  = strategy.position_size > 0 and strategy.position_size[1] <= 0
+just_opened_short = strategy.position_size < 0 and strategy.position_size[1] >= 0
+just_closed       = strategy.position_size == 0 and strategy.position_size[1] != 0
+
+if just_opened_long
+    set_long_exits(strategy.opentrades.entry_price(0))
+
+if just_opened_short
+    set_short_exits(strategy.opentrades.entry_price(0))
+
+if just_closed
+    active_stop := na
+    active_trail_pts := na
+    active_trail_off := na
+
+if strategy.position_size > 0 and not na(active_stop)
+    strategy.exit("Exit Long", "Long", stop=active_stop, trail_points=active_trail_pts, trail_offset=active_trail_off)
+
+if strategy.position_size < 0 and not na(active_stop)
+    strategy.exit("Exit Short", "Short", stop=active_stop, trail_points=active_trail_pts, trail_offset=active_trail_off)
+
+// ==========================================
+// 7. VISUALIZATION
+// ==========================================
+color bg_color = na
+if strategy.position_size > 0
+    bg_color := color.new(color.blue, 90)
+else if strategy.position_size < 0
+    bg_color := color.new(color.red, 90)
+
+bgcolor(bg_color, title="Position BG")
+
+plot(showStopLine and not na(active_stop) ? active_stop : na, "Stop Level", color=color.orange, linewidth=2, style=plot.style_linebr)
+plot(useEmaFilter ? ema150 : na, "EMA 150", color=color.new(color.yellow, 40))
+plot(useMacroFilter ? macroEma : na, "Macro EMA", color=color.new(color.purple, 50))
+
+// ==========================================
+// 8. ALERTS
+// ==========================================
+new_long  = just_opened_long
+new_short = just_opened_short
+
+if new_long
+    alert("🚀 NEW LONG\nType: " + long_comment + "\nPrice: $" + str.tostring(close, "#.##") + "\nStop: $" + str.tostring(active_stop, "#.##") + "\nTime: " + str.tostring(time, "yyyy-MM-dd HH:mm"), alert.freq_once_per_bar_close)
+
+if new_short
+    alert("🔻 NEW SHORT\nType: " + short_comment + "\nPrice: $" + str.tostring(close, "#.##") + "\nStop: $" + str.tostring(active_stop, "#.##") + "\nTime: " + str.tostring(time, "yyyy-MM-dd HH:mm"), alert.freq_once_per_bar_close)
