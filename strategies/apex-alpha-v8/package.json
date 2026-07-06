@@ -1,0 +1,14 @@
+{
+  "name": "apex-alpha-v8",
+  "version": "1.0.0",
+  "description": "JavaScript port of ETH 4H Apex Alpha Enhanced v8 (Pine Script)",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "backtest": "node run-backtest.js",
+    "backtest:csv": "node run-backtest.js --csv"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
