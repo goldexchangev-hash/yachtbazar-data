@@ -1,0 +1,26 @@
+Cursor Pass 17 / Bug Hunt v14 — scans 51–100 (50 parallel) on v12.91. Cumulative 100 scans (v13+v14).
+Full report: CursorBugHunt-v14/REPORT.md
+Master registry: same file, "Master bug registry" section.
+
+MONEY: Still 1 High server bug (v13 Scan 46 / M1). v14 extends to pressure/plane/swoop gameKeys (51,91–92). No NEW Critical/High house-drain beyond M1.
+
+WAVE 0 — MONEY + CRASH (ship first):
+  0A. M1 (v13 #46): orphan finalizeOrphanRounds/drainOrphanReservations — NOT cashOutAt:1e9. Use max(crashPoint+ε, gameFloor(gameKey)). Pressure needs gameFloor 1.20 not naive point+0.01. Probes: orphan-cap-win-probe.js, verify-rederive-cap-probe.js
+  0B. v10/v12 C1–C3: ack timeout, recover race, cr:error race (v12 probes)
+  0C. NEW C4 Scan 64: pressure early-bank cr:error must NOT orphan server round — keep live, reset cashout latch. Probe: pressure-early-bank-probe.js
+  0D. v11: fish epoch, slots3d paintTokens
+
+WAVE 1 — CLIENT + AUDIT:
+  1A. M2 Scan 55 + Scan 93: verifyRederive + self-test must catch cap orphan
+  1B. U1–U2 (v13): refreshTokens → changed(); play seq after topUp (token-play-seq-probe.js)
+  1C. U3–U4: TV reveal timing; Gem Vault bonus — no refreshTokens during _bonus (Scan 75)
+  1D. v12 recover race, dice afford
+
+WAVE 2 — SECURITY + RELIABILITY:
+  2A. U7 Scan 82: WS cr:start/BJ must respect HTTP bridge enabled() — ws-bridge-disabled-probe.js
+  2B. U8 Scan 86: bridgeAuth TTL
+  2C. U9 Scan 89: ?contract= allowlist / confirmation banner on hosted site
+  2D. U10 Scan 57: BJ insurance credit_failed — no phantom insuranceResult
+  2E. carry-forward: bjDockLive, guest oracle, pressure HTTP void, swoop demo, loadScriptOnce
+
+After fixes: full probe gate in AGENTS.md (v2–v14 probes) + npm test. Bump ?v=1292.

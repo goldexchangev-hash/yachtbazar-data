@@ -1,0 +1,28 @@
+Cursor Pass 18 / Bug Hunt v15 — scans 101-200 (100 parallel, max agents) on v12.91.
+Cumulative 200 scans (v13+v14+v15). Full report: CursorBugHunt-v15/REPORT.md
+
+MONEY: 1 NEW CRITICAL (Scan 114 doSettle loss-escape) + prior High M1 (orphan cap 1000x).
+4 NEW High client (Scans 171-173, 176). 22 NEW findings total this pass.
+
+WAVE 0 — MONEY + CRASH (ship first):
+  0A. NEW S1 Scan 114: doSettle must reject s.closed&&s.settlement OR only delete openByPlayer when sid matches. Probe: dosettle-closed-session-probe.js
+  0B. M1 (v13): orphan bust max(crashPoint+ε, gameFloor) not 1e9. Probes: orphan-cap-win-probe.js
+  0C. NEW C1 Scan 176: fishshooter _active/epoch guard on token .then; no demo += when _tokenActive false after server credit
+  0D. NEW C2 Scan 173: pressure _tick use _roundToken like _release (#47 extension)
+  0E. NEW C3 Scans 171-172: plane CR_ROUND_TIMEOUT refresh after epoch stable; clear _realBusy on epoch orphan
+  0F. v14 C4 pressure early-bank + v12 crash client Highs
+
+WAVE 1 — RELIABILITY:
+  1A. R1 Scan 107: log/retry token-bridge save() failures. Probe: bridge-save-silent-probe.js
+  1B. R2 Scan 124: crash _resolve bust ledger throw → RAM cleanup or retry
+  1C. R3 Scan 103: applyExternal → finalizeOrphanRounds at entry
+  1D. v13/v14 client: refreshTokens→changed(), play seq, gem vault bar lock
+
+WAVE 2 — SECURITY:
+  2A. X1 Scan 188: WS hello require signed wallet or restrict to guest-only display names
+  2B. X2 Scan 187: strip HTML in cleanChat / use textContent client-side
+  2C. X3 Scans 161+89: isAddress on localStorage deployment; hosted site contract allowlist
+  2D. Scan 181 slots3d _spinGen counter. Probe: slots3d-spin-gen-probe.js
+  2E. Scan 155 multi-tab StorageEvent sync
+
+After fixes: full probe gate in AGENTS.md (v2-v15) + npm test. Bump ?v=1292.

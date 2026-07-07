@@ -1,0 +1,20 @@
+Cursor Pass 16 / Bug Hunt v13 — 50 parallel scans on v12.91. Full report: CursorBugHunt-v13/REPORT.md
+
+MONEY: 1 NEW High server bug (Scan 46). Rest of happy path still clean.
+
+WAVE 0 — MONEY (ship first):
+  0A. NEW Scan 46: orphan finalizeOrphanRounds/drainOrphanReservations must NOT use cashOutAt:1e9 (clamps to 1000 → accidental 1000x win when crashPoint===cap). Use crashPoint+0.01 from pinned nonce like crash-rounds.js bust path. Probe: CursorBugHunt-v13/orphan-cap-win-probe.js
+  0B. v10 Wave 0: cold resume, launch ack, reef splash (v10 probes)
+  0C. v11: fish epoch, slots3d paintTokens (v11 probes)
+
+WAVE 1 — CLIENT (v12 + v13):
+  1A. v12 #1 ack timeout = CR_ROUND_TIMEOUT semantics; no local refund (v12 crash-ack-timeout-probe)
+  1B. v12 #2 Recover race: await resume / clear stranded during resumePending (v12 stranded-resume-race-probe)
+  1C. NEW #2: refreshTokens() → changed() not just paintTokens() (token-mode.js:263-271)
+  1D. NEW #3: topUp/buyIn bump _playSeqApplied or ignore stale play (token-client.js). Probe: token-play-seq-probe.js
+  1E. NEW #4: TV reveal — sync balance on reveal end not 2800ms timeout (app.js:1741+)
+
+WAVE 2 — carry-forward:
+  v12 dice afford, bjDockLive, guest oracle, norm(), pressure HTTP void, clientSeed cap, swoop demo leak (Scan 36), loadScriptOnce dedup (Scan 38).
+
+After fixes: full probe gate in AGENTS.md (includes v13 probes) + npm test. Bump ?v=1292.
