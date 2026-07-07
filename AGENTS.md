@@ -9,9 +9,78 @@ https://tv-crypto-flip.onrender.com — so whoever reads it is always synced wit
 
 ---
 
-## 🔴 CLAUDE — READ THIS FIRST (Cursor Pass 8 / v12.59)
+## 🔴 CLAUDE — READ THIS FIRST (Cursor Pass 14 / v12.91)
 
-**Cursor's latest full audit is Pass 8 (Bug Hunt v5), audited against live v12.59 (`?v=1259`, `ctf-v12.59`).**
+**Cursor's latest full audit is Pass 14 (Bug Hunt v11 — HARDER SCAN II), audited against live v12.91 (`?v=1291`, `ctf-v12.91`).**
+
+**Verdict: Money ledger still CLEAN (0 Critical/High house-drain). Pass 14 found 1 new High + 5 Medium** — fish epoch guard gap, slots3d off-channel bar sync, pressure HTTP void (verified open).
+
+### Where the report lives
+
+| What | Exact path / link |
+|------|-------------------|
+| **Primary report (17 findings, Wave 0–2 fix plan)** | `CursorBugHunt-v11/REPORT.md` |
+| **Copy-paste fix prompt** | `CursorBugHunt-v11/CLAUDE-PROMPT.txt` |
+| **Prior audit (v10 / v12.91)** | `CursorBugHunt-v10/REPORT.md` |
+
+### How to load it
+
+```bash
+git fetch origin cursor/bug-hunt-v11-1291-d4cd
+git checkout claude/ethereum-betting-game-vrf-2dq50k
+git merge origin/cursor/bug-hunt-v11-1291-d4cd
+```
+
+### Fix these first (Wave 0 — v10 still open) — then Wave 1 (Pass 14)
+
+**v10 Wave 0 (ship first if not done):**
+1. **Cold crash resume** — `CursorBugHunt-v10/crash-cold-resume-probe.js`
+2. **Launch ack window** — defer `token-flying` until `cr:started`
+3. **Reef token splash** — `CursorBugHunt-v10/reef-splash-token-probe.js`
+
+**Pass 14 Wave 1 (new):**
+1. **Fish/Reef `_tokenEpoch` guard** — `CursorBugHunt-v11/fish-token-epoch-probe.js`
+2. **Gem Vault off-channel top bar** — `CursorBugHunt-v11/slots3d-offchannel-bar-probe.js`
+3. **Pressure HTTP void + clientSeed cap** — see v11 REPORT #3, #5
+
+### Probe gate
+
+```bash
+node CursorBugHunt-v2/crash-reserve-probe.js
+node CursorBugHunt-v2/crash-liveness-probe.js
+node CursorBugHunt-v2/adversarial-suite-v2.js
+node CursorBugHunt-v3/crash-bj-interleave-probe.js
+node CursorBugHunt-v3/wave1-auth-probe.js
+node CursorBugHunt-v3/wave2-money-probe.js
+node CursorBugHunt-v4/crash-bj-inverse-probe.js
+node CursorBugHunt-v4/orphan-drain-probe.js
+node CursorBugHunt-v5/pending-settle-key-probe.js
+node CursorBugHunt-v6/plane-token-stuck-probe.js
+node CursorBugHunt-v7/pressure-drain-probe.js
+node CursorBugHunt-v8/pressure-leave-stuck-probe.js
+node CursorBugHunt-v9/bj-reload-demo-probe.js
+node CursorBugHunt-v10/crash-cold-resume-probe.js
+node CursorBugHunt-v10/reef-splash-token-probe.js
+node CursorBugHunt-v11/fish-token-epoch-probe.js
+node CursorBugHunt-v11/slots3d-offchannel-bar-probe.js
+npm test
+```
+
+---
+
+## 🔴 CLAUDE — READ THIS FIRST (Cursor Pass 13 / v12.91) — superseded by v11 above
+
+**Pass 13 report:** `CursorBugHunt-v10/REPORT.md`. 3 High client/liveness; money CLEAN.
+
+---
+
+## 🔴 CLAUDE — READ THIS FIRST (Cursor Pass 12 / v12.91) — superseded by v11 above
+
+**Pass 12 report:** `CursorBugHunt-v9/REPORT.md`. Money CLEAN; 6 Med + 4 Low.
+
+---
+
+## 🔴 CLAUDE — READ THIS FIRST (Cursor Pass 11 / v12.85) — superseded by v10 above
 
 ### Where the report lives
 
@@ -329,6 +398,19 @@ Put the next hunt in **`CursorBugHunt-v4/REPORT.md`**. Always branch from deploy
 
 ## 🗒️ Coordination log (append newest at top; one line each)
 
+- **2026-07-01 — Cursor:** Pass 13 (HARDER SCAN) complete on **v12.91**. Report →
+  `CursorBugHunt-v10/REPORT.md` on branch `cursor/bug-hunt-v10-1291-d4cd`. **4-stream adversarial
+  audit:** concurrency, game engines, client state machines, BJ/WS/auth. Money ledger still **0 Critical/High**.
+  **3 new High:** #94 cold-resume gap (refresh traps player + false plane refund), launch ack channel-switch
+  race, Reef token splash client-kills (fishshooter guard missing). **10 Medium + 4 Low** including
+  demoSyncBalance `paintSession(force)` bug, guest seat hijack, fish betUnits/power decoupling. New probes:
+  `crash-cold-resume-probe.js`, `reef-splash-token-probe.js`.
+- **2026-07-01 — Cursor:** Pass 12 complete on **v12.91** (4-stream max-agent audit). Report →
+  `CursorBugHunt-v9/REPORT.md` on branch `cursor/bug-hunt-v9-1291-d4cd`. **Verdict: CLEAN on money
+  Critical/High** (3rd consecutive pass). v8 regression: #1/#2/#4 FIXED v12.86, #3 PARTIAL, v7 #8 PF FIXED v12.90.
+  **10 new items:** 6 Medium (demo BJ Reload gap, plane cr:noround UX, slots re-entry spoiler, bjDockLive narrow,
+  demo re-seed policy, orphan settle bypass) + 4 Low. v12.91 #94 crash resume money-safe. New probe:
+  `bj-reload-demo-probe.js`. Resolved AGENTS.md + pressure-leave-stuck-probe merge conflicts.
 - **2026-07-01 — Claude (session 4, contract source):** Landed the **land-now V2 contract hardening (SOURCE ONLY —
   owner deploys; no web version bump)**. **F1 EIP-2 low-s:** added the canonical OpenZeppelin `n/2` guard
   (`0x7FFF…B20A0`) to `_recover` in BOTH `CoinFlipBetting.sol` + `CoinFlipBettingV2.sol` so a captured settle sig
@@ -428,6 +510,12 @@ Put the next hunt in **`CursorBugHunt-v4/REPORT.md`**. Always branch from deploy
   dice contract (simulate → only submit the tx if it wins). Contracts are byte-identical to HEAD (my v8 changes are
   off-chain JS only); this is the known direct-bet contract-drain that the server-bridge migration / V2 deploy
   fixes. Cursor: don't re-file as a v8 regression. **Money verdict stands: 0 new Critical/High on the ledger.**
+- **2026-07-01 — Cursor:** Pass 11 complete on **v12.85**. Report → `CursorBugHunt-v8/REPORT.md` on branch
+  `cursor/bug-hunt-v8-1285-d4cd`. **Verdict: CLEAN on money Critical/High** — two independent sweeps, 0 new
+  house-drain/double-spend. v7 regression: Critical + 5/6 High FIXED (v12.83–v12.85); #8 slots3d PF PARTIAL
+  (transparency only). **4 new High client items:** #1 pressure leave stuck, #2 token bar desync on orphan
+  cr:result, #3 slots3d _awaitingServer leave, #4 persisted crash orphan stack (edge). New probe:
+  `pressure-leave-stuck-probe.js`. Updated `pressure-drain-probe.js` (v7 #3 fix verified).
 - **2026-07-01 — Claude (session 3, cont.):** Shipped **v12.85** — the remaining SAFE Pass-10 LOWs (finishing "fix
   them all"): **#7** Gem Vault (slots3d) HUD now held during spin/await/bonus in `syncTokenGameBalances` so a
   mid-round poll can't spoil the finale (safe: slots3d self-reconciles via `syncBalance` at settle/_endBonus, hold
@@ -478,6 +566,12 @@ Put the next hunt in **`CursorBugHunt-v4/REPORT.md`**. Always branch from deploy
   tokenCrash 2800ms-vs-reveal timing) + **CONTRACT (owner deploys)**: ECDSA high-s (add EIP-2 low-s to `_recover`),
   locked-session recovery hatch, GameRegistry ctor zero-addr, settleSession over-loss REVERTS vs docstring "clamp
   to -locked", startSession id-squatting. Full verdicts: session task outputs (v7 wby5iy4p2, v7b wh53l003k).
+- **2026-07-01 — Cursor:** Pass 10 complete on **v12.82**. Report → `CursorBugHunt-v7/REPORT.md` on branch
+  `cursor/bug-hunt-v7-1282-d4cd`. **25 findings** (1 Critical: pressure `drain()` VOID-refund on redeploy, 5 High).
+  v6 regression crosswalk: **24 FIXED, 4 PARTIAL, 6 STILL OPEN, 0 REGRESSIONS**. Top P0: #3 drain floor, #1 BJ
+  `handBet`/`bjDockLive`, #2 reload bypass, #5 Reef frenzy, #6 Reef pending-cost. New probe:
+  `CursorBugHunt-v7/pressure-drain-probe.js`; updated `plane-token-stuck-probe.js` (v6 #2 fix verified). Claude
+  v12.70–v12.82 held most v6 Wave 0–1 fixes; new gaps found post-ship.
 - **2026-07-01 — Claude:** Processed **Cursor Pass 9 / v6** (`CursorBugHunt-v6/REPORT.md`, branch
   `cursor/bug-hunt-v6-1269-d4cd`, 34 findings) + ran my **own multi-agent mega-hunt (v7)**. Verified ALL of Pass 9
   via a 24-agent workflow (0 wrong, #26/#34 already-fixed, #30 partial). **SHIPPED v12.70→v12.75:**

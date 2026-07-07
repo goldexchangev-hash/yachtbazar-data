@@ -1,0 +1,36 @@
+You are fixing Crypto TV v12.91 from Pass 13 / Bug Hunt v10 (HARDER SCAN).
+
+READ: CursorBugHunt-v10/REPORT.md
+
+WAVE 0 (High — ship first):
+#1 crash-rounds-client cold resume — resume from session creds when live=null; fix plane false refund on "already live"
+#2 defer plane token-flying/local debit until cr:started OR abort server round on cancel-without-roundId
+#3 fishtable.js — token paid _bombSplash/_eelChain visual-only (port fishshooter guard)
+
+WAVE 1:
+#4 app.js demoSyncBalance — fix paintSession(force) ReferenceError
+#5-6 blackjack-server — drop messageWallet hint; norm() all seat comparisons
+#7 token-bridge — validate betUnits === unitBet × power for fish games
+#8-9 token-http finalizeOrphanRounds before settle; batchWrite doRelease
+
+WAVE 2: v9 #1-#5 continuity + #10-12 polish
+
+PROBE GATE:
+node CursorBugHunt-v2/crash-reserve-probe.js
+node CursorBugHunt-v2/crash-liveness-probe.js
+node CursorBugHunt-v2/adversarial-suite-v2.js
+node CursorBugHunt-v3/crash-bj-interleave-probe.js
+node CursorBugHunt-v3/wave1-auth-probe.js
+node CursorBugHunt-v3/wave2-money-probe.js
+node CursorBugHunt-v4/crash-bj-inverse-probe.js
+node CursorBugHunt-v4/orphan-drain-probe.js
+node CursorBugHunt-v5/pending-settle-key-probe.js
+node CursorBugHunt-v6/plane-token-stuck-probe.js
+node CursorBugHunt-v7/pressure-drain-probe.js
+node CursorBugHunt-v8/pressure-leave-stuck-probe.js
+node CursorBugHunt-v9/bj-reload-demo-probe.js
+node CursorBugHunt-v10/crash-cold-resume-probe.js
+node CursorBugHunt-v10/reef-splash-token-probe.js
+npm test
+
+Bump ?v=1292 / ctf-v12.92. Log in AGENTS.md.
