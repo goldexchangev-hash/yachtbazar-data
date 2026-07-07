@@ -1,0 +1,23 @@
+Cursor Pass 15 / Bug Hunt v12 — 10-stream deep scan on v12.91. Full report: CursorBugHunt-v12/REPORT.md
+
+MONEY: still CLEAN (0 Critical/High house-drain). Ship client/liveness fixes below.
+
+WAVE 0 (v10/v11 still open — first if not shipped):
+  0A–0C: v10 cold resume, launch ack, reef splash (v10 probes)
+  0D: v11 fish _tokenEpoch + slots3d paintTokens (v11 probes)
+
+WAVE 1 (Pass 15 NEW High):
+  1A. Ack timeout / lost cr:started: treat like CR_ROUND_TIMEOUT — refreshTokens(), NEVER local +stake refund (crash-rounds-client.js:98, plane-ui.js:405-407, pressure-ui.js:302). Probe: CursorBugHunt-v12/crash-ack-timeout-probe.js
+  1B. Stranded Recover race: await TokenMode resume OR resumePending guard before checkStrandedLock (app.js:639-882, token-mode.js:56-63). Probe: CursorBugHunt-v12/stranded-resume-race-probe.js
+  1C. cr:error vs cr:result: ignore cashout errors when roundId set; no refund post-started (crash-rounds-client.js, plane-ui.js)
+
+WAVE 2 (Pass 15 Medium):
+  2A. dice/crash readouts: use spendableUsd()/token branch; refresh in syncTokenGameBalances (app.js:1947+). Probe: CursorBugHunt-v12/dice-token-afford-probe.js
+  2B. resumeCold(): rebuild live object before cr:resume (crash-rounds-client.js + app.js)
+  2C. syncTokenGameBalances: hold off-channel when _spinning/_bonus/_chest/_frenzy (app.js:3101-3115)
+  2D. paintSession(!!force) from token onChange (app.js:643)
+  2E. bjDockLive: update from bj:dock even off-channel; reset on leave (app.js:3938). Probe: CursorBugHunt-v12/bj-dock-stale-probe.js
+  2F. Guest: no messageWallet hint; no pre-hello balance oracle (blackjack-server.js)
+  2G. norm() on all exposure/seat paths (blackjack-server.js)
+
+After fixes: full probe gate in AGENTS.md + npm test. Bump ?v=1292 / ctf-v12.92.
