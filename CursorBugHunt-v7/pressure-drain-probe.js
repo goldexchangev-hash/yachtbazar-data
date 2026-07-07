@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 "use strict"
 /**
- * v12.82 — pressure rounds drained on SIGTERM must BUST below 1.20x, not VOID-refund.
- * Reproduces v7 #3: drain() uses crash MIN_TARGET_X (1.01) instead of pressure MIN_CASHOUT (1.20).
+ * v12.85 — pressure rounds drained on SIGTERM must BUST below 1.20x, not VOID-refund.
+ * v7 #3 FIX VERIFIED in v12.83+.
  *
  * Run: node CursorBugHunt-v7/pressure-drain-probe.js
- * Expected: FAIL until drain() uses gameFloor(round.gameKey) for pressure.
+ * Expected: PASS when drain() uses gameFloor(round.gameKey) for pressure.
  */
 const CE = require("../public/crash-engine.js");
 const crashEngine = require("../server/games/crash.js");
@@ -71,14 +71,14 @@ const after = tokens;
 const voidRefund = after > before;
 const correctBust = after === before;
 
-if (voidRefund && !correctBust) {
-  console.log("  ok    pressure drain VOID-refunds stake at ~1.10x (v7 #3 gap documented)");
-  console.log("\nPROBE OK — documents bug; fix drain() to use gameFloor('pressure')=1.20");
+if (correctBust && !voidRefund) {
+  console.log("  ok    pressure drain correctly busts sub-1.20x rounds (v7 #3 fix verified)");
+  console.log("\nPROBE OK — v7 #3 fix present");
   process.exit(0);
 }
 
-if (correctBust && !voidRefund) {
-  console.log("  FAIL  pressure drain correctly busts — bug appears FIXED");
+if (voidRefund) {
+  console.log("  FAIL  pressure drain VOID-refunds stake at ~1.10x (v7 #3 regression)");
   process.exit(1);
 }
 
