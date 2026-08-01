@@ -1,0 +1,84 @@
+YachtBazar catalog data — attribution and licensing
+===================================================
+
+This archive contains listings.js / listings.json (a marina, dock and boat
+catalog compiled by YachtBazar, https://yachtbazar.com) and data.db.
+
+Records in this catalog come from several sources with different licences.
+Each record carries a "source" field, and marina records additionally carry an
+"import_src" field, identifying where that record came from.
+
+
+OpenStreetMap-derived records
+-----------------------------
+Records with "source": "osm", and records marked "import_src": "osm-delta",
+are derived from OpenStreetMap.
+
+    Data (c) OpenStreetMap contributors, available under the Open Database
+    License (ODbL) 1.0.
+    https://www.openstreetmap.org/copyright
+    https://opendatacommons.org/licenses/odbl/1-0/
+
+The full text of the ODbL 1.0 is included in this archive as ODbL-1.0.txt.
+
+These records, and any database derived from them, are distributed under the
+ODbL 1.0. Each OpenStreetMap-derived record retains a link to its OpenStreetMap
+object so the upstream feature can be identified. City values on these records
+were produced by reverse geocoding with OpenStreetMap's Nominatim service.
+
+
+Overture Maps Foundation records
+--------------------------------
+Records marked "import_src": "overture" are derived from the Places theme
+published by the Overture Maps Foundation, https://overturemaps.org
+(accessed 2026-07-29).
+
+Overture licenses Places records according to their original source:
+
+  - Community Data License Agreement - Permissive, Version 2.0
+    (CDLA-Permissive-2.0) for records sourced from Meta, Microsoft, PinMeTo,
+    Krick, RenderSEO, DAC and BrightQuery. Full text included in this archive
+    as CDLA-Permissive-2.0.txt.
+
+  - Apache License, Version 2.0 for records sourced from Foursquare —
+    Copyright 2024 Foursquare Labs, Inc. Full text included in this archive
+    as Apache-2.0.txt.
+
+  - CC0 1.0 for records sourced from AllThePlaces.
+
+Our import did not retain Overture's per-record source and licence markers, so
+we cannot identify which individual records fall under which of the above.
+All applicable licence texts are therefore included, and all three should be
+treated as potentially applying to any Overture-derived record.
+
+CHANGED: these records have been modified by YachtBazar. Fields were selected,
+reformatted and normalised, and merged with records from other sources; not all
+original fields are retained.
+
+
+Marina operator records
+-----------------------
+Facts on marina records — phone numbers, slip counts, fuel availability, hours
+and amenities — were gathered from each marina's own public website. These are
+factual details and carry no licence, but the source page and verification date
+were recorded for each. Marina operators who want a correction or removal can
+reach us at https://yachtbazar.com/contact
+
+By-owner listings
+-----------------
+Boat, dock and slip records from public by-owner sources (for example
+Craigslist and Facebook Marketplace) were publicly posted by their owners, and
+each retains a link back to the original post. Records posted directly on
+YachtBazar by their owners are marked as such.
+
+
+Machine-readable copy (ODbL section 4.6)
+----------------------------------------
+The catalog is offered in machine-readable form at:
+https://github.com/goldexchangev-hash/yachtbazar-data/releases/tag/v1
+
+
+Note on scope
+-------------
+Nothing in YachtBazar's Terms of Service is intended to restrict rights you
+hold in the third-party data above under the licences named here.
